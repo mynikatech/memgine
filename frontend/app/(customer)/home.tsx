@@ -5,7 +5,7 @@ import { SecondarySectionKey, SubscriptionStatus } from "@/src/core";
 import type { Benefit, MembershipProduct, Subscription } from "@/src/core";
 import { mockServices } from "@/src/core";
 import { Screen } from "@/src/layout";
-import { useBusiness, useTranslation } from "@/src/providers";
+import { useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
 import { Card, Section, StateView, Text } from "@/src/ui";
 import { BenefitItem, benefitIconForType, BusinessHeader, MembershipCard } from "@/src/ui/domain";
 
@@ -16,6 +16,7 @@ const CUSTOMER_ID = "cust-1";
 
 export default function CustomerHome() {
   const { organization, configuration, template } = useBusiness();
+  const { subscriptionId: activeSubscriptionId } = useCustomerContext();
   const { t, formatDate } = useTranslation();
 
   const [status, setStatus] = useState<Status>("loading");
@@ -27,7 +28,14 @@ export default function CustomerHome() {
     setStatus("loading");
     try {
       const subs = await mockServices.subscription.listByCustomer(CUSTOMER_ID);
-      const sub = subs.find((s) => s.organizationId === organization.id) ?? subs[0] ?? null;
+      // Render against the active subscription context when one has been
+      // selected (from My Cards); otherwise fall back to this business's first
+      // subscription. Foundation only — no multi-business switching.
+      const sub =
+        (activeSubscriptionId ? subs.find((s) => s.id === activeSubscriptionId) : null) ??
+        subs.find((s) => s.organizationId === organization.id) ??
+        subs[0] ??
+        null;
       let prod: MembershipProduct | null = null;
       let bens: Benefit[] = [];
       if (sub) {
@@ -41,7 +49,7 @@ export default function CustomerHome() {
     } catch {
       setStatus("error");
     }
-  }, [organization.id]);
+  }, [organization.id, activeSubscriptionId]);
 
   useEffect(() => {
     load();

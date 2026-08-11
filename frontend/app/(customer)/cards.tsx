@@ -5,7 +5,7 @@ import { SubscriptionStatus } from "@/src/core";
 import type { Benefit, MembershipProduct, Subscription } from "@/src/core";
 import { mockServices } from "@/src/core";
 import { Screen } from "@/src/layout";
-import { useBusiness, useTranslation } from "@/src/providers";
+import { useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
 import { Badge, Card, Header, Modal, Section, StateView, Text } from "@/src/ui";
 import { BenefitItem, benefitIconForType, MembershipCard, QrPlaceholder } from "@/src/ui/domain";
 
@@ -16,38 +16,47 @@ type CardVM = {
   subscription: Subscription;
   product: MembershipProduct;
   benefits: Benefit[];
+};
+
+/** Subscriptions grouped by their Organization — ready for multiple orgs. */
+type OrgGroup = {
+  organizationId: string;
   organizationName: string;
+  cards: CardVM[];
 };
 
 export default function MyCards() {
   const { organization, configuration } = useBusiness();
+  const { setActiveContext } = useCustomerContext();
   const { t, formatDate } = useTranslation();
 
   const [status, setStatus] = useState<Status>("loading");
-  const [cards, setCards] = useState<CardVM[]>([]);
+  const [groups, setGroups] = useState<OrgGroup[]>([]);
   const [selected, setSelected] = useState<CardVM | null>(null);
 
   const load = useCallback(async () => {
     setStatus("loading");
     try {
-      // Customer → Subscription → Organization. Iterating the customer's
-      // subscriptions here keeps My Cards ready to hold multiple business
-      // cards in future without changing this screen.
+      // Customer -> Subscription -> (Product, Organization). Grouping by
+      // organization here means adding a second org later needs NO screen
+      // change; the model never assumes one subscription / one organization.
       const subs = await mockServices.subscription.listByCustomer(CUSTOMER_ID);
-      const vms: CardVM[] = [];
+      const grouped: OrgGroup[] = [];
       for (const sub of subs) {
         const product = await mockServices.membershipProduct.getProduct(sub.membershipProductId);
         if (!product) continue;
         const benefits = await mockServices.benefit.listByProduct(sub.membershipProductId);
         const org = await mockServices.organization.getOrganization(sub.organizationId);
-        vms.push({
-          subscription: sub,
-          product,
-          benefits,
-          organizationName: org?.displayName ?? organization.displayName,
-        });
+        const orgName = org?.displayName ?? organization.displayName;
+
+        let group = grouped.find((g) => g.organizationId === sub.organizationId);
+        if (!group) {
+          group = { organizationId: sub.organizationId, organizationName: orgName, cards: [] };
+          grouped.push(group);
+        }
+        group.cards.push({ subscription: sub, product, benefits });
       }
-      setCards(vms);
+      setGroups(grouped);
       setStatus("ready");
     } catch {
       setStatus("error");
@@ -59,6 +68,15 @@ export default function MyCards() {
   }, [load]);
 
   const cardStyle = configuration.customerExperience.cardStyle;
+
+  const openCard = (vm: CardVM) => {
+    // Selecting a card establishes the active Organization + Subscription
+    // context for the customer experience.
+    setActiveContext(vm.subscription.organizationId, vm.subscription.id);
+    setSelected(vm);
+  };
+
+  const hasCards = groups.some((g) => g.cards.length > 0);
 
   return (
     <Screen
@@ -76,40 +94,48 @@ export default function MyCards() {
           onAction={load}
           testID="cards-state"
         />
-      ) : cards.length === 0 ? (
+      ) : !hasCards ? (
         <StateView kind="empty" title={t("cards.empty")} message={t("cards.emptyBody")} testID="cards-state" />
       ) : (
-        cards.map((vm) => (
-          <Pressable
-            key={vm.subscription.id}
-            testID={`card-${vm.subscription.id}`}
-            onPress={() => setSelected(vm)}
+        groups.map((group) => (
+          <Section
+            key={group.organizationId}
+            title={group.organizationName}
+            testID={`cards-group-${group.organizationId}`}
           >
-            <Card padding="md">
-              <MembershipCard
-                organizationName={vm.organizationName}
-                tier={vm.product.tier ?? vm.product.name}
-                validUntil={
-                  vm.subscription.currentPeriodEnd ? formatDate(vm.subscription.currentPeriodEnd) : "—"
-                }
-                active={vm.subscription.status === SubscriptionStatus.ACTIVE}
-                cardStyle={cardStyle}
-              />
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginTop: 12,
-                }}
+            {group.cards.map((vm) => (
+              <Pressable
+                key={vm.subscription.id}
+                testID={`card-${vm.subscription.id}`}
+                onPress={() => openCard(vm)}
               >
-                <Text variant="bodySmall" color="textMuted">
-                  {t("cards.benefitsSummary", { count: vm.benefits.length })}
-                </Text>
-                <Badge label={t("cards.view")} tone="brand" />
-              </View>
-            </Card>
-          </Pressable>
+                <Card padding="md">
+                  <MembershipCard
+                    organizationName={group.organizationName}
+                    tier={vm.product.tier ?? vm.product.name}
+                    validUntil={
+                      vm.subscription.currentPeriodEnd ? formatDate(vm.subscription.currentPeriodEnd) : "—"
+                    }
+                    active={vm.subscription.status === SubscriptionStatus.ACTIVE}
+                    cardStyle={cardStyle}
+                  />
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginTop: 12,
+                    }}
+                  >
+                    <Text variant="bodySmall" color="textMuted">
+                      {t("cards.benefitsSummary", { count: vm.benefits.length })}
+                    </Text>
+                    <Badge label={t("cards.view")} tone="brand" />
+                  </View>
+                </Card>
+              </Pressable>
+            ))}
+          </Section>
         ))
       )}
 
@@ -123,7 +149,7 @@ export default function MyCards() {
         {selected ? (
           <View style={{ gap: 20 }}>
             <MembershipCard
-              organizationName={selected.organizationName}
+              organizationName={organization.displayName}
               tier={selected.product.tier ?? selected.product.name}
               validUntil={
                 selected.subscription.currentPeriodEnd

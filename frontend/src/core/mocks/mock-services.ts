@@ -73,6 +73,13 @@ const benefits: Benefit[] = [
     type: BenefitType.FREEBIE,
     validity: { recurrence: "birthday-month" },
   },
+  {
+    id: "ben-3",
+    organizationId: "org-sunrise",
+    title: "Free filter coffee",
+    description: "One cup per day",
+    type: BenefitType.FREEBIE,
+  },
 ];
 
 const products: MembershipProduct[] = [
@@ -90,6 +97,23 @@ const products: MembershipProduct[] = [
         name: "Yearly",
         price: { amountMinor: 4900, currency: "USD" },
         billingInterval: BillingInterval.YEARLY,
+      },
+    ],
+  },
+  {
+    id: "prod-2",
+    organizationId: "org-sunrise",
+    name: "Coffee Club",
+    description: "For daily coffee lovers",
+    tier: "Silver",
+    benefitIds: ["ben-3"],
+    isPublished: true,
+    plans: [
+      {
+        id: "plan-2",
+        name: "Monthly",
+        price: { amountMinor: 19900, currency: "INR" },
+        billingInterval: BillingInterval.MONTHLY,
       },
     ],
   },
@@ -114,6 +138,16 @@ const subscriptions: Subscription[] = [
     status: SubscriptionStatus.ACTIVE,
     startedAt: "2026-02-01T00:00:00.000Z",
     currentPeriodEnd: "2027-02-01T00:00:00.000Z",
+  },
+  {
+    id: "sub-2",
+    organizationId: "org-sunrise",
+    customerId: "cust-1",
+    membershipProductId: "prod-2",
+    planId: "plan-2",
+    status: SubscriptionStatus.ACTIVE,
+    startedAt: "2026-03-01T00:00:00.000Z",
+    currentPeriodEnd: "2026-09-01T00:00:00.000Z",
   },
 ];
 

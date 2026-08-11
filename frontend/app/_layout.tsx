@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { LogBox } from "react-native";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
-import { BusinessProvider, LocalizationProvider } from "@/src/providers";
+import { BusinessProvider, CustomerContextProvider, LocalizationProvider } from "@/src/providers";
 
 
 // Disable logbox errors etc so that users can see the app
@@ -35,7 +35,9 @@ export default function RootLayout() {
   return (
     <BusinessProvider>
       <LocalizationProvider>
-        <Stack screenOptions={{ headerShown: false }} />
+        <CustomerContextProvider>
+          <Stack screenOptions={{ headerShown: false }} />
+        </CustomerContextProvider>
       </LocalizationProvider>
     </BusinessProvider>
   );

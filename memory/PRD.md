@@ -7,7 +7,7 @@ Build the Memgine MVP in small, credit-controlled stages. Frontend: Expo / React
 - **Stage 1 — FROZEN**: Expo foundation + platform-split navigation shells (Customer tabs: Home/My Cards/Profile; Staff sidebar: Counter/Customers/Configuration), placeholder content. SDK 55.
 - **Stage 2A — DONE**: domain + configuration contracts. Single source of truth = `src/core/`.
 - **Stage 2B — DONE**: reusable UI & frontend foundation (providers, theme, template registry, UI primitives, domain components, layout, i18n).
-- **Stage 3A — DONE (incl. visual-alignment correction)**: branded Home ("Your subscription" + Active Benefits), My Cards wallet + scrollable card-detail modal (card/QR-placeholder/benefits), Profile (identity, Language=English, Region=INR·Asia/Kolkata; no Switch Business). Locale default set to en-IN/INR/Asia-Kolkata in the Sunrise config. Multi-business architecture preserved (Customer→Subscription→Organization; My Cards is the future selector) but not implemented.
+- **Stage 3B — DONE (this task): Customer Subscription/Card Context Foundation** — added `CustomerContextProvider` (ActiveCustomerContext: organizationId + subscriptionId); My Cards groups subscriptions by Organization and selection establishes the active context; Home renders against the active subscription (fallback = business default); added a 2nd Sunrise subscription (Coffee Club/Silver) to prove multi-subscription. No switching UI, no Customer Hub, no later-stage workflows.
 - **Later — NOT started**: Stage 3B+ (Staff experience, purchase/redemption/QR/OTP, Customer Hub, offers/stores/activity real data, real APIs/backend).
 
 ## Source of truth
