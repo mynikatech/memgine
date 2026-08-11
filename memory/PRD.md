@@ -1,34 +1,38 @@
 # Memgine — PRD
 
 ## Original Problem Statement
-Build the Memgine MVP in small controlled stages. **Stage 1 / Task 1: Project Foundation ONLY** — initialize the Expo/React Native app (native + web + Expo Router), establish a clean scalable folder structure, and create placeholder navigation shells for Customer (mobile) and Staff (web/desktop). No business logic. Stop after Task 1.
+Build the Memgine MVP in small, credit-controlled stages. Frontend: Expo / React Native (native + web) + Expo Router. Backend: FastAPI + MongoDB. Product = a **reusable, configuration-driven** membership platform (template + configuration + business data), NOT a one-off app.
 
-## Architecture
-- Expo SDK 54, React Native 0.81, Expo Router 6 (file-based routing).
-- Native + Web support (already configured in `app.json`).
-- Platform-split entry: `Platform.OS === 'web'` → Staff shell; native → Customer shell.
+## Architecture (see /app/frontend/ARCHITECTURE.md)
+- Rendering pipeline: UI Components → Templates → BusinessProvider → Rendered Experience.
+- Platform-split entry: web → Staff shell, native → Customer shell.
+- Single typed service boundary (`MemgineService`); mock today, REST later — no UI change.
+- Conceptual domain model (business concepts, not physical DB tables).
 
 ## User Personas
-- **Customer** (mobile/native): loyalty/membership end user.
-- **Staff** (web/desktop workstation): operates counter, manages customers/config.
+- **Customer** (native): views memberships, benefits, offers; branded per business.
+- **Staff** (web workstation): counter, customers, configuration.
+- (Later) Organization Admin, Platform Admin.
 
 ## Core Requirements (static)
-- Customer nav: Home, My Cards, Profile (mobile-optimized tabs).
-- Staff nav: Counter, Customers, Configuration (desktop-optimized sidebar).
-- Placeholder content only in Stage 1.
+- Configuration over customization; navigation stays Memgine-controlled.
+- Backend independence; globalization-ready from day one.
 
-## Implemented (2026-06)
-- 2026-06 — Task 1 foundation:
-  - `app/index.tsx` — platform redirect (web→Staff, native→Customer).
-  - `app/(customer)/` — Tabs layout + Home/Cards/Profile placeholders.
-  - `app/staff/` — desktop sidebar layout + Counter/Customers/Configuration placeholders.
-  - `src/theme/colors.ts`, `src/constants/navigation.ts`, `src/components/Placeholder.tsx`.
-  - Verified: web Staff shell renders + sidebar navigation works.
+## Implemented
+- **2026-06 — Stage 1 (Task 1): Project foundation** — Expo Router app, platform-split navigation shells (Customer tabs: Home/My Cards/Profile; Staff sidebar: Counter/Customers/Configuration), placeholder content. Verified.
+- **2026-06 — SDK upgrade** — Expo SDK 54 → 55 (RN 0.83.10, React 19.2.0, expo-router ~55). Both shells verified.
+- **2026-06 — Stage 2 (Task 2): Phase 1 framework foundation** —
+  - Design tokens + theme engine (`src/theme`): tokens, `createTheme(branding)`, base theme.
+  - Reusable UI component library (`src/design-system`): Button, Card, Input, Table, MembershipCard, OfferCard, Banner, Modal, StatusView.
+  - Layout/shell (`src/layout/Screen`): safe-area + themed.
+  - Localization foundation (`src/i18n`): I18nProvider, `t()`, region formatting, RTL flag; English seeded.
+  - BusinessProvider (`src/business`): loads config → derives theme → resolves template.
+  - Template Registry (`src/templates`): `TemplateDefinition` + first family Food & Beverage / Café-Bakery.
+  - Typed service abstraction (`src/services`): `MemgineService` interface + `MockMemgineService` + mock data (2 businesses proving one template + two configs).
+  - ARCHITECTURE.md written; providers wired into root `_layout`; Home screen is a live foundation proof (switch businesses → live re-theme).
+  - Constraints honored: Expo/RN stack kept, mock data only, English only, no business-feature depth.
 
-## Explicitly NOT built (deferred to later stages)
-BusinessProvider, BusinessConfiguration, TemplateDefinition, Theme engine, Localization, Domain models, Service interfaces, QR generation/scanning, OTP, customer search, Membership, Redemption, Purchase, Invoice, Onboarding, Auth, Database, Payments, SMS, POS — any business logic.
-
-## Backlog (later stages, do not start without instruction)
-- P0: Domain models + service interfaces + BusinessProvider.
-- P1: Theme engine, localization, membership/redemption/purchase flows.
-- P2: QR gen/scan, OTP, POS/SMS/payment integrations, full UI stage.
+## Backlog (later phases — do not start without instruction)
+- **Phase 2**: Customer Hub (My Memberships + business selection) + Café/Bakery template screens (Home/Hero, Memberships, Benefits, Offers, Stores, Activity, Profile).
+- **Phase 3**: Lean Organization Admin (branding, configuration, products, benefits, offers, customers) — MVP depth only.
+- **Later**: More templates (Fitness/Salon/Restaurant), Platform Admin depth, Staff application depth, real FastAPI/Mongo APIs, auth, payments, QR/OTP, redemption/purchase, advanced integrations, additional locales/RTL.

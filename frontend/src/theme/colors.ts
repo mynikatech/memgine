@@ -1,27 +1,20 @@
 /**
- * Memgine — neutral foundation theme tokens.
- * Minimal palette used only for placeholder navigation shells.
- * The full theme engine is a later stage and is intentionally NOT built here.
+ * Backwards-compatible token surface for the Stage 1 navigation shells.
+ * Sourced from the canonical design tokens. New code should prefer
+ * `useTheme()` (theme is business-configurable); these static values are used
+ * only by the Memgine-branded staff shell and tab bars.
  */
+import { BASE_PALETTE, RADIUS as R, SPACING as S } from "./tokens";
+
 export const COLORS = {
-  background: "#FFFFFF",
-  surface: "#F5F6F8",
-  border: "#E4E7EB",
-  text: "#111827",
-  textMuted: "#6B7280",
-  accent: "#0F766E",
-  accentSoft: "#E6F2F1",
+  background: BASE_PALETTE.background,
+  surface: BASE_PALETTE.surface,
+  border: BASE_PALETTE.border,
+  text: BASE_PALETTE.text,
+  textMuted: BASE_PALETTE.textMuted,
+  accent: BASE_PALETTE.primary,
+  accentSoft: BASE_PALETTE.primarySoft,
 } as const;
 
-export const SPACING = {
-  xs: 8,
-  sm: 16,
-  md: 24,
-  lg: 32,
-} as const;
-
-export const RADIUS = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-} as const;
+export const SPACING = S;
+export const RADIUS = R;
