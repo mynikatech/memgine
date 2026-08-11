@@ -1,38 +1,25 @@
 # Memgine — PRD
 
 ## Original Problem Statement
-Build the Memgine MVP in small, credit-controlled stages. Frontend: Expo / React Native (native + web) + Expo Router. Backend: FastAPI + MongoDB. Product = a **reusable, configuration-driven** membership platform (template + configuration + business data), NOT a one-off app.
+Build the Memgine MVP in small, credit-controlled stages. Frontend: Expo / React Native (native + web) + Expo Router. A reusable, configuration-driven membership platform (Template + BusinessConfiguration + Domain Data). No DB/backend yet.
 
-## Architecture (see /app/frontend/ARCHITECTURE.md)
-- Rendering pipeline: UI Components → Templates → BusinessProvider → Rendered Experience.
-- Platform-split entry: web → Staff shell, native → Customer shell.
-- Single typed service boundary (`MemgineService`); mock today, REST later — no UI change.
-- Conceptual domain model (business concepts, not physical DB tables).
+## Stage status
+- **Stage 1 — FROZEN**: Expo foundation + platform-split navigation shells (Customer tabs: Home/My Cards/Profile; Staff sidebar: Counter/Customers/Configuration), placeholder content. SDK 55.
+- **Stage 2 — DONE (this task): Domain + Configuration Contracts** — strongly-typed domain models, TemplateDefinition, BusinessConfiguration, permissions, localization contract, service contracts, Sunrise Bakery default config, and repo documentation. Single source of truth = `src/core/`.
+- **Later — NOT started**: BusinessProvider, theme engine, UI component library, Customer/Staff/Business-Admin screens, QR/OTP, purchase/redemption/invoice flows, onboarding, auth, DB, payments, SMS, POS, analytics, additional templates.
 
-## User Personas
-- **Customer** (native): views memberships, benefits, offers; branded per business.
-- **Staff** (web workstation): counter, customers, configuration.
-- (Later) Organization Admin, Platform Admin.
+## Source of truth
+`src/core/` — domain (`domain/common.ts`, `domain/entities.ts`), permissions, localization, template, config, context, services, defaults, mocks. See `MEMGINE_MANIFEST.md`.
 
-## Core Requirements (static)
-- Configuration over customization; navigation stays Memgine-controlled.
-- Backend independence; globalization-ready from day one.
+## Key architectural decisions
+- Three-way separation: Template (what's possible) vs BusinessConfiguration (presentation) vs Domain Data (actual data).
+- MembershipProduct (sold) ≠ Subscription (customer's). No `Membership` entity; "My Cards" is UI-only.
+- Entitlements (planTier/managementModel/legalName) live on Organization/OrganizationAccount, not config.
+- Capability-based RBAC; localization-ready (en only now).
+- Backend independence via typed service contracts; mock/in-memory only.
 
-## Implemented
-- **2026-06 — Stage 1 (Task 1): Project foundation** — Expo Router app, platform-split navigation shells (Customer tabs: Home/My Cards/Profile; Staff sidebar: Counter/Customers/Configuration), placeholder content. Verified.
-- **2026-06 — SDK upgrade** — Expo SDK 54 → 55 (RN 0.83.10, React 19.2.0, expo-router ~55). Both shells verified.
-- **2026-06 — Stage 2 (Task 2): Phase 1 framework foundation** —
-  - Design tokens + theme engine (`src/theme`): tokens, `createTheme(branding)`, base theme.
-  - Reusable UI component library (`src/design-system`): Button, Card, Input, Table, MembershipCard, OfferCard, Banner, Modal, StatusView.
-  - Layout/shell (`src/layout/Screen`): safe-area + themed.
-  - Localization foundation (`src/i18n`): I18nProvider, `t()`, region formatting, RTL flag; English seeded.
-  - BusinessProvider (`src/business`): loads config → derives theme → resolves template.
-  - Template Registry (`src/templates`): `TemplateDefinition` + first family Food & Beverage / Café-Bakery.
-  - Typed service abstraction (`src/services`): `MemgineService` interface + `MockMemgineService` + mock data (2 businesses proving one template + two configs).
-  - ARCHITECTURE.md written; providers wired into root `_layout`; Home screen is a live foundation proof (switch businesses → live re-theme).
-  - Constraints honored: Expo/RN stack kept, mock data only, English only, no business-feature depth.
+## Docs
+`MEMGINE_MANIFEST.md`, `ARCHITECTURE.md`, `DOMAIN_MODEL.md`, `CONFIGURATION.md`, `UI_REFERENCE.md` (GUI baseline recorded, not implemented).
 
-## Backlog (later phases — do not start without instruction)
-- **Phase 2**: Customer Hub (My Memberships + business selection) + Café/Bakery template screens (Home/Hero, Memberships, Benefits, Offers, Stores, Activity, Profile).
-- **Phase 3**: Lean Organization Admin (branding, configuration, products, benefits, offers, customers) — MVP depth only.
-- **Later**: More templates (Fitness/Salon/Restaurant), Platform Admin depth, Staff application depth, real FastAPI/Mongo APIs, auth, payments, QR/OTP, redemption/purchase, advanced integrations, additional locales/RTL.
+## Backlog (later phases, do not start without instruction)
+Phase: BusinessProvider + theme engine → UI component library → Customer Hub + Café/Bakery template screens → Lean Org Admin → real APIs/backend.

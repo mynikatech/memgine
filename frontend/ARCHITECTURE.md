@@ -1,76 +1,58 @@
 # Memgine Frontend Architecture
 
-_Stage 2 · Phase 1 — Framework Foundation. Expo / React Native (native + web) + Expo Router. Backend: FastAPI + MongoDB (not yet wired; frontend talks only to a typed service boundary)._
+_Expo / React Native (Android + iOS + Web) + Expo Router. No database or external backend in this stage._
 
-## 1. Guiding principles (from the Frontend Architecture Brief)
-
-- **Platform before product** — build a reusable, configuration-driven framework, not a one-off customer app.
-- **Configuration over customization** — businesses configure within Memgine-controlled templates; no arbitrary pages, navigation, custom code, or unsupported components.
-- **Separation of concerns** — UI components ← templates ← business configuration ← business data.
-- **Backend independence** — the frontend uses business concepts (conceptual domain model), never physical DB structures. It talks to a single typed service boundary; a mock fulfills it today, a REST/API client later, with no UI changes.
-- **Navigation stays Memgine-controlled** — only branding and supported presentation/content are business-configurable.
-- **Globalization ready from day one** — locale, region formatting and RTL are structural even though only English is seeded now.
-
-## 2. Rendering pipeline
+## Layered architecture (from reference diagrams Fig 7-1 / Fig 7-5)
 
 ```
-UI Components  →  Templates  →  Business Provider  →  Rendered Experience
-(design-system)  (registry)     (config → theme)      (template + config + data + i18n)
+Presentation Layer            (later: Customer / Staff / Business-Admin UI)
+  ↓
+Application Interface Layer   (later: Membership / Customer / Benefits interfaces)
+  ↓
+Application Service Layer     → src/core/services/service-contracts.ts (typed contracts)
+  ↓
+Business Domain Layer         → src/core/domain/* (Organization, MembershipProduct, Benefits, Subscription, …)
+  ↓
+Shared Platform / Integration Services  (later: Notification, Reporting, Configuration, Scheduler)
+  ↓
+Data Access Layer → Data Stores        (later: backend + persistence; NOT in frontend scope)
 ```
 
-- **UI Components** (`src/design-system`) — Button, Card, Input, Table, MembershipCard, OfferCard, Banner, Modal, StatusView (loading/empty/error). All read the active theme via `useTheme()`.
-- **Templates** (`src/templates`) — `TemplateDefinition` (Memgine-controlled) declares structure/sections, available components and allowed config options. Registered in a `TemplateRegistry`. First family: **Food & Beverage / Café-Bakery** (`food-beverage`).
-- **Business Provider** (`src/business`) — loads a `BusinessConfiguration`, derives the active `Theme` from its branding, and resolves its `TemplateDefinition` from the registry.
-- **Rendered Experience** — a screen composes template + configuration + data (+ localization) with zero business-specific code.
+The frontend understands **business concepts**, never physical database structures.
 
-## 3. Folder structure
+## Core principles (frozen)
+- **Platform before product** — reusable framework, not a one-off app.
+- **Configuration over customization** — businesses configure within a template; no arbitrary pages/navigation/components/custom code.
+- **Separation of concerns** — Template (what's possible) vs BusinessConfiguration (how a business presents) vs Domain Data (actual data). See `CONFIGURATION.md`.
+- **Backend independence** — UI ↔ typed `MemgineService`-style contracts ↔ (future) backend. Today only mock/in-memory implementations exist.
+- **Navigation stays Memgine-controlled** — only branding + supported presentation/content are business-configurable.
+- **Globalization-ready from day one** — locale/currency/timezone/country modelled separately; English only initially.
+- **Capability-based access** — UI access is decided by capabilities, not ownership (`src/core/permissions`).
+
+## Frontend ↔ backend boundary (from reference "Frontend ↔ Backend Boundary")
 
 ```
-app/                         # Expo Router routes (Stage 1 shells, unchanged)
-  (customer)/                #   native tabs: home, cards, profile
-  staff/                     #   web sidebar: counter, customers, configuration
-  index.tsx                  #   platform redirect (web→staff, native→customer)
-  _layout.tsx                #   wraps app in I18nProvider + BusinessProvider
+Frontend (pages, components, templates, config, localization, presentation state)
+   → REST / API / Service  (typed contracts in src/core/services)
+Backend (business rules, authorization, tenant isolation, subscription lifecycle, validation, integrations)
+   → Persistence (later)
+```
+
+Mock/in-memory service implementations are acceptable now; real APIs plug into the same contracts later with no UI changes.
+
+## Project structure (relevant)
+```
+app/                         # Expo Router routes (Stage 1 shells — FROZEN)
+  (customer)/                #   tabs: home, cards, profile
+  staff/                     #   sidebar: counter, customers, configuration
+  index.tsx, _layout.tsx
 src/
-  theme/                     # design tokens + theme engine
-    tokens.ts                #   spacing, radius, typography, base palette, shadows
-    theme.ts                 #   Theme type, createTheme(branding), baseTheme
-    color-utils.ts           #   darken()
-    colors.ts                #   back-compat COLORS/SPACING/RADIUS for shells
-  i18n/                      # localization foundation (English seeded)
-    en.ts, translations.ts, format.ts, I18nProvider.tsx, index.ts
-  services/                  # typed service boundary (mock today)
-    types.ts                 #   conceptual domain model + MemgineService interface
-    mockData.ts, mockService.ts, index.ts (exports `service`)
-  templates/                 # template registry
-    types.ts, foodAndBeverage.ts, registry.ts, index.ts
-  business/                  # BusinessProvider + config type
-    types.ts, BusinessProvider.tsx, index.ts
-  design-system/             # reusable UI components (+ barrel)
-  layout/                    # Screen shell (safe-area + themed)
-  components/Placeholder.tsx # themed placeholder for un-built shells
+  core/                      # Stage 2 contracts — single source of truth (see MEMGINE_MANIFEST.md)
+  components/Placeholder.tsx # shared placeholder for shells
   constants/navigation.ts    # route configs
+  theme/colors.ts            # minimal shell tokens (theme engine is later)
+  utils/storage              # pre-shipped kv storage
 ```
 
-## 4. Theme + configuration model
-
-- **Template Definition** (Memgine): structure, screens, sections, available components, allowed config options, version.
-- **Business Configuration** (business, template-constrained): branding (logo text + colors), enabled sections + order, content slots.
-- **Theme**: `createTheme(branding)` merges the constrained branding slice over the Memgine base tokens. Spacing / typography / radius / shadows remain Memgine-owned.
-- **Proof of architecture**: two mock businesses (`biz-a` café+bakery, `biz-b` bakery-heavy) share the single `food-beverage` template and differ only by configuration — the Customer Home screen re-themes live when switching between them, with no per-business code.
-
-## 5. Conceptual domain model (business concepts, not DB tables)
-
-`Organization` → owns `MembershipProduct` → includes `Benefit` + defines `SubscriptionPlan`; `Customer` enrols via `Subscription`; `Campaign` publishes `Offer`; `Redemption` links Benefit/Subscription/Store/Staff. Represented as TypeScript interfaces in `src/services/types.ts`. The frontend understands these concepts but never reproduces the physical persistence model.
-
-## 6. Frontend ↔ backend boundary
-
-`Frontend → MemgineService (typed) → [mock | REST/API] → backend → MongoDB`. The app imports only `service` from `src/services`. Today it is `MockMemgineService` with simulated latency; swapping to a real client is a one-line change and requires no component edits.
-
-## 7. Localization
-
-`I18nProvider` exposes `t(path, vars)`, `locale`/`setLocale`, region-aware `formatCurrency` / `formatNumber` / `formatDate`, and an `isRTL` flag. Only `en` is seeded; the namespace + interpolation structure is ready for more locales and RTL. Regional formatting is separate from language (country ≠ language ≠ currency ≠ timezone). Regulatory/country rules belong in the backend, not the UI.
-
-## 8. Explicitly out of scope for Phase 1
-
-Actual template screens (Customer Hub, Café/Bakery pages), business selection UX at product depth, Organization/Platform/Staff admin depth, additional template families (Fitness/Salon/Restaurant), real API wiring, auth, payments, QR, OTP, redemption/purchase flows. These are later phases and were not built.
+## Out of scope in this stage
+BusinessProvider, theme engine, UI component library, Customer/Staff/Business-Admin screens, QR/OTP, purchase/redemption/invoice flows, onboarding, auth, database, payments, SMS, POS, analytics/reporting, page builder, additional templates.

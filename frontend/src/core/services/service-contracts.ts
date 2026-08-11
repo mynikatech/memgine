@@ -1,0 +1,82 @@
+import { BusinessContext } from "../context/business-context";
+import { ID } from "../domain/common";
+import {
+  Benefit,
+  Customer,
+  MembershipProduct,
+  Organization,
+  OrganizationAccount,
+  Redemption,
+  Store,
+  Subscription,
+} from "../domain/entities";
+
+/**
+ * Typed service contracts for the FUTURE service layer. These define expected
+ * operations and types only — no database, no external backend. Mock in-memory
+ * implementations live under ../mocks purely to prove the contracts compile and
+ * can be consumed. No business workflows are implemented here.
+ */
+
+export interface CustomerLookupQuery {
+  email?: string;
+  phone?: string;
+  nameContains?: string;
+}
+
+export interface CreateCustomerInput {
+  fullName: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface CreateSubscriptionInput {
+  organizationId: ID;
+  customerId: ID;
+  membershipProductId: ID;
+  planId: ID;
+}
+
+export interface PerformRedemptionInput {
+  organizationId: ID;
+  subscriptionId: ID;
+  benefitId: ID;
+  storeId: ID;
+  staffId: ID;
+}
+
+export interface OrganizationService {
+  getOrganization(id: ID): Promise<Organization | null>;
+  getAccount(organizationId: ID): Promise<OrganizationAccount | null>;
+  getBusinessContext(organizationId: ID): Promise<BusinessContext | null>;
+  listStores(organizationId: ID): Promise<Store[]>;
+}
+
+export interface CustomerService {
+  getCustomer(id: ID): Promise<Customer | null>;
+  findCustomers(query: CustomerLookupQuery): Promise<Customer[]>;
+  createCustomer(input: CreateCustomerInput): Promise<Customer>;
+}
+
+export interface MembershipProductService {
+  listProducts(organizationId: ID): Promise<MembershipProduct[]>;
+  getProduct(id: ID): Promise<MembershipProduct | null>;
+}
+
+export interface SubscriptionService {
+  /** Backs the customer "My Cards" view. */
+  listByCustomer(customerId: ID): Promise<Subscription[]>;
+  listByOrganization(organizationId: ID): Promise<Subscription[]>;
+  getSubscription(id: ID): Promise<Subscription | null>;
+  createSubscription(input: CreateSubscriptionInput): Promise<Subscription>;
+}
+
+export interface BenefitService {
+  listByOrganization(organizationId: ID): Promise<Benefit[]>;
+  listByProduct(membershipProductId: ID): Promise<Benefit[]>;
+}
+
+export interface RedemptionService {
+  performRedemption(input: PerformRedemptionInput): Promise<Redemption>;
+  listBySubscription(subscriptionId: ID): Promise<Redemption[]>;
+}
