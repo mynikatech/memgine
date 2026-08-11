@@ -6,8 +6,8 @@ import type { Benefit, MembershipProduct, Subscription } from "@/src/core";
 import { mockServices } from "@/src/core";
 import { Screen } from "@/src/layout";
 import { useBusiness, useTranslation } from "@/src/providers";
-import { Badge, Card, Header, Modal, StateView, Text } from "@/src/ui";
-import { BenefitItem, MembershipCard, QrPlaceholder } from "@/src/ui/domain";
+import { Badge, Card, Header, Modal, Section, StateView, Text } from "@/src/ui";
+import { BenefitItem, benefitIconForType, MembershipCard, QrPlaceholder } from "@/src/ui/domain";
 
 type Status = "loading" | "error" | "ready";
 const CUSTOMER_ID = "cust-1";
@@ -30,6 +30,9 @@ export default function MyCards() {
   const load = useCallback(async () => {
     setStatus("loading");
     try {
+      // Customer → Subscription → Organization. Iterating the customer's
+      // subscriptions here keeps My Cards ready to hold multiple business
+      // cards in future without changing this screen.
       const subs = await mockServices.subscription.listByCustomer(CUSTOMER_ID);
       const vms: CardVM[] = [];
       for (const sub of subs) {
@@ -114,10 +117,11 @@ export default function MyCards() {
         visible={selected !== null}
         onClose={() => setSelected(null)}
         title={t("cards.detailTitle")}
+        scrollable
         testID="card-detail-modal"
       >
         {selected ? (
-          <View style={{ gap: 16 }}>
+          <View style={{ gap: 20 }}>
             <MembershipCard
               organizationName={selected.organizationName}
               tier={selected.product.tier ?? selected.product.name}
@@ -131,11 +135,18 @@ export default function MyCards() {
             />
             <QrPlaceholder caption={t("cards.showAtCounter")} testID="card-detail-qr" />
             {selected.benefits.length ? (
-              <View style={{ gap: 12 }}>
-                {selected.benefits.map((b) => (
-                  <BenefitItem key={b.id} title={b.title} subtitle={b.description} />
-                ))}
-              </View>
+              <Section title={t("benefits.activeTitle")}>
+                <View style={{ gap: 14 }}>
+                  {selected.benefits.map((b) => (
+                    <BenefitItem
+                      key={b.id}
+                      title={b.title}
+                      subtitle={b.description}
+                      icon={benefitIconForType(b.type)}
+                    />
+                  ))}
+                </View>
+              </Section>
             ) : null}
           </View>
         ) : null}

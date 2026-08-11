@@ -7,7 +7,7 @@ import { mockServices } from "@/src/core";
 import { Screen } from "@/src/layout";
 import { useBusiness, useTranslation } from "@/src/providers";
 import { Card, Section, StateView, Text } from "@/src/ui";
-import { BenefitItem, BusinessHeader, MembershipCard } from "@/src/ui/domain";
+import { BenefitItem, benefitIconForType, BusinessHeader, MembershipCard } from "@/src/ui/domain";
 
 type Status = "loading" | "error" | "ready";
 
@@ -55,7 +55,7 @@ export default function CustomerHome() {
     <Screen
       testID="customer-home-screen"
       edges={["top"]}
-      header={<BusinessHeader subtitle={t("home.subtitle")} testID="home-business-header" />}
+      header={<BusinessHeader testID="home-business-header" />}
     >
       {status === "loading" ? (
         <StateView kind="loading" message={t("common.loading")} testID="home-state" />
@@ -69,14 +69,12 @@ export default function CustomerHome() {
         />
       ) : (
         <>
-          <Card testID="home-welcome" padding="lg">
-            <Text variant="h2" color="text" testID="home-welcome-title">
-              {cx.welcomeMessage}
-            </Text>
-          </Card>
+          <Text variant="title" color="textSecondary" testID="home-welcome-title">
+            {cx.welcomeMessage}
+          </Text>
 
           {subscription && product ? (
-            <Section title={t("home.yourMembership")} testID="home-membership-section">
+            <Section title={t("home.yourSubscription")} testID="home-subscription-section">
               <MembershipCard
                 testID="home-membership-card"
                 organizationName={organization.displayName}
@@ -89,15 +87,16 @@ export default function CustomerHome() {
           ) : null}
 
           {benefits.length ? (
-            <Section title={t("benefits.title")} testID="home-benefits-section">
+            <Section title={t("benefits.activeTitle")} testID="home-benefits-section">
               <Card padding="lg">
-                <View style={{ gap: 16 }}>
+                <View style={{ gap: 18 }}>
                   {benefits.map((b) => (
                     <BenefitItem
                       key={b.id}
                       testID={`home-benefit-${b.id}`}
                       title={b.title}
                       subtitle={b.description}
+                      icon={benefitIconForType(b.type)}
                     />
                   ))}
                 </View>

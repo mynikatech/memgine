@@ -5,7 +5,7 @@ import type { Customer } from "@/src/core";
 import { mockServices } from "@/src/core";
 import { Screen } from "@/src/layout";
 import { useBusiness, useTranslation } from "@/src/providers";
-import { Card, Header, ListRow, Modal, Section, Text } from "@/src/ui";
+import { Card, Header, ListRow, Section, Text } from "@/src/ui";
 
 const CUSTOMER_ID = "cust-1";
 
@@ -14,13 +14,14 @@ export default function Profile() {
   const { t, locale, currency, timezone } = useTranslation();
 
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [switchOpen, setSwitchOpen] = useState(false);
 
   useEffect(() => {
     mockServices.customer.getCustomer(CUSTOMER_ID).then(setCustomer);
   }, []);
 
   const initial = (customer?.fullName ?? "?").trim().charAt(0).toUpperCase();
+  const languageLabel = locale.toLowerCase().startsWith("en") ? t("profile.languageEnglish") : locale;
+  const regionLabel = `${currency} · ${timezone}`;
 
   return (
     <Screen
@@ -59,10 +60,16 @@ export default function Profile() {
 
       <Section title={t("profile.preferences")} testID="profile-preferences">
         <Card padding="md">
-          <ListRow label={t("profile.language")} value={locale} icon="language-outline" showChevron={false} testID="profile-language" />
+          <ListRow
+            label={t("profile.language")}
+            value={languageLabel}
+            icon="language-outline"
+            showChevron={false}
+            testID="profile-language"
+          />
           <ListRow
             label={t("profile.region")}
-            value={`${currency} · ${timezone}`}
+            value={regionLabel}
             icon="globe-outline"
             showChevron={false}
             testID="profile-region"
@@ -73,25 +80,13 @@ export default function Profile() {
       <Section title={t("profile.account")} testID="profile-account">
         <Card padding="md">
           <ListRow
-            label={t("profile.switchBusiness")}
-            icon="swap-horizontal-outline"
-            onPress={() => setSwitchOpen(true)}
-            testID="profile-switch-business"
+            label={t("profile.about")}
+            icon="information-circle-outline"
+            onPress={() => {}}
+            testID="profile-about"
           />
-          <ListRow label={t("profile.about")} icon="information-circle-outline" onPress={() => {}} testID="profile-about" />
         </Card>
       </Section>
-
-      <Modal
-        visible={switchOpen}
-        onClose={() => setSwitchOpen(false)}
-        title={t("profile.switchBusinessTitle")}
-        testID="profile-switch-modal"
-      >
-        <Text variant="body" color="textSecondary">
-          {t("profile.switchBusinessBody")}
-        </Text>
-      </Modal>
     </Screen>
   );
 }

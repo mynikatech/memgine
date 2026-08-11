@@ -30,13 +30,13 @@ export const en = {
   },
   benefits: {
     title: "Benefits",
+    activeTitle: "Active Benefits",
   },
   receipt: {
     total: "Total",
   },
   home: {
-    subtitle: "Welcome back",
-    yourMembership: "Your membership",
+    yourSubscription: "Your subscription",
     offersEmpty: "New offers will appear here.",
     storesEmpty: "Store locations will appear here.",
     activityEmpty: "Your recent activity will appear here.",
@@ -54,7 +54,7 @@ export const en = {
     view: "View card",
     showAtCounter: "Show this at the counter",
     benefitsSummary: "{{count}} benefits included",
-    detailTitle: "Card details",
+    detailTitle: "Your subscription",
   },
   profile: {
     title: "Profile",
@@ -63,10 +63,8 @@ export const en = {
     account: "Account",
     language: "Language",
     region: "Region",
-    switchBusiness: "Switch Business",
-    switchBusinessTitle: "Switch Business",
-    switchBusinessBody: "Switching between your businesses arrives in a later stage.",
     about: "About Memgine",
+    languageEnglish: "English",
   },
 } as const;
 

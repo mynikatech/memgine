@@ -1,17 +1,18 @@
+import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { View } from "react-native";
 
 import { CardStyle } from "@/src/core";
 import { useTheme } from "@/src/providers";
 import { shade } from "@/src/theme/color-utils";
+import type { ThemeColorToken } from "@/src/theme/theme";
 
-import { Badge } from "../Badge";
 import { Text } from "../Text";
 
 /**
  * MembershipCard — reusable PRESENTATION of a customer's subscription card.
- * Honours the template's supported card styles. No purchase/QR/redemption
- * behaviour; presentation only.
+ * Honours the template's supported card styles. Presentation only (no
+ * purchase / QR / redemption behaviour).
  */
 type MembershipCardProps = {
   organizationName: string;
@@ -31,46 +32,78 @@ export function MembershipCard({
   testID,
 }: MembershipCardProps) {
   const theme = useTheme();
+  const isModern = cardStyle === CardStyle.MODERN;
+  const fg: ThemeColorToken = isModern ? "onPrimary" : "text";
+  const sub: ThemeColorToken = isModern ? "onPrimary" : "textMuted";
+  const initial = organizationName.trim().charAt(0).toUpperCase();
 
-  const Body = (
-    <View style={{ minHeight: 150, justifyContent: "space-between" }}>
+  const inner = (
+    <>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <Text
-          variant="bodySmall"
-          color={cardStyle === CardStyle.MODERN ? "onPrimary" : "textSecondary"}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm, flex: 1 }}>
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: theme.radius.sm,
+              backgroundColor: isModern ? "rgba(255,255,255,0.18)" : theme.colors.primarySoft,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text variant="label" color={isModern ? "onPrimary" : "primary"}>
+              {initial}
+            </Text>
+          </View>
+          <Text variant="bodySmall" color={sub} style={isModern ? { opacity: 0.9 } : undefined}>
+            {organizationName}
+          </Text>
+        </View>
+        <View
+          style={{
+            backgroundColor: isModern ? "rgba(255,255,255,0.2)" : theme.colors.successSoft,
+            paddingHorizontal: 10,
+            paddingVertical: 4,
+            borderRadius: theme.radius.pill,
+          }}
         >
-          {organizationName}
-        </Text>
-        <Badge label={active ? "Active" : "Expired"} tone={active ? "success" : "neutral"} />
+          <Text variant="caption" color={isModern ? "onPrimary" : "success"}>
+            {active ? "Active" : "Expired"}
+          </Text>
+        </View>
       </View>
-      <View>
-        <Text
-          variant="h1"
-          color={cardStyle === CardStyle.MODERN ? "onPrimary" : "text"}
-        >
+
+      <View style={{ marginTop: theme.spacing.xl }}>
+        <Text variant="display" color={fg}>
           {tier} Member
         </Text>
-        <Text
-          variant="bodySmall"
-          color={cardStyle === CardStyle.MODERN ? "onPrimary" : "textMuted"}
-          style={cardStyle === CardStyle.MODERN ? { opacity: 0.85 } : undefined}
-        >
-          Valid until {validUntil}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
+          <Ionicons name="calendar-outline" size={14} color={theme.colors[sub]} />
+          <Text variant="bodySmall" color={sub} style={isModern ? { opacity: 0.9 } : undefined}>
+            Valid until {validUntil}
+          </Text>
+        </View>
       </View>
-    </View>
+    </>
   );
 
-  if (cardStyle === CardStyle.MODERN) {
+  const common = {
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.lg,
+    minHeight: 180,
+    justifyContent: "space-between" as const,
+  };
+
+  if (isModern) {
     return (
       <LinearGradient
         testID={testID}
-        colors={[theme.colors.primary, shade(theme.colors.primary, 0.24)] as [string, string]}
+        colors={[theme.colors.primary, shade(theme.colors.primary, 0.26)] as [string, string]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={{ borderRadius: theme.radius.lg, padding: theme.spacing.lg }}
+        style={common}
       >
-        {Body}
+        {inner}
       </LinearGradient>
     );
   }
@@ -80,17 +113,11 @@ export function MembershipCard({
       <View
         testID={testID}
         style={[
-          {
-            backgroundColor: theme.colors.primarySoft,
-            borderRadius: theme.radius.lg,
-            padding: theme.spacing.lg,
-            borderWidth: 1,
-            borderColor: theme.colors.primary,
-          },
+          { ...common, backgroundColor: theme.colors.primarySoft, borderWidth: 1, borderColor: theme.colors.primary },
           theme.shadows.sm,
         ]}
       >
-        {Body}
+        {inner}
       </View>
     );
   }
@@ -99,15 +126,12 @@ export function MembershipCard({
   return (
     <View
       testID={testID}
-      style={{
-        backgroundColor: theme.colors.card,
-        borderRadius: theme.radius.lg,
-        padding: theme.spacing.lg,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-      }}
+      style={[
+        { ...common, backgroundColor: theme.colors.card, borderWidth: 1, borderColor: theme.colors.border },
+        theme.shadows.sm,
+      ]}
     >
-      {Body}
+      {inner}
     </View>
   );
 }
