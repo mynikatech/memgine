@@ -5,6 +5,7 @@ import {
   Benefit,
   Customer,
   MembershipProduct,
+  Offer,
   Organization,
   OrganizationAccount,
   Redemption,
@@ -124,4 +125,8 @@ export interface PaymentResult {
 
 export interface PaymentService {
   pay(request: PaymentRequest): Promise<PaymentResult>;
+}
+
+export interface OfferService {
+  listByOrganization(organizationId: ID): Promise<Offer[]>;
 }

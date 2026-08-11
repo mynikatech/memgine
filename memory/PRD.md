@@ -8,7 +8,7 @@ Build the Memgine MVP in small, credit-controlled stages. Frontend: Expo / React
 - **Stage 2A — DONE**: domain + configuration contracts. Single source of truth = `src/core/`.
 - **Stage 2B — DONE**: reusable UI & frontend foundation (providers, theme, template registry, UI primitives, domain components, layout, i18n).
 - **Stage 3B — DONE**: multi-subscription/org card-context foundation (CustomerContextProvider; org-grouped My Cards).
-- **Stage 4 — DONE (this task): Customer Acquisition & Subscription Purchase** — `/join` wizard (landing → mobile → mock OTP → review → mock payment → subscription create → success + receipt), mock `CustomerAuthService`+`PaymentService` boundaries, extended `ReceiptSummary` (invoice meta), Home promo entry, new subscription appears in My Cards + active context set. Sunrise locale corrected to en-CA/CAD/America-Toronto. No real QR/OTP/payment/backend; no staff/redemption/POS.
+- **Stage 5 — DONE (this task): Branded Organization Experience & Template-Driven UI** — Home renders a coherent branded Sunrise Bakery experience: business header, active subscription, benefits, **Offers** and **Activity/History** (reusable `OfferCard`/`ActivityItem`, mock data), gated by `template.secondarySections` + `BusinessConfiguration` flags. Added `OfferService` + offer/redemption mock seed. Locale en-CA/CAD/America-Toronto (config-driven). No business switcher/hub; My Cards + Stage 4 intact.
 - **Later — NOT started**: Stage 3B+ (Staff experience, purchase/redemption/QR/OTP, Customer Hub, offers/stores/activity real data, real APIs/backend).
 
 ## Source of truth

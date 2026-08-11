@@ -5,6 +5,7 @@ import {
   BenefitType,
   Customer,
   MembershipProduct,
+  Offer,
   Organization,
   OrganizationAccount,
   Redemption,
@@ -21,6 +22,7 @@ import {
   CustomerLookupQuery,
   CustomerService,
   MembershipProductService,
+  OfferService,
   OrganizationService,
   PaymentRequest,
   PaymentResult,
@@ -159,7 +161,46 @@ const subscriptions: Subscription[] = [
   },
 ];
 
-const redemptions: Redemption[] = [];
+const redemptions: Redemption[] = [
+  {
+    id: "red-1",
+    organizationId: "org-sunrise",
+    subscriptionId: "sub-1",
+    benefitId: "ben-1",
+    storeId: "store-1",
+    staffId: "staff-dev-owner",
+    redeemedAt: "2026-07-20T14:30:00.000Z",
+    status: RedemptionStatus.COMPLETED,
+  },
+  {
+    id: "red-2",
+    organizationId: "org-sunrise",
+    subscriptionId: "sub-1",
+    benefitId: "ben-2",
+    storeId: "store-1",
+    staffId: "staff-dev-owner",
+    redeemedAt: "2026-06-05T09:10:00.000Z",
+    status: RedemptionStatus.COMPLETED,
+  },
+];
+
+const offers: Offer[] = [
+  {
+    id: "off-1",
+    organizationId: "org-sunrise",
+    title: "Weekend Croissant Combo",
+    description: "Any coffee + croissant for a sweet weekend price.",
+    badge: "This weekend",
+    targetProductIds: ["prod-1"],
+  },
+  {
+    id: "off-2",
+    organizationId: "org-sunrise",
+    title: "Double Rewards Tuesday",
+    description: "Earn twice the rewards on every visit this Tuesday.",
+    badge: "Members only",
+  },
+];
 
 export class InMemoryOrganizationService implements OrganizationService {
   async getOrganization(id: ID): Promise<Organization | null> {
@@ -298,6 +339,12 @@ export class InMemoryPaymentService implements PaymentService {
   }
 }
 
+export class InMemoryOfferService implements OfferService {
+  async listByOrganization(organizationId: ID): Promise<Offer[]> {
+    return offers.filter((o) => o.organizationId === organizationId);
+  }
+}
+
 /** Convenience aggregate of the mock services (compile-demonstration only). */
 export const mockServices = {
   organization: new InMemoryOrganizationService(),
@@ -306,6 +353,7 @@ export const mockServices = {
   subscription: new InMemorySubscriptionService(),
   benefit: new InMemoryBenefitService(),
   redemption: new InMemoryRedemptionService(),
+  offer: new InMemoryOfferService(),
   auth: new InMemoryCustomerAuthService(),
   payment: new InMemoryPaymentService(),
 };

@@ -3,12 +3,19 @@ import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { SecondarySectionKey, SubscriptionStatus } from "@/src/core";
-import type { Benefit, MembershipProduct, Subscription } from "@/src/core";
+import type { Benefit, MembershipProduct, Offer, Redemption, Store, Subscription } from "@/src/core";
 import { mockServices } from "@/src/core";
 import { Screen } from "@/src/layout";
 import { useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
 import { Card, Badge, Section, StateView, Text } from "@/src/ui";
-import { BenefitItem, benefitIconForType, BusinessHeader, MembershipCard } from "@/src/ui/domain";
+import {
+  ActivityItem,
+  BenefitItem,
+  benefitIconForType,
+  BusinessHeader,
+  MembershipCard,
+  OfferCard,
+} from "@/src/ui/domain";
 
 type Status = "loading" | "error" | "ready";
 
@@ -25,6 +32,9 @@ export default function CustomerHome() {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [product, setProduct] = useState<MembershipProduct | null>(null);
   const [benefits, setBenefits] = useState<Benefit[]>([]);
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [activity, setActivity] = useState<Redemption[]>([]);
+  const [store, setStore] = useState<Store | null>(null);
 
   const load = useCallback(async () => {
     setStatus("loading");
@@ -40,13 +50,22 @@ export default function CustomerHome() {
         null;
       let prod: MembershipProduct | null = null;
       let bens: Benefit[] = [];
+      let acts: Redemption[] = [];
       if (sub) {
         prod = await mockServices.membershipProduct.getProduct(sub.membershipProductId);
         bens = await mockServices.benefit.listByProduct(sub.membershipProductId);
+        acts = await mockServices.redemption.listBySubscription(sub.id);
       }
+      const [orgOffers, stores] = await Promise.all([
+        mockServices.offer.listByOrganization(organization.id),
+        mockServices.organization.listStores(organization.id),
+      ]);
       setSubscription(sub);
       setProduct(prod);
       setBenefits(bens);
+      setActivity(acts);
+      setOffers(orgOffers);
+      setStore(stores[0] ?? null);
       setStatus("ready");
     } catch {
       setStatus("error");
@@ -130,13 +149,19 @@ export default function CustomerHome() {
             </Section>
           ) : null}
 
-          {sectionVisible(SecondarySectionKey.OFFERS, cx.showOffers) ? (
+          {sectionVisible(SecondarySectionKey.OFFERS, cx.showOffers) && offers.length ? (
             <Section title={t("sections.offers")} testID="home-offers-section">
-              <Card padding="lg">
-                <Text variant="bodySmall" color="textMuted">
-                  {t("home.offersEmpty")}
-                </Text>
-              </Card>
+              <View style={{ gap: 12 }}>
+                {offers.map((o) => (
+                  <OfferCard
+                    key={o.id}
+                    testID={`home-offer-${o.id}`}
+                    title={o.title}
+                    description={o.description}
+                    badge={o.badge}
+                  />
+                ))}
+              </View>
             </Section>
           ) : null}
 
@@ -144,7 +169,7 @@ export default function CustomerHome() {
             <Section title={t("sections.stores")} testID="home-stores-section">
               <Card padding="lg">
                 <Text variant="bodySmall" color="textMuted">
-                  {t("home.storesEmpty")}
+                  {store ? `${store.name}` : t("home.storesEmpty")}
                 </Text>
               </Card>
             </Section>
@@ -152,11 +177,30 @@ export default function CustomerHome() {
 
           {sectionVisible(SecondarySectionKey.ACTIVITY, cx.showActivity) ? (
             <Section title={t("sections.activity")} testID="home-activity-section">
-              <Card padding="lg">
-                <Text variant="bodySmall" color="textMuted">
-                  {t("home.activityEmpty")}
-                </Text>
-              </Card>
+              {activity.length ? (
+                <Card padding="lg">
+                  <View style={{ gap: 18 }}>
+                    {activity.map((r) => {
+                      const b = benefits.find((x) => x.id === r.benefitId);
+                      const where = store ? `${store.name} · ` : "";
+                      return (
+                        <ActivityItem
+                          key={r.id}
+                          testID={`home-activity-${r.id}`}
+                          title={b?.title ?? "Benefit redeemed"}
+                          subtitle={`${where}${formatDate(r.redeemedAt)}`}
+                        />
+                      );
+                    })}
+                  </View>
+                </Card>
+              ) : (
+                <Card padding="lg">
+                  <Text variant="bodySmall" color="textMuted">
+                    {t("home.activityEmpty")}
+                  </Text>
+                </Card>
+              )}
             </Section>
           ) : null}
         </>
