@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { LogBox } from "react-native";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
+import { BusinessProvider, LocalizationProvider } from "@/src/providers";
 
 
 // Disable logbox errors etc so that users can see the app
@@ -29,5 +30,13 @@ export default function RootLayout() {
   // the app — icons will tofu, but the app still boots.
   if (!loaded && !error) return null;
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  // Reusable foundation providers (Stage 2B). Business context + localization
+  // are available to all routes; the Stage 1 navigation shells are unchanged.
+  return (
+    <BusinessProvider>
+      <LocalizationProvider>
+        <Stack screenOptions={{ headerShown: false }} />
+      </LocalizationProvider>
+    </BusinessProvider>
+  );
 }

@@ -12,8 +12,9 @@ A reusable, **configuration-driven** membership platform. Businesses do not get 
 
 ## Stage status
 - **Stage 1 — FROZEN.** Expo foundation + platform-split navigation shells: Customer (native tabs: Home / My Cards / Profile) and Staff (web sidebar: Counter / Customers / Configuration). Placeholder content only.
-- **Stage 2 — this task.** Domain + configuration **contracts** only (no UI, no provider, no theme engine, no backend). Source of truth = `src/core/`.
-- **Later stages (NOT started).** BusinessProvider, theme engine, UI component library, Customer/Staff/Business-Admin screens, QR/OTP, purchase/redemption flows, real APIs.
+- **Stage 2A — DONE.** Domain + configuration **contracts** only. Source of truth = `src/core/`.
+- **Stage 2B — DONE.** Reusable frontend **foundation** consuming `src/core/`: BusinessProvider + Localization runtime (`src/providers`), theme/design tokens (`src/theme`), Template Registry (`src/templates`), UI primitives (`src/ui`) + domain presentation components (`src/ui/domain`), cross-platform layout (`src/layout`), i18n catalog (`src/i18n`, English). No product screens, no backend.
+- **Later stages (NOT started).** Customer/Staff/Business-Admin product screens, Customer Hub, QR/OTP, purchase/redemption/invoice flows, real APIs.
 
 ## Source of truth (code)
 `src/core/` — the only place domain/config/template/permission/localization/service contracts are defined. Do not redefine these elsewhere or create screen-specific variants.

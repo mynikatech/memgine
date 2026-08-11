@@ -54,5 +54,15 @@ src/
   utils/storage              # pre-shipped kv storage
 ```
 
+## Stage 2B — reusable frontend foundation (consumes `src/core/`, does not redefine it)
+- `src/providers/BusinessProvider.tsx` — context surfacing organization/account, entitlements (planTier/managementModel), configuration, template, derived theme, localization context and capability checks (`can`). Defaults to the mock Sunrise Bakery context. Components read business values from here, never hard-coded.
+- `src/providers/LocalizationProvider.tsx` — `t()` over the English catalog + `Intl` currency/number/date formatting driven by the active locale (compatible with en-IN / INR / Asia/Kolkata).
+- `src/theme/` — design tokens (`tokens.ts`), `buildTheme(branding)` (`theme.ts`) letting BusinessConfiguration branding influence brand slots, `color-utils.ts`. Cross-platform shadows via `Platform.select`.
+- `src/templates/registry.ts` — resolves `templateId → TemplateDefinition → allowed nav/sections/components`. Only `f-and-b-bakery-v1`. Not a page builder.
+- `src/ui/` — primitives: Text, Button, IconButton, Card, Surface, Input, Badge, Section, Header, StateView (loading/empty/error), Modal.
+- `src/ui/domain/` — presentation-only: MembershipCard (supports MODERN/CLASSIC/MINIMAL card styles), BenefitItem, ReceiptSummary. No workflows.
+- `src/layout/Screen.tsx` — cross-platform safe-area screen primitive.
+- Note: Stage 1 shells (`app/(customer)`, `app/staff`) still use `src/theme/colors.ts` and are visually unchanged; providers are mounted at the root for availability.
+
 ## Out of scope in this stage
 BusinessProvider, theme engine, UI component library, Customer/Staff/Business-Admin screens, QR/OTP, purchase/redemption/invoice flows, onboarding, auth, database, payments, SMS, POS, analytics/reporting, page builder, additional templates.

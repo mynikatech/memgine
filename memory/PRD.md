@@ -5,8 +5,9 @@ Build the Memgine MVP in small, credit-controlled stages. Frontend: Expo / React
 
 ## Stage status
 - **Stage 1 — FROZEN**: Expo foundation + platform-split navigation shells (Customer tabs: Home/My Cards/Profile; Staff sidebar: Counter/Customers/Configuration), placeholder content. SDK 55.
-- **Stage 2 — DONE (this task): Domain + Configuration Contracts** — strongly-typed domain models, TemplateDefinition, BusinessConfiguration, permissions, localization contract, service contracts, Sunrise Bakery default config, and repo documentation. Single source of truth = `src/core/`.
-- **Later — NOT started**: BusinessProvider, theme engine, UI component library, Customer/Staff/Business-Admin screens, QR/OTP, purchase/redemption/invoice flows, onboarding, auth, DB, payments, SMS, POS, analytics, additional templates.
+- **Stage 2A — DONE**: domain + configuration contracts. Single source of truth = `src/core/`.
+- **Stage 2B — DONE (this task): Reusable UI & Frontend Foundation** — BusinessProvider + Localization runtime (`src/providers`), design tokens/theme (`src/theme`), Template Registry (`src/templates`), UI primitives (`src/ui`) + domain presentation components (`src/ui/domain`), cross-platform `Screen` (`src/layout`), i18n catalog (`src/i18n`, English). Consumes `src/core/`; no product screens, no backend. Providers mounted at root; Stage 1 shells unchanged.
+- **Later — NOT started**: Customer/Staff/Business-Admin product screens, Customer Hub, QR/OTP, purchase/redemption/invoice flows, real APIs/backend.
 
 ## Source of truth
 `src/core/` — domain (`domain/common.ts`, `domain/entities.ts`), permissions, localization, template, config, context, services, defaults, mocks. See `MEMGINE_MANIFEST.md`.
