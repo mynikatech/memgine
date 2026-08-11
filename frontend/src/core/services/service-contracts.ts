@@ -1,5 +1,6 @@
 import { BusinessContext } from "../context/business-context";
 import { ID } from "../domain/common";
+import { CurrencyCode } from "../localization/localization";
 import {
   Benefit,
   Customer,
@@ -79,4 +80,48 @@ export interface BenefitService {
 export interface RedemptionService {
   performRedemption(input: PerformRedemptionInput): Promise<Redemption>;
   listBySubscription(subscriptionId: ID): Promise<Redemption[]>;
+}
+
+/* ------------------------------------------------------------------ *
+ * Customer acquisition service boundaries (mock in this stage).
+ * Provider-neutral — a real SMS/OTP or payment provider can implement
+ * these later with no UI changes.
+ * ------------------------------------------------------------------ */
+
+export interface SendOtpInput {
+  mobile: string;
+}
+export interface SendOtpResult {
+  requestId: string;
+  /** Development-only convenience so the mock OTP can be shown in the UI. */
+  devCode: string;
+}
+export interface VerifyOtpInput {
+  requestId: string;
+  code: string;
+}
+export interface VerifyOtpResult {
+  verified: boolean;
+  customerId?: ID;
+}
+
+export interface CustomerAuthService {
+  sendOtp(input: SendOtpInput): Promise<SendOtpResult>;
+  verifyOtp(input: VerifyOtpInput): Promise<VerifyOtpResult>;
+}
+
+export type PaymentStatus = "PAID" | "FAILED";
+
+export interface PaymentRequest {
+  amountMinor: number;
+  currency: CurrencyCode;
+  description?: string;
+}
+export interface PaymentResult {
+  status: PaymentStatus;
+  reference: string;
+}
+
+export interface PaymentService {
+  pay(request: PaymentRequest): Promise<PaymentResult>;
 }

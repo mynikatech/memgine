@@ -17,13 +17,21 @@ import {
   BenefitService,
   CreateCustomerInput,
   CreateSubscriptionInput,
+  CustomerAuthService,
   CustomerLookupQuery,
   CustomerService,
   MembershipProductService,
   OrganizationService,
+  PaymentRequest,
+  PaymentResult,
+  PaymentService,
   PerformRedemptionInput,
   RedemptionService,
+  SendOtpInput,
+  SendOtpResult,
   SubscriptionService,
+  VerifyOtpInput,
+  VerifyOtpResult,
 } from "../services/service-contracts";
 import {
   SUNRISE_BAKERY_ACCOUNT,
@@ -95,7 +103,7 @@ const products: MembershipProduct[] = [
       {
         id: "plan-1",
         name: "Yearly",
-        price: { amountMinor: 4900, currency: "USD" },
+        price: { amountMinor: 4900, currency: "CAD" },
         billingInterval: BillingInterval.YEARLY,
       },
     ],
@@ -258,6 +266,38 @@ export class InMemoryRedemptionService implements RedemptionService {
   }
 }
 
+/**
+ * Mock customer OTP auth. NOT a real SMS/auth provider. Returns a dev code so
+ * the UI can display it. Identifies the existing mock customer on success.
+ */
+export class InMemoryCustomerAuthService implements CustomerAuthService {
+  private codes = new Map<string, string>();
+
+  async sendOtp(input: SendOtpInput): Promise<SendOtpResult> {
+    const requestId = genId("otp");
+    const devCode = String(Math.floor(100000 + Math.random() * 900000));
+    this.codes.set(requestId, devCode);
+    return { requestId, devCode };
+  }
+
+  async verifyOtp(input: VerifyOtpInput): Promise<VerifyOtpResult> {
+    const expected = this.codes.get(input.requestId);
+    const verified = !!expected && expected === input.code;
+    if (verified) this.codes.delete(input.requestId);
+    return { verified, customerId: verified ? "cust-1" : undefined };
+  }
+}
+
+/**
+ * Mock payment. NOT a real gateway/vendor. Always succeeds and returns a
+ * reference. Provider-neutral so a real processor can replace it later.
+ */
+export class InMemoryPaymentService implements PaymentService {
+  async pay(request: PaymentRequest): Promise<PaymentResult> {
+    return { status: "PAID", reference: genId("pay").toUpperCase() };
+  }
+}
+
 /** Convenience aggregate of the mock services (compile-demonstration only). */
 export const mockServices = {
   organization: new InMemoryOrganizationService(),
@@ -266,4 +306,6 @@ export const mockServices = {
   subscription: new InMemorySubscriptionService(),
   benefit: new InMemoryBenefitService(),
   redemption: new InMemoryRedemptionService(),
+  auth: new InMemoryCustomerAuthService(),
+  payment: new InMemoryPaymentService(),
 };

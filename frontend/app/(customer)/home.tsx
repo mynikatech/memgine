@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
+import { useRouter } from "expo-router";
 
 import { SecondarySectionKey, SubscriptionStatus } from "@/src/core";
 import type { Benefit, MembershipProduct, Subscription } from "@/src/core";
 import { mockServices } from "@/src/core";
 import { Screen } from "@/src/layout";
 import { useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
-import { Card, Section, StateView, Text } from "@/src/ui";
+import { Card, Badge, Section, StateView, Text } from "@/src/ui";
 import { BenefitItem, benefitIconForType, BusinessHeader, MembershipCard } from "@/src/ui/domain";
 
 type Status = "loading" | "error" | "ready";
@@ -15,6 +16,7 @@ type Status = "loading" | "error" | "ready";
 const CUSTOMER_ID = "cust-1";
 
 export default function CustomerHome() {
+  const router = useRouter();
   const { organization, configuration, template } = useBusiness();
   const { subscriptionId: activeSubscriptionId } = useCustomerContext();
   const { t, formatDate } = useTranslation();
@@ -80,6 +82,22 @@ export default function CustomerHome() {
           <Text variant="title" color="textSecondary" testID="home-welcome-title">
             {cx.welcomeMessage}
           </Text>
+
+          <Pressable testID="home-join-cta" onPress={() => router.push("/join")}>
+            <Card padding="lg">
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text variant="bodyStrong" color="text">
+                    {t("home.discoverTitle", { business: organization.displayName })}
+                  </Text>
+                  <Text variant="bodySmall" color="textMuted">
+                    {t("home.discoverBody")}
+                  </Text>
+                </View>
+                <Badge label={t("home.discoverCta")} tone="brand" />
+              </View>
+            </Card>
+          </Pressable>
 
           {subscription && product ? (
             <Section title={t("home.yourSubscription")} testID="home-subscription-section">

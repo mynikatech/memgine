@@ -7,7 +7,8 @@ Build the Memgine MVP in small, credit-controlled stages. Frontend: Expo / React
 - **Stage 1 — FROZEN**: Expo foundation + platform-split navigation shells (Customer tabs: Home/My Cards/Profile; Staff sidebar: Counter/Customers/Configuration), placeholder content. SDK 55.
 - **Stage 2A — DONE**: domain + configuration contracts. Single source of truth = `src/core/`.
 - **Stage 2B — DONE**: reusable UI & frontend foundation (providers, theme, template registry, UI primitives, domain components, layout, i18n).
-- **Stage 3B — DONE (this task): Customer Subscription/Card Context Foundation** — added `CustomerContextProvider` (ActiveCustomerContext: organizationId + subscriptionId); My Cards groups subscriptions by Organization and selection establishes the active context; Home renders against the active subscription (fallback = business default); added a 2nd Sunrise subscription (Coffee Club/Silver) to prove multi-subscription. No switching UI, no Customer Hub, no later-stage workflows.
+- **Stage 3B — DONE**: multi-subscription/org card-context foundation (CustomerContextProvider; org-grouped My Cards).
+- **Stage 4 — DONE (this task): Customer Acquisition & Subscription Purchase** — `/join` wizard (landing → mobile → mock OTP → review → mock payment → subscription create → success + receipt), mock `CustomerAuthService`+`PaymentService` boundaries, extended `ReceiptSummary` (invoice meta), Home promo entry, new subscription appears in My Cards + active context set. Sunrise locale corrected to en-CA/CAD/America-Toronto. No real QR/OTP/payment/backend; no staff/redemption/POS.
 - **Later — NOT started**: Stage 3B+ (Staff experience, purchase/redemption/QR/OTP, Customer Hub, offers/stores/activity real data, real APIs/backend).
 
 ## Source of truth

@@ -44,9 +44,9 @@ export const SUNRISE_BAKERY_CONFIGURATION: BusinessConfiguration = {
     showActivity: true,
   },
   localization: {
-    defaultLanguage: "en-IN",
-    defaultCurrency: "INR",
-    timezone: "Asia/Kolkata",
+    defaultLanguage: "en-CA",
+    defaultCurrency: "CAD",
+    timezone: "America/Toronto",
   },
 };
 
