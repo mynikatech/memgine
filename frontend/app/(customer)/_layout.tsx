@@ -1,41 +1,59 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 
-import { CUSTOMER_ROUTES } from "@/src/constants/navigation";
-import { COLORS } from "@/src/theme/colors";
+import { useTheme, useTranslation } from "@/src/providers";
 
 /**
- * Customer shell — optimized for the mobile/native experience.
- * Bottom-tab navigation: Home · My Cards · Profile.
+ * Customer shell — mobile-first bottom tabs. Frozen navigation: Home / My Cards
+ * / Profile. Active tint comes from the active business brand via the theme.
  */
 export default function CustomerLayout() {
+  const theme = useTheme();
+  const { t } = useTranslation();
+
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: COLORS.background },
-        headerTitleStyle: { color: COLORS.text, fontWeight: "700" },
-        headerShadowVisible: false,
-        tabBarActiveTintColor: COLORS.accent,
-        tabBarInactiveTintColor: COLORS.textMuted,
+        headerShown: false,
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: theme.colors.textMuted,
         tabBarStyle: {
-          backgroundColor: COLORS.background,
-          borderTopColor: COLORS.border,
+          backgroundColor: theme.colors.background,
+          borderTopColor: theme.colors.border,
         },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
       }}
     >
-      {CUSTOMER_ROUTES.map((route) => (
-        <Tabs.Screen
-          key={route.name}
-          name={route.name}
-          options={{
-            title: route.title,
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name={route.icon} size={size} color={color} />
-            ),
-            tabBarButtonTestID: `customer-tab-${route.name}`,
-          }}
-        />
-      ))}
+      <Tabs.Screen
+        name="home"
+        options={{
+          title: t("customer.home"),
+          tabBarButtonTestID: "customer-tab-home",
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? "home" : "home-outline"} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="cards"
+        options={{
+          title: t("customer.myCards"),
+          tabBarButtonTestID: "customer-tab-cards",
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? "card" : "card-outline"} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: t("customer.profile"),
+          tabBarButtonTestID: "customer-tab-profile",
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? "person" : "person-outline"} size={size} color={color} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }

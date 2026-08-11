@@ -6,8 +6,9 @@ Build the Memgine MVP in small, credit-controlled stages. Frontend: Expo / React
 ## Stage status
 - **Stage 1 — FROZEN**: Expo foundation + platform-split navigation shells (Customer tabs: Home/My Cards/Profile; Staff sidebar: Counter/Customers/Configuration), placeholder content. SDK 55.
 - **Stage 2A — DONE**: domain + configuration contracts. Single source of truth = `src/core/`.
-- **Stage 2B — DONE (this task): Reusable UI & Frontend Foundation** — BusinessProvider + Localization runtime (`src/providers`), design tokens/theme (`src/theme`), Template Registry (`src/templates`), UI primitives (`src/ui`) + domain presentation components (`src/ui/domain`), cross-platform `Screen` (`src/layout`), i18n catalog (`src/i18n`, English). Consumes `src/core/`; no product screens, no backend. Providers mounted at root; Stage 1 shells unchanged.
-- **Later — NOT started**: Customer/Staff/Business-Admin product screens, Customer Hub, QR/OTP, purchase/redemption/invoice flows, real APIs/backend.
+- **Stage 2B — DONE**: reusable UI & frontend foundation (providers, theme, template registry, UI primitives, domain components, layout, i18n).
+- **Stage 3A — DONE (this task): Customer Visual Experience** — real branded Home, My Cards (subscription-card wallet + detail modal with QR placeholder), and Profile screens. Configuration-driven via BusinessProvider (Sunrise Bakery); reuses Stage 2B components; mock data via `mockServices`. Frozen tabs Home/My Cards/Profile preserved. No QR/purchase/redemption/staff/backend.
+- **Later — NOT started**: Stage 3B+ (Staff experience, purchase/redemption/QR/OTP, Customer Hub, offers/stores/activity real data, real APIs/backend).
 
 ## Source of truth
 `src/core/` — domain (`domain/common.ts`, `domain/entities.ts`), permissions, localization, template, config, context, services, defaults, mocks. See `MEMGINE_MANIFEST.md`.

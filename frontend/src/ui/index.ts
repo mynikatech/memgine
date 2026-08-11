@@ -6,6 +6,7 @@ export { Card } from "./Card";
 export { Header } from "./Header";
 export { IconButton } from "./IconButton";
 export { Input } from "./Input";
+export { ListRow } from "./ListRow";
 export { Modal } from "./Modal";
 export { Section } from "./Section";
 export { StateView } from "./StateView";
