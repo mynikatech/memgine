@@ -17,6 +17,10 @@ export type ActiveCustomerContext = {
 type CustomerContextValue = ActiveCustomerContext & {
   setActiveContext: (organizationId: string, subscriptionId: string) => void;
   clearActiveContext: () => void;
+  /** Semantic alias: entering a selected business (+ subscription) context. */
+  enterBusiness: (organizationId: string, subscriptionId: string) => void;
+  /** Semantic alias: returning to the Memgine platform "Your Memberships". */
+  exitBusiness: () => void;
 };
 
 const CustomerCtx = createContext<CustomerContextValue | null>(null);
@@ -37,7 +41,13 @@ export function CustomerContextProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<CustomerContextValue>(
-    () => ({ ...ctx, setActiveContext, clearActiveContext }),
+    () => ({
+      ...ctx,
+      setActiveContext,
+      clearActiveContext,
+      enterBusiness: setActiveContext,
+      exitBusiness: clearActiveContext,
+    }),
     [ctx, setActiveContext, clearActiveContext],
   );
 

@@ -81,8 +81,8 @@ export const en = {
     activity: "Activity",
   },
   cards: {
-    title: "My Cards",
-    subtitle: "Your subscription cards",
+    title: "Your Memberships",
+    subtitle: "Your business memberships",
     empty: "No cards yet",
     emptyBody: "Your business subscription cards will appear here.",
     view: "View card",

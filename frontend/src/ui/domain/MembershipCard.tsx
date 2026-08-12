@@ -1,18 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { View } from "react-native";
 
 import { CardStyle } from "@/src/core";
 import { useTheme } from "@/src/providers";
-import { shade } from "@/src/theme/color-utils";
-import type { ThemeColorToken } from "@/src/theme/theme";
 
 import { Text } from "../Text";
 
 /**
  * MembershipCard — reusable PRESENTATION of a customer's subscription card.
- * Honours the template's supported card styles. Presentation only (no
- * purchase / QR / redemption behaviour).
+ * Premium light treatment: the organization's brand colour is used as a
+ * restrained ACCENT (accent bar, monogram chip, typography, status) rather than
+ * a full solid/gradient fill. Honours the template's supported card styles.
+ * Presentation only (no purchase / QR / redemption behaviour).
  */
 type MembershipCardProps = {
   organizationName: string;
@@ -32,106 +31,93 @@ export function MembershipCard({
   testID,
 }: MembershipCardProps) {
   const theme = useTheme();
-  const isModern = cardStyle === CardStyle.MODERN;
-  const fg: ThemeColorToken = isModern ? "onPrimary" : "text";
-  const sub: ThemeColorToken = isModern ? "onPrimary" : "textMuted";
   const initial = organizationName.trim().charAt(0).toUpperCase();
 
-  const inner = (
-    <>
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm, flex: 1 }}>
-          <View
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: theme.radius.sm,
-              backgroundColor: isModern ? "rgba(255,255,255,0.18)" : theme.colors.primarySoft,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Text variant="label" color={isModern ? "onPrimary" : "primary"}>
-              {initial}
-            </Text>
-          </View>
-          <Text variant="bodySmall" color={sub} style={isModern ? { opacity: 0.9 } : undefined}>
-            {organizationName}
-          </Text>
-        </View>
-        <View
-          style={{
-            backgroundColor: isModern ? "rgba(255,255,255,0.2)" : theme.colors.successSoft,
-            paddingHorizontal: 10,
-            paddingVertical: 4,
-            borderRadius: theme.radius.pill,
-          }}
-        >
-          <Text variant="caption" color={isModern ? "onPrimary" : "success"}>
-            {active ? "Active" : "Expired"}
-          </Text>
-        </View>
-      </View>
+  // Surface treatment varies by card style; brand colour stays an accent.
+  const surface =
+    cardStyle === CardStyle.CLASSIC
+      ? theme.colors.primarySoft
+      : cardStyle === CardStyle.MINIMAL
+        ? theme.colors.background
+        : theme.colors.card;
+  const showAccentBar = cardStyle !== CardStyle.MINIMAL;
 
-      <View style={{ marginTop: theme.spacing.xl }}>
-        <Text variant="display" color={fg}>
-          {tier} Member
-        </Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
-          <Ionicons name="calendar-outline" size={14} color={theme.colors[sub]} />
-          <Text variant="bodySmall" color={sub} style={isModern ? { opacity: 0.9 } : undefined}>
-            Valid until {validUntil}
-          </Text>
-        </View>
-      </View>
-    </>
-  );
-
-  const common = {
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing.lg,
-    minHeight: 180,
-    justifyContent: "space-between" as const,
-  };
-
-  if (isModern) {
-    return (
-      <LinearGradient
-        testID={testID}
-        colors={[theme.colors.primary, shade(theme.colors.primary, 0.26)] as [string, string]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={common}
-      >
-        {inner}
-      </LinearGradient>
-    );
-  }
-
-  if (cardStyle === CardStyle.CLASSIC) {
-    return (
-      <View
-        testID={testID}
-        style={[
-          { ...common, backgroundColor: theme.colors.primarySoft, borderWidth: 1, borderColor: theme.colors.primary },
-          theme.shadows.sm,
-        ]}
-      >
-        {inner}
-      </View>
-    );
-  }
-
-  // MINIMAL
   return (
     <View
       testID={testID}
       style={[
-        { ...common, backgroundColor: theme.colors.card, borderWidth: 1, borderColor: theme.colors.border },
-        theme.shadows.sm,
+        {
+          borderRadius: theme.radius.lg,
+          borderWidth: 1,
+          borderColor: cardStyle === CardStyle.CLASSIC ? theme.colors.primarySoft : theme.colors.border,
+          backgroundColor: surface,
+          overflow: "hidden",
+          minHeight: 172,
+        },
+        cardStyle === CardStyle.MINIMAL ? theme.shadows.sm : theme.shadows.md,
       ]}
     >
-      {inner}
+      {showAccentBar ? <View style={{ height: 6, backgroundColor: theme.colors.primary }} /> : null}
+      <View style={{ padding: theme.spacing.lg, gap: theme.spacing.lg, flex: 1, justifyContent: "space-between" }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm, flex: 1 }}>
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: theme.radius.md,
+                backgroundColor: theme.colors.primarySoft,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text variant="title" color="primary">
+                {initial}
+              </Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text variant="caption" color="textMuted">
+                MEMBERSHIP
+              </Text>
+              <Text variant="bodyStrong" color="text">
+                {organizationName}
+              </Text>
+            </View>
+          </View>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              backgroundColor: active ? theme.colors.successSoft : theme.colors.surfaceAlt,
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              borderRadius: theme.radius.pill,
+            }}
+          >
+            <Ionicons
+              name={active ? "checkmark-circle" : "time-outline"}
+              size={13}
+              color={active ? theme.colors.success : theme.colors.textMuted}
+            />
+            <Text variant="caption" color={active ? "success" : "textMuted"}>
+              {active ? "Active" : "Expired"}
+            </Text>
+          </View>
+        </View>
+
+        <View>
+          <Text variant="display" color="text">
+            {tier} Member
+          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
+            <Ionicons name="calendar-outline" size={14} color={theme.colors.textMuted} />
+            <Text variant="bodySmall" color="textMuted">
+              Valid until {validUntil}
+            </Text>
+          </View>
+        </View>
+      </View>
     </View>
   );
 }
