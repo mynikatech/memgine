@@ -39,6 +39,10 @@ type Props = {
   offers: Offer[];
   stores: Store[];
   redemptions: Redemption[];
+  /** The customer's memberships within THIS SAME organization. */
+  memberships: { subscription: Subscription; product: MembershipProduct }[];
+  selectedSubscriptionId: string;
+  onSelectSubscription: (subscriptionId: string) => void;
   onExit: () => void;
 };
 
@@ -50,6 +54,9 @@ export function BusinessExperience({
   offers,
   stores,
   redemptions,
+  memberships,
+  selectedSubscriptionId,
+  onSelectSubscription,
   onExit,
 }: Props) {
   const { organization, configuration, template, theme } = useBusiness();
@@ -395,6 +402,51 @@ export function BusinessExperience({
         contentContainerStyle={{ padding: theme.spacing.lg, paddingTop: theme.spacing.sm, gap: theme.spacing.lg }}
         showsVerticalScrollIndicator={false}
       >
+        {/* Unobtrusive membership selector — only when the customer holds more
+            than one membership at THIS business. Switching changes only the
+            selected subscription; org / branding / template stay the same. */}
+        {memberships.length > 1 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: theme.spacing.sm }}
+            testID="experience-membership-selector"
+          >
+            {memberships.map((m) => {
+              const selected = m.subscription.id === selectedSubscriptionId;
+              const label = m.product.tier ?? m.product.name;
+              return (
+                <Pressable
+                  key={m.subscription.id}
+                  testID={`experience-membership-option-${m.subscription.id}`}
+                  onPress={() => onSelectSubscription(m.subscription.id)}
+                  style={({ pressed }) => ({
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    paddingHorizontal: theme.spacing.md,
+                    paddingVertical: 8,
+                    borderRadius: theme.radius.pill,
+                    borderWidth: 1,
+                    borderColor: selected ? theme.colors.primary : theme.colors.border,
+                    backgroundColor: selected ? theme.colors.primarySoft : theme.colors.background,
+                    opacity: pressed ? theme.states.pressedOpacity : 1,
+                  })}
+                >
+                  <Ionicons
+                    name={selected ? "card" : "card-outline"}
+                    size={14}
+                    color={selected ? theme.colors.primary : theme.colors.textMuted}
+                  />
+                  <Text variant="label" color={selected ? "primary" : "textMuted"}>
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        ) : null}
+
         {tabContent}
       </ScrollView>
 

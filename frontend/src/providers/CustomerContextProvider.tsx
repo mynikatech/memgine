@@ -17,6 +17,8 @@ export type ActiveCustomerContext = {
 type CustomerContextValue = ActiveCustomerContext & {
   setActiveContext: (organizationId: string, subscriptionId: string) => void;
   clearActiveContext: () => void;
+  /** Switch the selected subscription WITHIN the current organization. */
+  setActiveSubscription: (subscriptionId: string) => void;
   /** Semantic alias: entering a selected business (+ subscription) context. */
   enterBusiness: (organizationId: string, subscriptionId: string) => void;
   /** Semantic alias: returning to the Memgine platform "Your Memberships". */
@@ -39,16 +41,23 @@ export function CustomerContextProvider({ children }: { children: ReactNode }) {
     () => setCtx({ organizationId: null, subscriptionId: null }),
     [],
   );
+  // Change only the subscription in view; the organization stays the same, so
+  // branding/template/business navigation are unaffected.
+  const setActiveSubscription = useCallback(
+    (subscriptionId: string) => setCtx((prev) => ({ organizationId: prev.organizationId, subscriptionId })),
+    [],
+  );
 
   const value = useMemo<CustomerContextValue>(
     () => ({
       ...ctx,
       setActiveContext,
       clearActiveContext,
+      setActiveSubscription,
       enterBusiness: setActiveContext,
       exitBusiness: clearActiveContext,
     }),
-    [ctx, setActiveContext, clearActiveContext],
+    [ctx, setActiveContext, clearActiveContext, setActiveSubscription],
   );
 
   return <CustomerCtx.Provider value={value}>{children}</CustomerCtx.Provider>;
