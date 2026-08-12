@@ -12,6 +12,7 @@ import type {
   Subscription,
   TemplateDefaultContent,
 } from "@/src/core";
+import { BillingInterval } from "@/src/core";
 import { useBusiness, useTranslation } from "@/src/providers";
 import { Badge, Button, Card, Modal, Section, Text } from "@/src/ui";
 import {
@@ -43,6 +44,9 @@ type Props = {
   memberships: { subscription: Subscription; product: MembershipProduct }[];
   selectedSubscriptionId: string;
   onSelectSubscription: (subscriptionId: string) => void;
+  /** Published products for this org the customer does NOT currently own. */
+  availableMemberships: MembershipProduct[];
+  onJoin: (productId: string) => void;
   onExit: () => void;
 };
 
@@ -57,10 +61,12 @@ export function BusinessExperience({
   memberships,
   selectedSubscriptionId,
   onSelectSubscription,
+  availableMemberships,
+  onJoin,
   onExit,
 }: Props) {
   const { organization, configuration, template, theme } = useBusiness();
-  const { t, formatDate } = useTranslation();
+  const { t, formatDate, formatMoney } = useTranslation();
   const insets = useSafeAreaInsets();
 
   const [tab, setTab] = useState<ExperienceTabKey>("card");
@@ -130,11 +136,23 @@ export function BusinessExperience({
     </Card>
   );
 
+  const planLabel = (p: MembershipProduct) => {
+    const plan = p.plans[0];
+    if (!plan) return "";
+    const interval =
+      plan.billingInterval === BillingInterval.MONTHLY
+        ? t("join.perMonth")
+        : plan.billingInterval === BillingInterval.YEARLY
+          ? t("join.perYear")
+          : t("join.oneTime");
+    return `${formatMoney(plan.price.amountMinor)} · ${interval}`;
+  };
+
   const CardTab = (
     <View style={{ gap: theme.spacing.lg }} testID="experience-tab-card">
       {exp.heroPromotion ? renderPromotionCard(exp.heroPromotion) : null}
 
-      <Section title={t("experience.yourMembership")}>
+      <Section title={t("experience.yourMemberships")}>
         <MembershipCard
           testID="experience-membership-card"
           organizationName={exp.displayName}
@@ -182,6 +200,38 @@ export function BusinessExperience({
               ))}
             </View>
           </Card>
+        </Section>
+      ) : null}
+
+      {availableMemberships.length ? (
+        <Section title={t("experience.availableMemberships")}>
+          <View style={{ gap: theme.spacing.md }}>
+            {availableMemberships.map((p) => (
+              <Card key={p.id} testID={`experience-available-${p.id}`} padding="lg">
+                <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text variant="bodyStrong" color="text">
+                      {p.tier ?? p.name}
+                    </Text>
+                    {p.description ? (
+                      <Text variant="bodySmall" color="textMuted">
+                        {p.description}
+                      </Text>
+                    ) : null}
+                    <Text variant="bodySmall" color="primary">
+                      {planLabel(p)}
+                    </Text>
+                  </View>
+                  <Button
+                    label={t("experience.join")}
+                    size="sm"
+                    onPress={() => onJoin(p.id)}
+                    testID={`experience-join-${p.id}`}
+                  />
+                </View>
+              </Card>
+            ))}
+          </View>
         </Section>
       ) : null}
     </View>

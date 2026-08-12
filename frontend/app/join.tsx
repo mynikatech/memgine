@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 
@@ -20,15 +20,18 @@ import { benefitIconForType, BenefitItem, BusinessHeader, ReceiptSummary } from 
 type Step = "landing" | "register" | "otp" | "review" | "processing" | "success";
 
 const CUSTOMER_ID = "cust-1";
-// Mocked promotional context (as if resolved from a business QR/deep-link).
-const CONTEXT_ORG_ID = "org-sunrise";
-const CONTEXT_PRODUCT_ID = "prod-1";
 
 export default function JoinFlow() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ organizationId?: string; productId?: string }>();
   const { organization, configuration, theme } = useBusiness();
   const { setActiveContext } = useCustomerContext();
   const { t, formatMoney, formatDate } = useTranslation();
+
+  // The org/product to purchase come from the caller (e.g. Available
+  // Memberships). Fall back to the active business + its first product so the
+  // flow still works if opened without params.
+  const orgId = params.organizationId ?? organization.id;
 
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState<MembershipProduct | null>(null);
@@ -45,8 +48,13 @@ export default function JoinFlow() {
 
   useEffect(() => {
     (async () => {
-      const prod = await mockServices.membershipProduct.getProduct(CONTEXT_PRODUCT_ID);
-      const bens = await mockServices.benefit.listByProduct(CONTEXT_PRODUCT_ID);
+      let pid = params.productId;
+      if (!pid) {
+        const list = await mockServices.membershipProduct.listProducts(orgId);
+        pid = list[0]?.id;
+      }
+      const prod = pid ? await mockServices.membershipProduct.getProduct(pid) : null;
+      const bens = pid ? await mockServices.benefit.listByProduct(pid) : [];
       setProduct(prod);
       setBenefits(bens);
       setLoading(false);
@@ -89,7 +97,7 @@ export default function JoinFlow() {
       description: product.name,
     });
     const sub = await mockServices.subscription.createSubscription({
-      organizationId: CONTEXT_ORG_ID,
+      organizationId: orgId,
       customerId: CUSTOMER_ID,
       membershipProductId: product.id,
       planId: plan.id,

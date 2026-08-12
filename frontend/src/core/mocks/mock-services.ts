@@ -191,6 +191,40 @@ const products: MembershipProduct[] = [
       },
     ],
   },
+  {
+    id: "prod-3",
+    organizationId: "org-sunrise",
+    name: "Sunrise Platinum",
+    description: "Our top tier — every perk, all year round.",
+    tier: "Platinum",
+    benefitIds: ["ben-1", "ben-2", "ben-3"],
+    isPublished: true,
+    plans: [
+      {
+        id: "plan-3",
+        name: "Yearly",
+        price: { amountMinor: 9900, currency: "CAD" },
+        billingInterval: BillingInterval.YEARLY,
+      },
+    ],
+  },
+  {
+    id: "glow-prod-2",
+    organizationId: "org-glow",
+    name: "Glow Elite",
+    description: "Unlimited signature facials and priority everything.",
+    tier: "Elite",
+    benefitIds: ["glow-ben-1", "glow-ben-2", "glow-ben-3"],
+    isPublished: true,
+    plans: [
+      {
+        id: "glow-plan-2",
+        name: "Monthly",
+        price: { amountMinor: 12900, currency: "USD" },
+        billingInterval: BillingInterval.MONTHLY,
+      },
+    ],
+  },
 ];
 
 const customers: Customer[] = [

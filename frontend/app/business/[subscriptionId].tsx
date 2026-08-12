@@ -38,6 +38,7 @@ export default function BusinessExperienceRoute() {
 
   const [status, setStatus] = useState<Status>("loading");
   const [memberships, setMemberships] = useState<MembershipBundle[]>([]);
+  const [availableMemberships, setAvailableMemberships] = useState<MembershipProduct[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
@@ -79,12 +80,18 @@ export default function BusinessExperienceRoute() {
       }
 
       // Organization-level content is shared across the customer's memberships.
-      const [orgOffers, orgStores] = await Promise.all([
+      const [orgOffers, orgStores, catalog] = await Promise.all([
         mockServices.offer.listByOrganization(initial.organizationId),
         mockServices.organization.listStores(initial.organizationId),
+        mockServices.membershipProduct.listProducts(initial.organizationId),
       ]);
 
+      // "Available Memberships" = published products the customer does NOT own.
+      const ownedProductIds = new Set(bundles.map((b) => b.product.id));
+      const available = catalog.filter((p) => p.isPublished && !ownedProductIds.has(p.id));
+
       setMemberships(bundles);
+      setAvailableMemberships(available);
       setOffers(orgOffers);
       setStores(orgStores);
       setSelectedSubId(bundles.some((b) => b.subscription.id === initial.id) ? initial.id : bundles[0].subscription.id);
@@ -98,14 +105,20 @@ export default function BusinessExperienceRoute() {
     load();
   }, [load]);
 
+  const current = memberships.find((m) => m.subscription.id === selectedSubId) ?? memberships[0];
+
   const selectSubscription = (id: string) => {
     setSelectedSubId(id);
     setActiveSubscription(id);
   };
 
-  const exit = () => (router.canGoBack() ? router.back() : router.replace("/cards"));
+  const joinMembership = (productId: string) => {
+    if (!current) return;
+    // Reuse the existing Stage 4 purchase flow, passing org + product.
+    router.push(`/join?organizationId=${current.subscription.organizationId}&productId=${productId}`);
+  };
 
-  const current = memberships.find((m) => m.subscription.id === selectedSubId) ?? memberships[0];
+  const exit = () => (router.canGoBack() ? router.back() : router.replace("/cards"));
 
   if (status === "ready" && current) {
     return (
@@ -120,6 +133,8 @@ export default function BusinessExperienceRoute() {
         memberships={memberships.map((m) => ({ subscription: m.subscription, product: m.product }))}
         selectedSubscriptionId={current.subscription.id}
         onSelectSubscription={selectSubscription}
+        availableMemberships={availableMemberships}
+        onJoin={joinMembership}
         onExit={exit}
       />
     );
