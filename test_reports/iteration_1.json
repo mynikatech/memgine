@@ -1,0 +1,33 @@
+{
+  "summary": "Task 6B theme-leakage fix verified. On /cards, Sunrise Bakery cards render ORANGE (#C2410C, rgb(194,65,12)) and Glow Studio card renders PINK/rose (#DB2777, rgb(219,39,119)) simultaneously. After tapping the Glow card (opens pink /business/glow-sub-1 experience) and using the 'experience-back' control to return to /cards, the Sunrise cards remain ORANGE — bug (previously turning every card pink) is FIXED. Regression checks pass: Sunrise Gold card opens the orange Sunrise experience with working Gold/Silver in-experience pills, back navigation returns to /cards, no crashes, and all required testIDs (customer-cards-screen, cards-group-org-sunrise, cards-group-org-glow, card-sub-1, card-sub-2, card-glow-sub-1, experience-back) are present. Implementation approach (BusinessThemeScope per-subtree theme override consumed by MembershipCard via useTheme) is correct.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "pointerEvents prop (RN Web deprecation)", "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents' emitted at least twice on /cards. Likely originates from a third-party component (e.g. react-native-safe-area-context / expo-router internals). Non-blocking but should be tracked. No file/line in app code — investigate source before addressing."}
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/screenshots/cards_before.png",
+    "/app/test_reports/screenshots/glow_experience.png",
+    "/app/test_reports/screenshots/cards_after.png",
+    "/app/test_reports/screenshots/sunrise_experience.png"
+  ],
+  "action_items": [
+    "Optional: investigate source of 'props.pointerEvents is deprecated' console warning; likely a dependency-level issue, not app code."
+  ],
+  "critical_code_review_comments": [
+    "BusinessThemeScope + ThemeOverrideCtx in BusinessProvider.tsx and per-group wrapping in app/(customer)/cards.tsx correctly scope theme without mutating global activeOrgId — clean, minimal fix.",
+    "MembershipCard.useTheme() consumes the override before falling back to global business theme — correct precedence.",
+    "cards.tsx useCallback dependency list uses organization.displayName and configuration.customerExperience.cardStyle only as fallbacks; groups are re-derived from mockServices per org, so no stale-theme risk."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped per request)", "frontend": "100% (bug fix + all regressions verified)"},
+  "seed_data_creation": "None — app is fully mocked via in-memory mockServices.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Customer wallet lives at /cards (web preview redirects '/' to /staff/counter — must navigate directly). Theme leakage is validated by inspecting the 6px accent-bar view inside each MembershipCard: Sunrise = rgb(194,65,12), Glow = rgb(219,39,119). Verify both before AND after tapping Glow → experience-back.",
+  "rca_of_issue": "Root cause: /cards previously rendered MembershipCard with the global business theme (useTheme -> useBusiness().theme). Navigating into the Glow experience called setActiveBusiness('org-glow'), switching the global theme to pink. On returning, the wallet re-rendered every card under the now-pink global theme. Fix: introduced ThemeOverrideCtx + BusinessThemeScope in BusinessProvider so each org group in /cards wraps its cards with the target org's own theme (buildTheme from that org's branding), and useTheme returns the override first. This scopes the theme per-subtree and is independent of activeOrgId. Verified by direct DOM color inspection before/after a Glow round-trip."
+}

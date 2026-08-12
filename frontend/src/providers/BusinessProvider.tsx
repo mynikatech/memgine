@@ -48,6 +48,18 @@ type BusinessContextValue = {
 
 const BusinessCtx = createContext<BusinessContextValue | null>(null);
 
+/**
+ * Per-subtree theme override. Lets a screen render a SPECIFIC business's brand
+ * theme for part of the tree (e.g. each card on "Your Memberships") WITHOUT
+ * changing the globally active business. Absent by default, so normal screens
+ * keep using the active business theme.
+ */
+const ThemeOverrideCtx = createContext<Theme | null>(null);
+
+export function BusinessThemeScope({ theme, children }: { theme: Theme; children: ReactNode }) {
+  return <ThemeOverrideCtx.Provider value={theme}>{children}</ThemeOverrideCtx.Provider>;
+}
+
 export function BusinessProvider({ children }: { children: ReactNode }) {
   // Which business the app is currently presenting. Defaults to the demo
   // Sunrise Bakery; entering a membership switches it to that membership's org.
@@ -105,9 +117,11 @@ export function useBusiness(): BusinessContextValue {
   return ctx;
 }
 
-/** The active theme (business-branded). */
+/** The active theme (business-branded), or a per-subtree override if present. */
 export function useTheme(): Theme {
-  return useBusiness().theme;
+  const override = useContext(ThemeOverrideCtx);
+  const business = useBusiness();
+  return override ?? business.theme;
 }
 
 /** Capability check helper. */

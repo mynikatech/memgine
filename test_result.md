@@ -101,3 +101,33 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+frontend:
+  - task: "Task 6B — Business card selection state / theme leakage fix"
+    implemented: true
+    working: "NA"
+    file: "app/(customer)/cards.tsx, src/providers/BusinessProvider.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Bug: after opening Glow Studio (pink salon) and returning to 'Your Memberships', all membership cards (incl. Sunrise Bakery, orange F&B) rendered with Glow's pink theme because the wallet used the globally-active business theme + cardStyle. Fix: added a per-subtree BusinessThemeScope (theme override context) in BusinessProvider; useTheme() now honors it. Wallet now resolves EACH org's own theme (buildTheme from its branding) + cardStyle and wraps each org group in BusinessThemeScope, so each card renders in its own business theme independent of the last-visited/active business. tsc --noEmit clean."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 1
+
+test_plan:
+  current_focus:
+    - "Task 6B — Business card selection state / theme leakage fix"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "main"
+    -message: "Frontend-only visual/state test. Verify theme leakage fix on the customer 'Your Memberships' wallet (route /cards)."
+    -agent: "testing"
+    -message: "VERIFIED Task 6B (iteration_1.json): DOM color inspection confirms Sunrise accent = rgb(194,65,12) orange and Glow accent = rgb(219,39,119) pink; Sunrise cards remain orange after Glow round-trip. Regressions pass. Only a benign web-only 'pointerEvents deprecated' RN-internals warning."

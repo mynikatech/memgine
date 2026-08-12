@@ -3,10 +3,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 
 import { SubscriptionStatus } from "@/src/core";
-import type { Benefit, MembershipProduct, Subscription } from "@/src/core";
+import type { Benefit, CardStyle, MembershipProduct, Subscription } from "@/src/core";
 import { mockServices } from "@/src/core";
 import { Screen } from "@/src/layout";
-import { useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
+import { BusinessThemeScope, useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
+import { buildTheme, Theme } from "@/src/theme/theme";
 import { Badge, Card, Header, Section, StateView, Text } from "@/src/ui";
 import { MembershipCard } from "@/src/ui/domain";
 
@@ -23,6 +24,9 @@ type CardVM = {
 type OrgGroup = {
   organizationId: string;
   organizationName: string;
+  /** Each group renders in ITS OWN business theme/style, not the active one. */
+  theme: Theme;
+  cardStyle: CardStyle;
   cards: CardVM[];
 };
 
@@ -50,12 +54,20 @@ export default function MyCards() {
         const product = await mockServices.membershipProduct.getProduct(sub.membershipProductId);
         if (!product) continue;
         const benefits = await mockServices.benefit.listByProduct(sub.membershipProductId);
-        const org = await mockServices.organization.getOrganization(sub.organizationId);
-        const orgName = org?.displayName ?? organization.displayName;
 
         let group = grouped.find((g) => g.organizationId === sub.organizationId);
         if (!group) {
-          group = { organizationId: sub.organizationId, organizationName: orgName, cards: [] };
+          // Resolve THIS organization's own branding so its cards always render
+          // in its own theme/style, regardless of the active business.
+          const ctx = await mockServices.organization.getBusinessContext(sub.organizationId);
+          const orgName = ctx?.organization.displayName ?? organization.displayName;
+          group = {
+            organizationId: sub.organizationId,
+            organizationName: orgName,
+            theme: buildTheme(ctx?.configuration.branding),
+            cardStyle: ctx?.configuration.customerExperience.cardStyle ?? configuration.customerExperience.cardStyle,
+            cards: [],
+          };
           grouped.push(group);
         }
         group.cards.push({ subscription: sub, product, benefits });
@@ -65,13 +77,11 @@ export default function MyCards() {
     } catch {
       setStatus("error");
     }
-  }, [organization.displayName]);
+  }, [organization.displayName, configuration.customerExperience.cardStyle]);
 
   useEffect(() => {
     load();
   }, [load]);
-
-  const cardStyle = configuration.customerExperience.cardStyle;
 
   const openBusiness = (vm: CardVM) => {
     // Switch the active business (branding/template/locale) + subscription
@@ -103,44 +113,45 @@ export default function MyCards() {
         <StateView kind="empty" title={t("cards.empty")} message={t("cards.emptyBody")} testID="cards-state" />
       ) : (
         groups.map((group) => (
-          <Section
-            key={group.organizationId}
-            title={group.organizationName}
-            testID={`cards-group-${group.organizationId}`}
-          >
-            {group.cards.map((vm) => (
-              <Pressable
-                key={vm.subscription.id}
-                testID={`card-${vm.subscription.id}`}
-                onPress={() => openBusiness(vm)}
-              >
-                <Card padding="md">
-                  <MembershipCard
-                    organizationName={group.organizationName}
-                    tier={vm.product.tier ?? vm.product.name}
-                    validUntil={
-                      vm.subscription.currentPeriodEnd ? formatDate(vm.subscription.currentPeriodEnd) : "—"
-                    }
-                    active={vm.subscription.status === SubscriptionStatus.ACTIVE}
-                    cardStyle={cardStyle}
-                  />
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      marginTop: 12,
-                    }}
-                  >
-                    <Text variant="bodySmall" color="textMuted">
-                      {t("cards.benefitsSummary", { count: vm.benefits.length })}
-                    </Text>
-                    <Badge label={t("cards.view")} tone="brand" />
-                  </View>
-                </Card>
-              </Pressable>
-            ))}
-          </Section>
+          <BusinessThemeScope key={group.organizationId} theme={group.theme}>
+            <Section
+              title={group.organizationName}
+              testID={`cards-group-${group.organizationId}`}
+            >
+              {group.cards.map((vm) => (
+                <Pressable
+                  key={vm.subscription.id}
+                  testID={`card-${vm.subscription.id}`}
+                  onPress={() => openBusiness(vm)}
+                >
+                  <Card padding="md">
+                    <MembershipCard
+                      organizationName={group.organizationName}
+                      tier={vm.product.tier ?? vm.product.name}
+                      validUntil={
+                        vm.subscription.currentPeriodEnd ? formatDate(vm.subscription.currentPeriodEnd) : "—"
+                      }
+                      active={vm.subscription.status === SubscriptionStatus.ACTIVE}
+                      cardStyle={group.cardStyle}
+                    />
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginTop: 12,
+                      }}
+                    >
+                      <Text variant="bodySmall" color="textMuted">
+                        {t("cards.benefitsSummary", { count: vm.benefits.length })}
+                      </Text>
+                      <Badge label={t("cards.view")} tone="brand" />
+                    </View>
+                  </Card>
+                </Pressable>
+              ))}
+            </Section>
+          </BusinessThemeScope>
         ))
       )}
     </Screen>
