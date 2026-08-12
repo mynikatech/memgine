@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Image, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -92,6 +92,65 @@ export function BusinessExperience({
   );
 
   const cardStyle = configuration.customerExperience.cardStyle;
+
+  /* ----------------------------- redeem selection ---------------------------- */
+
+  type RedemptionToken = {
+    token: string;
+    customerId: string;
+    organizationId: string;
+    subscriptionId: string;
+    benefitIds: string[];
+    createdAt: string;
+  };
+
+  const [selectedBenefitIds, setSelectedBenefitIds] = useState<Set<string>>(new Set());
+  const [redeemToken, setRedeemToken] = useState<RedemptionToken | null>(null);
+
+  // All available benefits are selected by default; reset when the focused
+  // membership changes.
+  useEffect(() => {
+    setSelectedBenefitIds(
+      new Set(exp.redeemableBenefits.filter((b) => b.available).map((b) => b.id)),
+    );
+    setRedeemToken(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSubscriptionId]);
+
+  const toggleBenefit = (id: string) =>
+    setSelectedBenefitIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const redeemSelected = () => {
+    const ids = exp.redeemableBenefits
+      .filter((b) => b.available && selectedBenefitIds.has(b.id))
+      .map((b) => b.id);
+    if (!ids.length) return;
+    // Mocked redemption context/token — one token for all selected benefits.
+    setRedeemToken({
+      token: `RDM-${subscription.id.toUpperCase().replace(/[^A-Z0-9]/g, "")}-${Date.now()
+        .toString(36)
+        .toUpperCase()}`,
+      customerId: subscription.customerId,
+      organizationId: subscription.organizationId,
+      subscriptionId: subscription.id,
+      benefitIds: ids,
+      createdAt: new Date().toISOString(),
+    });
+  };
+
+  const benefitTitleById = useMemo(
+    () => new Map(exp.benefits.map((b) => [b.id, b.title])),
+    [exp.benefits],
+  );
+  const selectedCount = exp.redeemableBenefits.filter(
+    (b) => b.available && selectedBenefitIds.has(b.id),
+  ).length;
+  const hasRedeemable = exp.redeemableBenefits.some((b) => b.available);
 
   /* ------------------------------ sub-renderers ------------------------------ */
 
@@ -202,6 +261,75 @@ export function BusinessExperience({
           </Card>
         </Section>
       ) : null}
+
+      {exp.membership.active && exp.redeemableBenefits.length ? (
+        <Section title={t("experience.redeemBenefits")}>
+          <Card padding="lg" testID="experience-redeem-benefits">
+            <View style={{ gap: 14 }}>
+              {exp.redeemableBenefits.map((b) => {
+                const selected = b.available && selectedBenefitIds.has(b.id);
+                return (
+                  <Pressable
+                    key={b.id}
+                    testID={`experience-redeem-benefit-${b.id}`}
+                    disabled={!b.available}
+                    onPress={() => toggleBenefit(b.id)}
+                    style={({ pressed }) => ({
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: theme.spacing.md,
+                      opacity: !b.available ? 0.5 : pressed ? theme.states.pressedOpacity : 1,
+                    })}
+                  >
+                    <Ionicons
+                      name={!b.available ? "ban-outline" : selected ? "checkbox" : "square-outline"}
+                      size={22}
+                      color={!b.available || !selected ? theme.colors.textMuted : theme.colors.primary}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text variant="bodyStrong" color={b.available ? "text" : "textMuted"}>
+                        {b.title}
+                      </Text>
+                      {b.description ? (
+                        <Text variant="bodySmall" color="textMuted">
+                          {b.description}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {!b.available ? <Badge label={t("experience.benefitUsed")} tone="neutral" /> : null}
+                  </Pressable>
+                );
+              })}
+
+              {!hasRedeemable ? (
+                <Text variant="bodySmall" color="textMuted">
+                  {t("experience.noRedeemable")}
+                </Text>
+              ) : null}
+
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginTop: theme.spacing.sm,
+                }}
+              >
+                <Text variant="caption" color="textMuted">
+                  {t("experience.selectedCount", { count: selectedCount })}
+                </Text>
+                <Button
+                  label={t("experience.redeemSelected")}
+                  disabled={selectedCount === 0}
+                  onPress={redeemSelected}
+                  testID="experience-redeem-selected"
+                />
+              </View>
+            </View>
+          </Card>
+        </Section>
+      ) : null}
+
 
       {availableMemberships.length ? (
         <Section title={t("experience.availableMemberships")}>
@@ -594,6 +722,48 @@ export function BusinessExperience({
           </View>
         ) : null}
       </Modal>
+
+      {/* Redemption token — one QR/code for ALL selected benefits (mocked). */}
+      <Modal
+        visible={!!redeemToken}
+        onClose={() => setRedeemToken(null)}
+        title={t("experience.redeemBenefits")}
+        testID="experience-redeem-token-modal"
+      >
+        {redeemToken ? (
+          <View style={{ alignItems: "center", gap: theme.spacing.md }}>
+            <QrPlaceholder size={200} />
+            <View style={{ alignItems: "center" }}>
+              <Text variant="caption" color="textMuted">
+                {t("experience.redemptionCode")}
+              </Text>
+              <Text variant="title" color="text">
+                {redeemToken.token}
+              </Text>
+            </View>
+            <View style={{ alignSelf: "stretch", gap: 6 }}>
+              {redeemToken.benefitIds.map((id) => (
+                <View
+                  key={id}
+                  style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}
+                >
+                  <Ionicons name="checkmark-circle" size={16} color={theme.colors.primary} />
+                  <Text variant="bodySmall" color="text">
+                    {benefitTitleById.get(id) ?? id}
+                  </Text>
+                </View>
+              ))}
+            </View>
+            <Text variant="caption" color="textMuted">
+              {t("experience.benefitsCount", { count: redeemToken.benefitIds.length })}
+            </Text>
+            <Text variant="bodySmall" color="textMuted" style={{ textAlign: "center" }}>
+              {t("experience.redeemTokenHint")}
+            </Text>
+          </View>
+        ) : null}
+      </Modal>
+
     </View>
   );
 }

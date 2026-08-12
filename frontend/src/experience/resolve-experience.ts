@@ -59,6 +59,8 @@ export interface ResolvedActivity {
   timeLabel: string;
 }
 
+export type RedeemableBenefit = Benefit & { available: boolean };
+
 export interface ResolvedExperience {
   displayName: string;
   monogram: string;
@@ -68,6 +70,7 @@ export interface ResolvedExperience {
   featuredPromotion?: DefaultPromotionContent;
   membership: ResolvedMembership;
   benefits: Benefit[];
+  redeemableBenefits: RedeemableBenefit[];
   offers: Offer[];
   stores: Store[];
   activity: ResolvedActivity[];
@@ -123,6 +126,14 @@ export function resolveExperience(input: ResolveExperienceInput): ResolvedExperi
 
   const benefitsById = new Map(input.benefits.map((b) => [b.id, b]));
   const storesById = new Map(input.stores.map((s) => [s.id, s]));
+
+  // A benefit is unavailable (already used) if it appears in this
+  // subscription's redemption history.
+  const usedBenefitIds = new Set(input.redemptions.map((r) => r.benefitId));
+  const redeemableBenefits: RedeemableBenefit[] = input.benefits.map((b) => ({
+    ...b,
+    available: !usedBenefitIds.has(b.id),
+  }));
 
   const activity: ResolvedActivity[] = input.redemptions.map((r: Redemption) => ({
     id: r.id,
@@ -198,6 +209,7 @@ export function resolveExperience(input: ResolveExperienceInput): ResolvedExperi
       memberId,
     },
     benefits: input.benefits,
+    redeemableBenefits,
     offers: input.offers,
     stores: input.stores,
     activity,
