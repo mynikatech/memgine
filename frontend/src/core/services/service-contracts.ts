@@ -9,6 +9,7 @@ import {
   Organization,
   OrganizationAccount,
   Redemption,
+  RedemptionMethod,
   Store,
   Subscription,
 } from "../domain/entities";
@@ -41,10 +42,13 @@ export interface CreateSubscriptionInput {
 
 export interface PerformRedemptionInput {
   organizationId: ID;
+  customerId: ID;
   subscriptionId: ID;
   benefitId: ID;
   storeId: ID;
   staffId: ID;
+  method: RedemptionMethod;
+  promoCode?: string;
 }
 
 export interface OrganizationService {

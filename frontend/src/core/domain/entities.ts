@@ -177,13 +177,25 @@ export enum RedemptionStatus {
   VOID = "VOID",
 }
 
+/** How a redemption was performed at the counter. */
+export enum RedemptionMethod {
+  QR = "QR",
+  PHONE_OTP = "PHONE_OTP",
+  MEMBERSHIP_ID = "MEMBERSHIP_ID",
+}
+
 export interface Redemption {
   id: ID;
   organizationId: ID;
+  customerId: ID;
   subscriptionId: ID;
   benefitId: ID;
   storeId: ID;
   staffId: ID;
+  /** How the customer was identified / benefit presented. */
+  method: RedemptionMethod;
+  /** Optional staff promotional/referral code captured at the counter. */
+  promoCode?: string;
   redeemedAt: ISODateString;
   status: RedemptionStatus;
 }
