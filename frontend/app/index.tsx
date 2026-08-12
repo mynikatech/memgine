@@ -10,5 +10,5 @@ export default function Index() {
   if (Platform.OS === "web") {
     return <Redirect href="/staff/counter" />;
   }
-  return <Redirect href="/home" />;
+  return <Redirect href="/cards" />;
 }

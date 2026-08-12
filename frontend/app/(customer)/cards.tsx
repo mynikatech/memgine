@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 
@@ -6,8 +7,8 @@ import type { Benefit, MembershipProduct, Subscription } from "@/src/core";
 import { mockServices } from "@/src/core";
 import { Screen } from "@/src/layout";
 import { useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
-import { Badge, Card, Header, Modal, Section, StateView, Text } from "@/src/ui";
-import { BenefitItem, benefitIconForType, MembershipCard, QrPlaceholder } from "@/src/ui/domain";
+import { Badge, Card, Header, Section, StateView, Text } from "@/src/ui";
+import { MembershipCard } from "@/src/ui/domain";
 
 type Status = "loading" | "error" | "ready";
 const CUSTOMER_ID = "cust-1";
@@ -25,21 +26,24 @@ type OrgGroup = {
   cards: CardVM[];
 };
 
+/**
+ * Your Memberships — the Memgine platform wallet (top level). Selecting a
+ * membership enters that business's branded experience (a pushed route that
+ * covers the platform tabs). Grouped by organization so adding a second org
+ * later needs NO screen change.
+ */
 export default function MyCards() {
+  const router = useRouter();
   const { organization, configuration } = useBusiness();
   const { setActiveContext } = useCustomerContext();
   const { t, formatDate } = useTranslation();
 
   const [status, setStatus] = useState<Status>("loading");
   const [groups, setGroups] = useState<OrgGroup[]>([]);
-  const [selected, setSelected] = useState<CardVM | null>(null);
 
   const load = useCallback(async () => {
     setStatus("loading");
     try {
-      // Customer -> Subscription -> (Product, Organization). Grouping by
-      // organization here means adding a second org later needs NO screen
-      // change; the model never assumes one subscription / one organization.
       const subs = await mockServices.subscription.listByCustomer(CUSTOMER_ID);
       const grouped: OrgGroup[] = [];
       for (const sub of subs) {
@@ -69,11 +73,10 @@ export default function MyCards() {
 
   const cardStyle = configuration.customerExperience.cardStyle;
 
-  const openCard = (vm: CardVM) => {
-    // Selecting a card establishes the active Organization + Subscription
-    // context for the customer experience.
+  const openBusiness = (vm: CardVM) => {
+    // Establish active context, then enter the business experience.
     setActiveContext(vm.subscription.organizationId, vm.subscription.id);
-    setSelected(vm);
+    router.push(`/business/${vm.subscription.id}`);
   };
 
   const hasCards = groups.some((g) => g.cards.length > 0);
@@ -107,7 +110,7 @@ export default function MyCards() {
               <Pressable
                 key={vm.subscription.id}
                 testID={`card-${vm.subscription.id}`}
-                onPress={() => openCard(vm)}
+                onPress={() => openBusiness(vm)}
               >
                 <Card padding="md">
                   <MembershipCard
@@ -138,45 +141,6 @@ export default function MyCards() {
           </Section>
         ))
       )}
-
-      <Modal
-        visible={selected !== null}
-        onClose={() => setSelected(null)}
-        title={t("cards.detailTitle")}
-        scrollable
-        testID="card-detail-modal"
-      >
-        {selected ? (
-          <View style={{ gap: 20 }}>
-            <MembershipCard
-              organizationName={organization.displayName}
-              tier={selected.product.tier ?? selected.product.name}
-              validUntil={
-                selected.subscription.currentPeriodEnd
-                  ? formatDate(selected.subscription.currentPeriodEnd)
-                  : "—"
-              }
-              active={selected.subscription.status === SubscriptionStatus.ACTIVE}
-              cardStyle={cardStyle}
-            />
-            <QrPlaceholder caption={t("cards.showAtCounter")} testID="card-detail-qr" />
-            {selected.benefits.length ? (
-              <Section title={t("benefits.activeTitle")}>
-                <View style={{ gap: 14 }}>
-                  {selected.benefits.map((b) => (
-                    <BenefitItem
-                      key={b.id}
-                      title={b.title}
-                      subtitle={b.description}
-                      icon={benefitIconForType(b.type)}
-                    />
-                  ))}
-                </View>
-              </Section>
-            ) : null}
-          </View>
-        ) : null}
-      </Modal>
     </Screen>
   );
 }

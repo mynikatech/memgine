@@ -1,0 +1,212 @@
+import type {
+  Benefit,
+  BusinessConfiguration,
+  DefaultBusinessInformationContent,
+  DefaultBusinessPreferencesContent,
+  DefaultPromotionContent,
+  DefaultReferralContent,
+  MembershipProduct,
+  Offer,
+  Organization,
+  Redemption,
+  Store,
+  Subscription,
+  TemplateDefaultContent,
+  TemplateDefinition,
+} from "@/src/core";
+import { SubscriptionStatus, TemplateSectionKey } from "@/src/core";
+
+/**
+ * resolve-experience — the pure, framework-free brain of the Business
+ * Experience renderer.
+ *
+ * It composes a single view model from the three separated layers plus live
+ * domain data, honouring their precedence:
+ *   - Domain data     (subscription, product, benefits, offers, stores, …)
+ *   - BusinessConfiguration (identity name, brand, section on/off flags)
+ *   - TemplateDefaultContent (replaceable copy & imagery)
+ * bounded by what the TemplateDefinition permits (mandatory vs optional
+ * sections, and which navigation surfaces they may occupy).
+ *
+ * No business value is hard-coded here; everything is derived from inputs, so
+ * the same function drives ANY F&B business.
+ */
+
+export type ExperienceTabKey = "card" | "offers" | "history" | "profile";
+
+export interface ExperienceTab {
+  key: ExperienceTabKey;
+  /** i18n key for the tab label. */
+  labelKey: string;
+  icon: string;
+  iconOutline: string;
+}
+
+export interface ResolvedMembership {
+  tier: string;
+  productName: string;
+  description: string;
+  active: boolean;
+  validUntilLabel: string;
+  daysRemaining: number | null;
+  memberId: string;
+}
+
+export interface ResolvedActivity {
+  id: string;
+  title: string;
+  location: string;
+  timeLabel: string;
+}
+
+export interface ResolvedExperience {
+  displayName: string;
+  monogram: string;
+  tagline: string;
+  heroImageUrl: string;
+  heroPromotion?: DefaultPromotionContent;
+  featuredPromotion?: DefaultPromotionContent;
+  membership: ResolvedMembership;
+  benefits: Benefit[];
+  offers: Offer[];
+  stores: Store[];
+  activity: ResolvedActivity[];
+  activityCount: number;
+  mostVisited?: string;
+  businessInformation?: DefaultBusinessInformationContent;
+  businessPreferences?: DefaultBusinessPreferencesContent;
+  referral?: DefaultReferralContent;
+  showOffers: boolean;
+  showStores: boolean;
+  showActivity: boolean;
+  tabs: ExperienceTab[];
+}
+
+export interface ResolveExperienceInput {
+  organization: Organization;
+  configuration: BusinessConfiguration;
+  template: TemplateDefinition;
+  content: TemplateDefaultContent;
+  subscription: Subscription;
+  product: MembershipProduct;
+  benefits: Benefit[];
+  offers: Offer[];
+  stores: Store[];
+  redemptions: Redemption[];
+  formatDate: (date: string) => string;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function resolveExperience(input: ResolveExperienceInput): ResolvedExperience {
+  const { organization, configuration, template, content, subscription, product } = input;
+  const cx = configuration.customerExperience;
+
+  const templateHas = (key: TemplateSectionKey) =>
+    template.sections.some((s) => s.key === key);
+
+  // Optional sections are only surfaced when the template permits them AND the
+  // business has switched them on. Mandatory sections are always present.
+  const showOffers = cx.showOffers && templateHas(TemplateSectionKey.OFFERS);
+  const showStores = cx.showStores && templateHas(TemplateSectionKey.STORES);
+  const showActivity = cx.showActivity && templateHas(TemplateSectionKey.ACTIVITY);
+
+  // Membership status is domain-derived (subscription + product).
+  const active = subscription.status === SubscriptionStatus.ACTIVE;
+  const validUntilLabel = subscription.currentPeriodEnd
+    ? input.formatDate(subscription.currentPeriodEnd)
+    : "—";
+  const daysRemaining = subscription.currentPeriodEnd
+    ? Math.max(0, Math.ceil((new Date(subscription.currentPeriodEnd).getTime() - Date.now()) / DAY_MS))
+    : null;
+  const memberId = `MG-${subscription.id.toUpperCase().replace(/[^A-Z0-9]/g, "")}`;
+
+  const benefitsById = new Map(input.benefits.map((b) => [b.id, b]));
+  const storesById = new Map(input.stores.map((s) => [s.id, s]));
+
+  const activity: ResolvedActivity[] = input.redemptions.map((r: Redemption) => ({
+    id: r.id,
+    title: benefitsById.get(r.benefitId)?.title ?? "Reward redeemed",
+    location: storesById.get(r.storeId)?.name ?? organization.displayName,
+    timeLabel: input.formatDate(r.redeemedAt),
+  }));
+
+  // Most-visited store (simple domain-derived summary for the History tab).
+  let mostVisited: string | undefined;
+  if (input.redemptions.length) {
+    const counts = new Map<string, number>();
+    for (const r of input.redemptions) counts.set(r.storeId, (counts.get(r.storeId) ?? 0) + 1);
+    let topId: string | undefined;
+    let topN = -1;
+    counts.forEach((n, id) => {
+      if (n > topN) {
+        topN = n;
+        topId = id;
+      }
+    });
+    mostVisited = topId ? storesById.get(topId)?.name : undefined;
+  }
+
+  const displayName = configuration.identity.displayName;
+
+  // Tabs are computed from the template's section catalogue + config flags —
+  // NOT a fixed vertical page. Card (mandatory overview) and Profile
+  // (business detail/preferences/referral) always exist; Offers and History
+  // appear only when their optional sections are enabled.
+  const tabs: ExperienceTab[] = [
+    { key: "card", labelKey: "experience.tabCard", icon: "wallet", iconOutline: "wallet-outline" },
+  ];
+  if (showOffers) {
+    tabs.push({
+      key: "offers",
+      labelKey: "experience.tabOffers",
+      icon: "pricetags",
+      iconOutline: "pricetags-outline",
+    });
+  }
+  if (showActivity) {
+    tabs.push({
+      key: "history",
+      labelKey: "experience.tabHistory",
+      icon: "time",
+      iconOutline: "time-outline",
+    });
+  }
+  tabs.push({
+    key: "profile",
+    labelKey: "experience.tabProfile",
+    icon: "person",
+    iconOutline: "person-outline",
+  });
+
+  return {
+    displayName,
+    monogram: displayName.trim().charAt(0).toUpperCase(),
+    tagline: content.businessIdentity.tagline,
+    heroImageUrl: content.businessIdentity.heroImageUrl,
+    heroPromotion: content.heroPromotion,
+    featuredPromotion: content.featuredPromotion,
+    membership: {
+      tier: product.tier ?? product.name,
+      productName: product.name,
+      description: product.description ?? content.membership.description,
+      active,
+      validUntilLabel,
+      daysRemaining,
+      memberId,
+    },
+    benefits: input.benefits,
+    offers: input.offers,
+    stores: input.stores,
+    activity,
+    activityCount: input.redemptions.length,
+    mostVisited,
+    businessInformation: content.businessInformation,
+    businessPreferences: content.businessPreferences,
+    referral: content.referral,
+    showOffers,
+    showStores,
+    showActivity,
+    tabs,
+  };
+}

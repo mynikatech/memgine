@@ -16,4 +16,6 @@ export * from "./context/business-context";
 export * from "./services/service-contracts";
 export * from "./defaults/sunrise-bakery";
 export * from "./defaults/f-and-b-default-content";
+export * from "./defaults/sunrise-bakery-content";
+export * from "./defaults/business-content";
 export * from "./mocks/mock-services";

@@ -27,17 +27,13 @@ export default function CustomerLayout() {
       <Tabs.Screen
         name="home"
         options={{
-          title: t("customer.home"),
-          tabBarButtonTestID: "customer-tab-home",
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? "home" : "home-outline"} size={size} color={color} />
-          ),
+          href: null,
         }}
       />
       <Tabs.Screen
         name="cards"
         options={{
-          title: t("customer.myCards"),
+          title: t("customer.yourMemberships"),
           tabBarButtonTestID: "customer-tab-cards",
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? "card" : "card-outline"} size={size} color={color} />
