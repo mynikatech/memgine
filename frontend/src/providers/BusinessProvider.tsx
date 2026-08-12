@@ -1,10 +1,13 @@
-import { createContext, ReactNode, useContext, useMemo } from "react";
+import { createContext, ReactNode, useContext, useMemo, useState } from "react";
 
 import {
   BusinessConfiguration,
+  BUSINESS_CONTEXTS,
   Capability,
+  DEFAULT_ACTIVE_ORG_ID,
   DEFAULT_ROLE_CAPABILITIES,
   hasCapability,
+  ID,
   LocaleProfile,
   LocalizationContext,
   ManagementModel,
@@ -39,13 +42,20 @@ type BusinessContextValue = {
   principal: Principal;
   capabilities: Capability[];
   can: (capability: Capability) => boolean;
+  /** Switch the active business (org) so branding/template/locale follow it. */
+  setActiveBusiness: (organizationId: ID) => void;
 };
 
 const BusinessCtx = createContext<BusinessContextValue | null>(null);
 
 export function BusinessProvider({ children }: { children: ReactNode }) {
+  // Which business the app is currently presenting. Defaults to the demo
+  // Sunrise Bakery; entering a membership switches it to that membership's org.
+  const [activeOrgId, setActiveOrgId] = useState<ID>(DEFAULT_ACTIVE_ORG_ID);
+
   const value = useMemo<BusinessContextValue>(() => {
-    const { organization, account, configuration, template } = SUNRISE_BAKERY_CONTEXT;
+    const ctx = BUSINESS_CONTEXTS[activeOrgId] ?? SUNRISE_BAKERY_CONTEXT;
+    const { organization, account, configuration, template } = ctx;
 
     const theme = buildTheme(configuration.branding);
 
@@ -82,8 +92,9 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       principal,
       capabilities,
       can: (capability: Capability) => hasCapability(principal, capability),
+      setActiveBusiness: setActiveOrgId,
     };
-  }, []);
+  }, [activeOrgId]);
 
   return <BusinessCtx.Provider value={value}>{children}</BusinessCtx.Provider>;
 }

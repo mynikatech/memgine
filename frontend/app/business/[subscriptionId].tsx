@@ -31,7 +31,7 @@ type MembershipBundle = {
 export default function BusinessExperienceRoute() {
   const router = useRouter();
   const { subscriptionId } = useLocalSearchParams<{ subscriptionId: string }>();
-  const { organization } = useBusiness();
+  const { setActiveBusiness } = useBusiness();
   const { setActiveContext, setActiveSubscription } = useCustomerContext();
   const { t } = useTranslation();
   const theme = useTheme();
@@ -52,6 +52,7 @@ export default function BusinessExperienceRoute() {
         setStatus("error");
         return;
       }
+      setActiveBusiness(initial.organizationId);
       setActiveContext(initial.organizationId, initial.id);
 
       // All of the customer's subscriptions for THIS SAME organization.
@@ -91,7 +92,7 @@ export default function BusinessExperienceRoute() {
     } catch {
       setStatus("error");
     }
-  }, [subscriptionId, setActiveContext]);
+  }, [subscriptionId, setActiveContext, setActiveBusiness]);
 
   useEffect(() => {
     load();

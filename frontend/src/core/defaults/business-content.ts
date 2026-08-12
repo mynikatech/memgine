@@ -2,6 +2,7 @@ import { ID } from "../domain/common";
 import { TemplateDefaultContent } from "../template/template-content";
 import { F_AND_B_DEFAULT_CONTENT } from "./f-and-b-default-content";
 import { SUNRISE_BAKERY_CONTENT } from "./sunrise-bakery-content";
+import { GLOW_STUDIO_CONTENT } from "./glow-studio-content";
 
 /**
  * Business content registry — maps an Organization to the resolved
@@ -12,6 +13,7 @@ import { SUNRISE_BAKERY_CONTENT } from "./sunrise-bakery-content";
  */
 const BUSINESS_CONTENT_BY_ORG: Record<ID, TemplateDefaultContent> = {
   "org-sunrise": SUNRISE_BAKERY_CONTENT,
+  "org-glow": GLOW_STUDIO_CONTENT,
 };
 
 /**

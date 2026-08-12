@@ -9,6 +9,7 @@ export type ISODateString = string;
 /** Business category. Drives which template family applies. */
 export enum TemplateCategory {
   FOOD_AND_BEVERAGE = "FOOD_AND_BEVERAGE",
+  BEAUTY_AND_WELLNESS = "BEAUTY_AND_WELLNESS",
 }
 
 /** How a subscription plan is billed (domain data, NOT Memgine billing). */

@@ -40,6 +40,18 @@ import {
   SUNRISE_BAKERY_CONTEXT,
   SUNRISE_BAKERY_ORGANIZATION,
 } from "../defaults/sunrise-bakery";
+import {
+  GLOW_STUDIO_ACCOUNT,
+  GLOW_STUDIO_CONTEXT,
+  GLOW_STUDIO_ORGANIZATION,
+} from "../defaults/glow-studio";
+
+const ORGANIZATIONS: Organization[] = [SUNRISE_BAKERY_ORGANIZATION, GLOW_STUDIO_ORGANIZATION];
+const ACCOUNTS: OrganizationAccount[] = [SUNRISE_BAKERY_ACCOUNT, GLOW_STUDIO_ACCOUNT];
+const BUSINESS_CONTEXTS_BY_ORG: Record<string, BusinessContext> = {
+  [SUNRISE_BAKERY_ORGANIZATION.id]: SUNRISE_BAKERY_CONTEXT,
+  [GLOW_STUDIO_ORGANIZATION.id]: GLOW_STUDIO_CONTEXT,
+};
 
 /**
  * In-memory service implementations. Their ONLY purpose is to demonstrate that
@@ -60,6 +72,20 @@ const stores: Store[] = [
       city: "San Francisco",
       region: "CA",
       postalCode: "94016",
+      countryCode: "US",
+    },
+    timezone: "America/Los_Angeles",
+    isActive: true,
+  },
+  {
+    id: "glow-store-1",
+    organizationId: "org-glow",
+    name: "Glow Studio — Uptown",
+    address: {
+      line1: "88 Bloom Avenue",
+      city: "Los Angeles",
+      region: "CA",
+      postalCode: "90028",
       countryCode: "US",
     },
     timezone: "America/Los_Angeles",
@@ -89,6 +115,27 @@ const benefits: Benefit[] = [
     title: "Free filter coffee",
     description: "One cup per day",
     type: BenefitType.FREEBIE,
+  },
+  {
+    id: "glow-ben-1",
+    organizationId: "org-glow",
+    title: "Monthly signature facial",
+    description: "One complimentary signature facial each month",
+    type: BenefitType.FREEBIE,
+  },
+  {
+    id: "glow-ben-2",
+    organizationId: "org-glow",
+    title: "15% off all products",
+    description: "Member pricing on take-home skincare",
+    type: BenefitType.DISCOUNT,
+  },
+  {
+    id: "glow-ben-3",
+    organizationId: "org-glow",
+    title: "Priority booking",
+    description: "Member-only priority appointments",
+    type: BenefitType.PERK,
   },
 ];
 
@@ -127,6 +174,23 @@ const products: MembershipProduct[] = [
       },
     ],
   },
+  {
+    id: "glow-prod-1",
+    organizationId: "org-glow",
+    name: "Radiance Membership",
+    description: "Monthly facials, priority booking and member pricing.",
+    tier: "Radiance",
+    benefitIds: ["glow-ben-1", "glow-ben-2", "glow-ben-3"],
+    isPublished: true,
+    plans: [
+      {
+        id: "glow-plan-1",
+        name: "Monthly",
+        price: { amountMinor: 5900, currency: "USD" },
+        billingInterval: BillingInterval.MONTHLY,
+      },
+    ],
+  },
 ];
 
 const customers: Customer[] = [
@@ -159,6 +223,16 @@ const subscriptions: Subscription[] = [
     startedAt: "2026-03-01T00:00:00.000Z",
     currentPeriodEnd: "2026-09-01T00:00:00.000Z",
   },
+  {
+    id: "glow-sub-1",
+    organizationId: "org-glow",
+    customerId: "cust-1",
+    membershipProductId: "glow-prod-1",
+    planId: "glow-plan-1",
+    status: SubscriptionStatus.ACTIVE,
+    startedAt: "2026-04-01T00:00:00.000Z",
+    currentPeriodEnd: "2026-12-01T00:00:00.000Z",
+  },
 ];
 
 const redemptions: Redemption[] = [
@@ -182,6 +256,16 @@ const redemptions: Redemption[] = [
     redeemedAt: "2026-06-05T09:10:00.000Z",
     status: RedemptionStatus.COMPLETED,
   },
+  {
+    id: "glow-red-1",
+    organizationId: "org-glow",
+    subscriptionId: "glow-sub-1",
+    benefitId: "glow-ben-1",
+    storeId: "glow-store-1",
+    staffId: "staff-dev-owner",
+    redeemedAt: "2026-05-18T11:00:00.000Z",
+    status: RedemptionStatus.COMPLETED,
+  },
 ];
 
 const offers: Offer[] = [
@@ -200,17 +284,31 @@ const offers: Offer[] = [
     description: "Earn twice the rewards on every visit this Tuesday.",
     badge: "Members only",
   },
+  {
+    id: "glow-off-1",
+    organizationId: "org-glow",
+    title: "New client 20% off",
+    description: "First facial for new members at 20% off.",
+    badge: "New members",
+  },
+  {
+    id: "glow-off-2",
+    organizationId: "org-glow",
+    title: "Bring a friend",
+    description: "Book a treatment together and you both receive a complimentary add-on.",
+    badge: "This month",
+  },
 ];
 
 export class InMemoryOrganizationService implements OrganizationService {
   async getOrganization(id: ID): Promise<Organization | null> {
-    return id === SUNRISE_BAKERY_ORGANIZATION.id ? SUNRISE_BAKERY_ORGANIZATION : null;
+    return ORGANIZATIONS.find((o) => o.id === id) ?? null;
   }
   async getAccount(organizationId: ID): Promise<OrganizationAccount | null> {
-    return organizationId === SUNRISE_BAKERY_ACCOUNT.organizationId ? SUNRISE_BAKERY_ACCOUNT : null;
+    return ACCOUNTS.find((a) => a.organizationId === organizationId) ?? null;
   }
   async getBusinessContext(organizationId: ID): Promise<BusinessContext | null> {
-    return organizationId === SUNRISE_BAKERY_ORGANIZATION.id ? SUNRISE_BAKERY_CONTEXT : null;
+    return BUSINESS_CONTEXTS_BY_ORG[organizationId] ?? null;
   }
   async listStores(organizationId: ID): Promise<Store[]> {
     return stores.filter((s) => s.organizationId === organizationId);

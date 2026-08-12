@@ -184,8 +184,10 @@ export function resolveExperience(input: ResolveExperienceInput): ResolvedExperi
     monogram: displayName.trim().charAt(0).toUpperCase(),
     tagline: content.businessIdentity.tagline,
     heroImageUrl: content.businessIdentity.heroImageUrl,
-    heroPromotion: content.heroPromotion,
-    featuredPromotion: content.featuredPromotion,
+    heroPromotion: templateHas(TemplateSectionKey.HERO_PROMOTION) ? content.heroPromotion : undefined,
+    featuredPromotion: templateHas(TemplateSectionKey.FEATURED_PROMOTION)
+      ? content.featuredPromotion
+      : undefined,
     membership: {
       tier: product.tier ?? product.name,
       productName: product.name,
@@ -201,9 +203,13 @@ export function resolveExperience(input: ResolveExperienceInput): ResolvedExperi
     activity,
     activityCount: input.redemptions.length,
     mostVisited,
-    businessInformation: content.businessInformation,
-    businessPreferences: content.businessPreferences,
-    referral: content.referral,
+    businessInformation: templateHas(TemplateSectionKey.BUSINESS_INFORMATION)
+      ? content.businessInformation
+      : undefined,
+    businessPreferences: templateHas(TemplateSectionKey.BUSINESS_PREFERENCES)
+      ? content.businessPreferences
+      : undefined,
+    referral: templateHas(TemplateSectionKey.REFERRAL) ? content.referral : undefined,
     showOffers,
     showStores,
     showActivity,

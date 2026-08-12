@@ -34,7 +34,7 @@ type OrgGroup = {
  */
 export default function MyCards() {
   const router = useRouter();
-  const { organization, configuration } = useBusiness();
+  const { organization, configuration, setActiveBusiness } = useBusiness();
   const { setActiveContext } = useCustomerContext();
   const { t, formatDate } = useTranslation();
 
@@ -74,7 +74,9 @@ export default function MyCards() {
   const cardStyle = configuration.customerExperience.cardStyle;
 
   const openBusiness = (vm: CardVM) => {
-    // Establish active context, then enter the business experience.
+    // Switch the active business (branding/template/locale) + subscription
+    // context, then enter the business experience.
+    setActiveBusiness(vm.subscription.organizationId);
     setActiveContext(vm.subscription.organizationId, vm.subscription.id);
     router.push(`/business/${vm.subscription.id}`);
   };
