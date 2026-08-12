@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 
@@ -12,6 +13,7 @@ const CUSTOMER_ID = "cust-1";
 export default function Profile() {
   const { theme } = useBusiness();
   const { t, locale, currency, timezone } = useTranslation();
+  const router = useRouter();
 
   const [customer, setCustomer] = useState<Customer | null>(null);
 
@@ -84,6 +86,12 @@ export default function Profile() {
             icon="information-circle-outline"
             onPress={() => {}}
             testID="profile-about"
+          />
+          <ListRow
+            label="Staff Counter"
+            icon="calculator-outline"
+            onPress={() => router.push("/staff/counter")}
+            testID="profile-staff-counter"
           />
         </Card>
       </Section>
