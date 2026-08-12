@@ -70,7 +70,6 @@ export function BusinessExperience({
   const insets = useSafeAreaInsets();
 
   const [tab, setTab] = useState<ExperienceTabKey>("card");
-  const [redeemOpen, setRedeemOpen] = useState(false);
   const [referralOpen, setReferralOpen] = useState(false);
 
   const exp = useMemo(
@@ -163,10 +162,7 @@ export function BusinessExperience({
       />
     ) : null;
 
-  const renderPromotionCard = (
-    promo: NonNullable<typeof exp.heroPromotion>,
-    withRedeem?: boolean,
-  ) => (
+  const renderPromotionCard = (promo: NonNullable<typeof exp.heroPromotion>) => (
     <Card padding="none" style={{ overflow: "hidden" }}>
       <HeroImage uri={promo.imageUrl} />
       <View style={{ padding: theme.spacing.lg, gap: theme.spacing.sm }}>
@@ -184,13 +180,6 @@ export function BusinessExperience({
         <Text variant="bodySmall" color="textSecondary">
           {promo.description}
         </Text>
-        {withRedeem ? (
-          <Button
-            label={t("experience.redeemNow")}
-            onPress={() => setRedeemOpen(true)}
-            testID="experience-promo-redeem"
-          />
-        ) : null}
       </View>
     </Card>
   );
@@ -220,28 +209,6 @@ export function BusinessExperience({
           active={exp.membership.active}
           cardStyle={cardStyle}
         />
-        <Card padding="lg" style={{ marginTop: theme.spacing.md }}>
-          <View style={{ alignItems: "center", gap: theme.spacing.md }}>
-            <QrPlaceholder size={148} testID="experience-qr" />
-            <View style={{ alignItems: "center" }}>
-              <Text variant="caption" color="textMuted">
-                {t("experience.memberId")}
-              </Text>
-              <Text variant="bodyStrong" color="text">
-                {exp.membership.memberId}
-              </Text>
-            </View>
-            <Text variant="bodySmall" color="textMuted">
-              {t("experience.showAtCounter")}
-            </Text>
-            <Button
-              label={t("experience.redeemNow")}
-              fullWidth
-              onPress={() => setRedeemOpen(true)}
-              testID="experience-redeem"
-            />
-          </View>
-        </Card>
       </Section>
 
       {exp.benefits.length ? (
@@ -368,7 +335,7 @@ export function BusinessExperience({
   const OffersTab = (
     <View style={{ gap: theme.spacing.lg }} testID="experience-tab-offers">
       <Section title={t("experience.todaysPerks")}>
-        {exp.featuredPromotion ? renderPromotionCard(exp.featuredPromotion, true) : null}
+        {exp.featuredPromotion ? renderPromotionCard(exp.featuredPromotion) : null}
         <View style={{ gap: theme.spacing.md, marginTop: exp.featuredPromotion ? theme.spacing.md : 0 }}>
           {exp.offers.map((o) => (
             <OfferCard
@@ -674,29 +641,6 @@ export function BusinessExperience({
           );
         })}
       </View>
-
-      {/* Redeem — MODAL presentation (visual only; no real redemption). */}
-      <Modal
-        visible={redeemOpen}
-        onClose={() => setRedeemOpen(false)}
-        title={t("experience.redeemNow")}
-        testID="experience-redeem-modal"
-      >
-        <View style={{ alignItems: "center", gap: theme.spacing.md }}>
-          <QrPlaceholder size={200} />
-          <View style={{ alignItems: "center" }}>
-            <Text variant="caption" color="textMuted">
-              {t("experience.memberId")}
-            </Text>
-            <Text variant="title" color="text">
-              {exp.membership.memberId}
-            </Text>
-          </View>
-          <Text variant="bodySmall" color="textMuted">
-            {t("experience.showAtCounter")}
-          </Text>
-        </View>
-      </Modal>
 
       {/* Referral — MODAL presentation. */}
       <Modal
