@@ -16,7 +16,6 @@ import { useBusiness, useCustomerContext, useTheme, useTranslation } from "@/src
 import { Badge, Button, Card, Modal, StateView, Text } from "@/src/ui";
 
 type Status = "loading" | "error" | "ready";
-const CUSTOMER_ID = "cust-1";
 
 type MembershipBundle = {
   subscription: Subscription;
@@ -36,12 +35,13 @@ type MembershipBundle = {
  */
 export default function DiscoverGateway() {
   const router = useRouter();
-  const { organizationId, productId } = useLocalSearchParams<{
+  const { organizationId, productId, as } = useLocalSearchParams<{
     organizationId: string;
     productId?: string;
+    as?: string;
   }>();
   const { setActiveBusiness } = useBusiness();
-  const { setActiveContext } = useCustomerContext();
+  const { customerId, setActiveContext, setActiveCustomer } = useCustomerContext();
   const { t, formatMoney } = useTranslation();
   const theme = useTheme();
 
@@ -69,8 +69,12 @@ export default function DiscoverGateway() {
       // Load the org's business context dynamically (branding/template/locale).
       setActiveBusiness(organizationId);
 
+      // Optional demo-persona override (?as=cust-new-demo) → active customer.
+      const activeCustomerId = typeof as === "string" && as ? as : customerId;
+      if (typeof as === "string" && as && as !== customerId) setActiveCustomer(as);
+
       // Owned memberships for this organization (if any).
-      const all = await mockServices.subscription.listByCustomer(CUSTOMER_ID);
+      const all = await mockServices.subscription.listByCustomer(activeCustomerId);
       const owned = all.filter((s) => s.organizationId === organizationId);
       const bundles = (
         await Promise.all(
@@ -113,7 +117,7 @@ export default function DiscoverGateway() {
     } catch {
       setStatus("error");
     }
-  }, [organizationId, productId, setActiveBusiness, setActiveContext]);
+  }, [organizationId, productId, as, customerId, setActiveBusiness, setActiveContext, setActiveCustomer]);
 
   useEffect(() => {
     load();

@@ -236,6 +236,14 @@ const customers: Customer[] = [
     phone: "+14155550100",
     createdAt: "2026-02-01T00:00:00.000Z",
   },
+  {
+    // Demo persona for the no-membership Business QR journey: owns nothing.
+    id: "cust-new-demo",
+    fullName: "New Customer Demo",
+    email: "newcustomer@example.com",
+    phone: "5550102002",
+    createdAt: "2026-06-01T00:00:00.000Z",
+  },
 ];
 
 const subscriptions: Subscription[] = [

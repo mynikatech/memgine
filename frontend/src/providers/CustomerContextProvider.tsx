@@ -15,15 +15,21 @@ export type ActiveCustomerContext = {
 };
 
 type CustomerContextValue = ActiveCustomerContext & {
+  /** The active mock customer identity (demo persona switch). */
+  customerId: string;
   setActiveContext: (organizationId: string, subscriptionId: string) => void;
   clearActiveContext: () => void;
   /** Switch the selected subscription WITHIN the current organization. */
   setActiveSubscription: (subscriptionId: string) => void;
+  /** Switch which mock customer the session acts as (demo personas). */
+  setActiveCustomer: (customerId: string) => void;
   /** Semantic alias: entering a selected business (+ subscription) context. */
   enterBusiness: (organizationId: string, subscriptionId: string) => void;
   /** Semantic alias: returning to the Memgine platform "Your Memberships". */
   exitBusiness: () => void;
 };
+
+const DEFAULT_CUSTOMER_ID = "cust-1";
 
 const CustomerCtx = createContext<CustomerContextValue | null>(null);
 
@@ -32,6 +38,7 @@ export function CustomerContextProvider({ children }: { children: ReactNode }) {
     organizationId: null,
     subscriptionId: null,
   });
+  const [customerId, setCustomerId] = useState<string>(DEFAULT_CUSTOMER_ID);
 
   const setActiveContext = useCallback(
     (organizationId: string, subscriptionId: string) => setCtx({ organizationId, subscriptionId }),
@@ -47,17 +54,20 @@ export function CustomerContextProvider({ children }: { children: ReactNode }) {
     (subscriptionId: string) => setCtx((prev) => ({ organizationId: prev.organizationId, subscriptionId })),
     [],
   );
+  const setActiveCustomer = useCallback((id: string) => setCustomerId(id), []);
 
   const value = useMemo<CustomerContextValue>(
     () => ({
       ...ctx,
+      customerId,
       setActiveContext,
       clearActiveContext,
       setActiveSubscription,
+      setActiveCustomer,
       enterBusiness: setActiveContext,
       exitBusiness: clearActiveContext,
     }),
-    [ctx, setActiveContext, clearActiveContext, setActiveSubscription],
+    [ctx, customerId, setActiveContext, clearActiveContext, setActiveSubscription, setActiveCustomer],
   );
 
   return <CustomerCtx.Provider value={value}>{children}</CustomerCtx.Provider>;
