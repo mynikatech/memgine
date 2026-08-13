@@ -93,6 +93,18 @@ export default function Profile() {
             onPress={() => router.push("/staff/counter")}
             testID="profile-staff-counter"
           />
+          <ListRow
+            label="Org Admin"
+            icon="business-outline"
+            onPress={() => router.push("/dashboard")}
+            testID="profile-org-admin"
+          />
+          <ListRow
+            label="Platform Admin"
+            icon="shield-checkmark-outline"
+            onPress={() => router.push("/platform-dashboard")}
+            testID="profile-platform-admin"
+          />
         </Card>
       </Section>
     </Screen>

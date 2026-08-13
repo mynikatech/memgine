@@ -15,6 +15,13 @@ export type StaffRoute = {
   icon: IoniconName;
 };
 
+/** Generic admin sidebar nav item. */
+export type AdminRoute = {
+  title: string;
+  href: string;
+  icon: IoniconName;
+};
+
 /** Customer (mobile/native) bottom-tab shells. */
 export const CUSTOMER_ROUTES: CustomerRoute[] = [
   { name: "home", title: "Home", icon: "home-outline" },
@@ -32,4 +39,27 @@ export const STAFF_ROUTES: StaffRoute[] = [
     href: "/staff/configuration",
     icon: "settings-outline",
   },
+];
+
+/** Organization Admin (web) sidebar. */
+export const ORG_ADMIN_ROUTES: AdminRoute[] = [
+  { title: "Dashboard", href: "/dashboard", icon: "grid-outline" },
+  { title: "Business", href: "/business", icon: "business-outline" },
+  { title: "Stores", href: "/stores", icon: "storefront-outline" },
+  { title: "Staff", href: "/staff-members", icon: "people-outline" },
+  { title: "Memberships", href: "/memberships", icon: "card-outline" },
+  { title: "Benefits", href: "/benefits", icon: "gift-outline" },
+  { title: "Offers", href: "/offers", icon: "pricetags-outline" },
+  { title: "Settings", href: "/settings", icon: "settings-outline" },
+];
+
+/** Platform Admin (web) sidebar. */
+export const PLATFORM_ADMIN_ROUTES: AdminRoute[] = [
+  { title: "Dashboard", href: "/platform-dashboard", icon: "grid-outline" },
+  { title: "Organizations", href: "/organizations", icon: "business-outline" },
+  { title: "Organization Types", href: "/organization-types", icon: "albums-outline" },
+  { title: "Templates", href: "/templates", icon: "duplicate-outline" },
+  { title: "Regional Settings", href: "/regional-settings", icon: "globe-outline" },
+  { title: "Payment Configuration", href: "/payment-configuration", icon: "cash-outline" },
+  { title: "Platform Settings", href: "/platform-settings", icon: "settings-outline" },
 ];
