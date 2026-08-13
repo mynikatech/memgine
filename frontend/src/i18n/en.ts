@@ -11,6 +11,7 @@ export const en = {
     close: "Close",
     save: "Save",
     cancel: "Cancel",
+    done: "Done",
   },
   customer: {
     home: "Home",
@@ -75,6 +76,7 @@ export const en = {
     reference: "Reference",
     status: "Status",
     paid: "Paid",
+    paymentMethod: "Payment method",
   },
   sections: {
     offers: "Offers",

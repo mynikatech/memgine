@@ -418,6 +418,10 @@ export class InMemorySubscriptionService implements SubscriptionService {
       planId: input.planId,
       status: SubscriptionStatus.ACTIVE,
       startedAt: new Date().toISOString(),
+      source: input.source,
+      soldByStaffId: input.staffId,
+      storeId: input.storeId,
+      paymentMethod: input.paymentMethod,
     };
     subscriptions.push(subscription);
     return subscription;

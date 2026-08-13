@@ -1,10 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 
-import { BillingInterval, SubscriptionStatus } from "@/src/core";
-import type { Benefit, MembershipProduct, Subscription } from "@/src/core";
+import { BillingInterval, PaymentMethod, PurchaseSource, SubscriptionStatus } from "@/src/core";
+import type { Benefit, Customer, MembershipProduct, Subscription } from "@/src/core";
 import { mockServices } from "@/src/core";
 import { Screen } from "@/src/layout";
 import { useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
@@ -12,32 +12,38 @@ import { Badge, Button, Card, IconButton, Input, Section, StateView, Text } from
 import { benefitIconForType, BenefitItem, BusinessHeader, ReceiptSummary } from "@/src/ui/domain";
 
 /**
- * Customer acquisition & subscription purchase journey (Stage 4).
- * Entered from a MOCK promotional context (org + product already known):
- * landing → mobile → mock OTP → review → mock payment → subscription → receipt.
- * All external boundaries (OTP, payment) are mock services.
+ * Customer acquisition & subscription purchase journey (Stage 4), reused for
+ * both normal customer purchase and staff-assisted sales (source param).
  */
 type Step = "landing" | "register" | "otp" | "review" | "processing" | "success";
 
-const CUSTOMER_ID = "cust-1";
+const DEFAULT_CUSTOMER_ID = "cust-1";
+const PAYMENT_METHODS: PaymentMethod[] = [PaymentMethod.UPI, PaymentMethod.CARD, PaymentMethod.CASH];
 
 export default function JoinFlow() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ organizationId?: string; productId?: string }>();
+  const params = useLocalSearchParams<{
+    organizationId?: string;
+    productId?: string;
+    customerId?: string;
+    staffId?: string;
+    storeId?: string;
+    source?: string;
+  }>();
   const { organization, configuration, theme } = useBusiness();
   const { setActiveContext } = useCustomerContext();
   const { t, formatMoney, formatDate } = useTranslation();
 
-  // The org/product to purchase come from the caller (e.g. Available
-  // Memberships). Fall back to the active business + its first product so the
-  // flow still works if opened without params.
   const orgId = params.organizationId ?? organization.id;
+  const customerId = params.customerId ?? DEFAULT_CUSTOMER_ID;
+  const isStaffSale = params.source === PurchaseSource.STAFF_ASSISTED;
 
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState<MembershipProduct | null>(null);
   const [benefits, setBenefits] = useState<Benefit[]>([]);
+  const [customer, setCustomer] = useState<Customer | null>(null);
 
-  const [step, setStep] = useState<Step>("landing");
+  const [step, setStep] = useState<Step>(isStaffSale ? "review" : "landing");
   const [mobile, setMobile] = useState("");
   const [requestId, setRequestId] = useState("");
   const [devCode, setDevCode] = useState("");
@@ -45,6 +51,7 @@ export default function JoinFlow() {
   const [otpError, setOtpError] = useState<string | undefined>();
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [reference, setReference] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.UPI);
 
   useEffect(() => {
     (async () => {
@@ -55,8 +62,10 @@ export default function JoinFlow() {
       }
       const prod = pid ? await mockServices.membershipProduct.getProduct(pid) : null;
       const bens = pid ? await mockServices.benefit.listByProduct(pid) : [];
+      const cust = await mockServices.customer.getCustomer(customerId);
       setProduct(prod);
       setBenefits(bens);
+      setCustomer(cust);
       setLoading(false);
     })();
   }, []);
@@ -98,18 +107,22 @@ export default function JoinFlow() {
     });
     const sub = await mockServices.subscription.createSubscription({
       organizationId: orgId,
-      customerId: CUSTOMER_ID,
+      customerId,
       membershipProductId: product.id,
       planId: plan.id,
+      source: isStaffSale ? PurchaseSource.STAFF_ASSISTED : PurchaseSource.CUSTOMER,
+      staffId: isStaffSale ? params.staffId : undefined,
+      storeId: isStaffSale ? params.storeId : undefined,
+      paymentMethod: isStaffSale ? paymentMethod : undefined,
     });
     setSubscription(sub);
     setReference(payment.reference);
-    setActiveContext(sub.organizationId, sub.id);
+    if (!isStaffSale) setActiveContext(sub.organizationId, sub.id);
     setStep("success");
-  }, [product, plan, configuration.localization.defaultCurrency, setActiveContext]);
+  }, [product, plan, configuration.localization.defaultCurrency, setActiveContext, isStaffSale, customerId, orgId, params.staffId, params.storeId, paymentMethod]);
 
-  const close = () => router.replace("/home");
-  const goToCard = () => router.replace("/cards");
+  const close = () => (router.canGoBack() ? router.back() : router.replace("/cards"));
+  const goToCard = () => (isStaffSale ? close() : router.replace("/cards"));
 
   const headerRight = (
     <IconButton icon="close" color="textMuted" onPress={close} testID="join-close" />
@@ -225,11 +238,43 @@ export default function JoinFlow() {
             testID="join-review-summary"
             meta={[
               { label: t("join.business"), value: organization.displayName },
+              ...(isStaffSale
+                ? [{ label: t("join.customer"), value: customer?.fullName ?? customerId }]
+                : []),
               { label: t("join.plan"), value: `${product.tier ?? product.name} · ${intervalLabel}` },
             ]}
             lines={[{ label: product.name, amountMinor: plan.price.amountMinor }]}
             totalMinor={plan.price.amountMinor}
           />
+          {isStaffSale ? (
+            <Section title={t("join.paymentMethod")}>
+              <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+                {PAYMENT_METHODS.map((m) => {
+                  const on = m === paymentMethod;
+                  return (
+                    <Pressable
+                      key={m}
+                      testID={`join-pay-${m}`}
+                      onPress={() => setPaymentMethod(m)}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 12,
+                        alignItems: "center",
+                        borderRadius: theme.radius.md,
+                        borderWidth: 1,
+                        borderColor: on ? theme.colors.primary : theme.colors.border,
+                        backgroundColor: on ? theme.colors.primarySoft : theme.colors.background,
+                      }}
+                    >
+                      <Text variant="bodyStrong" color={on ? "primary" : "textMuted"}>
+                        {m === "CARD" ? "Card" : m === "CASH" ? "Cash" : "UPI"}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </Section>
+          ) : null}
           <Section title={t("join.includedBenefits")}>
             <Card padding="lg">
               <View style={{ gap: 14 }}>
@@ -278,8 +323,11 @@ export default function JoinFlow() {
             title={t("join.receiptTitle")}
             meta={[
               { label: t("join.business"), value: organization.displayName },
-              { label: t("join.customer"), value: "Ada Baker" },
+              { label: t("join.customer"), value: customer?.fullName ?? customerId },
               { label: t("join.plan"), value: `${product.tier ?? product.name} · ${intervalLabel}` },
+              ...(isStaffSale && subscription.paymentMethod
+                ? [{ label: t("join.paymentMethod"), value: subscription.paymentMethod }]
+                : []),
               { label: t("join.date"), value: formatDate(subscription.startedAt) },
               { label: t("join.reference"), value: reference },
               { label: t("join.status"), value: t("join.paid") },
@@ -288,7 +336,12 @@ export default function JoinFlow() {
             totalMinor={plan.price.amountMinor}
           />
 
-          <Button label={t("join.viewCard")} fullWidth onPress={goToCard} testID="join-view-card" />
+          <Button
+            label={isStaffSale ? t("common.done") : t("join.viewCard")}
+            fullWidth
+            onPress={goToCard}
+            testID="join-view-card"
+          />
         </View>
       ) : null}
     </Screen>

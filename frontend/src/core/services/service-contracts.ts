@@ -5,6 +5,8 @@ import {
   Benefit,
   Customer,
   MembershipProduct,
+  PaymentMethod,
+  PurchaseSource,
   Offer,
   Organization,
   OrganizationAccount,
@@ -38,6 +40,11 @@ export interface CreateSubscriptionInput {
   customerId: ID;
   membershipProductId: ID;
   planId: ID;
+  /** Staff-assisted purchase attribution (optional). */
+  source?: PurchaseSource;
+  staffId?: ID;
+  storeId?: ID;
+  paymentMethod?: PaymentMethod;
 }
 
 export interface PerformRedemptionInput {

@@ -165,6 +165,24 @@ export interface Subscription {
   status: SubscriptionStatus;
   startedAt: ISODateString;
   currentPeriodEnd?: ISODateString;
+  /** Purchase attribution (mirrors redemption attribution). */
+  source?: PurchaseSource;
+  soldByStaffId?: ID;
+  storeId?: ID;
+  paymentMethod?: PaymentMethod;
+}
+
+/** How a membership purchase was initiated. */
+export enum PurchaseSource {
+  CUSTOMER = "CUSTOMER",
+  STAFF_ASSISTED = "STAFF_ASSISTED",
+}
+
+/** Mock payment method for staff-assisted sales. */
+export enum PaymentMethod {
+  UPI = "UPI",
+  CARD = "CARD",
+  CASH = "CASH",
 }
 
 /* ------------------------------------------------------------------ *

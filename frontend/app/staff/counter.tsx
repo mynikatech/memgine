@@ -1,11 +1,14 @@
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
+  BillingInterval,
   Customer,
   encodeRedemptionToken,
   listActiveMemberships,
   MembershipOption,
+  MembershipProduct,
   mockServices,
   redeemBenefits,
   redeemFromToken,
@@ -16,7 +19,7 @@ import {
   Store,
   SubscriptionStatus,
 } from "@/src/core";
-import { useBusiness } from "@/src/providers";
+import { useBusiness, useTranslation } from "@/src/providers";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
 
 const services: RedemptionServices = {
@@ -27,7 +30,7 @@ const services: RedemptionServices = {
   membershipProduct: mockServices.membershipProduct,
 };
 
-type Mode = "qr" | "phone" | "assisted";
+type Mode = "qr" | "phone" | "assisted" | "new";
 
 const RESULT_STYLE: Record<RedemptionResult["kind"], { fg: string; bg: string }> = {
   SUCCESS: { fg: "#15803D", bg: "#DCFCE7" },
@@ -39,13 +42,19 @@ const RESULT_STYLE: Record<RedemptionResult["kind"], { fg: string; bg: string }>
 export default function StaffCounter() {
   // Staff context is FIXED to the authenticated staff's org (mock principal).
   const { organization, principal } = useBusiness();
+  const router = useRouter();
+  const { t, formatMoney } = useTranslation();
   const orgId = organization.id;
   const staffId = principal.kind === "STAFF" ? principal.staffId : "staff";
   const staffRole = principal.kind === "STAFF" ? principal.role : "STAFF";
 
   const [store, setStore] = useState<Store | null>(null);
   const [promoCode, setPromoCode] = useState("");
+  const [action, setAction] = useState<"redeem" | "sell">("redeem");
   const [mode, setMode] = useState<Mode>("qr");
+  const [availableForSale, setAvailableForSale] = useState<MembershipProduct[]>([]);
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
   const [result, setResult] = useState<RedemptionResult | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -84,6 +93,8 @@ export default function StaffCounter() {
     setSearchTerm("");
     setSearchResults([]);
     setSearched(false);
+    setNewName("");
+    setNewPhone("");
     setCustomer(null);
     setMemberships([]);
     setSelectedSubId("");
@@ -147,11 +158,49 @@ export default function StaffCounter() {
     setCustomer(cust);
     const opts = await listActiveMemberships(services, orgId, customerId);
     setMemberships(opts);
+    // Available published products for this org the customer does not own.
+    const catalog = await mockServices.membershipProduct.listProducts(orgId);
+    const ownedProductIds = new Set(opts.map((o) => o.subscription.membershipProductId));
+    setAvailableForSale(catalog.filter((p) => p.isPublished && !ownedProductIds.has(p.id)));
     if (opts.length) selectMembership(opts[0].subscription.id, opts);
     else {
       setSelectedSubId("");
       setSelectedBenefitIds(new Set());
     }
+  };
+
+  const createOrFindThenIdentify = async () => {
+    setError("");
+    if (!newName.trim() || !newPhone.trim()) {
+      setError("Enter both name and phone.");
+      return;
+    }
+    // Reuse an existing customer with this phone, else create a new mock one.
+    const existing = (await mockServices.customer.findCustomers({ phone: newPhone.trim() }))[0];
+    const cust = existing ?? (await mockServices.customer.createCustomer({
+      fullName: newName.trim(),
+      phone: newPhone.trim(),
+    }));
+    await identifyCustomer(cust.id);
+  };
+
+  const priceLabel = (p: MembershipProduct) => {
+    const plan = p.plans[0];
+    if (!plan) return "";
+    const interval =
+      plan.billingInterval === BillingInterval.MONTHLY
+        ? t("join.perMonth")
+        : plan.billingInterval === BillingInterval.YEARLY
+          ? t("join.perYear")
+          : t("join.oneTime");
+    return `${formatMoney(plan.price.amountMinor)} · ${interval}`;
+  };
+
+  const sellProduct = (productId: string) => {
+    if (!customer) return;
+    router.push(
+      `/join?organizationId=${orgId}&productId=${productId}&customerId=${customer.id}&staffId=${staffId}&storeId=${storeId}&source=STAFF_ASSISTED`,
+    );
   };
 
   /* --------------------------------- actions -------------------------------- */
@@ -306,6 +355,49 @@ export default function StaffCounter() {
     );
   };
 
+  const renderSaleCatalog = () => {
+    if (!customer) return null;
+    return (
+      <View style={{ gap: SPACING.xs }}>
+        <Text style={styles.identified}>Customer: {customer.fullName}</Text>
+        {memberships.length ? (
+          <>
+            <Text style={styles.label}>Current memberships</Text>
+            {memberships.map((o) => (
+              <Text key={o.subscription.id} style={styles.muted}>
+                • {o.tier ?? o.productName} (owned)
+              </Text>
+            ))}
+          </>
+        ) : null}
+        <Text style={styles.label}>Available memberships</Text>
+        {availableForSale.length ? (
+          availableForSale.map((p) => (
+            <View key={p.id} style={styles.saleRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.benefitTitle}>{p.tier ?? p.name}</Text>
+                <Text style={styles.muted}>{priceLabel(p)}</Text>
+              </View>
+              <Pressable
+                testID={`counter-sell-${p.id}`}
+                onPress={() => sellProduct(p.id)}
+                style={styles.primaryBtnInline}
+              >
+                <Text style={styles.primaryBtnText}>Sell</Text>
+              </Pressable>
+            </View>
+          ))
+        ) : (
+          <Text style={styles.muted}>No available products.</Text>
+        )}
+      </View>
+    );
+  };
+
+  const afterIdentify = (method: RedemptionMethod) =>
+    action === "sell" ? renderSaleCatalog() : renderBenefitSelection(method);
+
+
   return (
     <ScrollView
       testID="staff-counter-screen"
@@ -343,11 +435,44 @@ export default function StaffCounter() {
         />
       </View>
 
+      {/* Action: Redeem vs Sell */}
+      <View style={styles.modeRow}>
+        {(["redeem", "sell"] as const).map((a) => {
+          const on = a === action;
+          return (
+            <Pressable
+              key={a}
+              testID={`counter-action-${a}`}
+              onPress={() => {
+                setAction(a);
+                setMode(a === "redeem" ? "qr" : "phone");
+                resetIdentity();
+              }}
+              style={[styles.modeBtn, on && styles.modeBtnOn]}
+            >
+              <Text style={[styles.modeText, on && styles.modeTextOn]}>
+                {a === "redeem" ? "Redeem" : "Sell Membership"}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
       {/* Mode */}
       <View style={styles.modeRow}>
-        {(["qr", "phone", "assisted"] as Mode[]).map((m) => {
+        {(action === "redeem"
+          ? (["qr", "phone", "assisted"] as Mode[])
+          : (["phone", "assisted", "new"] as Mode[])
+        ).map((m) => {
           const on = m === mode;
-          const label = m === "qr" ? "Scan QR" : m === "phone" ? "Phone + OTP" : "Staff-Assisted";
+          const label =
+            m === "qr"
+              ? "Scan QR"
+              : m === "phone"
+                ? "Phone + OTP"
+                : m === "assisted"
+                  ? "Staff-Assisted"
+                  : "New Customer";
           return (
             <Pressable
               key={m}
@@ -364,8 +489,8 @@ export default function StaffCounter() {
         })}
       </View>
 
-      {/* QR */}
-      {mode === "qr" ? (
+      {/* QR (redeem only) */}
+      {action === "redeem" && mode === "qr" ? (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Scan Redemption QR</Text>
           <Text style={styles.muted}>Paste the customer&apos;s redemption token (mocked scanner).</Text>
@@ -440,7 +565,7 @@ export default function StaffCounter() {
               </Pressable>
             </>
           )}
-          {renderBenefitSelection(RedemptionMethod.OTP)}
+          {afterIdentify(RedemptionMethod.OTP)}
         </View>
       ) : null}
 
@@ -486,7 +611,42 @@ export default function StaffCounter() {
             </View>
           ) : null}
 
-          {renderBenefitSelection(RedemptionMethod.STAFF_ASSISTED)}
+          {afterIdentify(RedemptionMethod.STAFF_ASSISTED)}
+        </View>
+      ) : null}
+
+      {/* New Customer (sell only) */}
+      {action === "sell" && mode === "new" ? (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>New Customer</Text>
+          <Text style={styles.muted}>
+            Create a new member. If the phone already exists, that customer is used.
+          </Text>
+          {!customer ? (
+            <>
+              <TextInput
+                testID="counter-new-name"
+                value={newName}
+                onChangeText={setNewName}
+                placeholder="Full name"
+                placeholderTextColor={COLORS.textMuted}
+                style={styles.input}
+              />
+              <TextInput
+                testID="counter-new-phone"
+                value={newPhone}
+                onChangeText={setNewPhone}
+                placeholder="Phone number"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="phone-pad"
+                style={styles.input}
+              />
+              <Pressable testID="counter-new-continue" onPress={createOrFindThenIdentify} style={styles.primaryBtn}>
+                <Text style={styles.primaryBtnText}>Continue</Text>
+              </Pressable>
+            </>
+          ) : null}
+          {afterIdentify(RedemptionMethod.STAFF_ASSISTED)}
         </View>
       ) : null}
 
@@ -555,6 +715,16 @@ const styles = StyleSheet.create({
   inputMultiline: { minHeight: 70, textAlignVertical: "top" },
   searchRow: { flexDirection: "row", gap: 8, alignItems: "center" },
   customerRow: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    padding: 12,
+    backgroundColor: COLORS.background,
+  },
+  saleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: RADIUS.sm,
