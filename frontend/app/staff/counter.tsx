@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
-  BUSINESS_CONTEXTS,
   Customer,
   encodeRedemptionToken,
   listActiveMemberships,
@@ -17,9 +16,8 @@ import {
   Store,
   SubscriptionStatus,
 } from "@/src/core";
+import { useBusiness } from "@/src/providers";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
-
-const STAFF_ID = "staff-dev-owner";
 
 const services: RedemptionServices = {
   subscription: mockServices.subscription,
@@ -29,12 +27,7 @@ const services: RedemptionServices = {
   membershipProduct: mockServices.membershipProduct,
 };
 
-const businesses = Object.values(BUSINESS_CONTEXTS).map((c) => ({
-  id: c.organization.id,
-  name: c.organization.displayName,
-}));
-
-type Mode = "qr" | "phone" | "id";
+type Mode = "qr" | "phone" | "assisted";
 
 const RESULT_STYLE: Record<RedemptionResult["kind"], { fg: string; bg: string }> = {
   SUCCESS: { fg: "#15803D", bg: "#DCFCE7" },
@@ -44,9 +37,13 @@ const RESULT_STYLE: Record<RedemptionResult["kind"], { fg: string; bg: string }>
 };
 
 export default function StaffCounter() {
-  const [orgId, setOrgId] = useState(businesses[0]?.id ?? "");
-  const [stores, setStores] = useState<Store[]>([]);
-  const [storeId, setStoreId] = useState("");
+  // Staff context is FIXED to the authenticated staff's org (mock principal).
+  const { organization, principal } = useBusiness();
+  const orgId = organization.id;
+  const staffId = principal.kind === "STAFF" ? principal.staffId : "staff";
+  const staffRole = principal.kind === "STAFF" ? principal.role : "STAFF";
+
+  const [store, setStore] = useState<Store | null>(null);
   const [promoCode, setPromoCode] = useState("");
   const [mode, setMode] = useState<Mode>("qr");
   const [result, setResult] = useState<RedemptionResult | null>(null);
@@ -64,14 +61,18 @@ export default function StaffCounter() {
   const [otpCode, setOtpCode] = useState("");
   const [otpSent, setOtpSent] = useState(false);
 
-  // Membership ID
-  const [membershipIdInput, setMembershipIdInput] = useState("");
+  // Staff-assisted lookup
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchResults, setSearchResults] = useState<Customer[]>([]);
+  const [searched, setSearched] = useState(false);
 
   // Identified customer (manual flows)
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [memberships, setMemberships] = useState<MembershipOption[]>([]);
   const [selectedSubId, setSelectedSubId] = useState("");
   const [selectedBenefitIds, setSelectedBenefitIds] = useState<Set<string>>(new Set());
+
+  const storeId = store?.id ?? "";
 
   const resetIdentity = useCallback(() => {
     setTokenText("");
@@ -80,7 +81,9 @@ export default function StaffCounter() {
     setDevCode("");
     setOtpCode("");
     setOtpSent(false);
-    setMembershipIdInput("");
+    setSearchTerm("");
+    setSearchResults([]);
+    setSearched(false);
     setCustomer(null);
     setMemberships([]);
     setSelectedSubId("");
@@ -89,7 +92,7 @@ export default function StaffCounter() {
     setError("");
   }, []);
 
-  // Load store context + generate sample QR tokens whenever the business changes.
+  // Load fixed store context + generate sample QR tokens for the staff's org.
   useEffect(() => {
     let active = true;
     (async () => {
@@ -116,8 +119,7 @@ export default function StaffCounter() {
         });
       }
       if (!active) return;
-      setStores(orgStores);
-      setStoreId(orgStores[0]?.id ?? "");
+      setStore(orgStores[0] ?? null);
       setSamples(built);
       resetIdentity();
     })();
@@ -129,7 +131,7 @@ export default function StaffCounter() {
   const ctx = (method: RedemptionMethod): RedemptionContext => ({
     organizationId: orgId,
     storeId,
-    staffId: STAFF_ID,
+    staffId,
     method,
     promoCode: promoCode.trim() || undefined,
   });
@@ -140,17 +142,13 @@ export default function StaffCounter() {
     setSelectedBenefitIds(new Set((opt?.benefits ?? []).filter((b) => b.available).map((b) => b.id)));
   };
 
-  const identifyCustomer = async (customerId: string, preselectSubId?: string) => {
+  const identifyCustomer = async (customerId: string) => {
     const cust = await mockServices.customer.getCustomer(customerId);
     setCustomer(cust);
     const opts = await listActiveMemberships(services, orgId, customerId);
     setMemberships(opts);
-    if (opts.length) {
-      const pre = preselectSubId && opts.some((o) => o.subscription.id === preselectSubId)
-        ? preselectSubId
-        : opts[0].subscription.id;
-      selectMembership(pre, opts);
-    } else {
+    if (opts.length) selectMembership(opts[0].subscription.id, opts);
+    else {
       setSelectedSubId("");
       setSelectedBenefitIds(new Set());
     }
@@ -188,18 +186,21 @@ export default function StaffCounter() {
     await identifyCustomer(res.customerId);
   };
 
-  const findByMembershipId = async () => {
+  const runSearch = async () => {
     setError("");
-    const sub = await mockServices.subscription.getSubscription(membershipIdInput.trim());
-    if (!sub) {
-      setError("No membership found for that ID.");
+    setCustomer(null);
+    setMemberships([]);
+    const term = searchTerm.trim();
+    if (!term) {
+      setError("Enter a phone number or name to search.");
       return;
     }
-    if (sub.organizationId !== orgId) {
-      setError("That membership belongs to a different business.");
-      return;
-    }
-    await identifyCustomer(sub.customerId, sub.id);
+    const byName = await mockServices.customer.findCustomers({ nameContains: term });
+    const byPhone = await mockServices.customer.findCustomers({ phone: term });
+    const merged = [...byName];
+    for (const c of byPhone) if (!merged.some((m) => m.id === c.id)) merged.push(c);
+    setSearchResults(merged);
+    setSearched(true);
   };
 
   const runManual = async (method: RedemptionMethod) => {
@@ -210,7 +211,6 @@ export default function StaffCounter() {
       benefitIds: Array.from(selectedBenefitIds),
     });
     setResult(res);
-    // Refresh availability so re-redeeming reflects freshly-used benefits.
     if (customer) {
       const opts = await listActiveMemberships(services, orgId, customer.id);
       setMemberships(opts);
@@ -315,46 +315,23 @@ export default function StaffCounter() {
       <Text style={styles.h1}>Counter</Text>
       <Text style={styles.muted}>Redeem member benefits — QR or staff-assisted.</Text>
 
-      {/* Context */}
+      {/* Fixed staff context (no selectors) */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Store context</Text>
-        <Text style={styles.label}>Business</Text>
-        <View style={styles.rowWrap}>
-          {businesses.map((b) => {
-            const on = b.id === orgId;
-            return (
-              <Pressable
-                key={b.id}
-                testID={`counter-org-${b.id}`}
-                onPress={() => setOrgId(b.id)}
-                style={[styles.chip, on && styles.chipOn]}
-              >
-                <Text style={[styles.chipText, on && styles.chipTextOn]}>{b.name}</Text>
-              </Pressable>
-            );
-          })}
+        <Text style={styles.cardTitle}>Signed in</Text>
+        <View style={styles.ctxRow}>
+          <Text style={styles.ctxLabel}>Business</Text>
+          <Text style={styles.ctxValue}>{organization.displayName}</Text>
         </View>
-
-        {stores.length > 0 ? (
-          <>
-            <Text style={styles.label}>Store</Text>
-            <View style={styles.rowWrap}>
-              {stores.map((s) => {
-                const on = s.id === storeId;
-                return (
-                  <Pressable
-                    key={s.id}
-                    onPress={() => setStoreId(s.id)}
-                    style={[styles.chip, on && styles.chipOn]}
-                  >
-                    <Text style={[styles.chipText, on && styles.chipTextOn]}>{s.name}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </>
-        ) : null}
-
+        <View style={styles.ctxRow}>
+          <Text style={styles.ctxLabel}>Store</Text>
+          <Text style={styles.ctxValue}>{store?.name ?? "—"}</Text>
+        </View>
+        <View style={styles.ctxRow}>
+          <Text style={styles.ctxLabel}>Staff</Text>
+          <Text style={styles.ctxValue}>
+            {staffId} · {staffRole}
+          </Text>
+        </View>
         <Text style={styles.label}>Staff promo / referral code (optional)</Text>
         <TextInput
           testID="counter-promo"
@@ -364,14 +341,13 @@ export default function StaffCounter() {
           placeholderTextColor={COLORS.textMuted}
           style={styles.input}
         />
-        <Text style={styles.tiny}>Staff: {STAFF_ID}</Text>
       </View>
 
       {/* Mode */}
       <View style={styles.modeRow}>
-        {(["qr", "phone", "id"] as Mode[]).map((m) => {
+        {(["qr", "phone", "assisted"] as Mode[]).map((m) => {
           const on = m === mode;
-          const label = m === "qr" ? "Scan QR" : m === "phone" ? "Phone + OTP" : "Membership ID";
+          const label = m === "qr" ? "Scan QR" : m === "phone" ? "Phone + OTP" : "Staff-Assisted";
           return (
             <Pressable
               key={m}
@@ -464,28 +440,53 @@ export default function StaffCounter() {
               </Pressable>
             </>
           )}
-          {renderBenefitSelection(RedemptionMethod.PHONE_OTP)}
+          {renderBenefitSelection(RedemptionMethod.OTP)}
         </View>
       ) : null}
 
-      {/* Membership ID */}
-      {mode === "id" ? (
+      {/* Staff-Assisted lookup (no OTP) */}
+      {mode === "assisted" ? (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Membership ID</Text>
-          <Text style={styles.muted}>Trusted staff-assisted redemption (no OTP).</Text>
-          <TextInput
-            testID="counter-id-input"
-            value={membershipIdInput}
-            onChangeText={setMembershipIdInput}
-            placeholder="Membership ID (e.g. sub-2, glow-sub-1)"
-            placeholderTextColor={COLORS.textMuted}
-            autoCapitalize="none"
-            style={styles.input}
-          />
-          <Pressable testID="counter-find-id" onPress={findByMembershipId} style={styles.primaryBtn}>
-            <Text style={styles.primaryBtnText}>Find Member</Text>
-          </Pressable>
-          {renderBenefitSelection(RedemptionMethod.MEMBERSHIP_ID)}
+          <Text style={styles.cardTitle}>Staff-Assisted Lookup</Text>
+          <Text style={styles.muted}>
+            For customers without their phone/app. Search by phone or name — no OTP.
+          </Text>
+          <View style={styles.searchRow}>
+            <TextInput
+              testID="counter-search-input"
+              value={searchTerm}
+              onChangeText={setSearchTerm}
+              placeholder="Customer phone or name"
+              placeholderTextColor={COLORS.textMuted}
+              autoCapitalize="none"
+              style={[styles.input, { flex: 1 }]}
+            />
+            <Pressable testID="counter-search" onPress={runSearch} style={styles.primaryBtnInline}>
+              <Text style={styles.primaryBtnText}>Search</Text>
+            </Pressable>
+          </View>
+
+          {searched && searchResults.length === 0 ? (
+            <Text style={styles.muted}>No matching customers.</Text>
+          ) : null}
+
+          {!customer && searchResults.length > 0 ? (
+            <View style={{ gap: 6 }}>
+              {searchResults.map((c) => (
+                <Pressable
+                  key={c.id}
+                  testID={`counter-customer-${c.id}`}
+                  onPress={() => identifyCustomer(c.id)}
+                  style={styles.customerRow}
+                >
+                  <Text style={styles.benefitTitle}>{c.fullName}</Text>
+                  <Text style={styles.muted}>{c.phone ?? c.email ?? c.id}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
+          {renderBenefitSelection(RedemptionMethod.STAFF_ASSISTED)}
         </View>
       ) : null}
 
@@ -538,6 +539,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   cardTitle: { fontSize: 16, fontWeight: "700", color: COLORS.text },
+  ctxRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  ctxLabel: { fontSize: 13, color: COLORS.textMuted },
+  ctxValue: { fontSize: 14, fontWeight: "600", color: COLORS.text },
   input: {
     backgroundColor: COLORS.background,
     borderWidth: 1,
@@ -549,6 +553,14 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
   inputMultiline: { minHeight: 70, textAlignVertical: "top" },
+  searchRow: { flexDirection: "row", gap: 8, alignItems: "center" },
+  customerRow: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    padding: 12,
+    backgroundColor: COLORS.background,
+  },
   rowWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
     borderWidth: 1,
@@ -580,6 +592,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: "center",
     marginTop: 4,
+  },
+  primaryBtnInline: {
+    backgroundColor: COLORS.accent,
+    borderRadius: RADIUS.sm,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignItems: "center",
+    justifyContent: "center",
   },
   primaryBtnText: { color: COLORS.background, fontSize: 15, fontWeight: "700" },
   btnDisabled: { opacity: 0.45 },

@@ -304,7 +304,7 @@ const redemptions: Redemption[] = [
     benefitId: "glow-ben-1",
     storeId: "glow-store-1",
     staffId: "staff-dev-owner",
-    method: RedemptionMethod.MEMBERSHIP_ID,
+    method: RedemptionMethod.STAFF_ASSISTED,
     redeemedAt: "2026-05-18T11:00:00.000Z",
     status: RedemptionStatus.COMPLETED,
   },

@@ -180,8 +180,8 @@ export enum RedemptionStatus {
 /** How a redemption was performed at the counter. */
 export enum RedemptionMethod {
   QR = "QR",
-  PHONE_OTP = "PHONE_OTP",
-  MEMBERSHIP_ID = "MEMBERSHIP_ID",
+  OTP = "OTP",
+  STAFF_ASSISTED = "STAFF_ASSISTED",
 }
 
 export interface Redemption {
