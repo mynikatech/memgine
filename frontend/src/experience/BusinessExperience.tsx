@@ -34,8 +34,8 @@ import { ExperienceTabKey, resolveExperience } from "./resolve-experience";
  */
 type Props = {
   content: TemplateDefaultContent;
-  subscription: Subscription;
-  product: MembershipProduct;
+  subscription?: Subscription;
+  product?: MembershipProduct;
   benefits: Benefit[];
   offers: Offer[];
   stores: Store[];
@@ -125,6 +125,7 @@ export function BusinessExperience({
     });
 
   const redeemSelected = () => {
+    if (!subscription) return;
     const ids = exp.redeemableBenefits
       .filter((b) => b.available && selectedBenefitIds.has(b.id))
       .map((b) => b.id);
@@ -200,18 +201,20 @@ export function BusinessExperience({
     <View style={{ gap: theme.spacing.lg }} testID="experience-tab-card">
       {exp.heroPromotion ? renderPromotionCard(exp.heroPromotion) : null}
 
-      <Section title={t("experience.yourMemberships")}>
-        <MembershipCard
-          testID="experience-membership-card"
-          organizationName={exp.displayName}
-          tier={exp.membership.tier}
-          validUntil={exp.membership.validUntilLabel}
-          active={exp.membership.active}
-          cardStyle={cardStyle}
-        />
-      </Section>
+      {exp.membership ? (
+        <Section title={t("experience.yourMemberships")}>
+          <MembershipCard
+            testID="experience-membership-card"
+            organizationName={exp.displayName}
+            tier={exp.membership.tier}
+            validUntil={exp.membership.validUntilLabel}
+            active={exp.membership.active}
+            cardStyle={cardStyle}
+          />
+        </Section>
+      ) : null}
 
-      {exp.benefits.length ? (
+      {exp.membership && exp.benefits.length ? (
         <Section title={t("experience.yourBenefits")}>
           <Card padding="lg">
             <View style={{ gap: 18 }}>
@@ -229,7 +232,7 @@ export function BusinessExperience({
         </Section>
       ) : null}
 
-      {exp.membership.active && exp.redeemableBenefits.length ? (
+      {exp.membership?.active && exp.redeemableBenefits.length ? (
         <Section title={t("experience.redeemBenefits")}>
           <Card padding="lg" testID="experience-redeem-benefits">
             <View style={{ gap: 14 }}>

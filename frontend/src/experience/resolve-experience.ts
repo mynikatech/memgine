@@ -68,7 +68,7 @@ export interface ResolvedExperience {
   heroImageUrl: string;
   heroPromotion?: DefaultPromotionContent;
   featuredPromotion?: DefaultPromotionContent;
-  membership: ResolvedMembership;
+  membership?: ResolvedMembership;
   benefits: Benefit[];
   redeemableBenefits: RedeemableBenefit[];
   offers: Offer[];
@@ -90,8 +90,8 @@ export interface ResolveExperienceInput {
   configuration: BusinessConfiguration;
   template: TemplateDefinition;
   content: TemplateDefaultContent;
-  subscription: Subscription;
-  product: MembershipProduct;
+  subscription?: Subscription;
+  product?: MembershipProduct;
   benefits: Benefit[];
   offers: Offer[];
   stores: Store[];
@@ -114,26 +114,40 @@ export function resolveExperience(input: ResolveExperienceInput): ResolvedExperi
   const showStores = cx.showStores && templateHas(TemplateSectionKey.STORES);
   const showActivity = cx.showActivity && templateHas(TemplateSectionKey.ACTIVITY);
 
-  // Membership status is domain-derived (subscription + product).
-  const active = subscription.status === SubscriptionStatus.ACTIVE;
-  const validUntilLabel = subscription.currentPeriodEnd
-    ? input.formatDate(subscription.currentPeriodEnd)
-    : "—";
-  const daysRemaining = subscription.currentPeriodEnd
-    ? Math.max(0, Math.ceil((new Date(subscription.currentPeriodEnd).getTime() - Date.now()) / DAY_MS))
-    : null;
-  const memberId = `MG-${subscription.id.toUpperCase().replace(/[^A-Z0-9]/g, "")}`;
+  // Membership status is domain-derived (subscription + product). The focused
+  // membership is OPTIONAL — an org-level (QR) entry may have no owned membership.
+  let membership: ResolvedMembership | undefined;
+  if (subscription && product) {
+    const active = subscription.status === SubscriptionStatus.ACTIVE;
+    const validUntilLabel = subscription.currentPeriodEnd
+      ? input.formatDate(subscription.currentPeriodEnd)
+      : "—";
+    const daysRemaining = subscription.currentPeriodEnd
+      ? Math.max(
+          0,
+          Math.ceil((new Date(subscription.currentPeriodEnd).getTime() - Date.now()) / DAY_MS),
+        )
+      : null;
+    membership = {
+      tier: product.tier ?? product.name,
+      productName: product.name,
+      description: product.description ?? content.membership.description,
+      active,
+      validUntilLabel,
+      daysRemaining,
+      memberId: `MG-${subscription.id.toUpperCase().replace(/[^A-Z0-9]/g, "")}`,
+    };
+  }
 
   const benefitsById = new Map(input.benefits.map((b) => [b.id, b]));
   const storesById = new Map(input.stores.map((s) => [s.id, s]));
 
   // A benefit is unavailable (already used) if it appears in this
-  // subscription's redemption history.
+  // subscription's redemption history. Empty when there is no focused membership.
   const usedBenefitIds = new Set(input.redemptions.map((r) => r.benefitId));
-  const redeemableBenefits: RedeemableBenefit[] = input.benefits.map((b) => ({
-    ...b,
-    available: !usedBenefitIds.has(b.id),
-  }));
+  const redeemableBenefits: RedeemableBenefit[] = membership
+    ? input.benefits.map((b) => ({ ...b, available: !usedBenefitIds.has(b.id) }))
+    : [];
 
   const activity: ResolvedActivity[] = input.redemptions.map((r: Redemption) => ({
     id: r.id,
@@ -199,16 +213,8 @@ export function resolveExperience(input: ResolveExperienceInput): ResolvedExperi
     featuredPromotion: templateHas(TemplateSectionKey.FEATURED_PROMOTION)
       ? content.featuredPromotion
       : undefined,
-    membership: {
-      tier: product.tier ?? product.name,
-      productName: product.name,
-      description: product.description ?? content.membership.description,
-      active,
-      validUntilLabel,
-      daysRemaining,
-      memberId,
-    },
-    benefits: input.benefits,
+    membership,
+    benefits: membership ? input.benefits : [],
     redeemableBenefits,
     offers: input.offers,
     stores: input.stores,
