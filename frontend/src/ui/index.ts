@@ -13,3 +13,4 @@ export { Section } from "./Section";
 export { StateView } from "./StateView";
 export { Surface } from "./Surface";
 export { Text } from "./Text";
+export { TextArea } from "./TextArea";
