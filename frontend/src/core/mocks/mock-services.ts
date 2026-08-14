@@ -64,7 +64,33 @@ const BUSINESS_CONTEXTS_BY_ORG: Record<string, BusinessContext> = {
   [GLOW_STUDIO_ORGANIZATION.id]: GLOW_STUDIO_CONTEXT,
 };
 const ORGANIZATION_DETAILS: OrganizationDetails[] = [
-  // Sunrise Bakery mock
+  {
+    id: "details-org-sunrise-bakery",
+    organizationId: "org-sunrise",
+    registrationNumber: "",
+    gstNumber: "",
+    supportEmail: "support@sunrisebakery.ca",
+    supportPhone: {
+      countryId: "country-ca",
+      callingCode: "+1",
+      number: "",
+    },
+    aboutOrganization: "Freshly baked breads, pastries, and treats made daily.",
+    address: {
+      line1: "",
+      line2: "",
+      city: "Toronto",
+      region: "Ontario",
+      postalCode: "",
+      countryCode: "CA",
+    },
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+    isDeleted: false,
+    versionNo: 1,
+  },
 ];
 
 const ORGANIZATION_BRANDING: OrganizationBranding[] = [

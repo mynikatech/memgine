@@ -16,7 +16,14 @@ type ModalProps = {
 };
 
 /** Dialog foundation — themed sheet with backdrop; optional scrollable body. */
-export function Modal({ visible, onClose, title, children, scrollable = false, testID }: ModalProps) {
+export function Modal({
+  visible,
+  onClose,
+  title,
+  children,
+  scrollable = false,
+  testID,
+}: ModalProps) {
   const theme = useTheme();
 
   const header = (
@@ -41,7 +48,12 @@ export function Modal({ visible, onClose, title, children, scrollable = false, t
   );
 
   return (
-    <RNModal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <RNModal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
       <Pressable
         onPress={onClose}
         style={{
@@ -60,13 +72,18 @@ export function Modal({ visible, onClose, title, children, scrollable = false, t
               borderRadius: theme.radius.lg,
               padding: theme.spacing.lg,
               maxHeight: "88%",
+              width: "100%",
+              maxWidth: 520,
+              alignSelf: "center",
             },
             theme.shadows.lg,
           ]}
         >
           {header}
           {scrollable ? (
-            <ScrollView showsVerticalScrollIndicator={false}>{children}</ScrollView>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {children}
+            </ScrollView>
           ) : (
             children
           )}

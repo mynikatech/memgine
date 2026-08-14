@@ -15,6 +15,21 @@ export interface CountryReference extends ReferenceDataItem {
   callingCode: string;
 }
 
+/** Region reference data used by address controls. */
+export interface RegionReference {
+  id: ID;
+  countryCode: string;
+  code: string;
+  name: string;
+}
+/** City reference data used by address controls. */
+export interface CityReference {
+  id: ID;
+  countryCode: string;
+  regionCode: string;
+  name: string;
+}
+
 /**
  * Provider-neutral reference-data contract.
  * The first implementation is in-memory; production can back the same contract
@@ -24,4 +39,6 @@ export interface ReferenceDataService {
   listCountries(): Promise<CountryReference[]>;
   listOrganizationTypes(): Promise<ReferenceDataItem[]>;
   listOrganizationStatuses(): Promise<ReferenceDataItem[]>;
+  listRegions(countryCode: string): Promise<RegionReference[]>;
+  listCities(countryCode: string, regionCode: string): Promise<CityReference[]>;
 }

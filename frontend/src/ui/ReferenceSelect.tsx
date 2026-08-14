@@ -16,6 +16,7 @@ type ReferenceSelectProps = {
   onChange: (id: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  allowClear?: boolean;
   testID?: string;
   renderItemLabel?: (item: ReferenceSelectItem) => string;
 };
@@ -31,6 +32,7 @@ export function ReferenceSelect({
   items,
   onChange,
   placeholder = "Select",
+  allowClear = false,
   disabled,
   testID,
   renderItemLabel = defaultLabel,
@@ -65,13 +67,14 @@ export function ReferenceSelect({
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
-          opacity: disabled ? theme.states.disabledOpacity : pressed ? theme.states.pressedOpacity : 1,
+          opacity: disabled
+            ? theme.states.disabledOpacity
+            : pressed
+              ? theme.states.pressedOpacity
+              : 1,
         })}
       >
-        <Text
-          variant="body"
-          color={selected ? "text" : "textMuted"}
-        >
+        <Text variant="body" color={selected ? "text" : "textMuted"}>
           {selected ? renderItemLabel(selected) : placeholder}
         </Text>
         <Text variant="bodySmall" color="textMuted">
@@ -87,6 +90,29 @@ export function ReferenceSelect({
         testID={testID ? `${testID}-modal` : undefined}
       >
         <View style={{ gap: theme.spacing.xs }}>
+          {allowClear ? (
+            <Pressable
+              onPress={() => {
+                onChange("");
+                setOpen(false);
+              }}
+              style={({ pressed }) => ({
+                minHeight: 48,
+                paddingHorizontal: theme.spacing.md,
+                borderRadius: theme.radius.md,
+                backgroundColor: !value
+                  ? theme.colors.primarySoft
+                  : pressed
+                    ? theme.colors.surfaceAlt
+                    : "transparent",
+                justifyContent: "center",
+              })}
+            >
+              <Text variant="body" color={!value ? "primary" : "textMuted"}>
+                {placeholder}
+              </Text>
+            </Pressable>
+          ) : null}
           {items.map((item) => {
             const selectedItem = item.id === value;
             return (
@@ -108,10 +134,7 @@ export function ReferenceSelect({
                   justifyContent: "center",
                 })}
               >
-                <Text
-                  variant="body"
-                  color={selectedItem ? "primary" : "text"}
-                >
+                <Text variant="body" color={selectedItem ? "primary" : "text"}>
                   {renderItemLabel(item)}
                 </Text>
               </Pressable>

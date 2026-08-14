@@ -18,12 +18,44 @@ export default function OrgAdminBusiness() {
   const { organization } = useBusiness();
 
   const [details, setDetails] = useState<OrganizationDetails | null>(null);
-  const [organizationTypes, setOrganizationTypes] = useState<Awaited<ReturnType<typeof referenceDataService.listOrganizationTypes>>>([]);
-  const [organizationStatuses, setOrganizationStatuses] = useState<Awaited<ReturnType<typeof referenceDataService.listOrganizationStatuses>>>([]);
-  const [countries, setCountries] = useState<Awaited<ReturnType<typeof referenceDataService.listCountries>>>([]);
+  const [organizationTypes, setOrganizationTypes] = useState<
+    Awaited<ReturnType<typeof referenceDataService.listOrganizationTypes>>
+  >([]);
+  const [organizationStatuses, setOrganizationStatuses] = useState<
+    Awaited<ReturnType<typeof referenceDataService.listOrganizationStatuses>>
+  >([]);
+  const [countries, setCountries] = useState<
+    Awaited<ReturnType<typeof referenceDataService.listCountries>>
+  >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [regions, setRegions] = useState<
+    Awaited<ReturnType<typeof referenceDataService.listRegions>>
+  >([]);
+  const [cities, setCities] = useState<
+    Awaited<ReturnType<typeof referenceDataService.listCities>>
+  >([]);
 
+  // 3. User changes country
+  const handleCountryChange = async (countryCode: string) => {
+    const regionList = await referenceDataService.listRegions(countryCode);
+
+    setRegions(regionList);
+    setCities([]);
+  };
+
+  // 4. User changes region
+  const handleRegionChange = async (
+    countryCode: string,
+    regionCode: string,
+  ) => {
+    const cityList = await referenceDataService.listCities(
+      countryCode,
+      regionCode,
+    );
+
+    setCities(cityList);
+  };
   useEffect(() => {
     let mounted = true;
 
@@ -32,12 +64,31 @@ export default function OrgAdminBusiness() {
       setError(null);
 
       try {
-        const [organizationDetails, types, statuses, countryList] = await Promise.all([
-          organizationService.getOrganizationDetails(organization.id),
-          referenceDataService.listOrganizationTypes(),
-          referenceDataService.listOrganizationStatuses(),
-          referenceDataService.listCountries(),
-        ]);
+        const [organizationDetails, types, statuses, countryList] =
+          await Promise.all([
+            organizationService.getOrganizationDetails(organization.id),
+            referenceDataService.listOrganizationTypes(),
+            referenceDataService.listOrganizationStatuses(),
+            referenceDataService.listCountries(),
+          ]);
+
+        const countryCode = organizationDetails?.address.countryCode;
+
+        const regionList = countryCode
+          ? await referenceDataService.listRegions(countryCode)
+          : [];
+
+        const currentRegion = regionList.find(
+          (region) => region.name === organizationDetails?.address.region,
+        );
+
+        const cityList =
+          countryCode && currentRegion
+            ? await referenceDataService.listCities(
+                countryCode,
+                currentRegion.code,
+              )
+            : [];
 
         if (!mounted) return;
 
@@ -45,9 +96,15 @@ export default function OrgAdminBusiness() {
         setOrganizationTypes(types);
         setOrganizationStatuses(statuses);
         setCountries(countryList);
+        setRegions(regionList);
+        setCities(cityList);
       } catch (loadError) {
         if (!mounted) return;
-        setError(loadError instanceof Error ? loadError.message : "Unable to load business information.");
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Unable to load business information.",
+        );
       } finally {
         if (mounted) setLoading(false);
       }
@@ -88,8 +145,12 @@ export default function OrgAdminBusiness() {
       organization={organization}
       details={details}
       countries={countries}
+      regions={regions}
+      cities={cities}
       organizationTypes={organizationTypes}
       organizationStatuses={organizationStatuses}
+      onCountryChange={handleCountryChange}
+      onRegionChange={handleRegionChange}
       onSave={async (
         updatedOrganization: Organization,
         updatedDetails: OrganizationDetails,
