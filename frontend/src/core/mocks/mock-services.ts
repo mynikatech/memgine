@@ -108,7 +108,7 @@ const ORGANIZATION_BRANDING: OrganizationBranding[] = [
     splashScreenImageUrl: undefined,
 
     primaryColor: "#C2410C",
-    secondaryColor: "#F59E0B",
+    secondaryColor: "#D97706",
     accentColor: "#FFFFFF",
 
     brandingStatusId: "branding-status-active",
