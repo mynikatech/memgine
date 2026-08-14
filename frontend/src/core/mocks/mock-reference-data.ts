@@ -242,6 +242,128 @@ const BRANDING_STATUSES: ReferenceDataItem[] = [
   },
 ];
 
+const INTEGRATION_TYPES: ReferenceDataItem[] = [
+  {
+    id: "integration-type-payment",
+    code: "PAYMENT",
+    name: "Payment",
+    displayOrder: 1,
+    active: true,
+  },
+  {
+    id: "integration-type-pos",
+    code: "POS",
+    name: "Point of Sale",
+    displayOrder: 2,
+    active: true,
+  },
+  {
+    id: "integration-type-erp",
+    code: "ERP",
+    name: "Enterprise Resource Planning",
+    displayOrder: 3,
+    active: true,
+  },
+  {
+    id: "integration-type-crm",
+    code: "CRM",
+    name: "Customer Relationship Management",
+    displayOrder: 4,
+    active: true,
+  },
+  {
+    id: "integration-type-accounting",
+    code: "ACCOUNTING",
+    name: "Accounting",
+    displayOrder: 5,
+    active: true,
+  },
+  {
+    id: "integration-type-loyalty",
+    code: "LOYALTY",
+    name: "Loyalty",
+    displayOrder: 6,
+    active: true,
+  },
+  {
+    id: "integration-type-ecommerce",
+    code: "ECOMMERCE",
+    name: "E-Commerce",
+    displayOrder: 7,
+    active: true,
+  },
+  {
+    id: "integration-type-identity",
+    code: "IDENTITY",
+    name: "Identity Provider",
+    displayOrder: 8,
+    active: true,
+  },
+  {
+    id: "integration-type-email",
+    code: "EMAIL",
+    name: "Email Service",
+    displayOrder: 9,
+    active: true,
+  },
+  {
+    id: "integration-type-sms",
+    code: "SMS",
+    name: "SMS Service",
+    displayOrder: 10,
+    active: true,
+  },
+  {
+    id: "integration-type-whatsapp",
+    code: "WHATSAPP",
+    name: "WhatsApp",
+    displayOrder: 11,
+    active: true,
+  },
+  {
+    id: "integration-type-push",
+    code: "PUSH",
+    name: "Push Notification",
+    displayOrder: 12,
+    active: true,
+  },
+  {
+    id: "integration-type-storage",
+    code: "STORAGE",
+    name: "File Storage",
+    displayOrder: 13,
+    active: true,
+  },
+  {
+    id: "integration-type-analytics",
+    code: "ANALYTICS",
+    name: "Analytics",
+    displayOrder: 14,
+    active: true,
+  },
+  {
+    id: "integration-type-webhook",
+    code: "WEBHOOK",
+    name: "Webhook",
+    displayOrder: 15,
+    active: true,
+  },
+  {
+    id: "integration-type-api",
+    code: "API",
+    name: "External API",
+    displayOrder: 16,
+    active: true,
+  },
+  {
+    id: "integration-type-custom",
+    code: "CUSTOM",
+    name: "Custom",
+    displayOrder: 17,
+    active: true,
+  },
+];
+
 export class InMemoryReferenceDataService implements ReferenceDataService {
   async listCountries(): Promise<CountryReference[]> {
     return COUNTRIES.filter((item) => item.active);
@@ -274,5 +396,8 @@ export class InMemoryReferenceDataService implements ReferenceDataService {
 
   async listBrandingStatuses(): Promise<ReferenceDataItem[]> {
     return BRANDING_STATUSES.filter((item) => item.active);
+  }
+  async listIntegrationTypes(): Promise<ReferenceDataItem[]> {
+    return INTEGRATION_TYPES.filter((item) => item.active);
   }
 }

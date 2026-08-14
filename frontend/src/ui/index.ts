@@ -20,3 +20,10 @@ export type {
   BrandColourItem,
   BrandColourSelectProps,
 } from "./BrandColourSelect";
+export { DataTable } from "./DataTable";
+
+export type {
+  DataTableAction,
+  DataTableColumn,
+  DataTableProps,
+} from "./DataTable";

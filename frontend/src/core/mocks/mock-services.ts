@@ -148,8 +148,72 @@ const NOTIFICATION_CONFIGURATIONS: NotificationConfiguration[] = [
   },
 ];
 
+// Sunrise Bakery mock
 const INTEGRATION_CONFIGURATIONS: IntegrationConfiguration[] = [
-  // Sunrise Bakery mock
+  {
+    id: "integration-config-sunrise-payment",
+    organizationId: "org-sunrise",
+    integrationName: "Sunrise Payments",
+    integrationTypeId: "integration-type-payment",
+    provider: "Razorpay",
+    integrationStatusId: "status-active",
+
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+  {
+    id: "integration-config-sunrise-pos",
+    organizationId: "org-sunrise",
+    integrationName: "Sunrise POS",
+    integrationTypeId: "integration-type-pos",
+    provider: "Lightspeed",
+    integrationStatusId: "status-active",
+
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+  {
+    id: "integration-config-sunrise-email",
+    organizationId: "org-sunrise",
+    integrationName: "Sunrise Email",
+    integrationTypeId: "integration-type-email",
+    provider: "Resend",
+    integrationStatusId: "status-active",
+
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+  {
+    id: "integration-config-sunrise-whatsapp",
+    organizationId: "org-sunrise",
+    integrationName: "Sunrise WhatsApp",
+    integrationTypeId: "integration-type-whatsapp",
+    provider: "Meta",
+    integrationStatusId: "status-active",
+
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
 ];
 
 /**
@@ -494,11 +558,33 @@ export class InMemoryOrganizationService implements OrganizationService {
   }
 
   async listIntegrationConfigurations(
-    organizationId: ID,
+    organizationId: string,
   ): Promise<IntegrationConfiguration[]> {
     return INTEGRATION_CONFIGURATIONS.filter(
-      (i) => i.organizationId === organizationId,
+      (configuration) =>
+        configuration.organizationId === organizationId &&
+        !configuration.isDeleted,
     );
+  }
+
+  async createIntegrationConfiguration(
+    organizationId: string,
+    configuration: IntegrationConfiguration,
+  ): Promise<IntegrationConfiguration> {
+    const now = new Date().toISOString();
+
+    const created: IntegrationConfiguration = {
+      ...configuration,
+      organizationId,
+      createdAt: now,
+      updatedAt: now,
+      versionNo: 1,
+      isDeleted: false,
+    };
+
+    INTEGRATION_CONFIGURATIONS.push(created);
+
+    return created;
   }
 
   async updateOrganization(
@@ -554,18 +640,52 @@ export class InMemoryOrganizationService implements OrganizationService {
   }
 
   async updateIntegrationConfiguration(
-    organizationId: ID,
+    organizationId: string,
     configuration: IntegrationConfiguration,
   ): Promise<IntegrationConfiguration> {
     const index = INTEGRATION_CONFIGURATIONS.findIndex(
-      (i) => i.id === configuration.id && i.organizationId === organizationId,
+      (item) =>
+        item.id === configuration.id &&
+        item.organizationId === organizationId &&
+        !item.isDeleted,
     );
+
     if (index === -1) {
-      throw new Error("Integration configuration not found");
+      throw new Error("Integration configuration not found.");
     }
 
-    INTEGRATION_CONFIGURATIONS[index] = configuration;
-    return configuration;
+    const updated: IntegrationConfiguration = {
+      ...configuration,
+      organizationId,
+      updatedAt: new Date().toISOString(),
+      versionNo: INTEGRATION_CONFIGURATIONS[index].versionNo + 1,
+    };
+
+    INTEGRATION_CONFIGURATIONS[index] = updated;
+
+    return updated;
+  }
+  async deleteIntegrationConfiguration(
+    organizationId: string,
+    configurationId: string,
+  ): Promise<void> {
+    const index = INTEGRATION_CONFIGURATIONS.findIndex(
+      (item) =>
+        item.id === configurationId &&
+        item.organizationId === organizationId &&
+        !item.isDeleted,
+    );
+
+    if (index === -1) {
+      throw new Error("Integration configuration not found.");
+    }
+
+    INTEGRATION_CONFIGURATIONS[index] = {
+      ...INTEGRATION_CONFIGURATIONS[index],
+      isDeleted: true,
+      updatedAt: new Date().toISOString(),
+      versionNo: INTEGRATION_CONFIGURATIONS[index].versionNo + 1,
+    };
   }
 }
 

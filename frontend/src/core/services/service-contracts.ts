@@ -99,6 +99,24 @@ export interface OrganizationService {
     organizationId: ID,
     configuration: IntegrationConfiguration,
   ): Promise<IntegrationConfiguration>;
+  listIntegrationConfigurations(
+    organizationId: string,
+  ): Promise<IntegrationConfiguration[]>;
+
+  createIntegrationConfiguration(
+    organizationId: string,
+    configuration: IntegrationConfiguration,
+  ): Promise<IntegrationConfiguration>;
+
+  updateIntegrationConfiguration(
+    organizationId: string,
+    configuration: IntegrationConfiguration,
+  ): Promise<IntegrationConfiguration>;
+
+  deleteIntegrationConfiguration(
+    organizationId: string,
+    configurationId: string,
+  ): Promise<void>;
 }
 
 export interface CustomerService {

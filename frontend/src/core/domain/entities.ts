@@ -145,6 +145,21 @@ export interface IntegrationConfiguration {
   isDeleted: boolean;
   versionNo: number;
 }
+/** The business  integration configuration  type to connect with external entities */
+export interface IntegrationType {
+  id: string;
+  code: string;
+  name: string;
+  description?: string;
+  displaySequence: number;
+  statusId: string;
+
+  createdAt: string;
+  updatedAt: string;
+
+  isDeleted: boolean;
+  versionNumber: number;
+}
 
 /**
  * Platform/account context for an organization. Kept separate from
@@ -334,4 +349,28 @@ export interface Redemption {
   promoCode?: string;
   redeemedAt: ISODateString;
   status: RedemptionStatus;
+}
+
+export function createEmptyIntegrationConfiguration(
+  organizationId: string,
+  userId: string,
+): IntegrationConfiguration {
+  const now = new Date().toISOString();
+
+  return {
+    id: `integration-${Date.now()}`,
+    organizationId,
+    integrationName: "",
+    integrationTypeId: "",
+    provider: "",
+    integrationStatusId: "",
+
+    createdAt: now,
+    createdBy: userId,
+    updatedAt: now,
+    updatedBy: userId,
+
+    isDeleted: false,
+    versionNo: 1,
+  };
 }
