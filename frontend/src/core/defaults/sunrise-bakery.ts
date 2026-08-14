@@ -22,22 +22,23 @@ export const SUNRISE_BAKERY_ORGANIZATION: Organization = {
   legalName: "Sunrise Bakery LLC",
   displayName: "Sunrise Bakery",
 
-  organizationTypeId: "...",
-  organizationStatusId: "...",
+  organizationTypeId: "org-type-food-beverage",
+  organizationStatusId: "org-status-active",
 
   category: TemplateCategory.FOOD_AND_BEVERAGE,
 
-  primaryEmail: "...",
+  primaryEmail: "hello@sunrisebakery.ca",
   primaryPhone: {
-    countryCode: "+1",
+    countryId: "country-ca",
+    callingCode: "+1",
     number: "4165551233",
   },
-  website: "...",
+  website: "https://sunrisebakery.ca",
 
-  createdAt: "...",
-  createdBy: "...",
-  updatedAt: "...",
-  updatedBy: "...",
+  createdAt: "2026-06-01T00:00:00.000Z",
+  createdBy: "platform-system",
+  updatedAt: "2026-06-01T00:00:00.000Z",
+  updatedBy: "platform-system",
 
   isDeleted: false,
   versionNo: 1,
