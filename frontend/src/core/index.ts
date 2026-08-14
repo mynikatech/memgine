@@ -15,6 +15,7 @@ export * from "./template/template-content";
 export * from "./config/business-configuration";
 export * from "./context/business-context";
 export * from "./services/service-contracts";
+export * from "./services/reference-data";
 export * from "./redemption/redemption-engine";
 export * from "./defaults/sunrise-bakery";
 export * from "./defaults/f-and-b-default-content";
