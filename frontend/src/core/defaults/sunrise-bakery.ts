@@ -1,7 +1,12 @@
 import { BusinessConfiguration } from "../config/business-configuration";
 import { BusinessContext } from "../context/business-context";
 import { TemplateCategory } from "../domain/common";
-import { ManagementModel, Organization, OrganizationAccount, PlanTier } from "../domain/entities";
+import {
+  ManagementModel,
+  Organization,
+  OrganizationAccount,
+  PlanTier,
+} from "../domain/entities";
 import { CardStyle, F_AND_B_BAKERY_V1 } from "../template/template-definition";
 
 /**
@@ -12,10 +17,30 @@ import { CardStyle, F_AND_B_BAKERY_V1 } from "../template/template-definition";
 
 export const SUNRISE_BAKERY_ORGANIZATION: Organization = {
   id: "org-sunrise",
+  code: "SUNRISE",
+  name: "Sunrise Bakery",
   legalName: "Sunrise Bakery LLC",
   displayName: "Sunrise Bakery",
+
+  organizationTypeId: "...",
+  organizationStatusId: "...",
+
   category: TemplateCategory.FOOD_AND_BEVERAGE,
-  createdAt: "2026-01-01T00:00:00.000Z",
+
+  primaryEmail: "...",
+  primaryPhone: {
+    countryCode: "+1",
+    number: "4165551233",
+  },
+  website: "...",
+
+  createdAt: "...",
+  createdBy: "...",
+  updatedAt: "...",
+  updatedBy: "...",
+
+  isDeleted: false,
+  versionNo: 1,
 };
 
 export const SUNRISE_BAKERY_ACCOUNT: OrganizationAccount = {

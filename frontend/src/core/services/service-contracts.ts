@@ -9,6 +9,10 @@ import {
   PurchaseSource,
   Offer,
   Organization,
+  OrganizationDetails,
+  OrganizationBranding,
+  NotificationConfiguration,
+  IntegrationConfiguration,
   OrganizationAccount,
   Redemption,
   RedemptionMethod,
@@ -63,6 +67,38 @@ export interface OrganizationService {
   getAccount(organizationId: ID): Promise<OrganizationAccount | null>;
   getBusinessContext(organizationId: ID): Promise<BusinessContext | null>;
   listStores(organizationId: ID): Promise<Store[]>;
+  getOrganizationDetails(
+    organizationId: ID,
+  ): Promise<OrganizationDetails | null>;
+  getOrganizationBranding(
+    organizationId: ID,
+  ): Promise<OrganizationBranding | null>;
+  getNotificationConfiguration(
+    organizationId: ID,
+  ): Promise<NotificationConfiguration | null>;
+  listIntegrationConfigurations(
+    organizationId: ID,
+  ): Promise<IntegrationConfiguration[]>;
+  updateOrganization(
+    organizationId: ID,
+    organization: Organization,
+  ): Promise<Organization>;
+  updateOrganizationDetails(
+    organizationId: ID,
+    details: OrganizationDetails,
+  ): Promise<OrganizationDetails>;
+  updateOrganizationBranding(
+    organizationId: ID,
+    branding: OrganizationBranding,
+  ): Promise<OrganizationBranding>;
+  updateNotificationConfiguration(
+    organizationId: ID,
+    configuration: NotificationConfiguration,
+  ): Promise<NotificationConfiguration>;
+  updateIntegrationConfiguration(
+    organizationId: ID,
+    configuration: IntegrationConfiguration,
+  ): Promise<IntegrationConfiguration>;
 }
 
 export interface CustomerService {

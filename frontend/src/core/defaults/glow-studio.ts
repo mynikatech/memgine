@@ -1,7 +1,12 @@
 import { BusinessConfiguration } from "../config/business-configuration";
 import { BusinessContext } from "../context/business-context";
 import { TemplateCategory } from "../domain/common";
-import { ManagementModel, Organization, OrganizationAccount, PlanTier } from "../domain/entities";
+import {
+  ManagementModel,
+  Organization,
+  OrganizationAccount,
+  PlanTier,
+} from "../domain/entities";
 import { CardStyle } from "../template/template-definition";
 import { SALON_V1 } from "../template/salon-template-definition";
 
@@ -13,10 +18,30 @@ import { SALON_V1 } from "../template/salon-template-definition";
 
 export const GLOW_STUDIO_ORGANIZATION: Organization = {
   id: "org-glow",
+  code: "GLOW",
+  name: "Glow Studio",
   legalName: "Glow Studio Inc.",
   displayName: "Glow Studio",
+
+  organizationTypeId: "...",
+  organizationStatusId: "...",
+
   category: TemplateCategory.BEAUTY_AND_WELLNESS,
-  createdAt: "2026-01-01T00:00:00.000Z",
+
+  primaryEmail: "...",
+  primaryPhone: {
+    countryCode: "+1",
+    number: "4165551234",
+  },
+  website: "...",
+
+  createdAt: "...",
+  createdBy: "...",
+  updatedAt: "...",
+  updatedBy: "...",
+
+  isDeleted: false,
+  versionNo: 1,
 };
 
 export const GLOW_STUDIO_ACCOUNT: OrganizationAccount = {

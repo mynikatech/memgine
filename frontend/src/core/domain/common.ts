@@ -34,3 +34,8 @@ export interface Address {
   /** ISO 3166-1 alpha-2, e.g. "US", "IN", "CA". */
   countryCode: string;
 }
+
+export interface PhoneNumber {
+  countryCode: string;
+  number: string;
+}

@@ -7,6 +7,10 @@ import {
   MembershipProduct,
   Offer,
   Organization,
+  OrganizationDetails,
+  OrganizationBranding,
+  NotificationConfiguration,
+  IntegrationConfiguration,
   OrganizationAccount,
   Redemption,
   RedemptionMethod,
@@ -47,12 +51,33 @@ import {
   GLOW_STUDIO_ORGANIZATION,
 } from "../defaults/glow-studio";
 
-const ORGANIZATIONS: Organization[] = [SUNRISE_BAKERY_ORGANIZATION, GLOW_STUDIO_ORGANIZATION];
-const ACCOUNTS: OrganizationAccount[] = [SUNRISE_BAKERY_ACCOUNT, GLOW_STUDIO_ACCOUNT];
+const ORGANIZATIONS: Organization[] = [
+  SUNRISE_BAKERY_ORGANIZATION,
+  GLOW_STUDIO_ORGANIZATION,
+];
+const ACCOUNTS: OrganizationAccount[] = [
+  SUNRISE_BAKERY_ACCOUNT,
+  GLOW_STUDIO_ACCOUNT,
+];
 const BUSINESS_CONTEXTS_BY_ORG: Record<string, BusinessContext> = {
   [SUNRISE_BAKERY_ORGANIZATION.id]: SUNRISE_BAKERY_CONTEXT,
   [GLOW_STUDIO_ORGANIZATION.id]: GLOW_STUDIO_CONTEXT,
 };
+const ORGANIZATION_DETAILS: OrganizationDetails[] = [
+  // Sunrise Bakery mock
+];
+
+const ORGANIZATION_BRANDING: OrganizationBranding[] = [
+  // Sunrise Bakery mock
+];
+
+const NOTIFICATION_CONFIGURATIONS: NotificationConfiguration[] = [
+  // Sunrise Bakery mock
+];
+
+const INTEGRATION_CONFIGURATIONS: IntegrationConfiguration[] = [
+  // Sunrise Bakery mock
+];
 
 /**
  * In-memory service implementations. Their ONLY purpose is to demonstrate that
@@ -61,7 +86,8 @@ const BUSINESS_CONTEXTS_BY_ORG: Record<string, BusinessContext> = {
  */
 
 let idCounter = 0;
-const genId = (prefix: string) => `${prefix}_${Date.now().toString(36)}_${idCounter++}`;
+const genId = (prefix: string) =>
+  `${prefix}_${Date.now().toString(36)}_${idCounter++}`;
 
 const stores: Store[] = [
   {
@@ -345,7 +371,8 @@ const offers: Offer[] = [
     id: "glow-off-2",
     organizationId: "org-glow",
     title: "Bring a friend",
-    description: "Book a treatment together and you both receive a complimentary add-on.",
+    description:
+      "Book a treatment together and you both receive a complimentary add-on.",
     badge: "This month",
   },
 ];
@@ -357,11 +384,115 @@ export class InMemoryOrganizationService implements OrganizationService {
   async getAccount(organizationId: ID): Promise<OrganizationAccount | null> {
     return ACCOUNTS.find((a) => a.organizationId === organizationId) ?? null;
   }
-  async getBusinessContext(organizationId: ID): Promise<BusinessContext | null> {
+  async getBusinessContext(
+    organizationId: ID,
+  ): Promise<BusinessContext | null> {
     return BUSINESS_CONTEXTS_BY_ORG[organizationId] ?? null;
   }
   async listStores(organizationId: ID): Promise<Store[]> {
     return stores.filter((s) => s.organizationId === organizationId);
+  }
+  async getOrganizationDetails(
+    organizationId: ID,
+  ): Promise<OrganizationDetails | null> {
+    return (
+      ORGANIZATION_DETAILS.find((d) => d.organizationId === organizationId) ??
+      null
+    );
+  }
+
+  async getOrganizationBranding(
+    organizationId: ID,
+  ): Promise<OrganizationBranding | null> {
+    return (
+      ORGANIZATION_BRANDING.find((b) => b.organizationId === organizationId) ??
+      null
+    );
+  }
+
+  async getNotificationConfiguration(
+    organizationId: ID,
+  ): Promise<NotificationConfiguration | null> {
+    return (
+      NOTIFICATION_CONFIGURATIONS.find(
+        (n) => n.organizationId === organizationId,
+      ) ?? null
+    );
+  }
+
+  async listIntegrationConfigurations(
+    organizationId: ID,
+  ): Promise<IntegrationConfiguration[]> {
+    return INTEGRATION_CONFIGURATIONS.filter(
+      (i) => i.organizationId === organizationId,
+    );
+  }
+
+  async updateOrganization(
+    organizationId: ID,
+    organization: Organization,
+  ): Promise<Organization> {
+    const index = ORGANIZATIONS.findIndex((o) => o.id === organizationId);
+    if (index === -1) throw new Error("Organization not found");
+
+    ORGANIZATIONS[index] = organization;
+    return organization;
+  }
+
+  async updateOrganizationDetails(
+    organizationId: ID,
+    details: OrganizationDetails,
+  ): Promise<OrganizationDetails> {
+    const index = ORGANIZATION_DETAILS.findIndex(
+      (d) => d.organizationId === organizationId,
+    );
+    if (index === -1) throw new Error("Organization details not found");
+
+    ORGANIZATION_DETAILS[index] = details;
+    return details;
+  }
+
+  async updateOrganizationBranding(
+    organizationId: ID,
+    branding: OrganizationBranding,
+  ): Promise<OrganizationBranding> {
+    const index = ORGANIZATION_BRANDING.findIndex(
+      (b) => b.organizationId === organizationId,
+    );
+    if (index === -1) throw new Error("Organization branding not found");
+
+    ORGANIZATION_BRANDING[index] = branding;
+    return branding;
+  }
+
+  async updateNotificationConfiguration(
+    organizationId: ID,
+    configuration: NotificationConfiguration,
+  ): Promise<NotificationConfiguration> {
+    const index = NOTIFICATION_CONFIGURATIONS.findIndex(
+      (n) => n.organizationId === organizationId,
+    );
+    if (index === -1) {
+      throw new Error("Notification configuration not found");
+    }
+
+    NOTIFICATION_CONFIGURATIONS[index] = configuration;
+    return configuration;
+  }
+
+  async updateIntegrationConfiguration(
+    organizationId: ID,
+    configuration: IntegrationConfiguration,
+  ): Promise<IntegrationConfiguration> {
+    const index = INTEGRATION_CONFIGURATIONS.findIndex(
+      (i) => i.id === configuration.id && i.organizationId === organizationId,
+    );
+    if (index === -1) {
+      throw new Error("Integration configuration not found");
+    }
+
+    INTEGRATION_CONFIGURATIONS[index] = configuration;
+    return configuration;
   }
 }
 
@@ -374,7 +505,8 @@ export class InMemoryCustomerService implements CustomerService {
       (c) =>
         (!query.email || c.email === query.email) &&
         (!query.phone || c.phone === query.phone) &&
-        (!query.nameContains || c.fullName.toLowerCase().includes(query.nameContains.toLowerCase())),
+        (!query.nameContains ||
+          c.fullName.toLowerCase().includes(query.nameContains.toLowerCase())),
     );
   }
   async createCustomer(input: CreateCustomerInput): Promise<Customer> {
@@ -409,7 +541,9 @@ export class InMemorySubscriptionService implements SubscriptionService {
   async getSubscription(id: ID): Promise<Subscription | null> {
     return subscriptions.find((s) => s.id === id) ?? null;
   }
-  async createSubscription(input: CreateSubscriptionInput): Promise<Subscription> {
+  async createSubscription(
+    input: CreateSubscriptionInput,
+  ): Promise<Subscription> {
     const subscription: Subscription = {
       id: genId("sub"),
       organizationId: input.organizationId,

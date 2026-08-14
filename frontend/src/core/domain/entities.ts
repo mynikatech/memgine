@@ -1,6 +1,14 @@
 import { Capability, StaffRole } from "../permissions/permissions";
 
-import { Address, BillingInterval, ID, ISODateString, Money, TemplateCategory } from "./common";
+import {
+  Address,
+  PhoneNumber,
+  BillingInterval,
+  ID,
+  ISODateString,
+  Money,
+  TemplateCategory,
+} from "./common";
 
 /* ------------------------------------------------------------------ *
  * Organization + account / platform context
@@ -22,10 +30,115 @@ export enum ManagementModel {
 /** The business tenant. */
 export interface Organization {
   id: ID;
-  legalName: string;
+  code: string;
+  name: string;
+  legalName?: string;
   displayName: string;
+
+  organizationTypeId: ID;
+  organizationStatusId: ID;
+
   category: TemplateCategory;
+
+  primaryEmail: string;
+  primaryPhone: PhoneNumber;
+  website?: string;
+
   createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt: ISODateString;
+  updatedBy: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
+}
+
+/** The business tenant more details. */
+export interface OrganizationDetails {
+  id: ID;
+  organizationId: ID;
+
+  registrationNumber: string;
+  gstNumber: string;
+  supportEmail: string;
+  supportPhone: PhoneNumber;
+
+  aboutOrganization: string;
+  address: Address;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt: ISODateString;
+  updatedBy: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
+}
+/** The business branding information */
+export interface OrganizationBranding {
+  id: ID;
+  organizationId: ID;
+
+  brandingName: string;
+  themeTemplateId: ID;
+
+  primaryColor?: string;
+  secondaryColor?: string;
+  accentColor?: string;
+
+  brandingStatusId: ID;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt?: ISODateString;
+  updatedBy?: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
+}
+
+/** The business notification configuration */
+export interface NotificationConfiguration {
+  id: ID;
+  organizationId: ID;
+
+  configurationName: string;
+
+  emailEnabled: boolean;
+  smsEnabled: boolean;
+  whatsappEnabled: boolean;
+  pushEnabled: boolean;
+  inAppEnabled: boolean;
+
+  notificationStatusId: ID;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt?: ISODateString;
+  updatedBy?: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
+}
+
+/** The business  configuration to connect with external entities */
+export interface IntegrationConfiguration {
+  id: ID;
+  organizationId: ID;
+
+  integrationName: string;
+  integrationTypeId: ID;
+  provider: string;
+
+  integrationStatusId: ID;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt?: ISODateString;
+  updatedBy?: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
 }
 
 /**
