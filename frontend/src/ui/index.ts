@@ -8,6 +8,7 @@ export { IconButton } from "./IconButton";
 export { Input } from "./Input";
 export { ListRow } from "./ListRow";
 export { Modal } from "./Modal";
+export { ReferenceSelect } from "./ReferenceSelect";
 export { Section } from "./Section";
 export { StateView } from "./StateView";
 export { Surface } from "./Surface";
