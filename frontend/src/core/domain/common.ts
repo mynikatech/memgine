@@ -35,7 +35,13 @@ export interface Address {
   countryCode: string;
 }
 
+/**
+ * International phone number value object.
+ * countryId preserves the selected country even when multiple countries share
+ * the same calling code (e.g. Canada and the United States both use +1).
+ */
 export interface PhoneNumber {
-  countryCode: string;
+  countryId: ID;
+  callingCode: string;
   number: string;
 }
