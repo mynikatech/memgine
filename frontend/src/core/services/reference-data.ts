@@ -41,4 +41,6 @@ export interface ReferenceDataService {
   listOrganizationStatuses(): Promise<ReferenceDataItem[]>;
   listRegions(countryCode: string): Promise<RegionReference[]>;
   listCities(countryCode: string, regionCode: string): Promise<CityReference[]>;
+  listThemeTemplates(): Promise<ReferenceDataItem[]>;
+  listBrandingStatuses(): Promise<ReferenceDataItem[]>;
 }

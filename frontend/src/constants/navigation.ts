@@ -31,8 +31,18 @@ export const CUSTOMER_ROUTES: CustomerRoute[] = [
 
 /** Staff (web/desktop) sidebar shells. */
 export const STAFF_ROUTES: StaffRoute[] = [
-  { name: "counter", title: "Counter", href: "/staff/counter", icon: "calculator-outline" },
-  { name: "customers", title: "Customers", href: "/staff/customers", icon: "people-outline" },
+  {
+    name: "counter",
+    title: "Counter",
+    href: "/staff/counter",
+    icon: "calculator-outline",
+  },
+  {
+    name: "customers",
+    title: "Customers",
+    href: "/staff/customers",
+    icon: "people-outline",
+  },
   {
     name: "configuration",
     title: "Configuration",
@@ -45,6 +55,7 @@ export const STAFF_ROUTES: StaffRoute[] = [
 export const ORG_ADMIN_ROUTES: AdminRoute[] = [
   { title: "Dashboard", href: "/dashboard", icon: "grid-outline" },
   { title: "Business", href: "/business", icon: "business-outline" },
+  { title: "Branding", href: "/branding", icon: "color-palette-outline" },
   { title: "Stores", href: "/stores", icon: "storefront-outline" },
   { title: "Staff", href: "/staff-members", icon: "people-outline" },
   { title: "Memberships", href: "/memberships", icon: "card-outline" },
@@ -57,9 +68,25 @@ export const ORG_ADMIN_ROUTES: AdminRoute[] = [
 export const PLATFORM_ADMIN_ROUTES: AdminRoute[] = [
   { title: "Dashboard", href: "/platform-dashboard", icon: "grid-outline" },
   { title: "Organizations", href: "/organizations", icon: "business-outline" },
-  { title: "Organization Types", href: "/organization-types", icon: "albums-outline" },
+  {
+    title: "Organization Types",
+    href: "/organization-types",
+    icon: "albums-outline",
+  },
   { title: "Templates", href: "/templates", icon: "duplicate-outline" },
-  { title: "Regional Settings", href: "/regional-settings", icon: "globe-outline" },
-  { title: "Payment Configuration", href: "/payment-configuration", icon: "cash-outline" },
-  { title: "Platform Settings", href: "/platform-settings", icon: "settings-outline" },
+  {
+    title: "Regional Settings",
+    href: "/regional-settings",
+    icon: "globe-outline",
+  },
+  {
+    title: "Payment Configuration",
+    href: "/payment-configuration",
+    icon: "cash-outline",
+  },
+  {
+    title: "Platform Settings",
+    href: "/platform-settings",
+    icon: "settings-outline",
+  },
 ];

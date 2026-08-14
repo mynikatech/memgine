@@ -82,6 +82,11 @@ export interface OrganizationBranding {
   brandingName: string;
   themeTemplateId: ID;
 
+  logoUrl?: string;
+  darkThemeLogoUrl?: string;
+  faviconUrl?: string;
+  splashScreenImageUrl?: string;
+
   primaryColor?: string;
   secondaryColor?: string;
   accentColor?: string;

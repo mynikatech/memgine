@@ -93,8 +93,34 @@ const ORGANIZATION_DETAILS: OrganizationDetails[] = [
   },
 ];
 
+// Sunrise Bakery mock
 const ORGANIZATION_BRANDING: OrganizationBranding[] = [
-  // Sunrise Bakery mock
+  {
+    id: "branding-org-sunrise",
+    organizationId: "org-sunrise",
+
+    brandingName: "Sunrise Bakery",
+    themeTemplateId: "f-and-b-bakery-v1",
+
+    logoUrl: undefined,
+    darkThemeLogoUrl: undefined,
+    faviconUrl: undefined,
+    splashScreenImageUrl: undefined,
+
+    primaryColor: "#C2410C",
+    secondaryColor: "#F59E0B",
+    accentColor: "#FFFFFF",
+
+    brandingStatusId: "branding-status-active",
+
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
 ];
 
 const NOTIFICATION_CONFIGURATIONS: NotificationConfiguration[] = [

@@ -14,3 +14,9 @@ export { StateView } from "./StateView";
 export { Surface } from "./Surface";
 export { Text } from "./Text";
 export { TextArea } from "./TextArea";
+export { BrandColourSelect, MEMGINE_COLOUR_PALETTE } from "./BrandColourSelect";
+
+export type {
+  BrandColourItem,
+  BrandColourSelectProps,
+} from "./BrandColourSelect";

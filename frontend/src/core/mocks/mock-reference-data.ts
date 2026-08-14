@@ -194,6 +194,54 @@ const ORGANIZATION_STATUSES: ReferenceDataItem[] = [
   },
 ];
 
+const THEME_TEMPLATES: ReferenceDataItem[] = [
+  {
+    id: "theme-template-default",
+    code: "DEFAULT",
+    name: "Memgine Default",
+    displayOrder: 1,
+    active: true,
+  },
+  {
+    id: "theme-template-bakery",
+    code: "BAKERY",
+    name: "Bakery",
+    displayOrder: 2,
+    active: true,
+  },
+  {
+    id: "theme-template-beauty",
+    code: "BEAUTY",
+    name: "Beauty & Wellness",
+    displayOrder: 3,
+    active: true,
+  },
+];
+
+const BRANDING_STATUSES: ReferenceDataItem[] = [
+  {
+    id: "branding-status-active",
+    code: "ACTIVE",
+    name: "Active",
+    displayOrder: 1,
+    active: true,
+  },
+  {
+    id: "branding-status-draft",
+    code: "DRAFT",
+    name: "Draft",
+    displayOrder: 2,
+    active: true,
+  },
+  {
+    id: "branding-status-inactive",
+    code: "INACTIVE",
+    name: "Inactive",
+    displayOrder: 3,
+    active: true,
+  },
+];
+
 export class InMemoryReferenceDataService implements ReferenceDataService {
   async listCountries(): Promise<CountryReference[]> {
     return COUNTRIES.filter((item) => item.active);
@@ -219,5 +267,12 @@ export class InMemoryReferenceDataService implements ReferenceDataService {
       (city) =>
         city.countryCode === countryCode && city.regionCode === regionCode,
     );
+  }
+  async listThemeTemplates(): Promise<ReferenceDataItem[]> {
+    return THEME_TEMPLATES.filter((item) => item.active);
+  }
+
+  async listBrandingStatuses(): Promise<ReferenceDataItem[]> {
+    return BRANDING_STATUSES.filter((item) => item.active);
   }
 }
