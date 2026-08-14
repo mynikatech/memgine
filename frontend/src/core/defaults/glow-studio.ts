@@ -23,14 +23,15 @@ export const GLOW_STUDIO_ORGANIZATION: Organization = {
   legalName: "Glow Studio Inc.",
   displayName: "Glow Studio",
 
-  organizationTypeId: "...",
-  organizationStatusId: "...",
+  organizationTypeId: "org-type-beauty-wellness",
+  organizationStatusId: "org-status-active",
 
   category: TemplateCategory.BEAUTY_AND_WELLNESS,
 
   primaryEmail: "...",
   primaryPhone: {
-    countryCode: "+1",
+    countryId: "country-ca",
+    callingCode: "+1",
     number: "4165551234",
   },
   website: "...",
