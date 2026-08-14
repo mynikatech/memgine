@@ -20,6 +20,7 @@ export type AdminRoute = {
   title: string;
   href: string;
   icon: IoniconName;
+  children?: AdminRoute[];
 };
 
 /** Customer (mobile/native) bottom-tab shells. */
@@ -61,7 +62,23 @@ export const ORG_ADMIN_ROUTES: AdminRoute[] = [
   { title: "Memberships", href: "/memberships", icon: "card-outline" },
   { title: "Benefits", href: "/benefits", icon: "gift-outline" },
   { title: "Offers", href: "/offers", icon: "pricetags-outline" },
-  { title: "Settings", href: "/settings", icon: "settings-outline" },
+  {
+    title: "Settings",
+    href: "/settings",
+    icon: "settings-outline",
+    children: [
+      {
+        title: "Notifications",
+        href: "/notifications",
+        icon: "notifications-outline",
+      },
+      {
+        title: "Integrations",
+        href: "/integrations",
+        icon: "git-network-outline",
+      },
+    ],
+  },
 ];
 
 /** Platform Admin (web) sidebar. */

@@ -1,8 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Slot, usePathname, useRouter } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
+import { useState } from "react";
 import type { AdminRoute } from "@/src/constants/navigation";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
 
@@ -37,28 +44,107 @@ export function AdminShell({ title, subtitle, icon, items }: Props) {
       </View>
     </View>
   );
+  const [expandedRoutes, setExpandedRoutes] = useState<Record<string, boolean>>(
+    {
+      "/settings": true,
+    },
+  );
 
   const Nav = ({ horizontal }: { horizontal?: boolean }) => (
     <View style={horizontal ? styles.navRow : styles.nav}>
       {items.map((item) => {
-        const active = pathname === item.href;
+        const hasChildren = item.children && item.children.length > 0;
+
+        const childActive = item.children?.some(
+          (child) => pathname === child.href,
+        );
+
+        const active = pathname === item.href || !!childActive;
+
+        const expanded = expandedRoutes[item.href] ?? false;
+
+        const toggleExpanded = () => {
+          if (!hasChildren) {
+            router.push(item.href as never);
+            return;
+          }
+
+          setExpandedRoutes((current) => ({
+            ...current,
+            [item.href]: !expanded,
+          }));
+        };
+
         return (
-          <Pressable
-            key={item.href}
-            testID={`admin-nav-${item.href}`}
-            onPress={() => router.push(item.href as never)}
-            style={[
-              horizontal ? styles.navPill : styles.navItem,
-              active && (horizontal ? styles.navPillActive : styles.navItemActive),
-            ]}
-          >
-            <Ionicons
-              name={item.icon}
-              size={horizontal ? 16 : 20}
-              color={active ? COLORS.accent : COLORS.textMuted}
-            />
-            <Text style={[styles.navLabel, active && styles.navLabelActive]}>{item.title}</Text>
-          </Pressable>
+          <View key={item.href}>
+            <Pressable
+              testID={`admin-nav-${item.href}`}
+              onPress={toggleExpanded}
+              style={[
+                horizontal ? styles.navPill : styles.navItem,
+                active &&
+                  (horizontal ? styles.navPillActive : styles.navItemActive),
+              ]}
+            >
+              <Ionicons
+                name={item.icon}
+                size={horizontal ? 16 : 20}
+                color={active ? COLORS.accent : COLORS.textMuted}
+              />
+
+              <Text style={[styles.navLabel, active && styles.navLabelActive]}>
+                {item.title}
+              </Text>
+
+              {hasChildren ? (
+                <Ionicons
+                  name={
+                    expanded ? "chevron-up-outline" : "chevron-down-outline"
+                  }
+                  size={16}
+                  color={active ? COLORS.accent : COLORS.textMuted}
+                />
+              ) : null}
+            </Pressable>
+
+            {hasChildren && expanded ? (
+              <View style={horizontal ? styles.subNavRow : styles.subNav}>
+                {item.children?.map((child) => {
+                  const childIsActive = pathname === child.href;
+
+                  return (
+                    <Pressable
+                      key={child.href}
+                      testID={`admin-nav-${child.href}`}
+                      onPress={() => router.push(child.href as never)}
+                      style={[
+                        horizontal ? styles.subNavPill : styles.subNavItem,
+                        childIsActive &&
+                          (horizontal
+                            ? styles.subNavPillActive
+                            : styles.subNavItemActive),
+                      ]}
+                    >
+                      <Ionicons
+                        name={child.icon}
+                        size={horizontal ? 14 : 18}
+                        color={childIsActive ? COLORS.accent : COLORS.textMuted}
+                      />
+
+                      <Text
+                        style={[
+                          styles.navLabel,
+                          childIsActive && styles.navLabelActive,
+                        ]}
+                      >
+                        {child.title}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+          </View>
         );
       })}
     </View>
@@ -66,7 +152,10 @@ export function AdminShell({ title, subtitle, icon, items }: Props) {
 
   return (
     <View
-      style={[styles.root, { paddingTop: insets.top, flexDirection: isWide ? "row" : "column" }]}
+      style={[
+        styles.root,
+        { paddingTop: insets.top, flexDirection: isWide ? "row" : "column" },
+      ]}
       testID="admin-shell"
     >
       {isWide ? (
@@ -108,7 +197,12 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs,
     gap: SPACING.xs,
   },
-  brand: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: SPACING.lg },
+  brand: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: SPACING.lg,
+  },
   brandMark: {
     width: 40,
     height: 40,
@@ -141,9 +235,48 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.background,
   },
-  navPillActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentSoft },
+  navPillActive: {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.accentSoft,
+  },
   navLabel: { fontSize: 14, fontWeight: "500", color: COLORS.textMuted },
   navLabelActive: { color: COLORS.accent, fontWeight: "700" },
   footer: { marginTop: "auto", fontSize: 12, color: COLORS.textMuted },
   content: { flex: 1, backgroundColor: COLORS.background },
+  subNav: {
+    marginLeft: 32,
+    gap: 2,
+    marginBottom: 4,
+  },
+
+  subNavItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: RADIUS.sm,
+  },
+
+  subNavItemActive: {
+    backgroundColor: COLORS.accentSoft,
+  },
+
+  subNavRow: {
+    flexDirection: "row",
+    gap: 6,
+  },
+
+  subNavPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: RADIUS.sm,
+  },
+
+  subNavPillActive: {
+    backgroundColor: COLORS.accentSoft,
+  },
 });

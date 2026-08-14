@@ -123,8 +123,29 @@ const ORGANIZATION_BRANDING: OrganizationBranding[] = [
   },
 ];
 
+// Sunrise Bakery mock
 const NOTIFICATION_CONFIGURATIONS: NotificationConfiguration[] = [
-  // Sunrise Bakery mock
+  {
+    id: "notification-config-org-sunrise-bakery",
+    organizationId: "org-sunrise",
+    configurationName: "Sunrise Bakery Notifications",
+
+    emailEnabled: true,
+    smsEnabled: false,
+    whatsappEnabled: true,
+    pushEnabled: true,
+    inAppEnabled: true,
+
+    notificationStatusId: "status-active",
+
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
 ];
 
 const INTEGRATION_CONFIGURATIONS: IntegrationConfiguration[] = [
