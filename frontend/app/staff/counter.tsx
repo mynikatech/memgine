@@ -28,6 +28,7 @@ import {
 } from "@/src/core";
 import { useBusiness, useTranslation } from "@/src/providers";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
+import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
 
 const services: RedemptionServices = {
   subscription: mockServices.subscription,
@@ -135,7 +136,7 @@ export default function StaffCounter() {
           sub.membershipProductId,
         );
         built.push({
-          label: `${cust?.fullName ?? sub.customerId} · ${product?.tier ?? product?.name ?? sub.membershipProductId}`,
+          label: `${cust?.fullName ?? sub.customerId} · ${product?.displayName ?? product?.membershipProductName ?? sub.membershipProductId}`,
           raw: encodeRedemptionToken({
             version: 1,
             code: `RDM-${sub.id.toUpperCase()}`,
@@ -189,7 +190,11 @@ export default function StaffCounter() {
       opts.map((o) => o.subscription.membershipProductId),
     );
     setAvailableForSale(
-      catalog.filter((p) => p.isPublished && !ownedProductIds.has(p.id)),
+      catalog.filter(
+        (p) =>
+          p.productStatusId === "product-status-active" &&
+          !ownedProductIds.has(p.id),
+      ),
     );
     if (opts.length) selectMembership(opts[0].subscription.id, opts);
     else {
@@ -220,12 +225,7 @@ export default function StaffCounter() {
   const priceLabel = (p: MembershipProduct) => {
     const plan = p.plans[0];
     if (!plan) return "";
-    const interval =
-      plan.billingInterval === BillingInterval.MONTHLY
-        ? t("join.perMonth")
-        : plan.billingInterval === BillingInterval.YEARLY
-          ? t("join.perYear")
-          : t("join.oneTime");
+    const interval = getSubscriptionPeriodLabel(plan);
     return `${formatMoney(plan.price.amountMinor)} · ${interval}`;
   };
 
@@ -438,7 +438,9 @@ export default function StaffCounter() {
           availableForSale.map((p) => (
             <View key={p.id} style={styles.saleRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.benefitTitle}>{p.tier ?? p.name}</Text>
+                <Text style={styles.benefitTitle}>
+                  {p.displayName ?? p.membershipProductName}
+                </Text>
                 <Text style={styles.muted}>{priceLabel(p)}</Text>
               </View>
               <Pressable

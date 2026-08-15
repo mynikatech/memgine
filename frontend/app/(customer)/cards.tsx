@@ -3,10 +3,20 @@ import { useCallback, useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 
 import { SubscriptionStatus } from "@/src/core";
-import type { Benefit, CardStyle, MembershipProduct, Subscription } from "@/src/core";
+import type {
+  Benefit,
+  CardStyle,
+  MembershipProduct,
+  Subscription,
+} from "@/src/core";
 import { mockServices } from "@/src/core";
 import { Screen } from "@/src/layout";
-import { BusinessThemeScope, useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
+import {
+  BusinessThemeScope,
+  useBusiness,
+  useCustomerContext,
+  useTranslation,
+} from "@/src/providers";
 import { buildTheme, Theme } from "@/src/theme/theme";
 import { Badge, Card, Header, Section, StateView, Text } from "@/src/ui";
 import { MembershipCard } from "@/src/ui/domain";
@@ -51,21 +61,32 @@ export default function MyCards() {
       const subs = await mockServices.subscription.listByCustomer(CUSTOMER_ID);
       const grouped: OrgGroup[] = [];
       for (const sub of subs) {
-        const product = await mockServices.membershipProduct.getProduct(sub.membershipProductId);
+        const product = await mockServices.membershipProduct.getProduct(
+          sub.membershipProductId,
+        );
         if (!product) continue;
-        const benefits = await mockServices.benefit.listByProduct(sub.membershipProductId);
+        const benefits = await mockServices.benefit.listByProduct(
+          sub.membershipProductId,
+        );
 
-        let group = grouped.find((g) => g.organizationId === sub.organizationId);
+        let group = grouped.find(
+          (g) => g.organizationId === sub.organizationId,
+        );
         if (!group) {
           // Resolve THIS organization's own branding so its cards always render
           // in its own theme/style, regardless of the active business.
-          const ctx = await mockServices.organization.getBusinessContext(sub.organizationId);
-          const orgName = ctx?.organization.displayName ?? organization.displayName;
+          const ctx = await mockServices.organization.getBusinessContext(
+            sub.organizationId,
+          );
+          const orgName =
+            ctx?.organization.displayName ?? organization.displayName;
           group = {
             organizationId: sub.organizationId,
             organizationName: orgName,
             theme: buildTheme(ctx?.configuration.branding),
-            cardStyle: ctx?.configuration.customerExperience.cardStyle ?? configuration.customerExperience.cardStyle,
+            cardStyle:
+              ctx?.configuration.customerExperience.cardStyle ??
+              configuration.customerExperience.cardStyle,
             cards: [],
           };
           grouped.push(group);
@@ -97,10 +118,20 @@ export default function MyCards() {
     <Screen
       testID="customer-cards-screen"
       edges={["top"]}
-      header={<Header title={t("cards.title")} subtitle={t("cards.subtitle")} testID="cards-header" />}
+      header={
+        <Header
+          title={t("cards.title")}
+          subtitle={t("cards.subtitle")}
+          testID="cards-header"
+        />
+      }
     >
       {status === "loading" ? (
-        <StateView kind="loading" message={t("common.loading")} testID="cards-state" />
+        <StateView
+          kind="loading"
+          message={t("common.loading")}
+          testID="cards-state"
+        />
       ) : status === "error" ? (
         <StateView
           kind="error"
@@ -110,7 +141,12 @@ export default function MyCards() {
           testID="cards-state"
         />
       ) : !hasCards ? (
-        <StateView kind="empty" title={t("cards.empty")} message={t("cards.emptyBody")} testID="cards-state" />
+        <StateView
+          kind="empty"
+          title={t("cards.empty")}
+          message={t("cards.emptyBody")}
+          testID="cards-state"
+        />
       ) : (
         groups.map((group) => (
           <BusinessThemeScope key={group.organizationId} theme={group.theme}>
@@ -127,11 +163,18 @@ export default function MyCards() {
                   <Card padding="md">
                     <MembershipCard
                       organizationName={group.organizationName}
-                      tier={vm.product.tier ?? vm.product.name}
-                      validUntil={
-                        vm.subscription.currentPeriodEnd ? formatDate(vm.subscription.currentPeriodEnd) : "—"
+                      tier={
+                        vm.product.displayName ??
+                        vm.product.membershipProductName
                       }
-                      active={vm.subscription.status === SubscriptionStatus.ACTIVE}
+                      validUntil={
+                        vm.subscription.currentPeriodEnd
+                          ? formatDate(vm.subscription.currentPeriodEnd)
+                          : "—"
+                      }
+                      active={
+                        vm.subscription.status === SubscriptionStatus.ACTIVE
+                      }
                       cardStyle={group.cardStyle}
                     />
                     <View
@@ -143,7 +186,9 @@ export default function MyCards() {
                       }}
                     >
                       <Text variant="bodySmall" color="textMuted">
-                        {t("cards.benefitsSummary", { count: vm.benefits.length })}
+                        {t("cards.benefitsSummary", {
+                          count: vm.benefits.length,
+                        })}
                       </Text>
                       <Badge label={t("cards.view")} tone="brand" />
                     </View>

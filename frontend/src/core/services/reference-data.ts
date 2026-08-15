@@ -50,4 +50,9 @@ export interface ReferenceDataService {
   listBenefitCategories(): Promise<ReferenceDataItem[]>;
   listBenefitTypes(): Promise<ReferenceDataItem[]>;
   listBenefitStatuses(): Promise<ReferenceDataItem[]>;
+  listProductCategories(): Promise<ReferenceDataItem[]>;
+  listProductTypes(): Promise<ReferenceDataItem[]>;
+  listProductStatuses(): Promise<ReferenceDataItem[]>;
+  listSubscriptionPlanStatuses(): Promise<ReferenceDataItem[]>;
+  listCurrencies(): Promise<ReferenceDataItem[]>;
 }

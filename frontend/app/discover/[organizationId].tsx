@@ -11,8 +11,14 @@ import type {
   Subscription,
 } from "@/src/core";
 import { BillingInterval, getBusinessContent, mockServices } from "@/src/core";
+import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
 import { BusinessExperience } from "@/src/experience";
-import { useBusiness, useCustomerContext, useTheme, useTranslation } from "@/src/providers";
+import {
+  useBusiness,
+  useCustomerContext,
+  useTheme,
+  useTranslation,
+} from "@/src/providers";
 import { Badge, Button, Card, Modal, StateView, Text } from "@/src/ui";
 
 type Status = "loading" | "error" | "ready";
@@ -41,7 +47,8 @@ export default function DiscoverGateway() {
     as?: string;
   }>();
   const { setActiveBusiness } = useBusiness();
-  const { customerId, setActiveContext, setActiveCustomer } = useCustomerContext();
+  const { customerId, setActiveContext, setActiveCustomer } =
+    useCustomerContext();
   const { t, formatMoney } = useTranslation();
   const theme = useTheme();
 
@@ -53,7 +60,9 @@ export default function DiscoverGateway() {
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
 
   // Product QR → detail
-  const [detailProduct, setDetailProduct] = useState<MembershipProduct | null>(null);
+  const [detailProduct, setDetailProduct] = useState<MembershipProduct | null>(
+    null,
+  );
   const [detailBenefits, setDetailBenefits] = useState<Benefit[]>([]);
 
   const load = useCallback(async () => {
@@ -71,21 +80,30 @@ export default function DiscoverGateway() {
 
       // Optional demo-persona override (?as=cust-new-demo) → active customer.
       const activeCustomerId = typeof as === "string" && as ? as : customerId;
-      if (typeof as === "string" && as && as !== customerId) setActiveCustomer(as);
+      if (typeof as === "string" && as && as !== customerId)
+        setActiveCustomer(as);
 
       // Owned memberships for this organization (if any).
-      const all = await mockServices.subscription.listByCustomer(activeCustomerId);
+      const all =
+        await mockServices.subscription.listByCustomer(activeCustomerId);
       const owned = all.filter((s) => s.organizationId === organizationId);
       const bundles = (
         await Promise.all(
           owned.map(async (s) => {
-            const product = await mockServices.membershipProduct.getProduct(s.membershipProductId);
+            const product = await mockServices.membershipProduct.getProduct(
+              s.membershipProductId,
+            );
             if (!product) return null;
             const [benefits, redemptions] = await Promise.all([
               mockServices.benefit.listByProduct(s.membershipProductId),
               mockServices.redemption.listBySubscription(s.id),
             ]);
-            return { subscription: s, product, benefits, redemptions } as MembershipBundle;
+            return {
+              subscription: s,
+              product,
+              benefits,
+              redemptions,
+            } as MembershipBundle;
           }),
         )
       ).filter((b): b is MembershipBundle => b !== null);
@@ -97,16 +115,28 @@ export default function DiscoverGateway() {
       ]);
 
       const ownedProductIds = new Set(bundles.map((b) => b.product.id));
-      const availableProducts = catalog.filter((p) => p.isPublished && !ownedProductIds.has(p.id));
+      const availableProducts = catalog.filter(
+        (p) =>
+          p.productStatusId === "product-status-active" &&
+          !ownedProductIds.has(p.id),
+      );
 
       // Product QR: preload the product detail (do NOT bypass it).
       if (productId) {
-        const detail = catalog.find((p) => p.id === productId && p.isPublished) ?? null;
+        const detail =
+          catalog.find(
+            (p) =>
+              p.id === productId &&
+              p.productStatusId === "product-status-active",
+          ) ?? null;
         setDetailProduct(detail);
-        setDetailBenefits(detail ? await mockServices.benefit.listByProduct(detail.id) : []);
+        setDetailBenefits(
+          detail ? await mockServices.benefit.listByProduct(detail.id) : [],
+        );
       }
 
-      if (bundles.length) setActiveContext(organizationId, bundles[0].subscription.id);
+      if (bundles.length)
+        setActiveContext(organizationId, bundles[0].subscription.id);
 
       setMemberships(bundles);
       setAvailable(availableProducts);
@@ -117,13 +147,22 @@ export default function DiscoverGateway() {
     } catch {
       setStatus("error");
     }
-  }, [organizationId, productId, as, customerId, setActiveBusiness, setActiveContext, setActiveCustomer]);
+  }, [
+    organizationId,
+    productId,
+    as,
+    customerId,
+    setActiveBusiness,
+    setActiveContext,
+    setActiveCustomer,
+  ]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const exit = () => (router.canGoBack() ? router.back() : router.replace("/cards"));
+  const exit = () =>
+    router.canGoBack() ? router.back() : router.replace("/cards");
 
   const joinMembership = (pid: string) => {
     setDetailProduct(null);
@@ -133,16 +172,13 @@ export default function DiscoverGateway() {
   const priceLabel = (p: MembershipProduct) => {
     const plan = p.plans[0];
     if (!plan) return "";
-    const interval =
-      plan.billingInterval === BillingInterval.MONTHLY
-        ? t("join.perMonth")
-        : plan.billingInterval === BillingInterval.YEARLY
-          ? t("join.perYear")
-          : t("join.oneTime");
+    const interval = getSubscriptionPeriodLabel(plan);
     return `${formatMoney(plan.price.amountMinor)} · ${interval}`;
   };
 
-  const focused = memberships.find((m) => m.subscription.id === selectedSubId) ?? memberships[0];
+  const focused =
+    memberships.find((m) => m.subscription.id === selectedSubId) ??
+    memberships[0];
 
   if (status === "ready") {
     return (
@@ -155,7 +191,10 @@ export default function DiscoverGateway() {
           offers={offers}
           stores={stores}
           redemptions={focused?.redemptions ?? []}
-          memberships={memberships.map((m) => ({ subscription: m.subscription, product: m.product }))}
+          memberships={memberships.map((m) => ({
+            subscription: m.subscription,
+            product: m.product,
+          }))}
           selectedSubscriptionId={focused?.subscription.id ?? ""}
           onSelectSubscription={(id) => setSelectedSubId(id)}
           availableMemberships={available}
@@ -166,12 +205,14 @@ export default function DiscoverGateway() {
         <Modal
           visible={!!detailProduct}
           onClose={() => setDetailProduct(null)}
-          title={detailProduct?.name ?? ""}
+          title={detailProduct?.membershipProductName ?? ""}
           testID="discover-product-detail"
         >
           {detailProduct ? (
             <View style={{ gap: theme.spacing.md }}>
-              {detailProduct.tier ? <Badge label={detailProduct.tier} tone="brand" /> : null}
+              {detailProduct.displayName ? (
+                <Badge label={detailProduct.displayName} tone="brand" />
+              ) : null}
               {detailProduct.description ? (
                 <Text variant="body" color="textSecondary">
                   {detailProduct.description}
@@ -184,7 +225,7 @@ export default function DiscoverGateway() {
                 <View style={{ gap: 6 }}>
                   {detailBenefits.map((b) => (
                     <Text key={b.id} variant="bodySmall" color="text">
-                     • {b.displayName ?? b.benefitName}
+                      • {b.displayName ?? b.benefitName}
                     </Text>
                   ))}
                 </View>
@@ -202,7 +243,14 @@ export default function DiscoverGateway() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.background, justifyContent: "center", padding: theme.spacing.lg }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: theme.colors.background,
+        justifyContent: "center",
+        padding: theme.spacing.lg,
+      }}
+    >
       {status === "error" ? (
         <StateView
           kind="error"
@@ -212,7 +260,11 @@ export default function DiscoverGateway() {
           testID="discover-state"
         />
       ) : (
-        <StateView kind="loading" message={t("common.loading")} testID="discover-state" />
+        <StateView
+          kind="loading"
+          message={t("common.loading")}
+          testID="discover-state"
+        />
       )}
     </View>
   );

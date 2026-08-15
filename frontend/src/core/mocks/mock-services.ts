@@ -596,92 +596,250 @@ const benefits: Benefit[] = [
     versionNo: 1,
   },
 ];
-
+const now = new Date().toISOString();
 const products: MembershipProduct[] = [
-  {
-    id: "prod-1",
-    organizationId: "org-sunrise",
-    name: "Sunrise Club",
-    description: "Perks for regulars",
-    tier: "Gold",
-    benefitIds: ["ben-1", "ben-2"],
-    isPublished: true,
-    plans: [
-      {
-        id: "plan-1",
-        name: "Yearly",
-        price: { amountMinor: 4900, currency: "CAD" },
-        billingInterval: BillingInterval.YEARLY,
-      },
-    ],
-  },
   {
     id: "prod-2",
     organizationId: "org-sunrise",
-    name: "Coffee Club",
+
+    membershipProductCode: "SUNRISE-COFFEE",
+    membershipProductName: "Coffee Club",
+    displayName: "Silver",
+
+    productCategoryId: "product-category-membership",
+    productTypeId: "product-type-individual",
+
     description: "For daily coffee lovers",
-    tier: "Silver",
+
+    productStatusId: "product-status-active",
+
+    effectiveDate: "2026-09-01",
+
     benefitIds: ["ben-3"],
-    isPublished: true,
+
     plans: [
       {
         id: "plan-2",
-        name: "Monthly",
-        price: { amountMinor: 19900, currency: "INR" },
-        billingInterval: BillingInterval.MONTHLY,
+        membershipProductId: "prod-2",
+
+        subscriptionPlanCode: "SUNRISE-COFFEE-MONTHLY",
+        subscriptionPlanName: "Monthly",
+
+        description: "Monthly Coffee Club membership",
+
+        subscriptionPeriod: 1,
+        subscriptionPeriodUnit: "MONTH",
+
+        price: {
+          amountMinor: 19900,
+          currency: "INR",
+        },
+        currencyId: "currency-inr",
+
+        subscriptionPlanStatusId: "subscription-plan-status-active",
+
+        effectiveDate: "2026-09-01",
+
+        createdAt: now,
+        createdBy: "user-system",
+        updatedAt: now,
+        updatedBy: "user-system",
+
+        isDeleted: false,
+        versionNo: 1,
       },
     ],
+
+    createdAt: now,
+    createdBy: "user-system",
+    updatedAt: now,
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
+
   {
     id: "glow-prod-1",
     organizationId: "org-glow",
-    name: "Radiance Membership",
+
+    membershipProductCode: "GLOW-RADIANCE",
+    membershipProductName: "Radiance Membership",
+    displayName: "Radiance",
+
+    productCategoryId: "product-category-membership",
+    productTypeId: "product-type-individual",
+
     description: "Monthly facials, priority booking and member pricing.",
-    tier: "Radiance",
+
+    productStatusId: "product-status-active",
+
+    effectiveDate: "2026-09-01",
+
     benefitIds: ["glow-ben-1", "glow-ben-2", "glow-ben-3"],
-    isPublished: true,
+
     plans: [
       {
         id: "glow-plan-1",
-        name: "Monthly",
-        price: { amountMinor: 5900, currency: "USD" },
-        billingInterval: BillingInterval.MONTHLY,
+        membershipProductId: "glow-prod-1",
+
+        subscriptionPlanCode: "GLOW-RADIANCE-MONTHLY",
+        subscriptionPlanName: "Monthly",
+
+        description: "Monthly Radiance Membership subscription",
+
+        subscriptionPeriod: 1,
+        subscriptionPeriodUnit: "MONTH",
+
+        price: {
+          amountMinor: 5900,
+          currency: "USD",
+        },
+        currencyId: "currency-usd",
+
+        subscriptionPlanStatusId: "subscription-plan-status-active",
+
+        effectiveDate: "2026-09-01",
+
+        createdAt: now,
+        createdBy: "user-system",
+        updatedAt: now,
+        updatedBy: "user-system",
+
+        isDeleted: false,
+        versionNo: 1,
       },
     ],
+
+    createdAt: now,
+    createdBy: "user-system",
+    updatedAt: now,
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
+
   {
     id: "prod-3",
     organizationId: "org-sunrise",
-    name: "Sunrise Platinum",
+
+    membershipProductCode: "SUNRISE-PLATINUM",
+    membershipProductName: "Sunrise Platinum",
+    displayName: "Platinum",
+
+    productCategoryId: "product-category-membership",
+    productTypeId: "product-type-individual",
+
     description: "Our top tier — every perk, all year round.",
-    tier: "Platinum",
+
+    productStatusId: "product-status-active",
+
+    effectiveDate: "2026-09-01",
+
     benefitIds: ["ben-1", "ben-2", "ben-3"],
-    isPublished: true,
+
     plans: [
       {
         id: "plan-3",
-        name: "Yearly",
-        price: { amountMinor: 9900, currency: "CAD" },
-        billingInterval: BillingInterval.YEARLY,
+        membershipProductId: "prod-3",
+
+        subscriptionPlanCode: "SUNRISE-PLATINUM-YEARLY",
+        subscriptionPlanName: "Yearly",
+
+        description: "Annual Sunrise Platinum membership",
+
+        subscriptionPeriod: 12,
+        subscriptionPeriodUnit: "MONTH",
+
+        price: {
+          amountMinor: 9900,
+          currency: "CAD",
+        },
+        currencyId: "currency-cad",
+
+        subscriptionPlanStatusId: "subscription-plan-status-active",
+
+        effectiveDate: "2026-09-01",
+
+        createdAt: now,
+        createdBy: "user-system",
+        updatedAt: now,
+        updatedBy: "user-system",
+
+        isDeleted: false,
+        versionNo: 1,
       },
     ],
+
+    createdAt: now,
+    createdBy: "user-system",
+    updatedAt: now,
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
+
   {
     id: "glow-prod-2",
     organizationId: "org-glow",
-    name: "Glow Elite",
+
+    membershipProductCode: "GLOW-ELITE",
+    membershipProductName: "Glow Elite",
+    displayName: "Elite",
+
+    productCategoryId: "product-category-membership",
+    productTypeId: "product-type-individual",
+
     description: "Unlimited signature facials and priority everything.",
-    tier: "Elite",
+
+    productStatusId: "product-status-active",
+
+    effectiveDate: "2026-09-01",
+
     benefitIds: ["glow-ben-1", "glow-ben-2", "glow-ben-3"],
-    isPublished: true,
+
     plans: [
       {
         id: "glow-plan-2",
-        name: "Monthly",
-        price: { amountMinor: 12900, currency: "USD" },
-        billingInterval: BillingInterval.MONTHLY,
+        membershipProductId: "glow-prod-2",
+
+        subscriptionPlanCode: "GLOW-ELITE-MONTHLY",
+        subscriptionPlanName: "Monthly",
+
+        description: "Monthly Glow Elite membership",
+
+        subscriptionPeriod: 1,
+        subscriptionPeriodUnit: "MONTH",
+
+        price: {
+          amountMinor: 12900,
+          currency: "USD",
+        },
+        currencyId: "currency-usd",
+
+        subscriptionPlanStatusId: "subscription-plan-status-active",
+
+        effectiveDate: "2026-09-01",
+
+        createdAt: now,
+        createdBy: "user-system",
+        updatedAt: now,
+        updatedBy: "user-system",
+
+        isDeleted: false,
+        versionNo: 1,
       },
     ],
+
+    createdAt: now,
+    createdBy: "user-system",
+    updatedAt: now,
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
 ];
 
@@ -1147,10 +1305,68 @@ export class InMemoryCustomerService implements CustomerService {
 
 export class InMemoryMembershipProductService implements MembershipProductService {
   async listProducts(organizationId: ID): Promise<MembershipProduct[]> {
-    return products.filter((p) => p.organizationId === organizationId);
+    return products.filter(
+      (p) => p.organizationId === organizationId && !p.isDeleted,
+    );
   }
+
   async getProduct(id: ID): Promise<MembershipProduct | null> {
-    return products.find((p) => p.id === id) ?? null;
+    return products.find((p) => p.id === id && !p.isDeleted) ?? null;
+  }
+
+  async createProduct(
+    organizationId: ID,
+    product: MembershipProduct,
+  ): Promise<MembershipProduct> {
+    const created: MembershipProduct = {
+      ...product,
+      organizationId,
+    };
+
+    products.push(created);
+
+    return created;
+  }
+
+  async updateProduct(
+    organizationId: ID,
+    product: MembershipProduct,
+  ): Promise<MembershipProduct> {
+    const index = products.findIndex(
+      (p) => p.id === product.id && p.organizationId === organizationId,
+    );
+
+    if (index === -1) {
+      throw new Error("Membership product not found.");
+    }
+
+    const updated: MembershipProduct = {
+      ...product,
+      organizationId,
+      versionNo: product.versionNo + 1,
+      updatedAt: new Date().toISOString(),
+    };
+
+    products[index] = updated;
+
+    return updated;
+  }
+
+  async deleteProduct(organizationId: ID, productId: ID): Promise<void> {
+    const index = products.findIndex(
+      (p) => p.id === productId && p.organizationId === organizationId,
+    );
+
+    if (index === -1) {
+      throw new Error("Membership product not found.");
+    }
+
+    products[index] = {
+      ...products[index],
+      isDeleted: true,
+      updatedAt: new Date().toISOString(),
+      versionNo: products[index].versionNo + 1,
+    };
   }
 }
 

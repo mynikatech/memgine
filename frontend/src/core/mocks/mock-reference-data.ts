@@ -443,6 +443,126 @@ const STAFF_STATUSES: ReferenceDataItem[] = [
   },
 ];
 
+const PRODUCT_CATEGORIES: ReferenceDataItem[] = [
+  {
+    id: "product-category-membership",
+    code: "MEMBERSHIP",
+    name: "Membership",
+    displayOrder: 1,
+    active: true,
+  },
+  {
+    id: "product-category-loyalty",
+    code: "LOYALTY",
+    name: "Loyalty",
+    displayOrder: 2,
+    active: true,
+  },
+  {
+    id: "product-category-subscription",
+    code: "SUBSCRIPTION",
+    name: "Subscription",
+    displayOrder: 3,
+    active: true,
+  },
+];
+
+const PRODUCT_TYPES: ReferenceDataItem[] = [
+  {
+    id: "product-type-individual",
+    code: "INDIVIDUAL",
+    name: "Individual",
+    displayOrder: 1,
+    active: true,
+  },
+  {
+    id: "product-type-family",
+    code: "FAMILY",
+    name: "Family",
+    displayOrder: 2,
+    active: true,
+  },
+  {
+    id: "product-type-corporate",
+    code: "CORPORATE",
+    name: "Corporate",
+    displayOrder: 3,
+    active: true,
+  },
+];
+
+const PRODUCT_STATUSES: ReferenceDataItem[] = [
+  {
+    id: "product-status-active",
+    code: "ACTIVE",
+    name: "Active",
+    displayOrder: 1,
+    active: true,
+  },
+  {
+    id: "product-status-inactive",
+    code: "INACTIVE",
+    name: "Inactive",
+    displayOrder: 2,
+    active: true,
+  },
+  {
+    id: "product-status-suspended",
+    code: "SUSPENDED",
+    name: "Suspended",
+    displayOrder: 3,
+    active: true,
+  },
+];
+
+const SUBSCRIPTION_PLAN_STATUSES: ReferenceDataItem[] = [
+  {
+    id: "subscription-plan-status-active",
+    code: "ACTIVE",
+    name: "Active",
+    displayOrder: 1,
+    active: true,
+  },
+  {
+    id: "subscription-plan-status-inactive",
+    code: "INACTIVE",
+    name: "Inactive",
+    displayOrder: 2,
+    active: true,
+  },
+  {
+    id: "subscription-plan-status-suspended",
+    code: "SUSPENDED",
+    name: "Suspended",
+    displayOrder: 3,
+    active: true,
+  },
+];
+
+const CURRENCIES: ReferenceDataItem[] = [
+  {
+    id: "currency-inr",
+    code: "INR",
+    name: "Indian Rupee",
+    displayOrder: 1,
+    active: true,
+  },
+  {
+    id: "currency-usd",
+    code: "USD",
+    name: "US Dollar",
+    displayOrder: 2,
+    active: true,
+  },
+  {
+    id: "currency-cad",
+    code: "CAD",
+    name: "Canadian Dollar",
+    displayOrder: 3,
+    active: true,
+  },
+];
+
 export class InMemoryReferenceDataService implements ReferenceDataService {
   async listCountries(): Promise<CountryReference[]> {
     return COUNTRIES.filter((item) => item.active);
@@ -581,5 +701,24 @@ export class InMemoryReferenceDataService implements ReferenceDataService {
         active: true,
       },
     ];
+  }
+  async listProductCategories(): Promise<ReferenceDataItem[]> {
+    return PRODUCT_CATEGORIES.filter((item) => item.active);
+  }
+
+  async listProductTypes(): Promise<ReferenceDataItem[]> {
+    return PRODUCT_TYPES.filter((item) => item.active);
+  }
+
+  async listProductStatuses(): Promise<ReferenceDataItem[]> {
+    return PRODUCT_STATUSES.filter((item) => item.active);
+  }
+
+  async listSubscriptionPlanStatuses(): Promise<ReferenceDataItem[]> {
+    return SUBSCRIPTION_PLAN_STATUSES.filter((item) => item.active);
+  }
+
+  async listCurrencies(): Promise<ReferenceDataItem[]> {
+    return CURRENCIES.filter((item) => item.active);
   }
 }

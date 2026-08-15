@@ -274,21 +274,68 @@ export interface OrganizationUser {
 
 export interface SubscriptionPlan {
   id: ID;
-  name: string;
+  membershipProductId: ID;
+
+  subscriptionPlanCode: string;
+  subscriptionPlanName: string;
+
+  description?: string;
+
+  subscriptionPeriod: number;
+  subscriptionPeriodUnit: string;
+
   price: Money;
-  billingInterval: BillingInterval;
+  currencyId: ID;
+
+  subscriptionPlanStatusId: ID;
+
+  effectiveDate: string;
+  expiryDate?: string;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt: ISODateString;
+  updatedBy: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
 }
 
 export interface MembershipProduct {
   id: ID;
   organizationId: ID;
-  name: string;
+
+  membershipProductCode: string;
+  membershipProductName: string;
+  displayName?: string;
+
+  productCategoryId: ID;
+  productTypeId: ID;
+
   description?: string;
-  /** Business-defined tier label, e.g. "Gold". */
-  tier?: string;
+
+  productStatusId: ID;
+
+  effectiveDate: string;
+  expiryDate?: string;
+
+  /**
+   * Benefits attached to this membership product.
+   */
   benefitIds: ID[];
+
+  /**
+   * Subscription plans available for this membership product.
+   */
   plans: SubscriptionPlan[];
-  isPublished: boolean;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt: ISODateString;
+  updatedBy: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
 }
 
 /* ------------------------------------------------------------------ *

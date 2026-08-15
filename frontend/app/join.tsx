@@ -3,12 +3,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 
-import {
-  BillingInterval,
-  PaymentMethod,
-  PurchaseSource,
-  SubscriptionStatus,
-} from "@/src/core";
+import { PaymentMethod, PurchaseSource } from "@/src/core";
+import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
 import type {
   Benefit,
   Customer,
@@ -113,12 +109,8 @@ export default function JoinFlow() {
   }, []);
 
   const plan = product?.plans[0];
-  const intervalLabel =
-    plan?.billingInterval === BillingInterval.MONTHLY
-      ? t("join.perMonth")
-      : plan?.billingInterval === BillingInterval.YEARLY
-        ? t("join.perYear")
-        : t("join.oneTime");
+  const intervalLabel = plan ? getSubscriptionPeriodLabel(plan) : "";
+
   const priceText = plan
     ? `${formatMoney(plan.price.amountMinor)} · ${intervalLabel}`
     : "";
@@ -147,7 +139,7 @@ export default function JoinFlow() {
     const payment = await mockServices.payment.pay({
       amountMinor: plan.price.amountMinor,
       currency: configuration.localization.defaultCurrency,
-      description: product.name,
+      description: product.membershipProductName,
     });
     const sub = await mockServices.subscription.createSubscription({
       organizationId: orgId,
@@ -224,7 +216,7 @@ export default function JoinFlow() {
               color="text"
               style={{ marginTop: theme.spacing.sm }}
             >
-              {product.tier ?? product.name}
+              {product.displayName ?? product.membershipProductName}
             </Text>
             <Text variant="title" color="primary">
               {priceText}
@@ -329,11 +321,14 @@ export default function JoinFlow() {
                 : []),
               {
                 label: t("join.plan"),
-                value: `${product.tier ?? product.name} · ${intervalLabel}`,
+                value: `${product.displayName ?? product.membershipProductName} · ${intervalLabel}`,
               },
             ]}
             lines={[
-              { label: product.name, amountMinor: plan.price.amountMinor },
+              {
+                label: product.membershipProductName,
+                amountMinor: plan.price.amountMinor,
+              },
             ]}
             totalMinor={plan.price.amountMinor}
           />
@@ -428,7 +423,7 @@ export default function JoinFlow() {
             >
               {t("join.successBody", {
                 business: organization.displayName,
-                product: product.tier ?? product.name,
+                product: product.displayName ?? product.membershipProductName,
               })}
             </Text>
             <Badge label={t("membership.active")} tone="success" />
@@ -445,7 +440,7 @@ export default function JoinFlow() {
               },
               {
                 label: t("join.plan"),
-                value: `${product.tier ?? product.name} · ${intervalLabel}`,
+                value: `${product.displayName ?? product.membershipProductName} · ${intervalLabel}`,
               },
               ...(isStaffSale && subscription.paymentMethod
                 ? [
@@ -463,7 +458,10 @@ export default function JoinFlow() {
               { label: t("join.status"), value: t("join.paid") },
             ]}
             lines={[
-              { label: product.name, amountMinor: plan.price.amountMinor },
+              {
+                label: product.membershipProductName,
+                amountMinor: plan.price.amountMinor,
+              },
             ]}
             totalMinor={plan.price.amountMinor}
           />

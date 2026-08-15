@@ -142,8 +142,8 @@ export function resolveExperience(
         )
       : null;
     membership = {
-      tier: product.tier ?? product.name,
-      productName: product.name,
+      tier: product.displayName ?? product.membershipProductName,
+      productName: product.membershipProductName,
       description: product.description ?? content.membership.description,
       active,
       validUntilLabel,

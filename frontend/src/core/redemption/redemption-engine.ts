@@ -130,8 +130,8 @@ export async function listActiveMemberships(
     );
     options.push({
       subscription: sub,
-      productName: product?.name ?? "Membership",
-      tier: product?.tier,
+      productName: product?.membershipProductName ?? "Membership",
+      tier: product?.displayName,
       benefits: benefits.map((b) => ({ ...b, available: !used.has(b.id) })),
     });
   }

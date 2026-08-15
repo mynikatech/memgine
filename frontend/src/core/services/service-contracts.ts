@@ -142,6 +142,18 @@ export interface CustomerService {
 export interface MembershipProductService {
   listProducts(organizationId: ID): Promise<MembershipProduct[]>;
   getProduct(id: ID): Promise<MembershipProduct | null>;
+
+  createProduct(
+    organizationId: ID,
+    product: MembershipProduct,
+  ): Promise<MembershipProduct>;
+
+  updateProduct(
+    organizationId: ID,
+    product: MembershipProduct,
+  ): Promise<MembershipProduct>;
+
+  deleteProduct(organizationId: ID, productId: ID): Promise<void>;
 }
 
 export interface SubscriptionService {

@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
 import { Image, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
 
 import type {
   Benefit,
@@ -225,12 +226,7 @@ export function BusinessExperience({
   const planLabel = (p: MembershipProduct) => {
     const plan = p.plans[0];
     if (!plan) return "";
-    const interval =
-      plan.billingInterval === BillingInterval.MONTHLY
-        ? t("join.perMonth")
-        : plan.billingInterval === BillingInterval.YEARLY
-          ? t("join.perYear")
-          : t("join.oneTime");
+    const interval = getSubscriptionPeriodLabel(plan);
     return `${formatMoney(plan.price.amountMinor)} · ${interval}`;
   };
 
@@ -377,7 +373,7 @@ export function BusinessExperience({
                 >
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text variant="bodyStrong" color="text">
-                      {p.tier ?? p.name}
+                      {p.displayName ?? p.membershipProductName}
                     </Text>
                     {p.description ? (
                       <Text variant="bodySmall" color="textMuted">
@@ -712,7 +708,8 @@ export function BusinessExperience({
           >
             {memberships.map((m) => {
               const selected = m.subscription.id === selectedSubscriptionId;
-              const label = m.product.tier ?? m.product.name;
+              const label =
+                m.product.displayName ?? m.product.membershipProductName;
               return (
                 <Pressable
                   key={m.subscription.id}
