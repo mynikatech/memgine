@@ -223,4 +223,7 @@ export interface PaymentService {
 
 export interface OfferService {
   listByOrganization(organizationId: ID): Promise<Offer[]>;
+  createOffer(organizationId: ID, offer: Offer): Promise<Offer>;
+  updateOffer(organizationId: ID, offer: Offer): Promise<Offer>;
+  deleteOffer(organizationId: ID, offerId: ID): Promise<void>;
 }

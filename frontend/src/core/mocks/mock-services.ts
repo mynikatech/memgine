@@ -937,32 +937,75 @@ const offers: Offer[] = [
   {
     id: "off-1",
     organizationId: "org-sunrise",
-    title: "Weekend Croissant Combo",
+
+    offerCode: "SUNRISE-WEEKEND-COMBO",
+    offerName: "Weekend Croissant Combo",
+
     description: "Any coffee + croissant for a sweet weekend price.",
-    badge: "This weekend",
-    targetProductIds: ["prod-1"],
+
+    membershipProductId: "prod-2",
+
+    discountPercentage: 10,
+
+    effectiveDate: "2026-09-01",
+
+    statusId: "offer-status-active",
+
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
+
   {
     id: "off-2",
     organizationId: "org-sunrise",
-    title: "Double Rewards Tuesday",
+
+    offerCode: "SUNRISE-DOUBLE-REWARDS",
+    offerName: "Double Rewards Tuesday",
+
     description: "Earn twice the rewards on every visit this Tuesday.",
-    badge: "Members only",
+
+    effectiveDate: "2026-09-01",
+
+    statusId: "offer-status-active",
+
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
+
   {
     id: "glow-off-1",
     organizationId: "org-glow",
-    title: "New client 20% off",
+
+    offerCode: "GLOW-NEW-CLIENT-20",
+    offerName: "New Client 20% Off",
+
     description: "First facial for new members at 20% off.",
-    badge: "New members",
-  },
-  {
-    id: "glow-off-2",
-    organizationId: "org-glow",
-    title: "Bring a friend",
-    description:
-      "Book a treatment together and you both receive a complimentary add-on.",
-    badge: "This month",
+
+    membershipProductId: "glow-prod-1",
+
+    discountPercentage: 20,
+
+    effectiveDate: "2026-09-01",
+
+    statusId: "offer-status-active",
+
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
 ];
 
@@ -1547,7 +1590,79 @@ export class InMemoryPaymentService implements PaymentService {
 
 export class InMemoryOfferService implements OfferService {
   async listByOrganization(organizationId: ID): Promise<Offer[]> {
-    return offers.filter((o) => o.organizationId === organizationId);
+    return offers.filter(
+      (offer) => offer.organizationId === organizationId && !offer.isDeleted,
+    );
+  }
+
+  async createOffer(organizationId: ID, offer: Offer): Promise<Offer> {
+    if (offer.organizationId !== organizationId) {
+      throw new Error("Offer does not belong to the selected organization.");
+    }
+
+    const duplicateCode = offers.some(
+      (item) =>
+        item.organizationId === organizationId &&
+        !item.isDeleted &&
+        item.offerCode.toLowerCase() === offer.offerCode.toLowerCase(),
+    );
+
+    if (duplicateCode) {
+      throw new Error(`Offer code "${offer.offerCode}" already exists.`);
+    }
+
+    offers.push(offer);
+
+    return offer;
+  }
+
+  async updateOffer(organizationId: ID, offer: Offer): Promise<Offer> {
+    const index = offers.findIndex(
+      (item) => item.id === offer.id && item.organizationId === organizationId,
+    );
+
+    if (index < 0) {
+      throw new Error("Offer not found.");
+    }
+
+    const duplicateCode = offers.some(
+      (item) =>
+        item.id !== offer.id &&
+        item.organizationId === organizationId &&
+        !item.isDeleted &&
+        item.offerCode.toLowerCase() === offer.offerCode.toLowerCase(),
+    );
+
+    if (duplicateCode) {
+      throw new Error(`Offer code "${offer.offerCode}" already exists.`);
+    }
+
+    const updated: Offer = {
+      ...offer,
+      versionNo: offers[index].versionNo + 1,
+    };
+
+    offers[index] = updated;
+
+    return updated;
+  }
+
+  async deleteOffer(organizationId: ID, offerId: ID): Promise<void> {
+    const index = offers.findIndex(
+      (item) => item.id === offerId && item.organizationId === organizationId,
+    );
+
+    if (index < 0) {
+      throw new Error("Offer not found.");
+    }
+
+    offers[index] = {
+      ...offers[index],
+      isDeleted: true,
+      updatedAt: new Date().toISOString(),
+      updatedBy: "user-system",
+      versionNo: offers[index].versionNo + 1,
+    };
   }
 }
 

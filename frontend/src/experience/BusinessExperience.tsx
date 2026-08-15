@@ -415,9 +415,8 @@ export function BusinessExperience({
             <OfferCard
               key={o.id}
               testID={`experience-offer-${o.id}`}
-              title={o.title}
+              title={o.offerName}
               description={o.description}
-              badge={o.badge}
             />
           ))}
         </View>

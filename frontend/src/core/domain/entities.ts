@@ -390,11 +390,28 @@ export interface Benefit {
 export interface Offer {
   id: ID;
   organizationId: ID;
-  title: string;
+
+  offerCode: string;
+  offerName: string;
   description?: string;
-  badge?: string;
-  validity?: BenefitValidity;
-  targetProductIds?: ID[];
+
+  membershipProductId?: ID;
+  storeId?: ID;
+
+  discountPercentage?: number;
+
+  effectiveDate: string;
+  expiryDate?: string;
+
+  statusId: ID;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt: ISODateString;
+  updatedBy: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
 }
 
 /* ------------------------------------------------------------------ *

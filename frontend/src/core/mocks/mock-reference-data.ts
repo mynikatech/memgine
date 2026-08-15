@@ -702,6 +702,32 @@ export class InMemoryReferenceDataService implements ReferenceDataService {
       },
     ];
   }
+
+  async listOfferStatuses(): Promise<ReferenceDataItem[]> {
+    return [
+      {
+        id: "offer-status-draft",
+        code: "DRAFT",
+        name: "Draft",
+        displayOrder: 1,
+        active: true,
+      },
+      {
+        id: "offer-status-active",
+        code: "ACTIVE",
+        name: "Active",
+        displayOrder: 2,
+        active: true,
+      },
+      {
+        id: "offer-status-inactive",
+        code: "INACTIVE",
+        name: "Inactive",
+        displayOrder: 3,
+        active: true,
+      },
+    ];
+  }
   async listProductCategories(): Promise<ReferenceDataItem[]> {
     return PRODUCT_CATEGORIES.filter((item) => item.active);
   }

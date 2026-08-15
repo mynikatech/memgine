@@ -55,4 +55,5 @@ export interface ReferenceDataService {
   listProductStatuses(): Promise<ReferenceDataItem[]>;
   listSubscriptionPlanStatuses(): Promise<ReferenceDataItem[]>;
   listCurrencies(): Promise<ReferenceDataItem[]>;
+  listOfferStatuses(): Promise<ReferenceDataItem[]>;
 }
