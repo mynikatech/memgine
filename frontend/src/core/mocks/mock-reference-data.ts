@@ -419,6 +419,30 @@ const STORE_STATUSES: ReferenceDataItem[] = [
   },
 ];
 
+const STAFF_STATUSES: ReferenceDataItem[] = [
+  {
+    id: "staff-status-active",
+    code: "ACTIVE",
+    name: "Active",
+    displayOrder: 1,
+    active: true,
+  },
+  {
+    id: "staff-status-inactive",
+    code: "INACTIVE",
+    name: "Inactive",
+    displayOrder: 2,
+    active: true,
+  },
+  {
+    id: "staff-status-suspended",
+    code: "SUSPENDED",
+    name: "Suspended",
+    displayOrder: 3,
+    active: true,
+  },
+];
+
 export class InMemoryReferenceDataService implements ReferenceDataService {
   async listCountries(): Promise<CountryReference[]> {
     return COUNTRIES.filter((item) => item.active);
@@ -462,5 +486,100 @@ export class InMemoryReferenceDataService implements ReferenceDataService {
 
   async listStoreStatuses(): Promise<ReferenceDataItem[]> {
     return STORE_STATUSES.filter((item) => item.active);
+  }
+
+  async listStaffStatuses(): Promise<ReferenceDataItem[]> {
+    return STAFF_STATUSES;
+  }
+  async listBenefitCategories(): Promise<ReferenceDataItem[]> {
+    return [
+      {
+        id: "benefit-category-discount",
+        code: "DISCOUNT",
+        name: "Discount",
+        displayOrder: 1,
+        active: true,
+      },
+      {
+        id: "benefit-category-food",
+        code: "FOOD",
+        name: "Food & Beverage",
+        displayOrder: 2,
+        active: true,
+      },
+      {
+        id: "benefit-category-service",
+        code: "SERVICE",
+        name: "Service",
+        displayOrder: 3,
+        active: true,
+      },
+      {
+        id: "benefit-category-reward",
+        code: "REWARD",
+        name: "Reward",
+        displayOrder: 4,
+        active: true,
+      },
+    ];
+  }
+
+  async listBenefitTypes(): Promise<ReferenceDataItem[]> {
+    return [
+      {
+        id: "benefit-type-discount",
+        code: "DISCOUNT",
+        name: "Discount",
+        displayOrder: 1,
+        active: true,
+      },
+      {
+        id: "benefit-type-freebie",
+        code: "FREEBIE",
+        name: "Freebie",
+        displayOrder: 2,
+        active: true,
+      },
+      {
+        id: "benefit-type-reward",
+        code: "REWARD",
+        name: "Reward",
+        displayOrder: 3,
+        active: true,
+      },
+      {
+        id: "benefit-type-perk",
+        code: "PERK",
+        name: "Perk",
+        displayOrder: 4,
+        active: true,
+      },
+    ];
+  }
+
+  async listBenefitStatuses(): Promise<ReferenceDataItem[]> {
+    return [
+      {
+        id: "benefit-status-active",
+        code: "ACTIVE",
+        name: "Active",
+        displayOrder: 1,
+        active: true,
+      },
+      {
+        id: "benefit-status-inactive",
+        code: "INACTIVE",
+        name: "Inactive",
+        displayOrder: 2,
+        active: true,
+      },
+      {
+        id: "benefit-status-suspended",
+        code: "SUSPENDED",
+        name: "Suspended",
+        displayOrder: 3,
+        active: true,
+      },
+    ];
   }
 }

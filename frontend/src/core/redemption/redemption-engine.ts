@@ -40,7 +40,12 @@ export function encodeRedemptionToken(token: RedemptionToken): string {
 export function decodeRedemptionToken(raw: string): RedemptionToken | null {
   try {
     const v = JSON.parse(raw.trim());
-    if (!v || v.version !== 1 || typeof v.subscriptionId !== "string" || !Array.isArray(v.benefitIds)) {
+    if (
+      !v ||
+      v.version !== 1 ||
+      typeof v.subscriptionId !== "string" ||
+      !Array.isArray(v.benefitIds)
+    ) {
       return null;
     }
     return v as RedemptionToken;
@@ -106,14 +111,22 @@ export async function listActiveMemberships(
   customerId: ID,
 ): Promise<MembershipOption[]> {
   const subs = (await services.subscription.listByCustomer(customerId)).filter(
-    (s) => s.organizationId === organizationId && s.status === SubscriptionStatus.ACTIVE,
+    (s) =>
+      s.organizationId === organizationId &&
+      s.status === SubscriptionStatus.ACTIVE,
   );
   const options: MembershipOption[] = [];
   for (const sub of subs) {
-    const product = await services.membershipProduct.getProduct(sub.membershipProductId);
-    const benefits = await services.benefit.listByProduct(sub.membershipProductId);
+    const product = await services.membershipProduct.getProduct(
+      sub.membershipProductId,
+    );
+    const benefits = await services.benefit.listByProduct(
+      sub.membershipProductId,
+    );
     const used = new Set(
-      (await services.redemption.listBySubscription(sub.id)).map((r) => r.benefitId),
+      (await services.redemption.listBySubscription(sub.id)).map(
+        (r) => r.benefitId,
+      ),
     );
     options.push({
       subscription: sub,
@@ -138,14 +151,25 @@ export async function redeemBenefits(
   request: { subscriptionId: ID; benefitIds: ID[] },
 ): Promise<RedemptionResult> {
   if (!request.benefitIds.length) {
-    return { kind: "INVALID", message: "Select at least one benefit to redeem.", outcomes: [] };
+    return {
+      kind: "INVALID",
+      message: "Select at least one benefit to redeem.",
+      outcomes: [],
+    };
   }
 
-  const subscription = await services.subscription.getSubscription(request.subscriptionId);
+  const subscription = await services.subscription.getSubscription(
+    request.subscriptionId,
+  );
   if (!subscription) {
-    return { kind: "INVALID", message: "Membership not found for this token/ID.", outcomes: [] };
+    return {
+      kind: "INVALID",
+      message: "Membership not found for this token/ID.",
+      outcomes: [],
+    };
   }
-  const customer = (await services.customer.getCustomer(subscription.customerId)) ?? undefined;
+  const customer =
+    (await services.customer.getCustomer(subscription.customerId)) ?? undefined;
 
   if (subscription.organizationId !== ctx.organizationId) {
     return {
@@ -166,10 +190,14 @@ export async function redeemBenefits(
     };
   }
 
-  const productBenefits = await services.benefit.listByProduct(subscription.membershipProductId);
+  const productBenefits = await services.benefit.listByProduct(
+    subscription.membershipProductId,
+  );
   const benefitById = new Map(productBenefits.map((b) => [b.id, b]));
   const used = new Set(
-    (await services.redemption.listBySubscription(subscription.id)).map((r) => r.benefitId),
+    (await services.redemption.listBySubscription(subscription.id)).map(
+      (r) => r.benefitId,
+    ),
   );
 
   const outcomes: BenefitOutcome[] = [];
@@ -180,7 +208,11 @@ export async function redeemBenefits(
       continue;
     }
     if (used.has(benefitId)) {
-      outcomes.push({ benefitId, title: benefit.title, status: "ALREADY_USED" });
+      outcomes.push({
+        benefitId,
+        title: benefit.displayName ?? benefit.benefitName,
+        status: "ALREADY_USED",
+      });
       continue;
     }
     const redemption = await services.redemption.performRedemption({
@@ -194,7 +226,12 @@ export async function redeemBenefits(
       promoCode: ctx.promoCode,
     });
     used.add(benefitId);
-    outcomes.push({ benefitId, title: benefit.title, status: "REDEEMED", redemptionId: redemption.id });
+    outcomes.push({
+      benefitId,
+      title: benefit.displayName ?? benefit.benefitName,
+      status: "REDEEMED",
+      redemptionId: redemption.id,
+    });
   }
 
   const redeemed = outcomes.filter((o) => o.status === "REDEEMED").length;
@@ -222,7 +259,11 @@ export async function redeemFromToken(
 ): Promise<RedemptionResult> {
   const token = decodeRedemptionToken(rawToken);
   if (!token) {
-    return { kind: "INVALID", message: "Invalid or unreadable redemption QR / token.", outcomes: [] };
+    return {
+      kind: "INVALID",
+      message: "Invalid or unreadable redemption QR / token.",
+      outcomes: [],
+    };
   }
   return redeemBenefits(services, ctx, {
     subscriptionId: token.subscriptionId,

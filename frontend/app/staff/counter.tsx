@@ -1,6 +1,13 @@
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 import {
   BillingInterval,
@@ -32,7 +39,10 @@ const services: RedemptionServices = {
 
 type Mode = "qr" | "phone" | "assisted" | "new";
 
-const RESULT_STYLE: Record<RedemptionResult["kind"], { fg: string; bg: string }> = {
+const RESULT_STYLE: Record<
+  RedemptionResult["kind"],
+  { fg: string; bg: string }
+> = {
   SUCCESS: { fg: "#15803D", bg: "#DCFCE7" },
   PARTIAL: { fg: "#B45309", bg: "#FEF3C7" },
   FAILED: { fg: "#B91C1C", bg: "#FEE2E2" },
@@ -52,7 +62,9 @@ export default function StaffCounter() {
   const [promoCode, setPromoCode] = useState("");
   const [action, setAction] = useState<"redeem" | "sell">("redeem");
   const [mode, setMode] = useState<Mode>("qr");
-  const [availableForSale, setAvailableForSale] = useState<MembershipProduct[]>([]);
+  const [availableForSale, setAvailableForSale] = useState<MembershipProduct[]>(
+    [],
+  );
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [result, setResult] = useState<RedemptionResult | null>(null);
@@ -79,7 +91,9 @@ export default function StaffCounter() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [memberships, setMemberships] = useState<MembershipOption[]>([]);
   const [selectedSubId, setSelectedSubId] = useState("");
-  const [selectedBenefitIds, setSelectedBenefitIds] = useState<Set<string>>(new Set());
+  const [selectedBenefitIds, setSelectedBenefitIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   const storeId = store?.id ?? "";
 
@@ -108,14 +122,18 @@ export default function StaffCounter() {
     let active = true;
     (async () => {
       const orgStores = await mockServices.organization.listStores(orgId);
-      const subs = (await mockServices.subscription.listByOrganization(orgId)).filter(
-        (s) => s.status === SubscriptionStatus.ACTIVE,
-      );
+      const subs = (
+        await mockServices.subscription.listByOrganization(orgId)
+      ).filter((s) => s.status === SubscriptionStatus.ACTIVE);
       const built: { label: string; raw: string }[] = [];
       for (const sub of subs) {
-        const product = await mockServices.membershipProduct.getProduct(sub.membershipProductId);
+        const product = await mockServices.membershipProduct.getProduct(
+          sub.membershipProductId,
+        );
         const cust = await mockServices.customer.getCustomer(sub.customerId);
-        const benefits = await mockServices.benefit.listByProduct(sub.membershipProductId);
+        const benefits = await mockServices.benefit.listByProduct(
+          sub.membershipProductId,
+        );
         built.push({
           label: `${cust?.fullName ?? sub.customerId} · ${product?.tier ?? product?.name ?? sub.membershipProductId}`,
           raw: encodeRedemptionToken({
@@ -147,10 +165,17 @@ export default function StaffCounter() {
     promoCode: promoCode.trim() || undefined,
   });
 
-  const selectMembership = (subId: string, opts: MembershipOption[] = memberships) => {
+  const selectMembership = (
+    subId: string,
+    opts: MembershipOption[] = memberships,
+  ) => {
     setSelectedSubId(subId);
     const opt = opts.find((o) => o.subscription.id === subId);
-    setSelectedBenefitIds(new Set((opt?.benefits ?? []).filter((b) => b.available).map((b) => b.id)));
+    setSelectedBenefitIds(
+      new Set(
+        (opt?.benefits ?? []).filter((b) => b.available).map((b) => b.id),
+      ),
+    );
   };
 
   const identifyCustomer = async (customerId: string) => {
@@ -160,8 +185,12 @@ export default function StaffCounter() {
     setMemberships(opts);
     // Available published products for this org the customer does not own.
     const catalog = await mockServices.membershipProduct.listProducts(orgId);
-    const ownedProductIds = new Set(opts.map((o) => o.subscription.membershipProductId));
-    setAvailableForSale(catalog.filter((p) => p.isPublished && !ownedProductIds.has(p.id)));
+    const ownedProductIds = new Set(
+      opts.map((o) => o.subscription.membershipProductId),
+    );
+    setAvailableForSale(
+      catalog.filter((p) => p.isPublished && !ownedProductIds.has(p.id)),
+    );
     if (opts.length) selectMembership(opts[0].subscription.id, opts);
     else {
       setSelectedSubId("");
@@ -176,11 +205,15 @@ export default function StaffCounter() {
       return;
     }
     // Reuse an existing customer with this phone, else create a new mock one.
-    const existing = (await mockServices.customer.findCustomers({ phone: newPhone.trim() }))[0];
-    const cust = existing ?? (await mockServices.customer.createCustomer({
-      fullName: newName.trim(),
-      phone: newPhone.trim(),
-    }));
+    const existing = (
+      await mockServices.customer.findCustomers({ phone: newPhone.trim() })
+    )[0];
+    const cust =
+      existing ??
+      (await mockServices.customer.createCustomer({
+        fullName: newName.trim(),
+        phone: newPhone.trim(),
+      }));
     await identifyCustomer(cust.id);
   };
 
@@ -208,7 +241,11 @@ export default function StaffCounter() {
   const runQr = async () => {
     setBusy(true);
     setResult(null);
-    const res = await redeemFromToken(services, ctx(RedemptionMethod.QR), tokenText);
+    const res = await redeemFromToken(
+      services,
+      ctx(RedemptionMethod.QR),
+      tokenText,
+    );
     setResult(res);
     setBusy(false);
   };
@@ -227,7 +264,10 @@ export default function StaffCounter() {
 
   const verifyOtp = async () => {
     setError("");
-    const res = await mockServices.auth.verifyOtp({ requestId: otpRequestId, code: otpCode.trim() });
+    const res = await mockServices.auth.verifyOtp({
+      requestId: otpRequestId,
+      code: otpCode.trim(),
+    });
     if (!res.verified || !res.customerId) {
       setError("Incorrect code. Try again.");
       return;
@@ -244,10 +284,13 @@ export default function StaffCounter() {
       setError("Enter a phone number or name to search.");
       return;
     }
-    const byName = await mockServices.customer.findCustomers({ nameContains: term });
+    const byName = await mockServices.customer.findCustomers({
+      nameContains: term,
+    });
     const byPhone = await mockServices.customer.findCustomers({ phone: term });
     const merged = [...byName];
-    for (const c of byPhone) if (!merged.some((m) => m.id === c.id)) merged.push(c);
+    for (const c of byPhone)
+      if (!merged.some((m) => m.id === c.id)) merged.push(c);
     setSearchResults(merged);
     setSearched(true);
   };
@@ -264,7 +307,11 @@ export default function StaffCounter() {
       const opts = await listActiveMemberships(services, orgId, customer.id);
       setMemberships(opts);
       const opt = opts.find((o) => o.subscription.id === selectedSubId);
-      setSelectedBenefitIds(new Set((opt?.benefits ?? []).filter((b) => b.available).map((b) => b.id)));
+      setSelectedBenefitIds(
+        new Set(
+          (opt?.benefits ?? []).filter((b) => b.available).map((b) => b.id),
+        ),
+      );
     }
     setBusy(false);
   };
@@ -277,10 +324,14 @@ export default function StaffCounter() {
       return next;
     });
 
-  const selectedOption = memberships.find((o) => o.subscription.id === selectedSubId);
+  const selectedOption = memberships.find(
+    (o) => o.subscription.id === selectedSubId,
+  );
   const selectedCount = useMemo(
     () =>
-      (selectedOption?.benefits ?? []).filter((b) => b.available && selectedBenefitIds.has(b.id)).length,
+      (selectedOption?.benefits ?? []).filter(
+        (b) => b.available && selectedBenefitIds.has(b.id),
+      ).length,
     [selectedOption, selectedBenefitIds],
   );
 
@@ -293,7 +344,9 @@ export default function StaffCounter() {
         <Text style={styles.identified}>Customer: {customer.fullName}</Text>
 
         {memberships.length === 0 ? (
-          <Text style={styles.muted}>No active memberships at this business.</Text>
+          <Text style={styles.muted}>
+            No active memberships at this business.
+          </Text>
         ) : (
           <>
             {memberships.length > 1 ? (
@@ -330,10 +383,17 @@ export default function StaffCounter() {
                     {on ? <Text style={styles.checkMark}>✓</Text> : null}
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.benefitTitle}>{b.title}</Text>
-                    {b.description ? <Text style={styles.muted}>{b.description}</Text> : null}
+                    <Text style={styles.benefitTitle}>
+                      {" "}
+                      {b.displayName ?? b.benefitName}
+                    </Text>
+                    {b.description ? (
+                      <Text style={styles.muted}>{b.description}</Text>
+                    ) : null}
                   </View>
-                  {!b.available ? <Text style={styles.usedTag}>USED</Text> : null}
+                  {!b.available ? (
+                    <Text style={styles.usedTag}>USED</Text>
+                  ) : null}
                 </Pressable>
               );
             })}
@@ -344,7 +404,10 @@ export default function StaffCounter() {
                 testID="counter-redeem-manual"
                 disabled={selectedCount === 0 || busy}
                 onPress={() => runManual(method)}
-                style={[styles.primaryBtn, (selectedCount === 0 || busy) && styles.btnDisabled]}
+                style={[
+                  styles.primaryBtn,
+                  (selectedCount === 0 || busy) && styles.btnDisabled,
+                ]}
               >
                 <Text style={styles.primaryBtnText}>Redeem Selected</Text>
               </Pressable>
@@ -397,7 +460,6 @@ export default function StaffCounter() {
   const afterIdentify = (method: RedemptionMethod) =>
     action === "sell" ? renderSaleCatalog() : renderBenefitSelection(method);
 
-
   return (
     <ScrollView
       testID="staff-counter-screen"
@@ -405,7 +467,9 @@ export default function StaffCounter() {
       contentContainerStyle={styles.content}
     >
       <Text style={styles.h1}>Counter</Text>
-      <Text style={styles.muted}>Redeem member benefits — QR or staff-assisted.</Text>
+      <Text style={styles.muted}>
+        Redeem member benefits — QR or staff-assisted.
+      </Text>
 
       {/* Fixed staff context (no selectors) */}
       <View style={styles.card}>
@@ -483,7 +547,9 @@ export default function StaffCounter() {
               }}
               style={[styles.modeBtn, on && styles.modeBtnOn]}
             >
-              <Text style={[styles.modeText, on && styles.modeTextOn]}>{label}</Text>
+              <Text style={[styles.modeText, on && styles.modeTextOn]}>
+                {label}
+              </Text>
             </Pressable>
           );
         })}
@@ -493,7 +559,9 @@ export default function StaffCounter() {
       {action === "redeem" && mode === "qr" ? (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Scan Redemption QR</Text>
-          <Text style={styles.muted}>Paste the customer&apos;s redemption token (mocked scanner).</Text>
+          <Text style={styles.muted}>
+            Paste the customer&apos;s redemption token (mocked scanner).
+          </Text>
           <TextInput
             testID="counter-qr-input"
             value={tokenText}
@@ -524,7 +592,10 @@ export default function StaffCounter() {
             testID="counter-redeem-qr"
             disabled={!tokenText.trim() || busy}
             onPress={runQr}
-            style={[styles.primaryBtn, (!tokenText.trim() || busy) && styles.btnDisabled]}
+            style={[
+              styles.primaryBtn,
+              (!tokenText.trim() || busy) && styles.btnDisabled,
+            ]}
           >
             <Text style={styles.primaryBtnText}>Redeem from QR</Text>
           </Pressable>
@@ -545,7 +616,11 @@ export default function StaffCounter() {
             editable={!otpSent}
           />
           {!otpSent ? (
-            <Pressable testID="counter-send-otp" onPress={sendOtp} style={styles.primaryBtn}>
+            <Pressable
+              testID="counter-send-otp"
+              onPress={sendOtp}
+              style={styles.primaryBtn}
+            >
               <Text style={styles.primaryBtnText}>Send OTP</Text>
             </Pressable>
           ) : (
@@ -560,7 +635,11 @@ export default function StaffCounter() {
                 keyboardType="number-pad"
                 style={styles.input}
               />
-              <Pressable testID="counter-verify-otp" onPress={verifyOtp} style={styles.primaryBtn}>
+              <Pressable
+                testID="counter-verify-otp"
+                onPress={verifyOtp}
+                style={styles.primaryBtn}
+              >
                 <Text style={styles.primaryBtnText}>Verify</Text>
               </Pressable>
             </>
@@ -574,7 +653,8 @@ export default function StaffCounter() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Staff-Assisted Lookup</Text>
           <Text style={styles.muted}>
-            For customers without their phone/app. Search by phone or name — no OTP.
+            For customers without their phone/app. Search by phone or name — no
+            OTP.
           </Text>
           <View style={styles.searchRow}>
             <TextInput
@@ -586,7 +666,11 @@ export default function StaffCounter() {
               autoCapitalize="none"
               style={[styles.input, { flex: 1 }]}
             />
-            <Pressable testID="counter-search" onPress={runSearch} style={styles.primaryBtnInline}>
+            <Pressable
+              testID="counter-search"
+              onPress={runSearch}
+              style={styles.primaryBtnInline}
+            >
               <Text style={styles.primaryBtnText}>Search</Text>
             </Pressable>
           </View>
@@ -620,7 +704,8 @@ export default function StaffCounter() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>New Customer</Text>
           <Text style={styles.muted}>
-            Create a new member. If the phone already exists, that customer is used.
+            Create a new member. If the phone already exists, that customer is
+            used.
           </Text>
           {!customer ? (
             <>
@@ -641,7 +726,11 @@ export default function StaffCounter() {
                 keyboardType="phone-pad"
                 style={styles.input}
               />
-              <Pressable testID="counter-new-continue" onPress={createOrFindThenIdentify} style={styles.primaryBtn}>
+              <Pressable
+                testID="counter-new-continue"
+                onPress={createOrFindThenIdentify}
+                style={styles.primaryBtn}
+              >
                 <Text style={styles.primaryBtnText}>Continue</Text>
               </Pressable>
             </>
@@ -660,9 +749,14 @@ export default function StaffCounter() {
       {result ? (
         <View
           testID="counter-result"
-          style={[styles.card, { backgroundColor: RESULT_STYLE[result.kind].bg }]}
+          style={[
+            styles.card,
+            { backgroundColor: RESULT_STYLE[result.kind].bg },
+          ]}
         >
-          <Text style={[styles.resultKind, { color: RESULT_STYLE[result.kind].fg }]}>
+          <Text
+            style={[styles.resultKind, { color: RESULT_STYLE[result.kind].fg }]}
+          >
             {result.kind}
           </Text>
           <Text style={styles.resultMsg}>{result.message}</Text>
@@ -685,11 +779,22 @@ export default function StaffCounter() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.md, gap: SPACING.sm, maxWidth: 760, width: "100%", alignSelf: "center" },
+  content: {
+    padding: SPACING.md,
+    gap: SPACING.sm,
+    maxWidth: 760,
+    width: "100%",
+    alignSelf: "center",
+  },
   h1: { fontSize: 24, fontWeight: "700", color: COLORS.text },
   muted: { fontSize: 13, color: COLORS.textMuted },
   tiny: { fontSize: 12, color: COLORS.textMuted },
-  label: { fontSize: 12, fontWeight: "700", color: COLORS.textMuted, marginTop: SPACING.xs },
+  label: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.textMuted,
+    marginTop: SPACING.xs,
+  },
   card: {
     backgroundColor: COLORS.surface,
     borderWidth: 1,
@@ -699,7 +804,11 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   cardTitle: { fontSize: 16, fontWeight: "700", color: COLORS.text },
-  ctxRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  ctxRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   ctxLabel: { fontSize: 13, color: COLORS.textMuted },
   ctxValue: { fontSize: 14, fontWeight: "600", color: COLORS.text },
   input: {
@@ -773,8 +882,18 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: COLORS.background, fontSize: 15, fontWeight: "700" },
   btnDisabled: { opacity: 0.45 },
-  identified: { fontSize: 15, fontWeight: "700", color: COLORS.text, marginTop: SPACING.xs },
-  benefitRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 8 },
+  identified: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginTop: SPACING.xs,
+  },
+  benefitRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 8,
+  },
   check: {
     width: 24,
     height: 24,

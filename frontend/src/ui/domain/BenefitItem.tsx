@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { View } from "react-native";
 
-import { BenefitType } from "@/src/core";
 import { useTheme } from "@/src/providers";
 
 import { Text } from "../Text";
@@ -9,21 +8,24 @@ import { Text } from "../Text";
 type IoniconName = keyof typeof Ionicons.glyphMap;
 
 /** Map a benefit type to a representative icon. */
-export function benefitIconForType(type: BenefitType): IoniconName {
-  switch (type) {
-    case BenefitType.DISCOUNT:
+export function benefitIconForType(benefitTypeId: string): IoniconName {
+  switch (benefitTypeId) {
+    case "benefit-type-discount":
       return "pricetag-outline";
-    case BenefitType.FREEBIE:
+
+    case "benefit-type-freebie":
       return "gift-outline";
-    case BenefitType.REWARD:
+
+    case "benefit-type-reward":
       return "ribbon-outline";
-    case BenefitType.PERK:
+
+    case "benefit-type-perk":
       return "star-outline";
+
     default:
       return "gift-outline";
   }
 }
-
 /**
  * BenefitItem — reusable PRESENTATION of a single benefit row. No redemption
  * behaviour; presentation only.
@@ -35,12 +37,21 @@ type BenefitItemProps = {
   testID?: string;
 };
 
-export function BenefitItem({ title, subtitle, icon = "gift-outline", testID }: BenefitItemProps) {
+export function BenefitItem({
+  title,
+  subtitle,
+  icon = "gift-outline",
+  testID,
+}: BenefitItemProps) {
   const theme = useTheme();
   return (
     <View
       testID={testID}
-      style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: theme.spacing.md,
+      }}
     >
       <View
         style={{

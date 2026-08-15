@@ -87,7 +87,19 @@ export function BusinessExperience({
         redemptions,
         formatDate,
       }),
-    [organization, configuration, template, content, subscription, product, benefits, offers, stores, redemptions, formatDate],
+    [
+      organization,
+      configuration,
+      template,
+      content,
+      subscription,
+      product,
+      benefits,
+      offers,
+      stores,
+      redemptions,
+      formatDate,
+    ],
   );
 
   const cardStyle = configuration.customerExperience.cardStyle;
@@ -103,14 +115,18 @@ export function BusinessExperience({
     createdAt: string;
   };
 
-  const [selectedBenefitIds, setSelectedBenefitIds] = useState<Set<string>>(new Set());
+  const [selectedBenefitIds, setSelectedBenefitIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [redeemToken, setRedeemToken] = useState<RedemptionToken | null>(null);
 
   // All available benefits are selected by default; reset when the focused
   // membership changes.
   useEffect(() => {
     setSelectedBenefitIds(
-      new Set(exp.redeemableBenefits.filter((b) => b.available).map((b) => b.id)),
+      new Set(
+        exp.redeemableBenefits.filter((b) => b.available).map((b) => b.id),
+      ),
     );
     setRedeemToken(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -144,7 +160,8 @@ export function BusinessExperience({
   };
 
   const benefitTitleById = useMemo(
-    () => new Map(exp.benefits.map((b) => [b.id, b.title])),
+    () =>
+      new Map(exp.benefits.map((b) => [b.id, b.displayName ?? b.benefitName])),
     [exp.benefits],
   );
   const selectedCount = exp.redeemableBenefits.filter(
@@ -154,20 +171,40 @@ export function BusinessExperience({
 
   /* ------------------------------ sub-renderers ------------------------------ */
 
-  const HeroImage = ({ uri, height = 168 }: { uri?: string; height?: number }) =>
+  const HeroImage = ({
+    uri,
+    height = 168,
+  }: {
+    uri?: string;
+    height?: number;
+  }) =>
     uri ? (
       <Image
         source={{ uri }}
         resizeMode="cover"
-        style={{ width: "100%", height, borderRadius: theme.radius.lg, backgroundColor: theme.colors.surfaceAlt }}
+        style={{
+          width: "100%",
+          height,
+          borderRadius: theme.radius.lg,
+          backgroundColor: theme.colors.surfaceAlt,
+        }}
       />
     ) : null;
 
-  const renderPromotionCard = (promo: NonNullable<typeof exp.heroPromotion>) => (
+  const renderPromotionCard = (
+    promo: NonNullable<typeof exp.heroPromotion>,
+  ) => (
     <Card padding="none" style={{ overflow: "hidden" }}>
       <HeroImage uri={promo.imageUrl} />
       <View style={{ padding: theme.spacing.lg, gap: theme.spacing.sm }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+          }}
+        >
           {promo.badge ? <Badge label={promo.badge} tone="brand" /> : <View />}
           {promo.expiryLabel ? (
             <Text variant="caption" color="textMuted">
@@ -222,9 +259,9 @@ export function BusinessExperience({
                 <BenefitItem
                   key={b.id}
                   testID={`experience-benefit-${b.id}`}
-                  title={b.title}
+                  title={b.displayName ?? b.benefitName}
                   subtitle={b.description}
-                  icon={benefitIconForType(b.type)}
+                  icon={benefitIconForType(b.benefitTypeId)}
                 />
               ))}
             </View>
@@ -248,17 +285,34 @@ export function BusinessExperience({
                       flexDirection: "row",
                       alignItems: "center",
                       gap: theme.spacing.md,
-                      opacity: !b.available ? 0.5 : pressed ? theme.states.pressedOpacity : 1,
+                      opacity: !b.available
+                        ? 0.5
+                        : pressed
+                          ? theme.states.pressedOpacity
+                          : 1,
                     })}
                   >
                     <Ionicons
-                      name={!b.available ? "ban-outline" : selected ? "checkbox" : "square-outline"}
+                      name={
+                        !b.available
+                          ? "ban-outline"
+                          : selected
+                            ? "checkbox"
+                            : "square-outline"
+                      }
                       size={22}
-                      color={!b.available || !selected ? theme.colors.textMuted : theme.colors.primary}
+                      color={
+                        !b.available || !selected
+                          ? theme.colors.textMuted
+                          : theme.colors.primary
+                      }
                     />
                     <View style={{ flex: 1 }}>
-                      <Text variant="bodyStrong" color={b.available ? "text" : "textMuted"}>
-                        {b.title}
+                      <Text
+                        variant="bodyStrong"
+                        color={b.available ? "text" : "textMuted"}
+                      >
+                        {b.displayName ?? b.benefitName}
                       </Text>
                       {b.description ? (
                         <Text variant="bodySmall" color="textMuted">
@@ -266,7 +320,12 @@ export function BusinessExperience({
                         </Text>
                       ) : null}
                     </View>
-                    {!b.available ? <Badge label={t("experience.benefitUsed")} tone="neutral" /> : null}
+                    {!b.available ? (
+                      <Badge
+                        label={t("experience.benefitUsed")}
+                        tone="neutral"
+                      />
+                    ) : null}
                   </Pressable>
                 );
               })}
@@ -300,13 +359,22 @@ export function BusinessExperience({
         </Section>
       ) : null}
 
-
       {availableMemberships.length ? (
         <Section title={t("experience.availableMemberships")}>
           <View style={{ gap: theme.spacing.md }}>
             {availableMemberships.map((p) => (
-              <Card key={p.id} testID={`experience-available-${p.id}`} padding="lg">
-                <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+              <Card
+                key={p.id}
+                testID={`experience-available-${p.id}`}
+                padding="lg"
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: theme.spacing.md,
+                  }}
+                >
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text variant="bodyStrong" color="text">
                       {p.tier ?? p.name}
@@ -338,8 +406,15 @@ export function BusinessExperience({
   const OffersTab = (
     <View style={{ gap: theme.spacing.lg }} testID="experience-tab-offers">
       <Section title={t("experience.todaysPerks")}>
-        {exp.featuredPromotion ? renderPromotionCard(exp.featuredPromotion) : null}
-        <View style={{ gap: theme.spacing.md, marginTop: exp.featuredPromotion ? theme.spacing.md : 0 }}>
+        {exp.featuredPromotion
+          ? renderPromotionCard(exp.featuredPromotion)
+          : null}
+        <View
+          style={{
+            gap: theme.spacing.md,
+            marginTop: exp.featuredPromotion ? theme.spacing.md : 0,
+          }}
+        >
           {exp.offers.map((o) => (
             <OfferCard
               key={o.id}
@@ -357,7 +432,13 @@ export function BusinessExperience({
   const HistoryTab = (
     <View style={{ gap: theme.spacing.lg }} testID="experience-tab-history">
       <Card padding="lg">
-        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            gap: theme.spacing.md,
+          }}
+        >
           <View style={{ flex: 1 }}>
             <Text variant="display" color="primary">
               {exp.activityCount}
@@ -368,7 +449,11 @@ export function BusinessExperience({
           </View>
           {exp.mostVisited ? (
             <View style={{ flex: 1, alignItems: "flex-end" }}>
-              <Text variant="bodyStrong" color="text" style={{ textAlign: "right" }}>
+              <Text
+                variant="bodyStrong"
+                color="text"
+                style={{ textAlign: "right" }}
+              >
                 {exp.mostVisited}
               </Text>
               <Text variant="caption" color="textMuted">
@@ -387,10 +472,17 @@ export function BusinessExperience({
                 <View
                   key={a.id}
                   testID={`experience-activity-${a.id}`}
-                  style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: theme.spacing.sm,
+                  }}
                 >
                   <View style={{ flex: 1 }}>
-                    <ActivityItem title={a.title} subtitle={`${a.location} · ${a.timeLabel}`} />
+                    <ActivityItem
+                      title={a.title}
+                      subtitle={`${a.location} · ${a.timeLabel}`}
+                    />
                   </View>
                   <Badge label={t("experience.redeemed")} tone="success" />
                 </View>
@@ -417,9 +509,17 @@ export function BusinessExperience({
               {exp.stores.map((s) => (
                 <View
                   key={s.id}
-                  style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: theme.spacing.md,
+                  }}
                 >
-                  <Ionicons name="location-outline" size={20} color={theme.colors.primary} />
+                  <Ionicons
+                    name="location-outline"
+                    size={20}
+                    color={theme.colors.primary}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text variant="bodyStrong" color="text">
                       {s.name}
@@ -443,9 +543,24 @@ export function BusinessExperience({
               <Text variant="body" color="textSecondary">
                 {exp.businessInformation.about}
               </Text>
-              <InfoRow icon="mail-outline" label={t("experience.email")} value={exp.businessInformation.supportEmail} theme={theme} />
-              <InfoRow icon="call-outline" label={t("experience.phone")} value={exp.businessInformation.supportPhone} theme={theme} />
-              <InfoRow icon="globe-outline" label={t("experience.website")} value={exp.businessInformation.website} theme={theme} />
+              <InfoRow
+                icon="mail-outline"
+                label={t("experience.email")}
+                value={exp.businessInformation.supportEmail}
+                theme={theme}
+              />
+              <InfoRow
+                icon="call-outline"
+                label={t("experience.phone")}
+                value={exp.businessInformation.supportPhone}
+                theme={theme}
+              />
+              <InfoRow
+                icon="globe-outline"
+                label={t("experience.website")}
+                value={exp.businessInformation.website}
+                theme={theme}
+              />
             </View>
           </Card>
         </Section>
@@ -455,8 +570,18 @@ export function BusinessExperience({
         <Section title={t("experience.preferences")}>
           <Card padding="lg">
             <View style={{ gap: theme.spacing.md }}>
-              <PrefRow label={t("experience.notifications")} on={exp.businessPreferences.notifications} t={t} theme={theme} />
-              <PrefRow label={t("experience.marketingEmails")} on={exp.businessPreferences.marketingEmails} t={t} theme={theme} />
+              <PrefRow
+                label={t("experience.notifications")}
+                on={exp.businessPreferences.notifications}
+                t={t}
+                theme={theme}
+              />
+              <PrefRow
+                label={t("experience.marketingEmails")}
+                on={exp.businessPreferences.marketingEmails}
+                t={t}
+                theme={theme}
+              />
             </View>
           </Card>
         </Section>
@@ -484,14 +609,31 @@ export function BusinessExperience({
   );
 
   const tabContent =
-    tab === "card" ? CardTab : tab === "offers" ? OffersTab : tab === "history" ? HistoryTab : ProfileTab;
+    tab === "card"
+      ? CardTab
+      : tab === "offers"
+        ? OffersTab
+        : tab === "history"
+          ? HistoryTab
+          : ProfileTab;
 
   /* --------------------------------- layout --------------------------------- */
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.background, paddingTop: insets.top }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: theme.colors.background,
+        paddingTop: insets.top,
+      }}
+    >
       {/* Platform return action — the ONLY Memgine chrome inside a business. */}
-      <View style={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm }}>
+      <View
+        style={{
+          paddingHorizontal: theme.spacing.lg,
+          paddingTop: theme.spacing.sm,
+        }}
+      >
         <Pressable
           onPress={onExit}
           testID="experience-back"
@@ -504,7 +646,11 @@ export function BusinessExperience({
             opacity: pressed ? theme.states.pressedOpacity : 1,
           })}
         >
-          <Ionicons name="chevron-back" size={18} color={theme.colors.primary} />
+          <Ionicons
+            name="chevron-back"
+            size={18}
+            color={theme.colors.primary}
+          />
           <Text variant="label" color="primary">
             {t("experience.back")}
           </Text>
@@ -547,7 +693,11 @@ export function BusinessExperience({
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: theme.spacing.lg, paddingTop: theme.spacing.sm, gap: theme.spacing.lg }}
+        contentContainerStyle={{
+          padding: theme.spacing.lg,
+          paddingTop: theme.spacing.sm,
+          gap: theme.spacing.lg,
+        }}
         showsVerticalScrollIndicator={false}
       >
         {/* Unobtrusive membership selector — only when the customer holds more
@@ -576,17 +726,26 @@ export function BusinessExperience({
                     paddingVertical: 8,
                     borderRadius: theme.radius.pill,
                     borderWidth: 1,
-                    borderColor: selected ? theme.colors.primary : theme.colors.border,
-                    backgroundColor: selected ? theme.colors.primarySoft : theme.colors.background,
+                    borderColor: selected
+                      ? theme.colors.primary
+                      : theme.colors.border,
+                    backgroundColor: selected
+                      ? theme.colors.primarySoft
+                      : theme.colors.background,
                     opacity: pressed ? theme.states.pressedOpacity : 1,
                   })}
                 >
                   <Ionicons
                     name={selected ? "card" : "card-outline"}
                     size={14}
-                    color={selected ? theme.colors.primary : theme.colors.textMuted}
+                    color={
+                      selected ? theme.colors.primary : theme.colors.textMuted
+                    }
                   />
-                  <Text variant="label" color={selected ? "primary" : "textMuted"}>
+                  <Text
+                    variant="label"
+                    color={selected ? "primary" : "textMuted"}
+                  >
                     {label}
                   </Text>
                 </Pressable>
@@ -630,10 +789,20 @@ export function BusinessExperience({
               key={tb.key}
               testID={`experience-tabbar-${tb.key}`}
               onPress={() => setTab(tb.key)}
-              style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 10, gap: 2 }}
+              style={{
+                flex: 1,
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: 10,
+                gap: 2,
+              }}
             >
               <Ionicons
-                name={(focused ? tb.icon : tb.iconOutline) as keyof typeof Ionicons.glyphMap}
+                name={
+                  (focused
+                    ? tb.icon
+                    : tb.iconOutline) as keyof typeof Ionicons.glyphMap
+                }
                 size={22}
                 color={focused ? theme.colors.primary : theme.colors.textMuted}
               />
@@ -663,7 +832,11 @@ export function BusinessExperience({
               </Text>
               <Badge label={exp.referral.code} tone="brand" />
             </View>
-            <Text variant="bodySmall" color="primary" style={{ textAlign: "center" }}>
+            <Text
+              variant="bodySmall"
+              color="primary"
+              style={{ textAlign: "center" }}
+            >
               {exp.referral.rewardLabel}
             </Text>
           </View>
@@ -692,9 +865,17 @@ export function BusinessExperience({
               {redeemToken.benefitIds.map((id) => (
                 <View
                   key={id}
-                  style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: theme.spacing.sm,
+                  }}
                 >
-                  <Ionicons name="checkmark-circle" size={16} color={theme.colors.primary} />
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={16}
+                    color={theme.colors.primary}
+                  />
                   <Text variant="bodySmall" color="text">
                     {benefitTitleById.get(id) ?? id}
                   </Text>
@@ -702,15 +883,20 @@ export function BusinessExperience({
               ))}
             </View>
             <Text variant="caption" color="textMuted">
-              {t("experience.benefitsCount", { count: redeemToken.benefitIds.length })}
+              {t("experience.benefitsCount", {
+                count: redeemToken.benefitIds.length,
+              })}
             </Text>
-            <Text variant="bodySmall" color="textMuted" style={{ textAlign: "center" }}>
+            <Text
+              variant="bodySmall"
+              color="textMuted"
+              style={{ textAlign: "center" }}
+            >
               {t("experience.redeemTokenHint")}
             </Text>
           </View>
         ) : null}
       </Modal>
-
     </View>
   );
 }
@@ -729,7 +915,13 @@ function InfoRow({
   theme: ReturnType<typeof useBusiness>["theme"];
 }) {
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: theme.spacing.md,
+      }}
+    >
       <Ionicons name={icon} size={18} color={theme.colors.textMuted} />
       <View style={{ flex: 1 }}>
         <Text variant="caption" color="textMuted">
@@ -755,13 +947,21 @@ function PrefRow({
   theme: ReturnType<typeof useBusiness>["theme"];
 }) {
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+      }}
+    >
       <Text variant="bodySmall" color="text">
         {label}
       </Text>
       <View
         style={{
-          backgroundColor: on ? theme.colors.successSoft : theme.colors.surfaceAlt,
+          backgroundColor: on
+            ? theme.colors.successSoft
+            : theme.colors.surfaceAlt,
           paddingHorizontal: 10,
           paddingVertical: 4,
           borderRadius: theme.radius.pill,

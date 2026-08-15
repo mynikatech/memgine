@@ -184,7 +184,7 @@ export default function DiscoverGateway() {
                 <View style={{ gap: 6 }}>
                   {detailBenefits.map((b) => (
                     <Text key={b.id} variant="bodySmall" color="text">
-                      • {b.title}
+                     • {b.displayName ?? b.benefitName}
                     </Text>
                   ))}
                 </View>

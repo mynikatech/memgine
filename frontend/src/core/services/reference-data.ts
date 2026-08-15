@@ -46,4 +46,8 @@ export interface ReferenceDataService {
   listIntegrationTypes(): Promise<ReferenceDataItem[]>;
   listStoreTypes(): Promise<ReferenceDataItem[]>;
   listStoreStatuses(): Promise<ReferenceDataItem[]>;
+  listStaffStatuses(): Promise<ReferenceDataItem[]>;
+  listBenefitCategories(): Promise<ReferenceDataItem[]>;
+  listBenefitTypes(): Promise<ReferenceDataItem[]>;
+  listBenefitStatuses(): Promise<ReferenceDataItem[]>;
 }

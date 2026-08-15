@@ -3,22 +3,60 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 
-import { BillingInterval, PaymentMethod, PurchaseSource, SubscriptionStatus } from "@/src/core";
-import type { Benefit, Customer, MembershipProduct, Subscription } from "@/src/core";
+import {
+  BillingInterval,
+  PaymentMethod,
+  PurchaseSource,
+  SubscriptionStatus,
+} from "@/src/core";
+import type {
+  Benefit,
+  Customer,
+  MembershipProduct,
+  Subscription,
+} from "@/src/core";
 import { mockServices } from "@/src/core";
 import { Screen } from "@/src/layout";
-import { useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
-import { Badge, Button, Card, IconButton, Input, Section, StateView, Text } from "@/src/ui";
-import { benefitIconForType, BenefitItem, BusinessHeader, ReceiptSummary } from "@/src/ui/domain";
+import {
+  useBusiness,
+  useCustomerContext,
+  useTranslation,
+} from "@/src/providers";
+import {
+  Badge,
+  Button,
+  Card,
+  IconButton,
+  Input,
+  Section,
+  StateView,
+  Text,
+} from "@/src/ui";
+import {
+  benefitIconForType,
+  BenefitItem,
+  BusinessHeader,
+  ReceiptSummary,
+} from "@/src/ui/domain";
 
 /**
  * Customer acquisition & subscription purchase journey (Stage 4), reused for
  * both normal customer purchase and staff-assisted sales (source param).
  */
-type Step = "landing" | "register" | "otp" | "review" | "processing" | "success";
+type Step =
+  | "landing"
+  | "register"
+  | "otp"
+  | "review"
+  | "processing"
+  | "success";
 
 const DEFAULT_CUSTOMER_ID = "cust-1";
-const PAYMENT_METHODS: PaymentMethod[] = [PaymentMethod.UPI, PaymentMethod.CARD, PaymentMethod.CASH];
+const PAYMENT_METHODS: PaymentMethod[] = [
+  PaymentMethod.UPI,
+  PaymentMethod.CARD,
+  PaymentMethod.CASH,
+];
 
 export default function JoinFlow() {
   const router = useRouter();
@@ -51,7 +89,9 @@ export default function JoinFlow() {
   const [otpError, setOtpError] = useState<string | undefined>();
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [reference, setReference] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.UPI);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
+    PaymentMethod.UPI,
+  );
 
   useEffect(() => {
     (async () => {
@@ -60,7 +100,9 @@ export default function JoinFlow() {
         const list = await mockServices.membershipProduct.listProducts(orgId);
         pid = list[0]?.id;
       }
-      const prod = pid ? await mockServices.membershipProduct.getProduct(pid) : null;
+      const prod = pid
+        ? await mockServices.membershipProduct.getProduct(pid)
+        : null;
       const bens = pid ? await mockServices.benefit.listByProduct(pid) : [];
       const cust = await mockServices.customer.getCustomer(customerId);
       setProduct(prod);
@@ -77,7 +119,9 @@ export default function JoinFlow() {
       : plan?.billingInterval === BillingInterval.YEARLY
         ? t("join.perYear")
         : t("join.oneTime");
-  const priceText = plan ? `${formatMoney(plan.price.amountMinor)} · ${intervalLabel}` : "";
+  const priceText = plan
+    ? `${formatMoney(plan.price.amountMinor)} · ${intervalLabel}`
+    : "";
 
   const sendOtp = useCallback(async () => {
     const res = await mockServices.auth.sendOtp({ mobile });
@@ -110,7 +154,9 @@ export default function JoinFlow() {
       customerId,
       membershipProductId: product.id,
       planId: plan.id,
-      source: isStaffSale ? PurchaseSource.STAFF_ASSISTED : PurchaseSource.CUSTOMER,
+      source: isStaffSale
+        ? PurchaseSource.STAFF_ASSISTED
+        : PurchaseSource.CUSTOMER,
       staffId: isStaffSale ? params.staffId : undefined,
       storeId: isStaffSale ? params.storeId : undefined,
       paymentMethod: isStaffSale ? paymentMethod : undefined,
@@ -119,19 +165,44 @@ export default function JoinFlow() {
     setReference(payment.reference);
     if (!isStaffSale) setActiveContext(sub.organizationId, sub.id);
     setStep("success");
-  }, [product, plan, configuration.localization.defaultCurrency, setActiveContext, isStaffSale, customerId, orgId, params.staffId, params.storeId, paymentMethod]);
+  }, [
+    product,
+    plan,
+    configuration.localization.defaultCurrency,
+    setActiveContext,
+    isStaffSale,
+    customerId,
+    orgId,
+    params.staffId,
+    params.storeId,
+    paymentMethod,
+  ]);
 
-  const close = () => (router.canGoBack() ? router.back() : router.replace("/cards"));
+  const close = () =>
+    router.canGoBack() ? router.back() : router.replace("/cards");
   const goToCard = () => (isStaffSale ? close() : router.replace("/cards"));
 
   const headerRight = (
-    <IconButton icon="close" color="textMuted" onPress={close} testID="join-close" />
+    <IconButton
+      icon="close"
+      color="textMuted"
+      onPress={close}
+      testID="join-close"
+    />
   );
 
   if (loading || !product || !plan) {
     return (
-      <Screen testID="join-screen" edges={["top"]} header={<BusinessHeader right={headerRight} />}>
-        <StateView kind="loading" message={t("common.loading")} testID="join-loading" />
+      <Screen
+        testID="join-screen"
+        edges={["top"]}
+        header={<BusinessHeader right={headerRight} />}
+      >
+        <StateView
+          kind="loading"
+          message={t("common.loading")}
+          testID="join-loading"
+        />
       </Screen>
     );
   }
@@ -140,13 +211,19 @@ export default function JoinFlow() {
     <Screen
       testID="join-screen"
       edges={["top"]}
-      header={<BusinessHeader right={headerRight} testID="join-business-header" />}
+      header={
+        <BusinessHeader right={headerRight} testID="join-business-header" />
+      }
     >
       {step === "landing" ? (
         <View style={{ gap: theme.spacing.lg }} testID="join-landing">
           <View>
             <Badge label={t("join.membership")} tone="brand" />
-            <Text variant="display" color="text" style={{ marginTop: theme.spacing.sm }}>
+            <Text
+              variant="display"
+              color="text"
+              style={{ marginTop: theme.spacing.sm }}
+            >
               {product.tier ?? product.name}
             </Text>
             <Text variant="title" color="primary">
@@ -162,9 +239,9 @@ export default function JoinFlow() {
                 {benefits.map((b) => (
                   <BenefitItem
                     key={b.id}
-                    title={b.title}
+                    title={b.displayName ?? b.benefitName}
                     subtitle={b.description}
-                    icon={benefitIconForType(b.type)}
+                    icon={benefitIconForType(b.benefitTypeId)}
                   />
                 ))}
               </View>
@@ -210,7 +287,11 @@ export default function JoinFlow() {
           <Text variant="bodySmall" color="textMuted">
             {t("join.otpSentTo", { mobile })}
           </Text>
-          <Badge label={t("join.devOtp", { code: devCode })} tone="info" testID="join-dev-otp" />
+          <Badge
+            label={t("join.devOtp", { code: devCode })}
+            tone="info"
+            testID="join-dev-otp"
+          />
           <Input
             label={t("join.otpLabel")}
             value={code}
@@ -239,11 +320,21 @@ export default function JoinFlow() {
             meta={[
               { label: t("join.business"), value: organization.displayName },
               ...(isStaffSale
-                ? [{ label: t("join.customer"), value: customer?.fullName ?? customerId }]
+                ? [
+                    {
+                      label: t("join.customer"),
+                      value: customer?.fullName ?? customerId,
+                    },
+                  ]
                 : []),
-              { label: t("join.plan"), value: `${product.tier ?? product.name} · ${intervalLabel}` },
+              {
+                label: t("join.plan"),
+                value: `${product.tier ?? product.name} · ${intervalLabel}`,
+              },
             ]}
-            lines={[{ label: product.name, amountMinor: plan.price.amountMinor }]}
+            lines={[
+              { label: product.name, amountMinor: plan.price.amountMinor },
+            ]}
             totalMinor={plan.price.amountMinor}
           />
           {isStaffSale ? (
@@ -262,11 +353,18 @@ export default function JoinFlow() {
                         alignItems: "center",
                         borderRadius: theme.radius.md,
                         borderWidth: 1,
-                        borderColor: on ? theme.colors.primary : theme.colors.border,
-                        backgroundColor: on ? theme.colors.primarySoft : theme.colors.background,
+                        borderColor: on
+                          ? theme.colors.primary
+                          : theme.colors.border,
+                        backgroundColor: on
+                          ? theme.colors.primarySoft
+                          : theme.colors.background,
                       }}
                     >
-                      <Text variant="bodyStrong" color={on ? "primary" : "textMuted"}>
+                      <Text
+                        variant="bodyStrong"
+                        color={on ? "primary" : "textMuted"}
+                      >
                         {m === "CARD" ? "Card" : m === "CASH" ? "Cash" : "UPI"}
                       </Text>
                     </Pressable>
@@ -281,9 +379,9 @@ export default function JoinFlow() {
                 {benefits.map((b) => (
                   <BenefitItem
                     key={b.id}
-                    title={b.title}
+                    title={b.displayName ?? b.benefitName}
                     subtitle={b.description}
-                    icon={benefitIconForType(b.type)}
+                    icon={benefitIconForType(b.benefitTypeId)}
                   />
                 ))}
               </View>
@@ -299,17 +397,35 @@ export default function JoinFlow() {
       ) : null}
 
       {step === "processing" ? (
-        <StateView kind="loading" message={t("join.processing")} testID="join-processing" />
+        <StateView
+          kind="loading"
+          message={t("join.processing")}
+          testID="join-processing"
+        />
       ) : null}
 
       {step === "success" && subscription ? (
         <View style={{ gap: theme.spacing.lg }} testID="join-success">
-          <View style={{ alignItems: "center", gap: theme.spacing.sm, paddingVertical: theme.spacing.lg }}>
-            <Ionicons name="checkmark-circle" size={72} color={theme.colors.success} />
+          <View
+            style={{
+              alignItems: "center",
+              gap: theme.spacing.sm,
+              paddingVertical: theme.spacing.lg,
+            }}
+          >
+            <Ionicons
+              name="checkmark-circle"
+              size={72}
+              color={theme.colors.success}
+            />
             <Text variant="h1" color="text">
               {t("join.successTitle")}
             </Text>
-            <Text variant="body" color="textMuted" style={{ textAlign: "center" }}>
+            <Text
+              variant="body"
+              color="textMuted"
+              style={{ textAlign: "center" }}
+            >
               {t("join.successBody", {
                 business: organization.displayName,
                 product: product.tier ?? product.name,
@@ -323,16 +439,32 @@ export default function JoinFlow() {
             title={t("join.receiptTitle")}
             meta={[
               { label: t("join.business"), value: organization.displayName },
-              { label: t("join.customer"), value: customer?.fullName ?? customerId },
-              { label: t("join.plan"), value: `${product.tier ?? product.name} · ${intervalLabel}` },
+              {
+                label: t("join.customer"),
+                value: customer?.fullName ?? customerId,
+              },
+              {
+                label: t("join.plan"),
+                value: `${product.tier ?? product.name} · ${intervalLabel}`,
+              },
               ...(isStaffSale && subscription.paymentMethod
-                ? [{ label: t("join.paymentMethod"), value: subscription.paymentMethod }]
+                ? [
+                    {
+                      label: t("join.paymentMethod"),
+                      value: subscription.paymentMethod,
+                    },
+                  ]
                 : []),
-              { label: t("join.date"), value: formatDate(subscription.startedAt) },
+              {
+                label: t("join.date"),
+                value: formatDate(subscription.startedAt),
+              },
               { label: t("join.reference"), value: reference },
               { label: t("join.status"), value: t("join.paid") },
             ]}
-            lines={[{ label: product.name, amountMinor: plan.price.amountMinor }]}
+            lines={[
+              { label: product.name, amountMinor: plan.price.amountMinor },
+            ]}
             totalMinor={plan.price.amountMinor}
           />
 

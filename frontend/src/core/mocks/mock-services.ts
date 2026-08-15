@@ -18,6 +18,8 @@ import {
   Store,
   Subscription,
   SubscriptionStatus,
+  Staff,
+  OrganizationUser,
 } from "../domain/entities";
 import {
   BenefitService,
@@ -50,6 +52,11 @@ import {
   GLOW_STUDIO_CONTEXT,
   GLOW_STUDIO_ORGANIZATION,
 } from "../defaults/glow-studio";
+
+import {
+  DEFAULT_ROLE_CAPABILITIES,
+  StaffRole,
+} from "../permissions/permissions";
 
 const ORGANIZATIONS: Organization[] = [
   SUNRISE_BAKERY_ORGANIZATION,
@@ -216,6 +223,141 @@ const INTEGRATION_CONFIGURATIONS: IntegrationConfiguration[] = [
   },
 ];
 
+const organizationUsers: OrganizationUser[] = [
+  {
+    id: "org-user-sunrise-owner",
+    organizationId: "org-sunrise",
+    userId: "user-sunrise-owner",
+    organizationUserTypeId: "org-user-type-owner",
+    organizationUserStatusId: "status-active",
+    joiningDate: "2026-01-01",
+
+    createdAt: "2026-01-01T09:00:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-01-01T09:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+  {
+    id: "org-user-sunrise-manager",
+    organizationId: "org-sunrise",
+    userId: "user-sunrise-manager",
+    organizationUserTypeId: "org-user-type-employee",
+    organizationUserStatusId: "status-active",
+    joiningDate: "2026-01-02",
+
+    createdAt: "2026-01-02T09:00:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-01-02T09:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+  {
+    id: "org-user-sunrise-staff",
+    organizationId: "org-sunrise",
+    userId: "user-sunrise-staff",
+    organizationUserTypeId: "org-user-type-employee",
+    organizationUserStatusId: "status-active",
+    joiningDate: "2026-01-03",
+
+    createdAt: "2026-01-03T09:00:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-01-03T09:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+];
+
+const staff: Staff[] = [
+  {
+    id: "staff-dev-owner",
+    organizationId: "org-sunrise",
+    organizationUserId: "org-user-sunrise-owner",
+
+    staffCode: "ST-001",
+    fullName: "Sunrise Bakery Owner",
+    designation: "Owner",
+
+    storeId: "store-1",
+
+    joiningDate: "2026-01-01",
+    relievingDate: undefined,
+    staffStatusId: "staff-status-active",
+
+    role: StaffRole.OWNER,
+    capabilities: DEFAULT_ROLE_CAPABILITIES[StaffRole.OWNER],
+    isActive: true,
+
+    createdAt: "2026-01-01T09:00:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-01-01T09:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+  {
+    id: "staff-sunrise-manager",
+    organizationId: "org-sunrise",
+    organizationUserId: "org-user-sunrise-manager",
+
+    staffCode: "ST-002",
+    fullName: "Sarah Manager",
+    designation: "Store Manager",
+
+    storeId: "store-1",
+
+    joiningDate: "2026-01-01",
+    relievingDate: undefined,
+    staffStatusId: "staff-status-active",
+
+    role: StaffRole.MANAGER,
+    capabilities: DEFAULT_ROLE_CAPABILITIES[StaffRole.MANAGER],
+    isActive: true,
+
+    createdAt: "2026-01-02T09:00:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-01-02T09:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+  {
+    id: "staff-sunrise-counter",
+    organizationId: "org-sunrise",
+    organizationUserId: "org-user-sunrise-staff",
+
+    staffCode: "ST-003",
+    fullName: "Alex Counter Staff",
+    designation: "Counter Staff",
+
+    storeId: "store-1",
+
+    joiningDate: "2026-01-03",
+    relievingDate: undefined,
+    staffStatusId: "staff-status-active",
+
+    role: StaffRole.STAFF,
+    capabilities: DEFAULT_ROLE_CAPABILITIES[StaffRole.STAFF],
+    isActive: true,
+
+    createdAt: "2026-01-03T09:00:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-01-03T09:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+];
+
 /**
  * In-memory service implementations. Their ONLY purpose is to demonstrate that
  * the frozen service contracts compile and can be consumed. They are not wired
@@ -291,48 +433,167 @@ const stores: Store[] = [
 ];
 
 const benefits: Benefit[] = [
+  // ---------------------------------------------------------------------------
+  // Sunrise Bakery
+  // ---------------------------------------------------------------------------
   {
     id: "ben-1",
     organizationId: "org-sunrise",
-    title: "10% off pastries",
-    description: "On all pastries",
-    type: BenefitType.DISCOUNT,
+
+    benefitCode: "PASTRY-10",
+    benefitName: "10% Pastry Discount",
+    displayName: "10% off pastries",
+
+    benefitCategoryId: "benefit-category-discount",
+    benefitTypeId: "benefit-type-discount",
+
+    description: "10% off on all pastries.",
+
+    benefitStatusId: "benefit-status-active",
+
+    effectiveDate: "2026-01-01",
+
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
+
   {
     id: "ben-2",
     organizationId: "org-sunrise",
-    title: "Free birthday cupcake",
-    description: "During your birthday month",
-    type: BenefitType.FREEBIE,
-    validity: { recurrence: "birthday-month" },
+
+    benefitCode: "BIRTHDAY-CUPCAKE",
+    benefitName: "Birthday Cupcake",
+    displayName: "Free birthday cupcake",
+
+    benefitCategoryId: "benefit-category-food",
+    benefitTypeId: "benefit-type-freebie",
+
+    description:
+      "One complimentary cupcake during the customer's birthday month.",
+
+    benefitStatusId: "benefit-status-active",
+
+    effectiveDate: "2026-01-01",
+
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
+
   {
     id: "ben-3",
     organizationId: "org-sunrise",
-    title: "Free filter coffee",
-    description: "One cup per day",
-    type: BenefitType.FREEBIE,
+
+    benefitCode: "DAILY-COFFEE",
+    benefitName: "Daily Filter Coffee",
+    displayName: "Free filter coffee",
+
+    benefitCategoryId: "benefit-category-food",
+    benefitTypeId: "benefit-type-freebie",
+
+    description: "One complimentary filter coffee per day.",
+
+    benefitStatusId: "benefit-status-active",
+
+    effectiveDate: "2026-01-01",
+
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
+
+  // ---------------------------------------------------------------------------
+  // Glow Studio
+  // ---------------------------------------------------------------------------
   {
     id: "glow-ben-1",
     organizationId: "org-glow",
-    title: "Monthly signature facial",
-    description: "One complimentary signature facial each month",
-    type: BenefitType.FREEBIE,
+
+    benefitCode: "MONTHLY-FACIAL",
+    benefitName: "Monthly Signature Facial",
+    displayName: "Monthly signature facial",
+
+    benefitCategoryId: "benefit-category-service",
+    benefitTypeId: "benefit-type-freebie",
+
+    description: "One complimentary signature facial each month.",
+
+    benefitStatusId: "benefit-status-active",
+
+    effectiveDate: "2026-01-01",
+
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
+
   {
     id: "glow-ben-2",
     organizationId: "org-glow",
-    title: "15% off all products",
-    description: "Member pricing on take-home skincare",
-    type: BenefitType.DISCOUNT,
+
+    benefitCode: "PRODUCTS-15",
+    benefitName: "15% Product Discount",
+    displayName: "15% off all products",
+
+    benefitCategoryId: "benefit-category-discount",
+    benefitTypeId: "benefit-type-discount",
+
+    description: "15% member discount on take-home skincare products.",
+
+    benefitStatusId: "benefit-status-active",
+
+    effectiveDate: "2026-01-01",
+
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
+
   {
     id: "glow-ben-3",
     organizationId: "org-glow",
-    title: "Priority booking",
-    description: "Member-only priority appointments",
-    type: BenefitType.PERK,
+
+    benefitCode: "PRIORITY-BOOKING",
+    benefitName: "Priority Booking",
+    displayName: "Priority booking",
+
+    benefitCategoryId: "benefit-category-service",
+    benefitTypeId: "benefit-type-perk",
+
+    description: "Member-only priority access to appointments.",
+
+    benefitStatusId: "benefit-status-active",
+
+    effectiveDate: "2026-01-01",
+
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
 ];
 
@@ -624,6 +885,79 @@ export class InMemoryOrganizationService implements OrganizationService {
       versionNo: stores[index].versionNo + 1,
     };
   }
+  async listOrganizationUsers(organizationId: ID): Promise<OrganizationUser[]> {
+    return organizationUsers.filter(
+      (user) => user.organizationId === organizationId && !user.isDeleted,
+    );
+  }
+
+  async createOrganizationUser(
+    organizationId: ID,
+    organizationUser: OrganizationUser,
+  ): Promise<OrganizationUser> {
+    const created: OrganizationUser = {
+      ...organizationUser,
+      organizationId,
+    };
+
+    organizationUsers.push(created);
+
+    return created;
+  }
+
+  async listStaff(organizationId: ID): Promise<Staff[]> {
+    return staff.filter((item) => item.organizationId === organizationId);
+  }
+
+  async createStaff(organizationId: ID, staffRecord: Staff): Promise<Staff> {
+    const created: Staff = {
+      ...staffRecord,
+      organizationId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    staff.push(created);
+    return created;
+  }
+
+  async updateStaff(organizationId: ID, staffRecord: Staff): Promise<Staff> {
+    const index = staff.findIndex(
+      (item) =>
+        item.id === staffRecord.id && item.organizationId === organizationId,
+    );
+
+    if (index === -1) {
+      throw new Error("Staff member not found.");
+    }
+
+    const updated: Staff = {
+      ...staffRecord,
+      organizationId,
+      updatedAt: new Date().toISOString(),
+      versionNo: staffRecord.versionNo + 1,
+    };
+
+    staff[index] = updated;
+    return updated;
+  }
+
+  async deleteStaff(organizationId: ID, staffId: ID): Promise<void> {
+    const index = staff.findIndex(
+      (item) => item.id === staffId && item.organizationId === organizationId,
+    );
+
+    if (index === -1) {
+      throw new Error("Staff member not found.");
+    }
+
+    staff[index] = {
+      ...staff[index],
+      isDeleted: true,
+      updatedAt: new Date().toISOString(),
+      versionNo: staff[index].versionNo + 1,
+    };
+  }
 
   async getOrganizationDetails(
     organizationId: ID,
@@ -853,12 +1187,90 @@ export class InMemorySubscriptionService implements SubscriptionService {
 
 export class InMemoryBenefitService implements BenefitService {
   async listByOrganization(organizationId: ID): Promise<Benefit[]> {
-    return benefits.filter((b) => b.organizationId === organizationId);
+    return benefits.filter(
+      (benefit) =>
+        benefit.organizationId === organizationId && !benefit.isDeleted,
+    );
   }
+
   async listByProduct(membershipProductId: ID): Promise<Benefit[]> {
-    const product = products.find((p) => p.id === membershipProductId);
-    if (!product) return [];
-    return benefits.filter((b) => product.benefitIds.includes(b.id));
+    const product = products.find((item) => item.id === membershipProductId);
+
+    if (!product) {
+      return [];
+    }
+
+    return benefits.filter(
+      (benefit) =>
+        product.benefitIds.includes(benefit.id) && !benefit.isDeleted,
+    );
+  }
+
+  async createBenefit(organizationId: ID, benefit: Benefit): Promise<Benefit> {
+    const now = new Date().toISOString();
+
+    const created: Benefit = {
+      ...benefit,
+      id: benefit.id || genId("ben"),
+      organizationId,
+      createdAt: now,
+      createdBy: "user-system",
+      updatedAt: now,
+      updatedBy: "user-system",
+      isDeleted: false,
+      versionNo: 1,
+    };
+
+    benefits.push(created);
+
+    return created;
+  }
+
+  async updateBenefit(organizationId: ID, benefit: Benefit): Promise<Benefit> {
+    const index = benefits.findIndex(
+      (item) =>
+        item.id === benefit.id && item.organizationId === organizationId,
+    );
+
+    if (index === -1) {
+      throw new Error("Benefit not found.");
+    }
+
+    const current = benefits[index];
+
+    const updated: Benefit = {
+      ...benefit,
+      organizationId,
+      createdAt: current.createdAt,
+      createdBy: current.createdBy,
+      updatedAt: new Date().toISOString(),
+      updatedBy: "user-system",
+      versionNo: current.versionNo + 1,
+    };
+
+    benefits[index] = updated;
+
+    return updated;
+  }
+
+  async deleteBenefit(organizationId: ID, benefitId: ID): Promise<void> {
+    const index = benefits.findIndex(
+      (item) => item.id === benefitId && item.organizationId === organizationId,
+    );
+
+    if (index === -1) {
+      throw new Error("Benefit not found.");
+    }
+
+    const current = benefits[index];
+
+    benefits[index] = {
+      ...current,
+      isDeleted: true,
+      updatedAt: new Date().toISOString(),
+      updatedBy: "user-system",
+      versionNo: current.versionNo + 1,
+    };
   }
 }
 

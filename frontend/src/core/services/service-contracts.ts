@@ -8,6 +8,7 @@ import {
   PaymentMethod,
   PurchaseSource,
   Offer,
+  Staff,
   Organization,
   OrganizationDetails,
   OrganizationBranding,
@@ -18,6 +19,7 @@ import {
   RedemptionMethod,
   Store,
   Subscription,
+  OrganizationUser,
 } from "../domain/entities";
 
 /**
@@ -120,6 +122,15 @@ export interface OrganizationService {
     organizationId: string,
     configurationId: string,
   ): Promise<void>;
+  listStaff(organizationId: ID): Promise<Staff[]>;
+  createStaff(organizationId: ID, staff: Staff): Promise<Staff>;
+  updateStaff(organizationId: ID, staff: Staff): Promise<Staff>;
+  deleteStaff(organizationId: ID, staffId: ID): Promise<void>;
+  listOrganizationUsers(organizationId: ID): Promise<OrganizationUser[]>;
+  createOrganizationUser(
+    organizationId: ID,
+    organizationUser: OrganizationUser,
+  ): Promise<OrganizationUser>;
 }
 
 export interface CustomerService {
@@ -144,6 +155,9 @@ export interface SubscriptionService {
 export interface BenefitService {
   listByOrganization(organizationId: ID): Promise<Benefit[]>;
   listByProduct(membershipProductId: ID): Promise<Benefit[]>;
+  createBenefit(organizationId: ID, benefit: Benefit): Promise<Benefit>;
+  updateBenefit(organizationId: ID, benefit: Benefit): Promise<Benefit>;
+  deleteBenefit(organizationId: ID, benefitId: ID): Promise<void>;
 }
 
 export interface RedemptionService {

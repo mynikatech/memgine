@@ -223,11 +223,48 @@ export interface Customer {
 export interface Staff {
   id: ID;
   organizationId: ID;
-  storeId?: ID;
+  organizationUserId: ID;
+
+  staffCode: string;
   fullName: string;
+  designation?: string;
+
+  storeId?: ID;
+
+  joiningDate: ISODateString;
+  relievingDate?: ISODateString;
+  staffStatusId: ID;
+
   role: StaffRole;
   capabilities: Capability[];
   isActive: boolean;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt: ISODateString;
+  updatedBy: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
+}
+
+/** Organization User - User belongs to organization **/
+
+export interface OrganizationUser {
+  id: ID;
+  organizationId: ID;
+  userId: ID;
+  organizationUserTypeId: ID;
+  organizationUserStatusId: ID;
+  joiningDate: ISODateString;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt: ISODateString;
+  updatedBy: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
 }
 
 /* ------------------------------------------------------------------ *
@@ -275,10 +312,28 @@ export interface BenefitValidity {
 export interface Benefit {
   id: ID;
   organizationId: ID;
-  title: string;
+
+  benefitCode: string;
+  benefitName: string;
+  displayName?: string;
+
+  benefitCategoryId: ID;
+  benefitTypeId: ID;
+
   description?: string;
-  type: BenefitType;
-  validity?: BenefitValidity;
+
+  benefitStatusId: ID;
+
+  effectiveDate: string;
+  expiryDate?: string;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt: ISODateString;
+  updatedBy: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
 }
 
 /* ------------------------------------------------------------------ *

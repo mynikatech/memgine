@@ -101,8 +101,17 @@ export interface ResolveExperienceInput {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export function resolveExperience(input: ResolveExperienceInput): ResolvedExperience {
-  const { organization, configuration, template, content, subscription, product } = input;
+export function resolveExperience(
+  input: ResolveExperienceInput,
+): ResolvedExperience {
+  const {
+    organization,
+    configuration,
+    template,
+    content,
+    subscription,
+    product,
+  } = input;
   const cx = configuration.customerExperience;
 
   const templateHas = (key: TemplateSectionKey) =>
@@ -112,7 +121,8 @@ export function resolveExperience(input: ResolveExperienceInput): ResolvedExperi
   // business has switched them on. Mandatory sections are always present.
   const showOffers = cx.showOffers && templateHas(TemplateSectionKey.OFFERS);
   const showStores = cx.showStores && templateHas(TemplateSectionKey.STORES);
-  const showActivity = cx.showActivity && templateHas(TemplateSectionKey.ACTIVITY);
+  const showActivity =
+    cx.showActivity && templateHas(TemplateSectionKey.ACTIVITY);
 
   // Membership status is domain-derived (subscription + product). The focused
   // membership is OPTIONAL — an org-level (QR) entry may have no owned membership.
@@ -125,7 +135,10 @@ export function resolveExperience(input: ResolveExperienceInput): ResolvedExperi
     const daysRemaining = subscription.currentPeriodEnd
       ? Math.max(
           0,
-          Math.ceil((new Date(subscription.currentPeriodEnd).getTime() - Date.now()) / DAY_MS),
+          Math.ceil(
+            (new Date(subscription.currentPeriodEnd).getTime() - Date.now()) /
+              DAY_MS,
+          ),
         )
       : null;
     membership = {
@@ -146,21 +159,30 @@ export function resolveExperience(input: ResolveExperienceInput): ResolvedExperi
   // subscription's redemption history. Empty when there is no focused membership.
   const usedBenefitIds = new Set(input.redemptions.map((r) => r.benefitId));
   const redeemableBenefits: RedeemableBenefit[] = membership
-    ? input.benefits.map((b) => ({ ...b, available: !usedBenefitIds.has(b.id) }))
+    ? input.benefits.map((b) => ({
+        ...b,
+        available: !usedBenefitIds.has(b.id),
+      }))
     : [];
 
-  const activity: ResolvedActivity[] = input.redemptions.map((r: Redemption) => ({
-    id: r.id,
-    title: benefitsById.get(r.benefitId)?.title ?? "Reward redeemed",
-    location: storesById.get(r.storeId)?.name ?? organization.displayName,
-    timeLabel: input.formatDate(r.redeemedAt),
-  }));
+  const activity: ResolvedActivity[] = input.redemptions.map(
+    (r: Redemption) => ({
+      id: r.id,
+      title:
+        benefitsById.get(r.benefitId)?.displayName ??
+        benefitsById.get(r.benefitId)?.benefitName ??
+        "Reward redeemed",
+      location: storesById.get(r.storeId)?.name ?? organization.displayName,
+      timeLabel: input.formatDate(r.redeemedAt),
+    }),
+  );
 
   // Most-visited store (simple domain-derived summary for the History tab).
   let mostVisited: string | undefined;
   if (input.redemptions.length) {
     const counts = new Map<string, number>();
-    for (const r of input.redemptions) counts.set(r.storeId, (counts.get(r.storeId) ?? 0) + 1);
+    for (const r of input.redemptions)
+      counts.set(r.storeId, (counts.get(r.storeId) ?? 0) + 1);
     let topId: string | undefined;
     let topN = -1;
     counts.forEach((n, id) => {
@@ -179,7 +201,12 @@ export function resolveExperience(input: ResolveExperienceInput): ResolvedExperi
   // (business detail/preferences/referral) always exist; Offers and History
   // appear only when their optional sections are enabled.
   const tabs: ExperienceTab[] = [
-    { key: "card", labelKey: "experience.tabCard", icon: "wallet", iconOutline: "wallet-outline" },
+    {
+      key: "card",
+      labelKey: "experience.tabCard",
+      icon: "wallet",
+      iconOutline: "wallet-outline",
+    },
   ];
   if (showOffers) {
     tabs.push({
@@ -209,7 +236,9 @@ export function resolveExperience(input: ResolveExperienceInput): ResolvedExperi
     monogram: displayName.trim().charAt(0).toUpperCase(),
     tagline: content.businessIdentity.tagline,
     heroImageUrl: content.businessIdentity.heroImageUrl,
-    heroPromotion: templateHas(TemplateSectionKey.HERO_PROMOTION) ? content.heroPromotion : undefined,
+    heroPromotion: templateHas(TemplateSectionKey.HERO_PROMOTION)
+      ? content.heroPromotion
+      : undefined,
     featuredPromotion: templateHas(TemplateSectionKey.FEATURED_PROMOTION)
       ? content.featuredPromotion
       : undefined,
@@ -227,7 +256,9 @@ export function resolveExperience(input: ResolveExperienceInput): ResolvedExperi
     businessPreferences: templateHas(TemplateSectionKey.BUSINESS_PREFERENCES)
       ? content.businessPreferences
       : undefined,
-    referral: templateHas(TemplateSectionKey.REFERRAL) ? content.referral : undefined,
+    referral: templateHas(TemplateSectionKey.REFERRAL)
+      ? content.referral
+      : undefined,
     showOffers,
     showStores,
     showActivity,
