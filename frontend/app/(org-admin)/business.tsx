@@ -79,7 +79,9 @@ export default function OrgAdminBusiness() {
           : [];
 
         const currentRegion = regionList.find(
-          (region) => region.name === organizationDetails?.address.region,
+          (region) =>
+            region.code === organizationDetails?.address.region ||
+            region.name === organizationDetails?.address.region,
         );
 
         const cityList =

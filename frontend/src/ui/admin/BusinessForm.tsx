@@ -7,18 +7,20 @@ import {
 } from "react-native";
 
 import {
-  Address,
-  CountryReference,
   CityReference,
-  RegionReference,
+  CountryReference,
   ID,
   Organization,
   OrganizationDetails,
   PhoneNumber,
   ReferenceDataItem,
+  RegionReference,
 } from "@/src/core";
+
 import { useTheme } from "@/src/providers";
+
 import {
+  AddressForm,
   Button,
   Card,
   Input,
@@ -31,6 +33,7 @@ import {
 type BusinessFormProps = {
   organization: Organization;
   details: OrganizationDetails | null;
+
   countries: CountryReference[];
   regions: RegionReference[];
   cities: CityReference[];
@@ -44,7 +47,7 @@ type BusinessFormProps = {
   ) => Promise<void>;
 };
 
-const EMPTY_ADDRESS: Address = {
+const EMPTY_ADDRESS = {
   line1: "",
   line2: "",
   city: "",
@@ -67,6 +70,7 @@ function createEmptyDetails(
   createdBy: ID,
 ): OrganizationDetails {
   const now = new Date().toISOString();
+
   return {
     id: `details-${organizationId}`,
     organizationId,
@@ -105,17 +109,21 @@ export function BusinessForm({
 }: BusinessFormProps) {
   const theme = useTheme();
   const { width } = useWindowDimensions();
+
   const compact = width < 760;
   const narrow = width < 520;
 
   const [form, setForm] = useState<Organization>(organization);
+
   const [detailForm, setDetailForm] = useState<OrganizationDetails>(
     details ?? createEmptyDetails(organization.id, organization.updatedBy),
   );
+
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setForm(organization);
+
     setDetailForm(
       details ?? createEmptyDetails(organization.id, organization.updatedBy),
     );
@@ -125,14 +133,20 @@ export function BusinessForm({
     field: K,
     value: Organization[K],
   ) => {
-    setForm((current) => ({ ...current, [field]: value }));
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
   };
 
   const updateDetails = <K extends keyof OrganizationDetails>(
     field: K,
     value: OrganizationDetails[K],
   ) => {
-    setDetailForm((current) => ({ ...current, [field]: value }));
+    setDetailForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
   };
 
   const updatePhone = (
@@ -140,31 +154,21 @@ export function BusinessForm({
     phone: PhoneNumber,
   ) => {
     if (field === "primaryPhone") {
-      setForm((current) => ({ ...current, primaryPhone: phone }));
+      setForm((current) => ({
+        ...current,
+        primaryPhone: phone,
+      }));
     } else {
-      setDetailForm((current) => ({ ...current, supportPhone: phone }));
+      setDetailForm((current) => ({
+        ...current,
+        supportPhone: phone,
+      }));
     }
   };
 
-  const updateAddress = <K extends keyof Address>(
-    field: K,
-    value: Address[K],
-  ) => {
-    setDetailForm((current) => ({
-      ...current,
-      address: { ...current.address, [field]: value },
-    }));
-  };
-
-  const countryForPhone = (phone: PhoneNumber) =>
-    countries.find((country) => country.id === phone.countryId);
-
-  const countryForAddress = countries.find(
-    (country) => country.countryCode === detailForm.address.countryCode,
-  );
-
   const save = async () => {
     setSaving(true);
+
     try {
       await onSave(
         {
@@ -202,7 +206,10 @@ export function BusinessForm({
     onChange: (phone: PhoneNumber) => void,
     testID: string,
   ) => {
-    const selectedCountry = countryForPhone(phone);
+    const selectedCountry = countries.find(
+      (country) => country.id === phone.countryId,
+    );
+
     return (
       <View style={[styles.phoneRow, compact && styles.phoneRowCompact]}>
         <View style={compact ? styles.fullWidth : styles.phoneCountry}>
@@ -212,7 +219,11 @@ export function BusinessForm({
             items={countries}
             onChange={(countryId) => {
               const country = countries.find((item) => item.id === countryId);
-              if (!country) return;
+
+              if (!country) {
+                return;
+              }
+
               onChange({
                 ...phone,
                 countryId: country.id,
@@ -223,15 +234,24 @@ export function BusinessForm({
             testID={`${testID}-country`}
             renderItemLabel={(item) => {
               const country = item as CountryReference;
-              return `${countryFlag(country.countryCode)} ${country.name} (${country.callingCode})`;
+
+              return `${countryFlag(
+                country.countryCode,
+              )} ${country.name} (${country.callingCode})`;
             }}
           />
         </View>
+
         <View style={compact ? styles.fullWidth : styles.phoneNumber}>
           <Input
             label={`${label} Number`}
             value={phone.number}
-            onChangeText={(number) => onChange({ ...phone, number })}
+            onChangeText={(number) =>
+              onChange({
+                ...phone,
+                number,
+              })
+            }
             keyboardType="phone-pad"
             placeholder={
               selectedCountry
@@ -250,7 +270,9 @@ export function BusinessForm({
       style={styles.screen}
       contentContainerStyle={[
         styles.content,
-        { padding: narrow ? theme.spacing.md : theme.spacing.xl },
+        {
+          padding: narrow ? theme.spacing.md : theme.spacing.xl,
+        },
       ]}
       keyboardShouldPersistTaps="handled"
     >
@@ -258,12 +280,16 @@ export function BusinessForm({
         <Text variant="h1" color="text">
           Business
         </Text>
+
         <Text variant="bodySmall" color="textSecondary">
-          Manage your organization&apos;s business information and contact
+          {
+            "Manage your organization's business information and contact details."
+          }
           details.
         </Text>
       </View>
 
+      {/* Business Information */}
       <Card padding={narrow ? "md" : "lg"} elevation="sm">
         <Section title="Business Information">
           <View style={styles.grid}>
@@ -275,6 +301,7 @@ export function BusinessForm({
                 placeholder="Enter business name"
               />
             </View>
+
             <View style={compact ? styles.fullWidth : styles.halfWidth}>
               <Input
                 label="Display Name"
@@ -285,6 +312,7 @@ export function BusinessForm({
                 placeholder="Customer-facing business name"
               />
             </View>
+
             <View style={compact ? styles.fullWidth : styles.halfWidth}>
               <Input
                 label="Legal Name"
@@ -293,6 +321,7 @@ export function BusinessForm({
                 placeholder="Legal business name"
               />
             </View>
+
             <View style={compact ? styles.fullWidth : styles.halfWidth}>
               <ReferenceSelect
                 label="Business Type"
@@ -304,6 +333,7 @@ export function BusinessForm({
                 placeholder="Select business type"
               />
             </View>
+
             <View style={compact ? styles.fullWidth : styles.halfWidth}>
               <Input
                 label="Primary Email"
@@ -315,6 +345,7 @@ export function BusinessForm({
                 placeholder="business@example.com"
               />
             </View>
+
             <View style={compact ? styles.fullWidth : styles.halfWidth}>
               <ReferenceSelect
                 label="Status"
@@ -326,6 +357,7 @@ export function BusinessForm({
                 placeholder="Select status"
               />
             </View>
+
             <View style={styles.fullWidth}>
               {phoneField(
                 "Primary Phone",
@@ -334,6 +366,7 @@ export function BusinessForm({
                 "business-primary-phone",
               )}
             </View>
+
             <View style={styles.fullWidth}>
               <Input
                 label="Website"
@@ -347,6 +380,7 @@ export function BusinessForm({
         </Section>
       </Card>
 
+      {/* Business Details */}
       <Card padding={narrow ? "md" : "lg"} elevation="sm">
         <Section title="Business Details">
           <View style={styles.grid}>
@@ -360,6 +394,7 @@ export function BusinessForm({
                 placeholder="Registration number"
               />
             </View>
+
             <View style={compact ? styles.fullWidth : styles.halfWidth}>
               <Input
                 label="GST / Tax Number"
@@ -368,6 +403,7 @@ export function BusinessForm({
                 placeholder="GST / tax number"
               />
             </View>
+
             <View style={compact ? styles.fullWidth : styles.halfWidth}>
               <Input
                 label="Support Email"
@@ -377,6 +413,7 @@ export function BusinessForm({
                 placeholder="support@example.com"
               />
             </View>
+
             <View style={styles.fullWidth}>
               {phoneField(
                 "Support Phone",
@@ -387,130 +424,21 @@ export function BusinessForm({
             </View>
           </View>
 
-          <View style={{ gap: theme.spacing.md }}>
-            <Text variant="label" color="textSecondary">
-              Address
-            </Text>
-
-            <View style={styles.grid}>
-              <View style={styles.fullWidth}>
-                <Input
-                  label="Address Line 1"
-                  value={detailForm.address.line1}
-                  onChangeText={(value) => updateAddress("line1", value)}
-                  placeholder="Street address"
-                />
-              </View>
-              <View style={styles.fullWidth}>
-                <Input
-                  label="Address Line 2"
-                  value={detailForm.address.line2 ?? ""}
-                  onChangeText={(value) => updateAddress("line2", value)}
-                  placeholder="Suite, unit, floor, etc."
-                />
-              </View>
-              <View style={compact ? styles.fullWidth : styles.halfWidth}>
-                <ReferenceSelect
-                  label="Country"
-                  value={countryForAddress?.id ?? ""}
-                  items={countries}
-                  placeholder="Select Country"
-                  allowClear
-                  onChange={(countryId) => {
-                    const country = countries.find(
-                      (item) => item.id === countryId,
-                    );
-
-                    if (country) {
-                      updateAddress("countryCode", country.countryCode);
-
-                      // Country changed, so previous region/city are no longer valid.
-                      updateAddress("region", undefined);
-                      updateAddress("city", "");
-                      onCountryChange?.(country.countryCode);
-                    }
-                  }}
-                  renderItemLabel={(item) => {
-                    const country = item as CountryReference;
-                    return `${countryFlag(country.countryCode)} ${country.name}`;
-                  }}
-                />
-              </View>
-              <View style={compact ? styles.fullWidth : styles.halfWidth}>
-                <ReferenceSelect
-                  label="State / Province"
-                  value={
-                    regions.find(
-                      (region) => region.name === detailForm.address.region,
-                    )?.id ?? ""
-                  }
-                  items={regions.map((region, index) => ({
-                    id: region.id,
-                    code: region.code,
-                    name: region.name,
-                    displayOrder: index,
-                    active: true,
-                  }))}
-                  onChange={(regionId) => {
-                    const region = regions.find((item) => item.id === regionId);
-
-                    if (region) {
-                      updateAddress("region", region.name);
-                      updateAddress("city", "");
-                      onRegionChange?.(
-                        detailForm.address.countryCode,
-                        region.code,
-                      );
-                    }
-                  }}
-                  placeholder={
-                    detailForm.address.countryCode
-                      ? "Select state / province"
-                      : "Select country first"
-                  }
-                  disabled={!detailForm.address.countryCode}
-                />
-              </View>
-              <View style={compact ? styles.fullWidth : styles.halfWidth}>
-                <ReferenceSelect
-                  label="City"
-                  value={
-                    cities.find((city) => city.name === detailForm.address.city)
-                      ?.id ?? ""
-                  }
-                  items={cities.map((city, index) => ({
-                    id: city.id,
-                    code: city.regionCode,
-                    name: city.name,
-                    displayOrder: index,
-                    active: true,
-                  }))}
-                  onChange={(cityId) => {
-                    const city = cities.find((item) => item.id === cityId);
-
-                    if (city) {
-                      updateAddress("city", city.name);
-                    }
-                  }}
-                  placeholder={
-                    detailForm.address.region
-                      ? "Select city"
-                      : "Select state / province first"
-                  }
-                  disabled={!detailForm.address.region}
-                />
-              </View>
-
-              <View style={compact ? styles.fullWidth : styles.halfWidth}>
-                <Input
-                  label="Postal / ZIP Code"
-                  value={detailForm.address.postalCode ?? ""}
-                  onChangeText={(value) => updateAddress("postalCode", value)}
-                  placeholder="M5V 1A1"
-                />
-              </View>
-            </View>
-          </View>
+          {/* Common Address Form */}
+          <AddressForm
+            value={detailForm.address}
+            countries={countries}
+            regions={regions}
+            cities={cities}
+            onChange={(address) =>
+              setDetailForm((current) => ({
+                ...current,
+                address,
+              }))
+            }
+            onCountryChange={onCountryChange}
+            onRegionChange={onRegionChange}
+          />
 
           <TextArea
             label="About Organization"
@@ -521,11 +449,14 @@ export function BusinessForm({
         </Section>
       </Card>
 
+      {/* Actions */}
       <View
         style={[
           styles.actions,
           compact && styles.actionsCompact,
-          { borderTopColor: theme.colors.border },
+          {
+            borderTopColor: theme.colors.border,
+          },
         ]}
       >
         <Button
@@ -541,6 +472,7 @@ export function BusinessForm({
           }}
           fullWidth={compact}
         />
+
         <Button
           label={saving ? "Saving..." : "Save Changes"}
           onPress={save}
@@ -553,38 +485,49 @@ export function BusinessForm({
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
+  screen: {
+    flex: 1,
+  },
+
   content: {
     width: "100%",
     maxWidth: 1000,
     alignSelf: "center",
     gap: 16,
   },
+
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 16,
   },
+
   halfWidth: {
     flexGrow: 1,
     flexBasis: 320,
   },
+
   fullWidth: {
     width: "100%",
   },
+
   phoneRow: {
     flexDirection: "row",
     gap: 16,
   },
+
   phoneRowCompact: {
     flexDirection: "column",
   },
+
   phoneCountry: {
     width: 300,
   },
+
   phoneNumber: {
     flex: 1,
   },
+
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -592,6 +535,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     borderTopWidth: 1,
   },
+
   actionsCompact: {
     flexDirection: "column-reverse",
   },
