@@ -178,11 +178,29 @@ export interface OrganizationAccount {
 export interface Store {
   id: ID;
   organizationId: ID;
+
+  storeCode: string;
   name: string;
+  storeTypeId: ID;
+
+  phoneNumber?: string;
+  emailAddress?: string;
+
   address: Address;
-  /** IANA timezone, e.g. "America/Los_Angeles". */
   timezone: string;
-  isActive: boolean;
+
+  storeStatusId: ID;
+
+  openingDate?: string;
+  closingDate?: string;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt: ISODateString;
+  updatedBy?: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
 }
 
 /* ------------------------------------------------------------------ *

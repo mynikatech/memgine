@@ -230,21 +230,44 @@ const stores: Store[] = [
   {
     id: "store-1",
     organizationId: "org-sunrise",
+    storeCode: "MAIN-001",
     name: "Sunrise Bakery — Main St",
+    storeTypeId: "store-type-retail",
+
+    phoneNumber: "+1 416 555 0100",
+    emailAddress: "main@sunrisebakery.ca",
+
     address: {
       line1: "1 Main St",
-      city: "San Francisco",
-      region: "CA",
-      postalCode: "94016",
-      countryCode: "US",
+      line2: "",
+      city: "Toronto",
+      region: "Ontario",
+      postalCode: "M5V 1A1",
+      countryCode: "CA",
     },
-    timezone: "America/Los_Angeles",
-    isActive: true,
+
+    timezone: "America/Toronto",
+
+    storeStatusId: "store-status-active",
+
+    openingDate: "2026-09-01",
+
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
   {
     id: "glow-store-1",
     organizationId: "org-glow",
+    storeCode: "GLOW-001",
     name: "Glow Studio — Uptown",
+    storeTypeId: "store-type-beauty",
+    phoneNumber: "+1 416 555 0120",
+    emailAddress: "main@glowstores.us",
     address: {
       line1: "88 Bloom Avenue",
       city: "Los Angeles",
@@ -253,7 +276,17 @@ const stores: Store[] = [
       countryCode: "US",
     },
     timezone: "America/Los_Angeles",
-    isActive: true,
+    storeStatusId: "store-status-active",
+
+    openingDate: "2026-09-01",
+
+    createdAt: new Date().toISOString(),
+    createdBy: "user-system",
+    updatedAt: new Date().toISOString(),
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
 ];
 
@@ -527,8 +560,71 @@ export class InMemoryOrganizationService implements OrganizationService {
     return BUSINESS_CONTEXTS_BY_ORG[organizationId] ?? null;
   }
   async listStores(organizationId: ID): Promise<Store[]> {
-    return stores.filter((s) => s.organizationId === organizationId);
+    return stores.filter(
+      (store) => store.organizationId === organizationId && !store.isDeleted,
+    );
   }
+  async createStore(organizationId: ID, store: Store): Promise<Store> {
+    const now = new Date().toISOString();
+
+    const created: Store = {
+      ...store,
+      organizationId,
+      createdAt: now,
+      updatedAt: now,
+      isDeleted: false,
+      versionNo: 1,
+    };
+
+    stores.push(created);
+
+    return created;
+  }
+
+  async updateStore(organizationId: ID, store: Store): Promise<Store> {
+    const index = stores.findIndex(
+      (item) =>
+        item.id === store.id &&
+        item.organizationId === organizationId &&
+        !item.isDeleted,
+    );
+
+    if (index === -1) {
+      throw new Error("Store not found");
+    }
+
+    const updated: Store = {
+      ...store,
+      organizationId,
+      updatedAt: new Date().toISOString(),
+      versionNo: stores[index].versionNo + 1,
+    };
+
+    stores[index] = updated;
+
+    return updated;
+  }
+
+  async deleteStore(organizationId: ID, storeId: ID): Promise<void> {
+    const index = stores.findIndex(
+      (item) =>
+        item.id === storeId &&
+        item.organizationId === organizationId &&
+        !item.isDeleted,
+    );
+
+    if (index === -1) {
+      throw new Error("Store not found");
+    }
+
+    stores[index] = {
+      ...stores[index],
+      isDeleted: true,
+      updatedAt: new Date().toISOString(),
+      versionNo: stores[index].versionNo + 1,
+    };
+  }
+
   async getOrganizationDetails(
     organizationId: ID,
   ): Promise<OrganizationDetails | null> {

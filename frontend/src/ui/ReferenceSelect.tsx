@@ -2,12 +2,15 @@ import { useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 
 import { useTheme } from "@/src/providers";
-import { CountryReference, ReferenceDataItem } from "@/src/core";
 
 import { Modal } from "./Modal";
 import { Text } from "./Text";
 
-export type ReferenceSelectItem = ReferenceDataItem | CountryReference;
+export type ReferenceSelectItem = {
+  id: string;
+  name: string;
+  callingCode?: string;
+};
 
 type ReferenceSelectProps = {
   label?: string;
@@ -22,7 +25,10 @@ type ReferenceSelectProps = {
 };
 
 function defaultLabel(item: ReferenceSelectItem): string {
-  if ("callingCode" in item) return `${item.name} (${item.callingCode})`;
+  if (item.callingCode) {
+    return `${item.name} (${item.callingCode})`;
+  }
+
   return item.name;
 }
 

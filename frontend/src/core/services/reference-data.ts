@@ -44,4 +44,6 @@ export interface ReferenceDataService {
   listThemeTemplates(): Promise<ReferenceDataItem[]>;
   listBrandingStatuses(): Promise<ReferenceDataItem[]>;
   listIntegrationTypes(): Promise<ReferenceDataItem[]>;
+  listStoreTypes(): Promise<ReferenceDataItem[]>;
+  listStoreStatuses(): Promise<ReferenceDataItem[]>;
 }

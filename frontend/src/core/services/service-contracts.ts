@@ -67,6 +67,9 @@ export interface OrganizationService {
   getAccount(organizationId: ID): Promise<OrganizationAccount | null>;
   getBusinessContext(organizationId: ID): Promise<BusinessContext | null>;
   listStores(organizationId: ID): Promise<Store[]>;
+  createStore(organizationId: ID, store: Store): Promise<Store>;
+  updateStore(organizationId: ID, store: Store): Promise<Store>;
+  deleteStore(organizationId: ID, storeId: ID): Promise<void>;
   getOrganizationDetails(
     organizationId: ID,
   ): Promise<OrganizationDetails | null>;

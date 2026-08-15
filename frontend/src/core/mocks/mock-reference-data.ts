@@ -364,6 +364,61 @@ const INTEGRATION_TYPES: ReferenceDataItem[] = [
   },
 ];
 
+const STORE_TYPES: ReferenceDataItem[] = [
+  {
+    id: "store-type-retail",
+    code: "RETAIL",
+    name: "Retail",
+    displayOrder: 1,
+    active: true,
+  },
+  {
+    id: "store-type-kiosk",
+    code: "KIOSK",
+    name: "Kiosk",
+    displayOrder: 2,
+    active: true,
+  },
+  {
+    id: "store-type-cafe",
+    code: "CAFE",
+    name: "Cafe",
+    displayOrder: 3,
+    active: true,
+  },
+  {
+    id: "store-type-other",
+    code: "OTHER",
+    name: "Other",
+    displayOrder: 4,
+    active: true,
+  },
+];
+
+const STORE_STATUSES: ReferenceDataItem[] = [
+  {
+    id: "store-status-active",
+    code: "ACTIVE",
+    name: "Active",
+    displayOrder: 1,
+    active: true,
+  },
+  {
+    id: "store-status-closed",
+    code: "CLOSED",
+    name: "Closed",
+    displayOrder: 2,
+    active: true,
+  },
+  {
+    id: "store-status-suspended",
+    code: "SUSPENDED",
+    name: "Suspended",
+    displayOrder: 3,
+    active: true,
+  },
+];
+
 export class InMemoryReferenceDataService implements ReferenceDataService {
   async listCountries(): Promise<CountryReference[]> {
     return COUNTRIES.filter((item) => item.active);
@@ -399,5 +454,13 @@ export class InMemoryReferenceDataService implements ReferenceDataService {
   }
   async listIntegrationTypes(): Promise<ReferenceDataItem[]> {
     return INTEGRATION_TYPES.filter((item) => item.active);
+  }
+
+  async listStoreTypes(): Promise<ReferenceDataItem[]> {
+    return STORE_TYPES.filter((item) => item.active);
+  }
+
+  async listStoreStatuses(): Promise<ReferenceDataItem[]> {
+    return STORE_STATUSES.filter((item) => item.active);
   }
 }
