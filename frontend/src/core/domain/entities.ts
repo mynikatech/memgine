@@ -462,18 +462,39 @@ export enum SubscriptionStatus {
 
 export interface Subscription {
   id: ID;
-  organizationId: ID;
-  customerId: ID;
-  membershipProductId: ID;
-  planId: ID;
-  status: SubscriptionStatus;
-  startedAt: ISODateString;
-  currentPeriodEnd?: ISODateString;
-  /** Purchase attribution (mirrors redemption attribution). */
-  source?: PurchaseSource;
-  soldByStaffId?: ID;
-  storeId?: ID;
-  paymentMethod?: PaymentMethod;
+
+  /** Customer-facing subscription reference. */
+  subscriptionNumber: string;
+
+  /** The plan purchased by the subscriber. */
+  subscriptionPlanId: ID;
+
+  /** The organization-user relationship that owns this subscription. */
+  organizationUserId: ID;
+
+  /** Date on which the subscription was purchased/created. */
+  subscriptionDate: string;
+
+  /** Date on which the subscription becomes effective. */
+  startDate: string;
+
+  /** Date on which the subscription expires. */
+  endDate: string;
+
+  /** Current lifecycle status. */
+  subscriptionStatusId: ID;
+
+  /** Total subscription amount. */
+  totalAmount: Money;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+
+  updatedAt: ISODateString;
+  updatedBy: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
 }
 
 /** How a membership purchase was initiated. */

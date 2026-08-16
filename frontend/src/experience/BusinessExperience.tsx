@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
 import { Image, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
 
 import type {
@@ -13,7 +14,7 @@ import type {
   Subscription,
   TemplateDefaultContent,
 } from "@/src/core";
-import { BillingInterval } from "@/src/core";
+import { getBusinessContent, mockServices } from "@/src/core";
 import { useBusiness, useTranslation } from "@/src/providers";
 import { Badge, Button, Card, Modal, Section, Text } from "@/src/ui";
 import {
@@ -41,12 +42,19 @@ type Props = {
   offers: Offer[];
   stores: Store[];
   redemptions: Redemption[];
+
   /** The customer's memberships within THIS SAME organization. */
-  memberships: { subscription: Subscription; product: MembershipProduct }[];
+  memberships: {
+    subscription: Subscription;
+    product: MembershipProduct;
+  }[];
+
   selectedSubscriptionId: string;
   onSelectSubscription: (subscriptionId: string) => void;
+
   /** Published products for this org the customer does NOT currently own. */
   availableMemberships: MembershipProduct[];
+
   onJoin: (productId: string) => void;
   onExit: () => void;
 };
@@ -119,6 +127,7 @@ export function BusinessExperience({
   const [selectedBenefitIds, setSelectedBenefitIds] = useState<Set<string>>(
     new Set(),
   );
+
   const [redeemToken, setRedeemToken] = useState<RedemptionToken | null>(null);
 
   // All available benefits are selected by default; reset when the focused
@@ -129,31 +138,61 @@ export function BusinessExperience({
         exp.redeemableBenefits.filter((b) => b.available).map((b) => b.id),
       ),
     );
+
     setRedeemToken(null);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSubscriptionId]);
 
   const toggleBenefit = (id: string) =>
     setSelectedBenefitIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+
       return next;
     });
 
-  const redeemSelected = () => {
+  /**
+   * Create the customer's redemption token.
+   *
+   * Subscription no longer contains customerId / organizationId directly.
+   * Those values are resolved through OrganizationUser.
+   */
+  const redeemSelected = async () => {
     if (!subscription) return;
+
     const ids = exp.redeemableBenefits
       .filter((b) => b.available && selectedBenefitIds.has(b.id))
       .map((b) => b.id);
+
     if (!ids.length) return;
-    // Mocked redemption context/token — one token for all selected benefits.
+
+    const organizationUser =
+      await mockServices.organization.getOrganizationUser(
+        subscription.organizationUserId,
+      );
+
+    if (!organizationUser) {
+      return;
+    }
+
     setRedeemToken({
-      token: `RDM-${subscription.id.toUpperCase().replace(/[^A-Z0-9]/g, "")}-${Date.now()
-        .toString(36)
-        .toUpperCase()}`,
-      customerId: subscription.customerId,
-      organizationId: subscription.organizationId,
+      token: `RDM-${subscription.id
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "")}-${Date.now().toString(36).toUpperCase()}`,
+
+      // Final data model:
+      // OrganizationUser.userId identifies the underlying customer/user.
+      customerId: organizationUser.userId,
+
+      // OrganizationUser belongs to the organization.
+      organizationId: organizationUser.organizationId,
+
       subscriptionId: subscription.id,
       benefitIds: ids,
       createdAt: new Date().toISOString(),
@@ -165,9 +204,11 @@ export function BusinessExperience({
       new Map(exp.benefits.map((b) => [b.id, b.displayName ?? b.benefitName])),
     [exp.benefits],
   );
+
   const selectedCount = exp.redeemableBenefits.filter(
     (b) => b.available && selectedBenefitIds.has(b.id),
   ).length;
+
   const hasRedeemable = exp.redeemableBenefits.some((b) => b.available);
 
   /* ------------------------------ sub-renderers ------------------------------ */
@@ -197,7 +238,13 @@ export function BusinessExperience({
   ) => (
     <Card padding="none" style={{ overflow: "hidden" }}>
       <HeroImage uri={promo.imageUrl} />
-      <View style={{ padding: theme.spacing.lg, gap: theme.spacing.sm }}>
+
+      <View
+        style={{
+          padding: theme.spacing.lg,
+          gap: theme.spacing.sm,
+        }}
+      >
         <View
           style={{
             flexDirection: "row",
@@ -207,15 +254,18 @@ export function BusinessExperience({
           }}
         >
           {promo.badge ? <Badge label={promo.badge} tone="brand" /> : <View />}
+
           {promo.expiryLabel ? (
             <Text variant="caption" color="textMuted">
               {promo.expiryLabel}
             </Text>
           ) : null}
         </View>
+
         <Text variant="h2" color="text">
           {promo.title}
         </Text>
+
         <Text variant="bodySmall" color="textSecondary">
           {promo.description}
         </Text>
@@ -225,8 +275,11 @@ export function BusinessExperience({
 
   const planLabel = (p: MembershipProduct) => {
     const plan = p.plans[0];
+
     if (!plan) return "";
+
     const interval = getSubscriptionPeriodLabel(plan);
+
     return `${formatMoney(plan.price.amountMinor)} · ${interval}`;
   };
 
@@ -271,6 +324,7 @@ export function BusinessExperience({
             <View style={{ gap: 14 }}>
               {exp.redeemableBenefits.map((b) => {
                 const selected = b.available && selectedBenefitIds.has(b.id);
+
                 return (
                   <Pressable
                     key={b.id}
@@ -303,6 +357,7 @@ export function BusinessExperience({
                           : theme.colors.primary
                       }
                     />
+
                     <View style={{ flex: 1 }}>
                       <Text
                         variant="bodyStrong"
@@ -310,12 +365,14 @@ export function BusinessExperience({
                       >
                         {b.displayName ?? b.benefitName}
                       </Text>
+
                       {b.description ? (
                         <Text variant="bodySmall" color="textMuted">
                           {b.description}
                         </Text>
                       ) : null}
                     </View>
+
                     {!b.available ? (
                       <Badge
                         label={t("experience.benefitUsed")}
@@ -341,12 +398,17 @@ export function BusinessExperience({
                 }}
               >
                 <Text variant="caption" color="textMuted">
-                  {t("experience.selectedCount", { count: selectedCount })}
+                  {t("experience.selectedCount", {
+                    count: selectedCount,
+                  })}
                 </Text>
+
                 <Button
                   label={t("experience.redeemSelected")}
                   disabled={selectedCount === 0}
-                  onPress={redeemSelected}
+                  onPress={() => {
+                    void redeemSelected();
+                  }}
                   testID="experience-redeem-selected"
                 />
               </View>
@@ -371,19 +433,27 @@ export function BusinessExperience({
                     gap: theme.spacing.md,
                   }}
                 >
-                  <View style={{ flex: 1, gap: 2 }}>
+                  <View
+                    style={{
+                      flex: 1,
+                      gap: 2,
+                    }}
+                  >
                     <Text variant="bodyStrong" color="text">
                       {p.displayName ?? p.membershipProductName}
                     </Text>
+
                     {p.description ? (
                       <Text variant="bodySmall" color="textMuted">
                         {p.description}
                       </Text>
                     ) : null}
+
                     <Text variant="bodySmall" color="primary">
                       {planLabel(p)}
                     </Text>
                   </View>
+
                   <Button
                     label={t("experience.join")}
                     size="sm"
@@ -405,6 +475,7 @@ export function BusinessExperience({
         {exp.featuredPromotion
           ? renderPromotionCard(exp.featuredPromotion)
           : null}
+
         <View
           style={{
             gap: theme.spacing.md,
@@ -438,12 +509,19 @@ export function BusinessExperience({
             <Text variant="display" color="primary">
               {exp.activityCount}
             </Text>
+
             <Text variant="caption" color="textMuted">
               {t("experience.redemptionsLabel")}
             </Text>
           </View>
+
           {exp.mostVisited ? (
-            <View style={{ flex: 1, alignItems: "flex-end" }}>
+            <View
+              style={{
+                flex: 1,
+                alignItems: "flex-end",
+              }}
+            >
               <Text
                 variant="bodyStrong"
                 color="text"
@@ -451,6 +529,7 @@ export function BusinessExperience({
               >
                 {exp.mostVisited}
               </Text>
+
               <Text variant="caption" color="textMuted">
                 {t("experience.mostVisited")}
               </Text>
@@ -479,6 +558,7 @@ export function BusinessExperience({
                       subtitle={`${a.location} · ${a.timeLabel}`}
                     />
                   </View>
+
                   <Badge label={t("experience.redeemed")} tone="success" />
                 </View>
               ))}
@@ -515,10 +595,12 @@ export function BusinessExperience({
                     size={20}
                     color={theme.colors.primary}
                   />
+
                   <View style={{ flex: 1 }}>
                     <Text variant="bodyStrong" color="text">
                       {s.name}
                     </Text>
+
                     <Text variant="bodySmall" color="textMuted">
                       {s.address.line1}
                       {s.address.city ? `, ${s.address.city}` : ""}
@@ -538,18 +620,21 @@ export function BusinessExperience({
               <Text variant="body" color="textSecondary">
                 {exp.businessInformation.about}
               </Text>
+
               <InfoRow
                 icon="mail-outline"
                 label={t("experience.email")}
                 value={exp.businessInformation.supportEmail}
                 theme={theme}
               />
+
               <InfoRow
                 icon="call-outline"
                 label={t("experience.phone")}
                 value={exp.businessInformation.supportPhone}
                 theme={theme}
               />
+
               <InfoRow
                 icon="globe-outline"
                 label={t("experience.website")}
@@ -571,6 +656,7 @@ export function BusinessExperience({
                 t={t}
                 theme={theme}
               />
+
               <PrefRow
                 label={t("experience.marketingEmails")}
                 on={exp.businessPreferences.marketingEmails}
@@ -588,9 +674,11 @@ export function BusinessExperience({
             <Text variant="title" color="text">
               {exp.referral.headline}
             </Text>
+
             <Text variant="bodySmall" color="textMuted">
               {exp.referral.description}
             </Text>
+
             <Button
               label={t("experience.referral")}
               variant="secondary"
@@ -646,6 +734,7 @@ export function BusinessExperience({
             size={18}
             color={theme.colors.primary}
           />
+
           <Text variant="label" color="primary">
             {t("experience.back")}
           </Text>
@@ -676,10 +765,12 @@ export function BusinessExperience({
             {exp.monogram}
           </Text>
         </View>
+
         <View style={{ flex: 1 }}>
           <Text variant="h2" color="text">
             {exp.displayName}
           </Text>
+
           <Text variant="caption" color="textMuted">
             {exp.tagline}
           </Text>
@@ -702,13 +793,17 @@ export function BusinessExperience({
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: theme.spacing.sm }}
+            contentContainerStyle={{
+              gap: theme.spacing.sm,
+            }}
             testID="experience-membership-selector"
           >
             {memberships.map((m) => {
               const selected = m.subscription.id === selectedSubscriptionId;
+
               const label =
                 m.product.displayName ?? m.product.membershipProductName;
+
               return (
                 <Pressable
                   key={m.subscription.id}
@@ -738,6 +833,7 @@ export function BusinessExperience({
                       selected ? theme.colors.primary : theme.colors.textMuted
                     }
                   />
+
                   <Text
                     variant="label"
                     color={selected ? "primary" : "textMuted"}
@@ -780,6 +876,7 @@ export function BusinessExperience({
       >
         {exp.tabs.map((tb) => {
           const focused = tb.key === tab;
+
           return (
             <Pressable
               key={tb.key}
@@ -802,6 +899,7 @@ export function BusinessExperience({
                 size={22}
                 color={focused ? theme.colors.primary : theme.colors.textMuted}
               />
+
               <Text variant="caption" color={focused ? "primary" : "textMuted"}>
                 {t(tb.labelKey)}
               </Text>
@@ -822,12 +920,20 @@ export function BusinessExperience({
             <Text variant="body" color="textSecondary">
               {exp.referral.description}
             </Text>
-            <View style={{ alignItems: "center", gap: 6 }}>
+
+            <View
+              style={{
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
               <Text variant="caption" color="textMuted">
                 {t("experience.referralCode")}
               </Text>
+
               <Badge label={exp.referral.code} tone="brand" />
             </View>
+
             <Text
               variant="bodySmall"
               color="primary"
@@ -847,17 +953,30 @@ export function BusinessExperience({
         testID="experience-redeem-token-modal"
       >
         {redeemToken ? (
-          <View style={{ alignItems: "center", gap: theme.spacing.md }}>
+          <View
+            style={{
+              alignItems: "center",
+              gap: theme.spacing.md,
+            }}
+          >
             <QrPlaceholder size={200} />
+
             <View style={{ alignItems: "center" }}>
               <Text variant="caption" color="textMuted">
                 {t("experience.redemptionCode")}
               </Text>
+
               <Text variant="title" color="text">
                 {redeemToken.token}
               </Text>
             </View>
-            <View style={{ alignSelf: "stretch", gap: 6 }}>
+
+            <View
+              style={{
+                alignSelf: "stretch",
+                gap: 6,
+              }}
+            >
               {redeemToken.benefitIds.map((id) => (
                 <View
                   key={id}
@@ -872,17 +991,20 @@ export function BusinessExperience({
                     size={16}
                     color={theme.colors.primary}
                   />
+
                   <Text variant="bodySmall" color="text">
                     {benefitTitleById.get(id) ?? id}
                   </Text>
                 </View>
               ))}
             </View>
+
             <Text variant="caption" color="textMuted">
               {t("experience.benefitsCount", {
                 count: redeemToken.benefitIds.length,
               })}
             </Text>
+
             <Text
               variant="bodySmall"
               color="textMuted"
@@ -919,10 +1041,12 @@ function InfoRow({
       }}
     >
       <Ionicons name={icon} size={18} color={theme.colors.textMuted} />
+
       <View style={{ flex: 1 }}>
         <Text variant="caption" color="textMuted">
           {label}
         </Text>
+
         <Text variant="bodySmall" color="text">
           {value}
         </Text>
@@ -953,6 +1077,7 @@ function PrefRow({
       <Text variant="bodySmall" color="text">
         {label}
       </Text>
+
       <View
         style={{
           backgroundColor: on

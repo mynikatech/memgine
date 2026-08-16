@@ -1,5 +1,5 @@
 import { BusinessContext } from "../context/business-context";
-import { ID } from "../domain/common";
+import { ID, Money } from "../domain/common";
 import { CurrencyCode } from "../localization/localization";
 import {
   Benefit,
@@ -21,6 +21,7 @@ import {
   Subscription,
   OrganizationUser,
   UserAcquisition,
+  SubscriptionPlan,
 } from "../domain/entities";
 
 /**
@@ -43,15 +44,19 @@ export interface CreateCustomerInput {
 }
 
 export interface CreateSubscriptionInput {
-  organizationId: ID;
-  customerId: ID;
-  membershipProductId: ID;
-  planId: ID;
-  /** Staff-assisted purchase attribution (optional). */
-  source?: PurchaseSource;
-  staffId?: ID;
-  storeId?: ID;
-  paymentMethod?: PaymentMethod;
+  subscriptionNumber: string;
+  subscriptionPlanId: ID;
+  organizationUserId: ID;
+
+  subscriptionDate: string;
+  startDate: string;
+  endDate: string;
+
+  subscriptionStatusId: ID;
+
+  totalAmount: Money;
+
+  createdBy: ID;
 }
 
 export interface PerformRedemptionInput {
@@ -73,6 +78,8 @@ export interface OrganizationService {
   createStore(organizationId: ID, store: Store): Promise<Store>;
   updateStore(organizationId: ID, store: Store): Promise<Store>;
   deleteStore(organizationId: ID, storeId: ID): Promise<void>;
+  listOrganizationUsersByUser(userId: ID): Promise<OrganizationUser[]>;
+  getOrganizationUser(id: ID): Promise<OrganizationUser | null>;
   getOrganizationDetails(
     organizationId: ID,
   ): Promise<OrganizationDetails | null>;
@@ -158,11 +165,28 @@ export interface MembershipProductService {
 }
 
 export interface SubscriptionService {
-  /** Backs the customer "My Cards" view. */
+  /**
+   * Returns all subscriptions owned by a global user/customer.
+   *
+   * The lookup is resolved through OrganizationUser.
+   * Subscription does NOT directly contain customerId.
+   */
   listByCustomer(customerId: ID): Promise<Subscription[]>;
+  /** Customer "My Cards" view. */
+  listByOrganizationUser(organizationUserId: ID): Promise<Subscription[]>;
+
+  /** Organization Admin subscription view. */
   listByOrganization(organizationId: ID): Promise<Subscription[]>;
+
   getSubscription(id: ID): Promise<Subscription | null>;
+
   createSubscription(input: CreateSubscriptionInput): Promise<Subscription>;
+}
+
+export interface SubscriptionPlanService {
+  getPlan(id: ID): Promise<SubscriptionPlan | null>;
+
+  listByProduct(membershipProductId: ID): Promise<SubscriptionPlan[]>;
 }
 
 export interface BenefitService {

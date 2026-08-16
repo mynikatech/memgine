@@ -2,13 +2,14 @@ import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 
-import { SubscriptionStatus } from "@/src/core";
 import type {
   Benefit,
   CardStyle,
   MembershipProduct,
+  OrganizationUser,
   Subscription,
 } from "@/src/core";
+
 import { mockServices } from "@/src/core";
 import { Screen } from "@/src/layout";
 import {
@@ -22,34 +23,54 @@ import { Badge, Card, Header, Section, StateView, Text } from "@/src/ui";
 import { MembershipCard } from "@/src/ui/domain";
 
 type Status = "loading" | "error" | "ready";
+
 const CUSTOMER_ID = "cust-1";
 
 type CardVM = {
   subscription: Subscription;
+  organizationUser: OrganizationUser;
   product: MembershipProduct;
   benefits: Benefit[];
 };
 
-/** Subscriptions grouped by their Organization — ready for multiple orgs. */
+/**
+ * Subscriptions grouped by their Organization.
+ *
+ * The organization is resolved through OrganizationUser because the
+ * final Subscription model intentionally does not contain organizationId.
+ */
 type OrgGroup = {
   organizationId: string;
   organizationName: string;
-  /** Each group renders in ITS OWN business theme/style, not the active one. */
+
+  /**
+   * Each organization renders in its own business theme/style,
+   * regardless of the currently active business.
+   */
   theme: Theme;
   cardStyle: CardStyle;
+
   cards: CardVM[];
 };
 
 /**
- * Your Memberships — the Memgine platform wallet (top level). Selecting a
- * membership enters that business's branded experience (a pushed route that
- * covers the platform tabs). Grouped by organization so adding a second org
- * later needs NO screen change.
+ * Customer Membership Wallet.
+ *
+ * Subscriptions are resolved through:
+ *
+ * Customer
+ *   -> OrganizationUser
+ *      -> Subscription
+ *         -> SubscriptionPlan
+ *            -> MembershipProduct
  */
 export default function MyCards() {
   const router = useRouter();
+
   const { organization, configuration, setActiveBusiness } = useBusiness();
+
   const { setActiveContext } = useCustomerContext();
+
   const { t, formatDate } = useTranslation();
 
   const [status, setStatus] = useState<Status>("loading");
@@ -57,42 +78,133 @@ export default function MyCards() {
 
   const load = useCallback(async () => {
     setStatus("loading");
+
     try {
-      const subs = await mockServices.subscription.listByCustomer(CUSTOMER_ID);
-      const grouped: OrgGroup[] = [];
-      for (const sub of subs) {
-        const product = await mockServices.membershipProduct.getProduct(
-          sub.membershipProductId,
-        );
-        if (!product) continue;
-        const benefits = await mockServices.benefit.listByProduct(
-          sub.membershipProductId,
+      /**
+       * Step 1:
+       *
+       * Find all organization-user relationships belonging to
+       * the current global user/customer.
+       */
+      const organizationUsers =
+        await mockServices.organization.listOrganizationUsersByUser(
+          CUSTOMER_ID,
         );
 
-        let group = grouped.find(
-          (g) => g.organizationId === sub.organizationId,
+      /**
+       * Step 2:
+       *
+       * Get subscriptions for every organization-user relationship.
+       */
+      const subscriptionLists = await Promise.all(
+        organizationUsers.map((organizationUser) =>
+          mockServices.subscription.listByOrganizationUser(organizationUser.id),
+        ),
+      );
+
+      const subscriptions = subscriptionLists.flat();
+
+      const grouped: OrgGroup[] = [];
+
+      /**
+       * Step 3:
+       *
+       * Resolve the rest of the subscription relationships.
+       */
+      for (const subscription of subscriptions) {
+        /**
+         * Find the OrganizationUser that owns this subscription.
+         *
+         * We already loaded these above, so this is only an in-memory lookup.
+         */
+        const organizationUser = organizationUsers.find(
+          (item) => item.id === subscription.organizationUserId,
         );
+
+        if (!organizationUser) {
+          continue;
+        }
+
+        /**
+         * Subscription
+         *     -> SubscriptionPlan
+         */
+        const plan = await mockServices.subscriptionPlan.getPlan(
+          subscription.subscriptionPlanId,
+        );
+
+        if (!plan) {
+          continue;
+        }
+
+        /**
+         * SubscriptionPlan
+         *     -> MembershipProduct
+         */
+        const product = await mockServices.membershipProduct.getProduct(
+          plan.membershipProductId,
+        );
+
+        if (!product) {
+          continue;
+        }
+
+        /**
+         * MembershipProduct
+         *     -> Benefits
+         */
+        const benefits = await mockServices.benefit.listByProduct(
+          plan.membershipProductId,
+        );
+
+        /**
+         * OrganizationUser
+         *     -> Organization
+         */
+        const organizationId = organizationUser.organizationId;
+
+        let group = grouped.find(
+          (item) => item.organizationId === organizationId,
+        );
+
         if (!group) {
-          // Resolve THIS organization's own branding so its cards always render
-          // in its own theme/style, regardless of the active business.
-          const ctx = await mockServices.organization.getBusinessContext(
-            sub.organizationId,
-          );
-          const orgName =
+          /**
+           * Resolve THIS organization's own business context.
+           *
+           * This is important for the multi-business wallet:
+           * Sunrise cards should use Sunrise branding,
+           * Glow cards should use Glow branding, etc.
+           */
+          const ctx =
+            await mockServices.organization.getBusinessContext(organizationId);
+
+          const organizationName =
             ctx?.organization.displayName ?? organization.displayName;
+
           group = {
-            organizationId: sub.organizationId,
-            organizationName: orgName,
+            organizationId,
+            organizationName,
+
             theme: buildTheme(ctx?.configuration.branding),
+
             cardStyle:
               ctx?.configuration.customerExperience.cardStyle ??
               configuration.customerExperience.cardStyle,
+
             cards: [],
           };
+
           grouped.push(group);
         }
-        group.cards.push({ subscription: sub, product, benefits });
+
+        group.cards.push({
+          subscription,
+          organizationUser,
+          product,
+          benefits,
+        });
       }
+
       setGroups(grouped);
       setStatus("ready");
     } catch {
@@ -104,15 +216,28 @@ export default function MyCards() {
     load();
   }, [load]);
 
+  /**
+   * Enter the selected business membership experience.
+   */
   const openBusiness = (vm: CardVM) => {
-    // Switch the active business (branding/template/locale) + subscription
-    // context, then enter the business experience.
-    setActiveBusiness(vm.subscription.organizationId);
-    setActiveContext(vm.subscription.organizationId, vm.subscription.id);
+    const organizationId = vm.organizationUser.organizationId;
+
+    /**
+     * Switch active business first so the business experience
+     * gets the correct branding/configuration.
+     */
+    setActiveBusiness(organizationId);
+
+    /**
+     * Customer context contains:
+     * organization + subscription
+     */
+    setActiveContext(organizationId, vm.subscription.id);
+
     router.push(`/business/${vm.subscription.id}`);
   };
 
-  const hasCards = groups.some((g) => g.cards.length > 0);
+  const hasCards = groups.some((group) => group.cards.length > 0);
 
   return (
     <Screen
@@ -154,47 +279,60 @@ export default function MyCards() {
               title={group.organizationName}
               testID={`cards-group-${group.organizationId}`}
             >
-              {group.cards.map((vm) => (
-                <Pressable
-                  key={vm.subscription.id}
-                  testID={`card-${vm.subscription.id}`}
-                  onPress={() => openBusiness(vm)}
-                >
-                  <Card padding="md">
-                    <MembershipCard
-                      organizationName={group.organizationName}
-                      tier={
-                        vm.product.displayName ??
-                        vm.product.membershipProductName
-                      }
-                      validUntil={
-                        vm.subscription.currentPeriodEnd
-                          ? formatDate(vm.subscription.currentPeriodEnd)
-                          : "—"
-                      }
-                      active={
-                        vm.subscription.status === SubscriptionStatus.ACTIVE
-                      }
-                      cardStyle={group.cardStyle}
-                    />
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        marginTop: 12,
-                      }}
-                    >
-                      <Text variant="bodySmall" color="textMuted">
-                        {t("cards.benefitsSummary", {
-                          count: vm.benefits.length,
-                        })}
-                      </Text>
-                      <Badge label={t("cards.view")} tone="brand" />
-                    </View>
-                  </Card>
-                </Pressable>
-              ))}
+              {group.cards.map((vm) => {
+                /**
+                 * The final Subscription model uses:
+                 *
+                 * startDate
+                 * endDate
+                 * subscriptionStatusId
+                 */
+                const isActive =
+                  vm.subscription.subscriptionStatusId ===
+                  "subscription-status-active";
+
+                return (
+                  <Pressable
+                    key={vm.subscription.id}
+                    testID={`card-${vm.subscription.id}`}
+                    onPress={() => openBusiness(vm)}
+                  >
+                    <Card padding="md">
+                      <MembershipCard
+                        organizationName={group.organizationName}
+                        tier={
+                          vm.product.displayName ??
+                          vm.product.membershipProductName
+                        }
+                        validUntil={
+                          vm.subscription.endDate
+                            ? formatDate(vm.subscription.endDate)
+                            : "—"
+                        }
+                        active={isActive}
+                        cardStyle={group.cardStyle}
+                      />
+
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          marginTop: 12,
+                        }}
+                      >
+                        <Text variant="bodySmall" color="textMuted">
+                          {t("cards.benefitsSummary", {
+                            count: vm.benefits.length,
+                          })}
+                        </Text>
+
+                        <Badge label={t("cards.view")} tone="brand" />
+                      </View>
+                    </Card>
+                  </Pressable>
+                );
+              })}
             </Section>
           </BusinessThemeScope>
         ))

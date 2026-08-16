@@ -22,7 +22,10 @@ import { StateView } from "@/src/ui";
 
 type Status = "loading" | "error" | "ready";
 
-/** A single subscription and its resolved domain data (per-membership). */
+/**
+ * All data required to render one membership inside
+ * the business experience.
+ */
 type MembershipBundle = {
   subscription: Subscription;
   product: MembershipProduct;
@@ -31,146 +34,359 @@ type MembershipBundle = {
 };
 
 /**
- * Business Experience route — the branded, template-driven experience for a
- * selected membership. Pushed OVER the Memgine platform tabs so it feels like
- * the business's own app while remaining inside the Memgine window.
+ * Business Experience route.
  *
- * When the customer holds MULTIPLE subscriptions for the SAME organization,
- * all of them are loaded so the experience can offer an in-place membership
- * selector; switching changes only the selected subscription (organization,
- * branding, template and navigation stay the same).
+ * Final Subscription model:
+ *
+ * Subscription
+ *   ├── organizationUserId
+ *   │      └── OrganizationUser
+ *   │             ├── organizationId
+ *   │             └── userId
+ *   │
+ *   └── subscriptionPlanId
+ *          └── SubscriptionPlan
+ *                 └── membershipProductId
+ *                        └── MembershipProduct
  */
 export default function BusinessExperienceRoute() {
   const router = useRouter();
-  const { subscriptionId } = useLocalSearchParams<{ subscriptionId: string }>();
+
+  const { subscriptionId } = useLocalSearchParams<{
+    subscriptionId: string;
+  }>();
+
   const { setActiveBusiness } = useBusiness();
+
   const { setActiveContext, setActiveSubscription } = useCustomerContext();
+
   const { t } = useTranslation();
   const theme = useTheme();
 
   const [status, setStatus] = useState<Status>("loading");
+
   const [memberships, setMemberships] = useState<MembershipBundle[]>([]);
+
   const [availableMemberships, setAvailableMemberships] = useState<
     MembershipProduct[]
   >([]);
+
   const [offers, setOffers] = useState<Offer[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
+
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
+
+  /**
+   * Organization for the currently displayed business.
+   *
+   * Subscription itself no longer contains organizationId.
+   */
+  const [activeOrganizationId, setActiveOrganizationId] = useState<
+    string | null
+  >(null);
 
   const load = useCallback(async () => {
     setStatus("loading");
+
     try {
+      /*
+       * ------------------------------------------------------------
+       * 1. Load the selected subscription.
+       * ------------------------------------------------------------
+       */
       const initial = subscriptionId
         ? await mockServices.subscription.getSubscription(subscriptionId)
         : null;
+
       if (!initial) {
         setStatus("error");
         return;
       }
-      setActiveBusiness(initial.organizationId);
-      setActiveContext(initial.organizationId, initial.id);
 
-      // All of the customer's subscriptions for THIS SAME organization.
-      const all = await mockServices.subscription.listByCustomer(
-        initial.customerId,
-      );
-      const siblings = all.filter(
-        (s) => s.organizationId === initial.organizationId,
-      );
+      /*
+       * ------------------------------------------------------------
+       * 2. Resolve Subscription -> OrganizationUser.
+       *
+       * OrganizationUser gives us:
+       *
+       *   organizationId
+       *   userId
+       * ------------------------------------------------------------
+       */
+      const initialOrganizationUser =
+        await mockServices.organization.getOrganizationUser(
+          initial.organizationUserId,
+        );
 
-      const bundles = (
-        await Promise.all(
-          siblings.map(async (s) => {
-            const product = await mockServices.membershipProduct.getProduct(
-              s.membershipProductId,
-            );
-            if (!product) return null;
-            const [benefits, redemptions] = await Promise.all([
-              mockServices.benefit.listByProduct(s.membershipProductId),
-              mockServices.redemption.listBySubscription(s.id),
-            ]);
-            return {
-              subscription: s,
-              product,
-              benefits,
-              redemptions,
-            } as MembershipBundle;
-          }),
-        )
-      ).filter((b): b is MembershipBundle => b !== null);
-
-      if (!bundles.length) {
+      if (!initialOrganizationUser) {
         setStatus("error");
         return;
       }
 
-      // Organization-level content is shared across the customer's memberships.
+      const organizationId = initialOrganizationUser.organizationId;
+
+      const customerId = initialOrganizationUser.userId;
+
+      setActiveOrganizationId(organizationId);
+
+      /*
+       * Set active business and customer context.
+       */
+      setActiveBusiness(organizationId);
+
+      setActiveContext(organizationId, initial.id);
+
+      setActiveSubscription(initial.id);
+
+      /*
+       * ------------------------------------------------------------
+       * 3. Get all subscriptions belonging to this global user.
+       *
+       * listByCustomer() now resolves subscriptions through
+       * OrganizationUser.userId.
+       * ------------------------------------------------------------
+       */
+      const customerSubscriptions =
+        await mockServices.subscription.listByCustomer(customerId);
+
+      /*
+       * We need to identify which of those subscriptions belong
+       * to this SAME organization.
+       *
+       * organizationId is obtained through each subscription's
+       * OrganizationUser.
+       */
+      const resolvedSubscriptions = await Promise.all(
+        customerSubscriptions.map(async (subscription) => {
+          const organizationUser =
+            await mockServices.organization.getOrganizationUser(
+              subscription.organizationUserId,
+            );
+
+          return {
+            subscription,
+            organizationUser,
+          };
+        }),
+      );
+
+      const siblings = resolvedSubscriptions
+        .filter(
+          ({ organizationUser }) =>
+            organizationUser?.organizationId === organizationId,
+        )
+        .map(({ subscription }) => subscription);
+
+      /*
+       * ------------------------------------------------------------
+       * 4. Resolve every subscription to:
+       *
+       * Subscription
+       *   -> SubscriptionPlan
+       *      -> MembershipProduct
+       *         -> Benefits
+       *
+       * Subscription
+       *   -> Redemptions
+       * ------------------------------------------------------------
+       */
+      const resolvedBundles = await Promise.all(
+        siblings.map(async (subscription) => {
+          /*
+           * Subscription -> SubscriptionPlan
+           */
+          const plan = await mockServices.subscriptionPlan.getPlan(
+            subscription.subscriptionPlanId,
+          );
+
+          if (!plan) {
+            return null;
+          }
+
+          /*
+           * SubscriptionPlan -> MembershipProduct
+           */
+          const product = await mockServices.membershipProduct.getProduct(
+            plan.membershipProductId,
+          );
+
+          if (!product) {
+            return null;
+          }
+
+          /*
+           * MembershipProduct -> Benefits
+           */
+          const benefits = await mockServices.benefit.listByProduct(
+            plan.membershipProductId,
+          );
+
+          /*
+           * Subscription -> Redemptions
+           */
+          const redemptions = await mockServices.redemption.listBySubscription(
+            subscription.id,
+          );
+
+          return {
+            subscription,
+            product,
+            benefits,
+            redemptions,
+          };
+        }),
+      );
+
+      const bundles: MembershipBundle[] = resolvedBundles.filter(
+        (bundle): bundle is MembershipBundle => bundle !== null,
+      );
+
+      if (bundles.length === 0) {
+        setStatus("error");
+        return;
+      }
+
+      /*
+       * ------------------------------------------------------------
+       * 5. Load organization-level content.
+       * ------------------------------------------------------------
+       */
       const [orgOffers, orgStores, catalog] = await Promise.all([
-        mockServices.offer.listByOrganization(initial.organizationId),
-        mockServices.organization.listStores(initial.organizationId),
-        mockServices.membershipProduct.listProducts(initial.organizationId),
+        mockServices.offer.listByOrganization(organizationId),
+
+        mockServices.organization.listStores(organizationId),
+
+        mockServices.membershipProduct.listProducts(organizationId),
       ]);
 
-      // "Available Memberships" = published products the customer does NOT own.
-      const ownedProductIds = new Set(bundles.map((b) => b.product.id));
-      const available = catalog.filter(
-        (p) =>
-          p.productStatusId === "product-status-active" &&
-          !ownedProductIds.has(p.id),
+      /*
+       * ------------------------------------------------------------
+       * 6. Determine which products the customer already owns.
+       * ------------------------------------------------------------
+       */
+      const ownedProductIds = new Set(
+        bundles.map((bundle) => bundle.product.id),
       );
 
-      setMemberships(bundles);
-      setAvailableMemberships(available);
-      setOffers(orgOffers);
-      setStores(orgStores);
-      setSelectedSubId(
-        bundles.some((b) => b.subscription.id === initial.id)
-          ? initial.id
-          : bundles[0].subscription.id,
+      /*
+       * Active products that the customer does not already own.
+       */
+      const available = catalog.filter(
+        (product) =>
+          product.productStatusId === "product-status-active" &&
+          !ownedProductIds.has(product.id),
       );
+
+      /*
+       * ------------------------------------------------------------
+       * 7. Set final screen state.
+       * ------------------------------------------------------------
+       */
+      setMemberships(bundles);
+
+      setAvailableMemberships(available);
+
+      setOffers(orgOffers);
+
+      setStores(orgStores);
+
+      /*
+       * Keep the subscription from the URL selected.
+       */
+      const selectedId = bundles.some(
+        (bundle) => bundle.subscription.id === initial.id,
+      )
+        ? initial.id
+        : bundles[0].subscription.id;
+
+      setSelectedSubId(selectedId);
+      setActiveSubscription(selectedId);
+
       setStatus("ready");
     } catch {
       setStatus("error");
     }
-  }, [subscriptionId, setActiveContext, setActiveBusiness]);
+  }, [
+    subscriptionId,
+    setActiveBusiness,
+    setActiveContext,
+    setActiveSubscription,
+  ]);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  /*
+   * Current membership displayed in the business experience.
+   */
   const current =
-    memberships.find((m) => m.subscription.id === selectedSubId) ??
-    memberships[0];
+    memberships.find(
+      (membership) => membership.subscription.id === selectedSubId,
+    ) ?? memberships[0];
 
+  /**
+   * Switch between subscriptions belonging to this organization.
+   */
   const selectSubscription = (id: string) => {
     setSelectedSubId(id);
     setActiveSubscription(id);
   };
 
-  const joinMembership = (productId: string) => {
-    if (!current) return;
-    // Reuse the existing Stage 4 purchase flow, passing org + product.
+  /**
+   * Start the existing purchase flow for another membership.
+   *
+   * The organization ID comes from OrganizationUser rather
+   * than Subscription.
+   */
+  const joinMembership = async (productId: string) => {
+    if (!current) {
+      return;
+    }
+
+    const organizationUser =
+      await mockServices.organization.getOrganizationUser(
+        current.subscription.organizationUserId,
+      );
+
+    if (!organizationUser) {
+      return;
+    }
+
     router.push(
-      `/join?organizationId=${current.subscription.organizationId}&productId=${productId}`,
+      `/join?organizationId=${organizationUser.organizationId}&productId=${productId}`,
     );
   };
 
-  const exit = () =>
-    router.canGoBack() ? router.back() : router.replace("/cards");
+  /**
+   * Exit the business experience.
+   */
+  const exit = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/cards");
+    }
+  };
 
-  if (status === "ready" && current) {
+  /*
+   * --------------------------------------------------------------
+   * READY
+   * --------------------------------------------------------------
+   */
+  if (status === "ready" && current && activeOrganizationId) {
     return (
       <BusinessExperience
-        content={getBusinessContent(current.subscription.organizationId)}
+        content={getBusinessContent(activeOrganizationId)}
         subscription={current.subscription}
         product={current.product}
         benefits={current.benefits}
         offers={offers}
         stores={stores}
         redemptions={current.redemptions}
-        memberships={memberships.map((m) => ({
-          subscription: m.subscription,
-          product: m.product,
+        memberships={memberships.map((membership) => ({
+          subscription: membership.subscription,
+          product: membership.product,
         }))}
         selectedSubscriptionId={current.subscription.id}
         onSelectSubscription={selectSubscription}
@@ -181,6 +397,11 @@ export default function BusinessExperienceRoute() {
     );
   }
 
+  /*
+   * --------------------------------------------------------------
+   * LOADING / ERROR
+   * --------------------------------------------------------------
+   */
   return (
     <View
       style={{

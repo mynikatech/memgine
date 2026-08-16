@@ -18,6 +18,7 @@ import {
   Store,
   Subscription,
   SubscriptionStatus,
+  SubscriptionPlan,
   Staff,
   OrganizationUser,
   UserAcquisition,
@@ -41,6 +42,7 @@ import {
   SendOtpInput,
   SendOtpResult,
   SubscriptionService,
+  SubscriptionPlanService,
   VerifyOtpInput,
   VerifyOtpResult,
 } from "../services/service-contracts";
@@ -306,6 +308,22 @@ const organizationUsers: OrganizationUser[] = [
     createdAt: "2026-06-01T09:00:00.000Z",
     createdBy: "user-system",
     updatedAt: "2026-06-01T09:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+  {
+    id: "org-user-glow-customer-ada",
+    organizationId: "org-glow",
+    userId: "cust-1",
+    organizationUserTypeId: "org-user-type-customer",
+    organizationUserStatusId: "status-active",
+    joiningDate: "2026-04-01",
+
+    createdAt: "2026-04-01T09:00:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-04-01T09:00:00.000Z",
     updatedBy: "user-system",
 
     isDeleted: false,
@@ -690,6 +708,66 @@ const benefits: Benefit[] = [
 const now = new Date().toISOString();
 const products: MembershipProduct[] = [
   {
+    id: "prod-1",
+    organizationId: "org-sunrise",
+
+    membershipProductCode: "SUNRISE-BAKERY",
+    membershipProductName: "Sunrise Bakery Membership",
+    displayName: "Gold",
+
+    productCategoryId: "product-category-membership",
+    productTypeId: "product-type-individual",
+
+    description: "Annual Sunrise Bakery membership.",
+
+    productStatusId: "product-status-active",
+
+    effectiveDate: "2026-01-01",
+
+    benefitIds: ["ben-1", "ben-2"],
+
+    plans: [
+      {
+        id: "plan-1",
+        membershipProductId: "prod-1",
+
+        subscriptionPlanCode: "SUNRISE-BAKERY-ANNUAL",
+        subscriptionPlanName: "Annual",
+
+        description: "Annual Sunrise Bakery membership.",
+
+        subscriptionPeriod: 12,
+        subscriptionPeriodUnit: "MONTH",
+
+        price: {
+          amountMinor: 29900,
+          currency: "INR",
+        },
+        currencyId: "currency-inr",
+
+        subscriptionPlanStatusId: "subscription-plan-status-active",
+
+        effectiveDate: "2026-01-01",
+
+        createdAt: now,
+        createdBy: "user-system",
+        updatedAt: now,
+        updatedBy: "user-system",
+
+        isDeleted: false,
+        versionNo: 1,
+      },
+    ],
+
+    createdAt: now,
+    createdBy: "user-system",
+    updatedAt: now,
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+  {
     id: "prod-2",
     organizationId: "org-sunrise",
 
@@ -962,33 +1040,86 @@ const customers: Customer[] = [
 const subscriptions: Subscription[] = [
   {
     id: "sub-1",
-    organizationId: "org-sunrise",
-    customerId: "cust-1",
-    membershipProductId: "prod-1",
-    planId: "plan-1",
-    status: SubscriptionStatus.ACTIVE,
-    startedAt: "2026-02-01T00:00:00.000Z",
-    currentPeriodEnd: "2027-02-01T00:00:00.000Z",
+    subscriptionNumber: "SUB-2026-0001",
+
+    subscriptionPlanId: "plan-1",
+    organizationUserId: "org-user-sunrise-customer-ada",
+
+    subscriptionDate: "2026-02-01",
+    startDate: "2026-02-01",
+    endDate: "2027-02-01",
+
+    subscriptionStatusId: "subscription-status-active",
+
+    totalAmount: {
+      amountMinor: 29900,
+      currency: "INR",
+    },
+
+    createdAt: "2026-02-01T09:00:00.000Z",
+    createdBy: "user-system",
+
+    updatedAt: "2026-02-01T09:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
+
   {
     id: "sub-2",
-    organizationId: "org-sunrise",
-    customerId: "cust-1",
-    membershipProductId: "prod-2",
-    planId: "plan-2",
-    status: SubscriptionStatus.ACTIVE,
-    startedAt: "2026-03-01T00:00:00.000Z",
-    currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+    subscriptionNumber: "SUB-2026-0002",
+
+    subscriptionPlanId: "plan-2",
+    organizationUserId: "org-user-sunrise-customer-ada",
+
+    subscriptionDate: "2026-03-01",
+    startDate: "2026-03-01",
+    endDate: "2026-09-01",
+
+    subscriptionStatusId: "subscription-status-active",
+
+    totalAmount: {
+      amountMinor: 19900,
+      currency: "INR",
+    },
+
+    createdAt: "2026-03-01T09:00:00.000Z",
+    createdBy: "user-system",
+
+    updatedAt: "2026-03-01T09:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
+
   {
     id: "glow-sub-1",
-    organizationId: "org-glow",
-    customerId: "cust-1",
-    membershipProductId: "glow-prod-1",
-    planId: "glow-plan-1",
-    status: SubscriptionStatus.ACTIVE,
-    startedAt: "2026-04-01T00:00:00.000Z",
-    currentPeriodEnd: "2026-12-01T00:00:00.000Z",
+    subscriptionNumber: "GLOW-2026-0001",
+
+    subscriptionPlanId: "glow-plan-1",
+    organizationUserId: "org-user-glow-customer-ada",
+
+    subscriptionDate: "2026-04-01",
+    startDate: "2026-04-01",
+    endDate: "2026-12-01",
+
+    subscriptionStatusId: "subscription-status-active",
+
+    totalAmount: {
+      amountMinor: 5900,
+      currency: "USD",
+    },
+
+    createdAt: "2026-04-01T09:00:00.000Z",
+    createdBy: "user-system",
+
+    updatedAt: "2026-04-01T09:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
   },
 ];
 
@@ -1122,6 +1253,17 @@ export class InMemoryOrganizationService implements OrganizationService {
   async listStores(organizationId: ID): Promise<Store[]> {
     return stores.filter(
       (store) => store.organizationId === organizationId && !store.isDeleted,
+    );
+  }
+  async listOrganizationUsersByUser(userId: ID): Promise<OrganizationUser[]> {
+    return organizationUsers.filter(
+      (item) => item.userId === userId && !item.isDeleted,
+    );
+  }
+  async getOrganizationUser(id: ID): Promise<OrganizationUser | null> {
+    return (
+      organizationUsers.find((item) => item.id === id && !item.isDeleted) ??
+      null
     );
   }
   async createStore(organizationId: ID, store: Store): Promise<Store> {
@@ -1513,32 +1655,124 @@ export class InMemoryMembershipProductService implements MembershipProductServic
 
 export class InMemorySubscriptionService implements SubscriptionService {
   async listByCustomer(customerId: ID): Promise<Subscription[]> {
-    return subscriptions.filter((s) => s.customerId === customerId);
+    /**
+     * Customer/User → OrganizationUser → Subscription
+     *
+     * Subscription no longer contains customerId directly.
+     */
+    const organizationUserIds = new Set(
+      organizationUsers
+        .filter(
+          (organizationUser) =>
+            organizationUser.userId === customerId &&
+            !organizationUser.isDeleted,
+        )
+        .map((organizationUser) => organizationUser.id),
+    );
+
+    return subscriptions.filter(
+      (subscription) =>
+        !subscription.isDeleted &&
+        organizationUserIds.has(subscription.organizationUserId),
+    );
   }
+
+  async listByOrganizationUser(
+    organizationUserId: ID,
+  ): Promise<Subscription[]> {
+    return subscriptions.filter(
+      (subscription) =>
+        !subscription.isDeleted &&
+        subscription.organizationUserId === organizationUserId,
+    );
+  }
+
   async listByOrganization(organizationId: ID): Promise<Subscription[]> {
-    return subscriptions.filter((s) => s.organizationId === organizationId);
+    /**
+     * Organization → OrganizationUser → Subscription
+     */
+    const organizationUserIds = new Set(
+      organizationUsers
+        .filter(
+          (organizationUser) =>
+            organizationUser.organizationId === organizationId &&
+            !organizationUser.isDeleted,
+        )
+        .map((organizationUser) => organizationUser.id),
+    );
+
+    return subscriptions.filter(
+      (subscription) =>
+        !subscription.isDeleted &&
+        organizationUserIds.has(subscription.organizationUserId),
+    );
   }
+
   async getSubscription(id: ID): Promise<Subscription | null> {
-    return subscriptions.find((s) => s.id === id) ?? null;
+    return (
+      subscriptions.find(
+        (subscription) => subscription.id === id && !subscription.isDeleted,
+      ) ?? null
+    );
   }
+
   async createSubscription(
     input: CreateSubscriptionInput,
   ): Promise<Subscription> {
+    const now = new Date().toISOString();
+
     const subscription: Subscription = {
       id: genId("sub"),
-      organizationId: input.organizationId,
-      customerId: input.customerId,
-      membershipProductId: input.membershipProductId,
-      planId: input.planId,
-      status: SubscriptionStatus.ACTIVE,
-      startedAt: new Date().toISOString(),
-      source: input.source,
-      soldByStaffId: input.staffId,
-      storeId: input.storeId,
-      paymentMethod: input.paymentMethod,
+
+      subscriptionNumber: input.subscriptionNumber,
+      subscriptionPlanId: input.subscriptionPlanId,
+      organizationUserId: input.organizationUserId,
+
+      subscriptionDate: input.subscriptionDate,
+      startDate: input.startDate,
+      endDate: input.endDate,
+
+      subscriptionStatusId: input.subscriptionStatusId,
+
+      totalAmount: input.totalAmount,
+
+      createdAt: now,
+      createdBy: input.createdBy,
+
+      updatedAt: now,
+      updatedBy: input.createdBy,
+
+      isDeleted: false,
+      versionNo: 1,
     };
+
     subscriptions.push(subscription);
+
     return subscription;
+  }
+}
+
+export class InMemorySubscriptionPlanService implements SubscriptionPlanService {
+  async getPlan(id: ID): Promise<SubscriptionPlan | null> {
+    for (const product of products) {
+      const plan = product.plans?.find(
+        (item) => item.id === id && !item.isDeleted,
+      );
+
+      if (plan) {
+        return plan;
+      }
+    }
+
+    return null;
+  }
+
+  async listByProduct(membershipProductId: ID): Promise<SubscriptionPlan[]> {
+    const product = products.find(
+      (item) => item.id === membershipProductId && !item.isDeleted,
+    );
+
+    return product?.plans?.filter((plan) => !plan.isDeleted) ?? [];
   }
 }
 
@@ -1808,6 +2042,7 @@ export const mockServices = {
   customer: new InMemoryCustomerService(),
   membershipProduct: new InMemoryMembershipProductService(),
   subscription: new InMemorySubscriptionService(),
+  subscriptionPlan: new InMemorySubscriptionPlanService(),
   benefit: new InMemoryBenefitService(),
   redemption: new InMemoryRedemptionService(),
   offer: new InMemoryOfferService(),

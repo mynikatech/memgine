@@ -128,16 +128,16 @@ export function resolveExperience(
   // membership is OPTIONAL — an org-level (QR) entry may have no owned membership.
   let membership: ResolvedMembership | undefined;
   if (subscription && product) {
-    const active = subscription.status === SubscriptionStatus.ACTIVE;
-    const validUntilLabel = subscription.currentPeriodEnd
-      ? input.formatDate(subscription.currentPeriodEnd)
+    const active =
+      subscription.subscriptionStatusId === SubscriptionStatus.ACTIVE;
+    const validUntilLabel = subscription.endDate
+      ? input.formatDate(subscription.endDate)
       : "—";
-    const daysRemaining = subscription.currentPeriodEnd
+    const daysRemaining = subscription.endDate
       ? Math.max(
           0,
           Math.ceil(
-            (new Date(subscription.currentPeriodEnd).getTime() - Date.now()) /
-              DAY_MS,
+            (new Date(subscription.endDate).getTime() - Date.now()) / DAY_MS,
           ),
         )
       : null;

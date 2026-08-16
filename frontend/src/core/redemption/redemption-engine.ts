@@ -12,6 +12,7 @@ import {
   MembershipProductService,
   RedemptionService,
   SubscriptionService,
+  SubscriptionPlanService,
 } from "../services/service-contracts";
 
 /**
@@ -40,6 +41,7 @@ export function encodeRedemptionToken(token: RedemptionToken): string {
 export function decodeRedemptionToken(raw: string): RedemptionToken | null {
   try {
     const v = JSON.parse(raw.trim());
+
     if (
       !v ||
       v.version !== 1 ||
@@ -48,6 +50,7 @@ export function decodeRedemptionToken(raw: string): RedemptionToken | null {
     ) {
       return null;
     }
+
     return v as RedemptionToken;
   } catch {
     return null;
@@ -58,10 +61,18 @@ export function decodeRedemptionToken(raw: string): RedemptionToken | null {
 
 export interface RedemptionServices {
   subscription: SubscriptionService;
+  subscriptionPlan: SubscriptionPlanService;
   benefit: BenefitService;
   redemption: RedemptionService;
   customer: CustomerService;
   membershipProduct: MembershipProductService;
+  organization: {
+    getOrganizationUser(organizationUserId: ID): Promise<{
+      id: ID;
+      organizationId: ID;
+      userId: ID;
+    } | null>;
+  };
 }
 
 export interface RedemptionContext {
@@ -95,7 +106,9 @@ export interface RedemptionResult {
 
 /* ---------------------------- Membership lookup --------------------------- */
 
-export type EligibleBenefit = Benefit & { available: boolean };
+export type EligibleBenefit = Benefit & {
+  available: boolean;
+};
 
 export interface MembershipOption {
   subscription: Subscription;
@@ -104,37 +117,96 @@ export interface MembershipOption {
   benefits: EligibleBenefit[];
 }
 
-/** Active memberships (with per-benefit availability) for a customer at an org. */
+/**
+ * Resolve the organization/customer information represented by a subscription.
+ *
+ * Subscription deliberately does not contain organizationId or customerId.
+ * Those are derived through OrganizationUser.
+ */
+async function resolveSubscriptionOwner(
+  services: RedemptionServices,
+  subscription: Subscription,
+): Promise<{
+  organizationId: ID;
+  customerId: ID;
+} | null> {
+  const organizationUser = await services.organization.getOrganizationUser(
+    subscription.organizationUserId,
+  );
+
+  if (!organizationUser) {
+    return null;
+  }
+
+  return {
+    organizationId: organizationUser.organizationId,
+    customerId: organizationUser.userId,
+  };
+}
+
+/**
+ * Active memberships for a customer at an organization.
+ */
 export async function listActiveMemberships(
   services: RedemptionServices,
   organizationId: ID,
   customerId: ID,
 ): Promise<MembershipOption[]> {
-  const subs = (await services.subscription.listByCustomer(customerId)).filter(
-    (s) =>
-      s.organizationId === organizationId &&
-      s.status === SubscriptionStatus.ACTIVE,
-  );
+  const subs = await services.subscription.listByCustomer(customerId);
+
   const options: MembershipOption[] = [];
+
   for (const sub of subs) {
+    const owner = await resolveSubscriptionOwner(services, sub);
+
+    if (!owner) {
+      continue;
+    }
+
+    if (
+      owner.organizationId !== organizationId ||
+      owner.customerId !== customerId
+    ) {
+      continue;
+    }
+
+    if (sub.subscriptionStatusId !== "subscription-status-active") {
+      continue;
+    }
+
+    const plan = await services.subscriptionPlan?.getPlan?.(
+      sub.subscriptionPlanId,
+    );
+
+    if (!plan) {
+      continue;
+    }
+
     const product = await services.membershipProduct.getProduct(
-      sub.membershipProductId,
+      plan.membershipProductId,
     );
+
     const benefits = await services.benefit.listByProduct(
-      sub.membershipProductId,
+      plan.membershipProductId,
     );
+
     const used = new Set(
       (await services.redemption.listBySubscription(sub.id)).map(
         (r) => r.benefitId,
       ),
     );
+
     options.push({
       subscription: sub,
       productName: product?.membershipProductName ?? "Membership",
       tier: product?.displayName,
-      benefits: benefits.map((b) => ({ ...b, available: !used.has(b.id) })),
+      benefits: benefits.map((b) => ({
+        ...b,
+        available: !used.has(b.id),
+      })),
     });
   }
+
   return options;
 }
 
@@ -142,13 +214,21 @@ export async function listActiveMemberships(
 
 /**
  * Validate + redeem selected benefits for a subscription in ONE action.
- * Shared by QR and manual flows. Applies: active membership, correct business,
- * benefit eligibility and already-used rules; supports partial success.
+ *
+ * Applies:
+ * - active membership
+ * - correct business
+ * - benefit eligibility
+ * - already-used rules
+ * - partial success
  */
 export async function redeemBenefits(
   services: RedemptionServices,
   ctx: RedemptionContext,
-  request: { subscriptionId: ID; benefitIds: ID[] },
+  request: {
+    subscriptionId: ID;
+    benefitIds: ID[];
+  },
 ): Promise<RedemptionResult> {
   if (!request.benefitIds.length) {
     return {
@@ -161,6 +241,7 @@ export async function redeemBenefits(
   const subscription = await services.subscription.getSubscription(
     request.subscriptionId,
   );
+
   if (!subscription) {
     return {
       kind: "INVALID",
@@ -168,10 +249,24 @@ export async function redeemBenefits(
       outcomes: [],
     };
   }
-  const customer =
-    (await services.customer.getCustomer(subscription.customerId)) ?? undefined;
 
-  if (subscription.organizationId !== ctx.organizationId) {
+  /* Resolve organization + customer from OrganizationUser. */
+  const owner = await resolveSubscriptionOwner(services, subscription);
+
+  if (!owner) {
+    return {
+      kind: "FAILED",
+      message: "The membership owner could not be resolved.",
+      subscription,
+      outcomes: [],
+    };
+  }
+
+  const customer =
+    (await services.customer.getCustomer(owner.customerId)) ?? undefined;
+
+  /* Validate organization. */
+  if (owner.organizationId !== ctx.organizationId) {
     return {
       kind: "FAILED",
       message: "This membership belongs to a different business.",
@@ -180,7 +275,9 @@ export async function redeemBenefits(
       outcomes: [],
     };
   }
-  if (subscription.status !== SubscriptionStatus.ACTIVE) {
+
+  /* Validate subscription status. */
+  if (subscription.subscriptionStatusId !== "subscription-status-active") {
     return {
       kind: "FAILED",
       message: "This membership is not active.",
@@ -190,10 +287,28 @@ export async function redeemBenefits(
     };
   }
 
-  const productBenefits = await services.benefit.listByProduct(
-    subscription.membershipProductId,
+  /* Resolve the MembershipProduct through SubscriptionPlan. */
+  const plan = await services.subscriptionPlan?.getPlan?.(
+    subscription.subscriptionPlanId,
   );
+
+  if (!plan) {
+    return {
+      kind: "FAILED",
+      message:
+        "The subscription plan associated with this membership could not be found.",
+      customer,
+      subscription,
+      outcomes: [],
+    };
+  }
+
+  const productBenefits = await services.benefit.listByProduct(
+    plan.membershipProductId,
+  );
+
   const benefitById = new Map(productBenefits.map((b) => [b.id, b]));
+
   const used = new Set(
     (await services.redemption.listBySubscription(subscription.id)).map(
       (r) => r.benefitId,
@@ -201,12 +316,19 @@ export async function redeemBenefits(
   );
 
   const outcomes: BenefitOutcome[] = [];
+
   for (const benefitId of request.benefitIds) {
     const benefit = benefitById.get(benefitId);
+
     if (!benefit) {
-      outcomes.push({ benefitId, title: benefitId, status: "INELIGIBLE" });
+      outcomes.push({
+        benefitId,
+        title: benefitId,
+        status: "INELIGIBLE",
+      });
       continue;
     }
+
     if (used.has(benefitId)) {
       outcomes.push({
         benefitId,
@@ -215,9 +337,10 @@ export async function redeemBenefits(
       });
       continue;
     }
+
     const redemption = await services.redemption.performRedemption({
       organizationId: ctx.organizationId,
-      customerId: subscription.customerId,
+      customerId: owner.customerId,
       subscriptionId: subscription.id,
       benefitId,
       storeId: ctx.storeId,
@@ -225,7 +348,9 @@ export async function redeemBenefits(
       method: ctx.method,
       promoCode: ctx.promoCode,
     });
+
     used.add(benefitId);
+
     outcomes.push({
       benefitId,
       title: benefit.displayName ?? benefit.benefitName,
@@ -235,8 +360,10 @@ export async function redeemBenefits(
   }
 
   const redeemed = outcomes.filter((o) => o.status === "REDEEMED").length;
+
   let kind: RedemptionResultKind;
   let message: string;
+
   if (redeemed === 0) {
     kind = "FAILED";
     message = "No benefits could be redeemed (already used or not eligible).";
@@ -248,16 +375,25 @@ export async function redeemBenefits(
     message = `Redeemed ${redeemed} of ${outcomes.length}. Some benefits were unavailable.`;
   }
 
-  return { kind, message, customer, subscription, outcomes };
+  return {
+    kind,
+    message,
+    customer,
+    subscription,
+    outcomes,
+  };
 }
 
-/** QR path: decode the Task 7A token, then redeem its selected benefits. */
+/**
+ * QR path: decode the Task 7A token, then redeem its selected benefits.
+ */
 export async function redeemFromToken(
   services: RedemptionServices,
   ctx: RedemptionContext,
   rawToken: string,
 ): Promise<RedemptionResult> {
   const token = decodeRedemptionToken(rawToken);
+
   if (!token) {
     return {
       kind: "INVALID",
@@ -265,6 +401,7 @@ export async function redeemFromToken(
       outcomes: [],
     };
   }
+
   return redeemBenefits(services, ctx, {
     subscriptionId: token.subscriptionId,
     benefitIds: token.benefitIds,
