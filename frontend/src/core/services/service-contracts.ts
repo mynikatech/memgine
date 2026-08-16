@@ -20,6 +20,7 @@ import {
   Store,
   Subscription,
   OrganizationUser,
+  UserAcquisition,
 } from "../domain/entities";
 
 /**
@@ -226,4 +227,14 @@ export interface OfferService {
   createOffer(organizationId: ID, offer: Offer): Promise<Offer>;
   updateOffer(organizationId: ID, offer: Offer): Promise<Offer>;
   deleteOffer(organizationId: ID, offerId: ID): Promise<void>;
+}
+
+export interface UserAcquisitionService {
+  getByUser(userId: ID): Promise<UserAcquisition[]>;
+
+  listByOrganization(organizationId: ID): Promise<UserAcquisition[]>;
+
+  listBySourceStore(storeId: ID): Promise<UserAcquisition[]>;
+
+  createAcquisition(acquisition: UserAcquisition): Promise<UserAcquisition>;
 }

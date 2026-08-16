@@ -20,6 +20,7 @@ import {
   SubscriptionStatus,
   Staff,
   OrganizationUser,
+  UserAcquisition,
 } from "../domain/entities";
 import {
   BenefitService,
@@ -31,6 +32,7 @@ import {
   MembershipProductService,
   OfferService,
   OrganizationService,
+  UserAcquisitionService,
   PaymentRequest,
   PaymentResult,
   PaymentService,
@@ -240,6 +242,7 @@ const organizationUsers: OrganizationUser[] = [
     isDeleted: false,
     versionNo: 1,
   },
+
   {
     id: "org-user-sunrise-manager",
     organizationId: "org-sunrise",
@@ -256,6 +259,7 @@ const organizationUsers: OrganizationUser[] = [
     isDeleted: false,
     versionNo: 1,
   },
+
   {
     id: "org-user-sunrise-staff",
     organizationId: "org-sunrise",
@@ -267,6 +271,93 @@ const organizationUsers: OrganizationUser[] = [
     createdAt: "2026-01-03T09:00:00.000Z",
     createdBy: "user-system",
     updatedAt: "2026-01-03T09:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+
+  // Customer relationships
+  {
+    id: "org-user-sunrise-customer-ada",
+    organizationId: "org-sunrise",
+    userId: "cust-1",
+    organizationUserTypeId: "org-user-type-customer",
+    organizationUserStatusId: "status-active",
+    joiningDate: "2026-02-01",
+
+    createdAt: "2026-02-01T09:00:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-02-01T09:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+
+  {
+    id: "org-user-sunrise-customer-demo",
+    organizationId: "org-sunrise",
+    userId: "cust-new-demo",
+    organizationUserTypeId: "org-user-type-customer",
+    organizationUserStatusId: "status-active",
+    joiningDate: "2026-06-01",
+
+    createdAt: "2026-06-01T09:00:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-06-01T09:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+];
+
+const userAcquisitions: UserAcquisition[] = [
+  {
+    id: "user-acq-sunrise-customer-ada",
+    userId: "cust-1",
+
+    registrationSource: "STORE_SCANNER",
+    registrationChannel: "QR_CODE",
+    sourceStoreId: "store-1",
+
+    createdAt: "2026-02-01T08:30:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-02-01T08:30:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+
+  {
+    id: "user-acq-sunrise-customer-demo",
+    userId: "cust-new-demo",
+
+    registrationSource: "DIRECT_REGISTRATION",
+    registrationChannel: "WEB",
+
+    createdAt: "2026-06-01T08:30:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-06-01T08:30:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+
+  {
+    id: "user-acq-sunrise-prospect-1",
+    userId: "cust-prospect-1",
+
+    registrationSource: "STORE_SCANNER",
+    registrationChannel: "QR_CODE",
+    sourceStoreId: "store-1",
+
+    createdAt: "2026-08-10T14:00:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-08-10T14:00:00.000Z",
     updatedBy: "user-system",
 
     isDeleted: false,
@@ -858,6 +949,13 @@ const customers: Customer[] = [
     email: "newcustomer@example.com",
     phone: "5550102002",
     createdAt: "2026-06-01T00:00:00.000Z",
+  },
+  {
+    id: "cust-prospect-1",
+    fullName: "Maya Thompson",
+    email: "maya@example.com",
+    phone: "+14155550222",
+    createdAt: "2026-08-10T14:00:00.000Z",
   },
 ];
 
@@ -1666,6 +1764,44 @@ export class InMemoryOfferService implements OfferService {
   }
 }
 
+export class InMemoryUserAcquisitionService implements UserAcquisitionService {
+  async getByUser(userId: ID): Promise<UserAcquisition[]> {
+    return userAcquisitions.filter(
+      (item) => item.userId === userId && !item.isDeleted,
+    );
+  }
+
+  async listByOrganization(organizationId: ID): Promise<UserAcquisition[]> {
+    const organizationStoreIds = new Set(
+      stores
+        .filter(
+          (store) =>
+            store.organizationId === organizationId && !store.isDeleted,
+        )
+        .map((store) => store.id),
+    );
+
+    return userAcquisitions.filter(
+      (item) =>
+        !item.isDeleted &&
+        (!item.sourceStoreId || organizationStoreIds.has(item.sourceStoreId)),
+    );
+  }
+
+  async listBySourceStore(storeId: ID): Promise<UserAcquisition[]> {
+    return userAcquisitions.filter(
+      (item) => !item.isDeleted && item.sourceStoreId === storeId,
+    );
+  }
+
+  async createAcquisition(
+    acquisition: UserAcquisition,
+  ): Promise<UserAcquisition> {
+    userAcquisitions.push(acquisition);
+    return acquisition;
+  }
+}
+
 /** Convenience aggregate of the mock services (compile-demonstration only). */
 export const mockServices = {
   organization: new InMemoryOrganizationService(),
@@ -1677,4 +1813,5 @@ export const mockServices = {
   offer: new InMemoryOfferService(),
   auth: new InMemoryCustomerAuthService(),
   payment: new InMemoryPaymentService(),
+  userAcquisition: new InMemoryUserAcquisitionService(),
 };

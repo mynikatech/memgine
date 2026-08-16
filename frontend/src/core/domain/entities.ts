@@ -415,6 +415,40 @@ export interface Offer {
 }
 
 /* ------------------------------------------------------------------ *
+ * User Acquisition
+ *
+ * Records how a global User entered or registered on Memgine.
+ * This is global identity context, not organization-owned data.
+ * ------------------------------------------------------------------ */
+
+export interface UserAcquisition {
+  id: ID;
+
+  /** Global User associated with this acquisition record. */
+  userId: ID;
+  /** If also Acquired via that organization */
+  organizationId?: ID;
+
+  /** Business source through which the user was acquired. */
+  registrationSource: string;
+
+  /** Channel through which the user registered or entered Memgine. */
+  registrationChannel: string;
+
+  /** Store from which the acquisition originated, when applicable. */
+  sourceStoreId?: ID;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+
+  updatedAt: ISODateString;
+  updatedBy: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
+}
+
+/* ------------------------------------------------------------------ *
  * Subscription — the CUSTOMER's subscription to a MembershipProduct.
  * "My Cards" (customer UI) is a view over a customer's subscriptions.
  * ------------------------------------------------------------------ */
