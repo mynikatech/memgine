@@ -9,6 +9,7 @@ import type {
   Redemption,
   Store,
   Subscription,
+  Status as DomainStatus,
 } from "@/src/core";
 import { getBusinessContent, mockServices } from "@/src/core";
 import { BusinessExperience } from "@/src/experience";
@@ -28,6 +29,7 @@ type Status = "loading" | "error" | "ready";
  */
 type MembershipBundle = {
   subscription: Subscription;
+  subscriptionStatus?: DomainStatus;
   product: MembershipProduct;
   benefits: Benefit[];
   redemptions: Redemption[];
@@ -191,7 +193,7 @@ export default function BusinessExperienceRoute() {
        * ------------------------------------------------------------
        */
       const resolvedBundles = await Promise.all(
-        siblings.map(async (subscription) => {
+        siblings.map(async (subscription): Promise<MembershipBundle | null> => {
           /*
            * Subscription -> SubscriptionPlan
            */
@@ -228,8 +230,26 @@ export default function BusinessExperienceRoute() {
             subscription.id,
           );
 
+          /*
+           * Subscription -> EntityStatus -> Status
+           *
+           * subscription.subscriptionStatusId is the EntityStatus.id.
+           * EntityStatus.statusId points to the generic Status record.
+           */
+          const subscriptionEntityStatus =
+            await mockServices.entityStatus.getEntityStatus(
+              subscription.subscriptionStatusId,
+            );
+
+          const subscriptionStatus = subscriptionEntityStatus
+            ? ((await mockServices.status.getStatus(
+                subscriptionEntityStatus.statusId,
+              )) ?? undefined)
+            : undefined;
+
           return {
             subscription,
+            subscriptionStatus,
             product,
             benefits,
             redemptions,
@@ -237,7 +257,7 @@ export default function BusinessExperienceRoute() {
         }),
       );
 
-      const bundles: MembershipBundle[] = resolvedBundles.filter(
+      const bundles = resolvedBundles.filter(
         (bundle): bundle is MembershipBundle => bundle !== null,
       );
 
@@ -379,6 +399,7 @@ export default function BusinessExperienceRoute() {
       <BusinessExperience
         content={getBusinessContent(activeOrganizationId)}
         subscription={current.subscription}
+        subscriptionStatus={current.subscriptionStatus}
         product={current.product}
         benefits={current.benefits}
         offers={offers}

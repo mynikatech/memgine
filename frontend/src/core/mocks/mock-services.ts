@@ -1360,7 +1360,7 @@ const subscriptions: Subscription[] = [
     startDate: "2026-02-01",
     endDate: "2027-02-01",
 
-    subscriptionStatusId: "subscription-status-active",
+    subscriptionStatusId: "entity-status-subscription-active",
 
     totalAmount: {
       amountMinor: 29900,
@@ -1388,7 +1388,7 @@ const subscriptions: Subscription[] = [
     startDate: "2026-03-01",
     endDate: "2026-09-01",
 
-    subscriptionStatusId: "subscription-status-active",
+    subscriptionStatusId: "entity-status-subscription-active",
 
     totalAmount: {
       amountMinor: 19900,
@@ -1416,7 +1416,7 @@ const subscriptions: Subscription[] = [
     startDate: "2026-04-01",
     endDate: "2026-12-01",
 
-    subscriptionStatusId: "subscription-status-active",
+    subscriptionStatusId: "entity-status-subscription-active",
 
     totalAmount: {
       amountMinor: 5900,

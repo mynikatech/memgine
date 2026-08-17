@@ -10,11 +10,13 @@ import type {
   Organization,
   Redemption,
   Store,
+  Status,
   Subscription,
   TemplateDefaultContent,
   TemplateDefinition,
 } from "@/src/core";
-import { SubscriptionStatus, TemplateSectionKey } from "@/src/core";
+
+import { TemplateSectionKey } from "@/src/core";
 
 /**
  * resolve-experience — the pure, framework-free brain of the Business
@@ -91,6 +93,7 @@ export interface ResolveExperienceInput {
   template: TemplateDefinition;
   content: TemplateDefaultContent;
   subscription?: Subscription;
+  subscriptionStatus?: Status;
   product?: MembershipProduct;
   benefits: Benefit[];
   offers: Offer[];
@@ -110,6 +113,7 @@ export function resolveExperience(
     template,
     content,
     subscription,
+    subscriptionStatus,
     product,
   } = input;
   const cx = configuration.customerExperience;
@@ -128,8 +132,13 @@ export function resolveExperience(
   // membership is OPTIONAL — an org-level (QR) entry may have no owned membership.
   let membership: ResolvedMembership | undefined;
   if (subscription && product) {
-    const active =
-      subscription.subscriptionStatusId === SubscriptionStatus.ACTIVE;
+    console.log("RESOLVE EXP", {
+      membershipActive: subscriptionStatus?.statusCode.toUpperCase(),
+    });
+    //subscription-status-active
+    const active = subscriptionStatus?.statusCode.toUpperCase() === "ACTIVE";
+    /**const active =
+      subscription.subscriptionStatusId === "subscription-status-active";**/
     const validUntilLabel = subscription.endDate
       ? input.formatDate(subscription.endDate)
       : "—";

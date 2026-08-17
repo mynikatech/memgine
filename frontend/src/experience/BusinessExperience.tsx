@@ -11,6 +11,7 @@ import type {
   Offer,
   Redemption,
   Store,
+  Status,
   Subscription,
   TemplateDefaultContent,
 } from "@/src/core";
@@ -37,6 +38,7 @@ import { ExperienceTabKey, resolveExperience } from "./resolve-experience";
 type Props = {
   content: TemplateDefaultContent;
   subscription?: Subscription;
+  subscriptionStatus?: Status;
   product?: MembershipProduct;
   benefits: Benefit[];
   offers: Offer[];
@@ -62,6 +64,7 @@ type Props = {
 export function BusinessExperience({
   content,
   subscription,
+  subscriptionStatus,
   product,
   benefits,
   offers,
@@ -89,6 +92,7 @@ export function BusinessExperience({
         template,
         content,
         subscription,
+        subscriptionStatus,
         product,
         benefits,
         offers,
@@ -102,6 +106,7 @@ export function BusinessExperience({
       template,
       content,
       subscription,
+      subscriptionStatus,
       product,
       benefits,
       offers,
@@ -210,6 +215,12 @@ export function BusinessExperience({
   ).length;
 
   const hasRedeemable = exp.redeemableBenefits.some((b) => b.available);
+
+  console.log("REDEMPTION UI DEBUG", {
+    membershipActive: exp.membership?.active,
+    redeemableBenefits: exp.redeemableBenefits.length,
+    availableBenefits: exp.redeemableBenefits.filter((b) => b.available).length,
+  });
 
   /* ------------------------------ sub-renderers ------------------------------ */
 
