@@ -339,14 +339,13 @@ export async function redeemBenefits(
     }
 
     const redemption = await services.redemption.performRedemption({
-      organizationId: ctx.organizationId,
-      customerId: owner.customerId,
       subscriptionId: subscription.id,
       benefitId,
       storeId: ctx.storeId,
       staffId: ctx.staffId,
       method: ctx.method,
-      promoCode: ctx.promoCode,
+      quantity: 1,
+      createdBy: ctx.staffId,
     });
 
     used.add(benefitId);

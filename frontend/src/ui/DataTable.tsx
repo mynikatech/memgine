@@ -15,6 +15,7 @@ export type DataTableColumn<T> = {
   key: string;
   title: string;
   width?: number;
+  numberOfLines?: number;
   render?: (item: T) => ReactNode;
 };
 
@@ -30,6 +31,20 @@ export type DataTableProps<T> = {
   actions?: DataTableAction<T>[];
   emptyMessage?: string;
   onRowPress?: (item: T) => void;
+
+  /**
+   * Minimum width of the complete desktop table.
+   *
+   * If the columns require more space, the columns determine
+   * the table width.
+   *
+   * If the requested minimum is larger than the sum of the
+   * column widths, the additional space is distributed equally
+   * across the data columns.
+   *
+   * The Actions column is never expanded.
+   */
+  minTableWidth?: number;
 };
 
 export function DataTable<T>({
@@ -39,11 +54,16 @@ export function DataTable<T>({
   actions = [],
   emptyMessage = "No records found.",
   onRowPress,
+  minTableWidth = 720,
 }: DataTableProps<T>) {
   const theme = useTheme();
   const { width } = useWindowDimensions();
 
   const isMobile = width < 700;
+
+  /* ---------------------------------------------------------------
+   * Empty state
+   * --------------------------------------------------------------- */
 
   if (data.length === 0) {
     return (
@@ -64,13 +84,12 @@ export function DataTable<T>({
     );
   }
 
-  /*
+  /* ---------------------------------------------------------------
    * Mobile
    *
-   * When explicit actions exist, the card itself is NOT a Pressable.
-   * This prevents the View/Add buttons from being nested inside another
-   * Pressable.
-   */
+   * Keep the existing card-based mobile experience.
+   * --------------------------------------------------------------- */
+
   if (isMobile) {
     return (
       <View style={{ gap: theme.spacing.md }}>
@@ -100,13 +119,14 @@ export function DataTable<T>({
                     <View
                       style={{
                         flex: 2,
+                        minWidth: 0,
                         alignItems: "flex-end",
                       }}
                     >
                       {column.render ? (
                         column.render(item)
                       ) : (
-                        <Text variant="body" color="text">
+                        <Text variant="body" color="text" numberOfLines={1}>
                           {String(
                             (item as Record<string, unknown>)[column.key] ?? "",
                           )}
@@ -170,24 +190,67 @@ export function DataTable<T>({
     );
   }
 
-  /*
-   * Desktop
+  /* ---------------------------------------------------------------
+   * Desktop table width
    *
-   * The row is deliberately a View rather than a Pressable whenever
-   * explicit actions are present.
-   */
+   * First establish the natural width of every column.
+   *
+   * Then, if minTableWidth is larger, distribute the additional
+   * width across DATA columns only.
+   *
+   * Actions remains fixed at 150px.
+   * --------------------------------------------------------------- */
+
+  const actionsWidth = actions.length > 0 ? 150 : 0;
+
+  const baseColumnWidths = columns.map((column) => column.width ?? 180);
+
+  const baseColumnsWidth = baseColumnWidths.reduce(
+    (total, columnWidth) => total + columnWidth,
+    0,
+  );
+
+  const baseTableWidth = baseColumnsWidth + actionsWidth;
+
+  const tableWidth = Math.max(minTableWidth, baseTableWidth);
+
+  const extraWidth =
+    tableWidth > baseTableWidth ? tableWidth - baseTableWidth : 0;
+
+  const extraWidthPerColumn =
+    columns.length > 0 ? extraWidth / columns.length : 0;
+
+  const getColumnWidth = (index: number) =>
+    baseColumnWidths[index] + extraWidthPerColumn;
+
+  /* ---------------------------------------------------------------
+   * Desktop
+   * --------------------------------------------------------------- */
+
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={true}
+      style={styles.horizontalScroll}
+      contentContainerStyle={{
+        minWidth: tableWidth,
+      }}
+    >
       <View
         style={[
           styles.table,
           {
+            width: tableWidth,
             backgroundColor: theme.colors.card,
             borderColor: theme.colors.border,
             borderRadius: theme.radius.lg,
           },
         ]}
       >
+        {/* =========================================================
+            HEADER
+            ========================================================= */}
+
         <View
           style={[
             styles.header,
@@ -197,48 +260,62 @@ export function DataTable<T>({
             },
           ]}
         >
-          {columns.map((column) => (
+          {columns.map((column, index) => (
             <View
               key={column.key}
               style={[
                 styles.cell,
+                styles.fixedCell,
                 {
-                  width: column.width ?? 180,
+                  width: getColumnWidth(index),
                 },
               ]}
             >
-              <Text variant="label" color="textSecondary">
+              <Text variant="label" color="textSecondary" numberOfLines={1}>
                 {column.title}
               </Text>
             </View>
           ))}
 
           {actions.length > 0 ? (
-            <View style={[styles.cell, { width: 150 }]}>
-              <Text variant="label" color="textSecondary">
+            <View
+              style={[
+                styles.cell,
+                styles.fixedCell,
+                {
+                  width: actionsWidth,
+                },
+              ]}
+            >
+              <Text variant="label" color="textSecondary" numberOfLines={1}>
                 Actions
               </Text>
             </View>
           ) : null}
         </View>
 
+        {/* =========================================================
+            ROWS
+            ========================================================= */}
+
         {data.map((item) => {
           const rowContent = (
             <>
-              {columns.map((column) => (
+              {columns.map((column, index) => (
                 <View
                   key={column.key}
                   style={[
                     styles.cell,
+                    styles.fixedCell,
                     {
-                      width: column.width ?? 180,
+                      width: getColumnWidth(index),
                     },
                   ]}
                 >
                   {column.render ? (
                     column.render(item)
                   ) : (
-                    <Text variant="body" color="text">
+                    <Text variant="body" color="text" numberOfLines={1}>
                       {String(
                         (item as Record<string, unknown>)[column.key] ?? "",
                       )}
@@ -251,10 +328,10 @@ export function DataTable<T>({
                 <View
                   style={[
                     styles.cell,
+                    styles.fixedCell,
+                    styles.actionsCell,
                     {
-                      width: 150,
-                      flexDirection: "row",
-                      gap: theme.spacing.xs,
+                      width: actionsWidth,
                     },
                   ]}
                 >
@@ -273,7 +350,11 @@ export function DataTable<T>({
                         opacity: pressed ? theme.states.pressedOpacity : 1,
                       })}
                     >
-                      <Text variant="bodySmall" color="primary">
+                      <Text
+                        variant="bodySmall"
+                        color="primary"
+                        numberOfLines={1}
+                      >
                         {action.label}
                       </Text>
                     </Pressable>
@@ -324,10 +405,14 @@ export function DataTable<T>({
 }
 
 const styles = StyleSheet.create({
+  horizontalScroll: {
+    width: "100%",
+  },
+
   table: {
-    minWidth: 720,
     borderWidth: 1,
     overflow: "hidden",
+    alignSelf: "flex-start",
   },
 
   header: {
@@ -341,10 +426,26 @@ const styles = StyleSheet.create({
     minHeight: 64,
   },
 
+  /*
+   * Prevent the browser from shrinking columns.
+   *
+   * This is critical for the desktop table.
+   */
+  fixedCell: {
+    flexShrink: 0,
+  },
+
   cell: {
     paddingHorizontal: 16,
     paddingVertical: 12,
     justifyContent: "center",
+    overflow: "hidden",
+  },
+
+  actionsCell: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
 
   empty: {

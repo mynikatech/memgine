@@ -4,6 +4,8 @@ import {
   Benefit,
   BenefitType,
   Customer,
+  EntityType,
+  EntityStatus,
   MembershipProduct,
   Offer,
   Organization,
@@ -14,9 +16,9 @@ import {
   OrganizationAccount,
   Redemption,
   RedemptionMethod,
-  RedemptionStatus,
   Store,
   Subscription,
+  Status,
   SubscriptionStatus,
   SubscriptionPlan,
   Staff,
@@ -30,6 +32,8 @@ import {
   CustomerAuthService,
   CustomerLookupQuery,
   CustomerService,
+  EntityStatusService,
+  EntityTypeService,
   MembershipProductService,
   OfferService,
   OrganizationService,
@@ -41,6 +45,7 @@ import {
   RedemptionService,
   SendOtpInput,
   SendOtpResult,
+  StatusService,
   SubscriptionService,
   SubscriptionPlanService,
   VerifyOtpInput,
@@ -156,6 +161,312 @@ const NOTIFICATION_CONFIGURATIONS: NotificationConfiguration[] = [
 
     isDeleted: false,
     versionNo: 1,
+  },
+];
+
+/**Entity Types Mock Data */
+const entityTypes: EntityType[] = [
+  {
+    id: "entity-type-organization",
+    entityTypeCode: "ORGANIZATION",
+    entityTypeName: "Organization",
+    description: "Organization entity.",
+    displayOrder: 1,
+    isActive: true,
+  },
+  {
+    id: "entity-type-organization-user",
+    entityTypeCode: "ORGANIZATION_USER",
+    entityTypeName: "Organization User",
+    description: "Organization user entity.",
+    displayOrder: 2,
+    isActive: true,
+  },
+  {
+    id: "entity-type-membership-product",
+    entityTypeCode: "MEMBERSHIP_PRODUCT",
+    entityTypeName: "Membership Product",
+    description: "Membership product entity.",
+    displayOrder: 3,
+    isActive: true,
+  },
+  {
+    id: "entity-type-benefit",
+    entityTypeCode: "BENEFIT",
+    entityTypeName: "Benefit",
+    description: "Benefit entity.",
+    displayOrder: 4,
+    isActive: true,
+  },
+  {
+    id: "entity-type-subscription-plan",
+    entityTypeCode: "SUBSCRIPTION_PLAN",
+    entityTypeName: "Subscription Plan",
+    description: "Subscription plan entity.",
+    displayOrder: 5,
+    isActive: true,
+  },
+  {
+    id: "entity-type-subscription",
+    entityTypeCode: "SUBSCRIPTION",
+    entityTypeName: "Subscription",
+    description: "Customer subscription entity.",
+    displayOrder: 6,
+    isActive: true,
+  },
+  {
+    id: "entity-type-redemption",
+    entityTypeCode: "REDEMPTION",
+    entityTypeName: "Redemption",
+    description: "Redemption transaction entity.",
+    displayOrder: 7,
+    isActive: true,
+  },
+  {
+    id: "entity-type-store",
+    entityTypeCode: "STORE",
+    entityTypeName: "Store",
+    description: "Store entity.",
+    displayOrder: 8,
+    isActive: true,
+  },
+  {
+    id: "entity-type-staff",
+    entityTypeCode: "STAFF",
+    entityTypeName: "Staff",
+    description: "Staff entity.",
+    displayOrder: 9,
+    isActive: true,
+  },
+];
+
+/** Status Reference data */
+const statuses: Status[] = [
+  {
+    id: "status-active",
+    statusCode: "ACTIVE",
+    statusName: "Active",
+    description: "Entity is active and operational.",
+    displayOrder: 1,
+    isActive: true,
+  },
+  {
+    id: "status-inactive",
+    statusCode: "INACTIVE",
+    statusName: "Inactive",
+    description: "Entity is inactive.",
+    displayOrder: 2,
+    isActive: true,
+  },
+  {
+    id: "status-pending",
+    statusCode: "PENDING",
+    statusName: "Pending",
+    description: "Awaiting approval or activation.",
+    displayOrder: 3,
+    isActive: true,
+  },
+  {
+    id: "status-suspended",
+    statusCode: "SUSPENDED",
+    statusName: "Suspended",
+    description: "Temporarily suspended.",
+    displayOrder: 4,
+    isActive: true,
+  },
+  {
+    id: "status-cancelled",
+    statusCode: "CANCELLED",
+    statusName: "Cancelled",
+    description: "Cancelled by user or organization.",
+    displayOrder: 5,
+    isActive: true,
+  },
+  {
+    id: "status-expired",
+    statusCode: "EXPIRED",
+    statusName: "Expired",
+    description: "Validity period ended.",
+    displayOrder: 6,
+    isActive: true,
+  },
+  {
+    id: "status-closed",
+    statusCode: "CLOSED",
+    statusName: "Closed",
+    description: "Permanently closed.",
+    displayOrder: 7,
+    isActive: true,
+  },
+  {
+    id: "status-relieved",
+    statusCode: "RELIEVED",
+    statusName: "Relieved",
+    description: "Employment ended.",
+    displayOrder: 8,
+    isActive: true,
+  },
+  {
+    id: "status-locked",
+    statusCode: "LOCKED",
+    statusName: "Locked",
+    description: "Access temporarily locked.",
+    displayOrder: 9,
+    isActive: true,
+  },
+  {
+    id: "status-retired",
+    statusCode: "RETIRED",
+    statusName: "Retired",
+    description: "No longer available.",
+    displayOrder: 10,
+    isActive: true,
+  },
+  {
+    id: "status-draft",
+    statusCode: "DRAFT",
+    statusName: "Draft",
+    description: "Not yet published.",
+    displayOrder: 11,
+    isActive: true,
+  },
+  {
+    id: "status-success",
+    statusCode: "SUCCESS",
+    statusName: "Successful",
+    description: "Transaction completed successfully.",
+    displayOrder: 12,
+    isActive: true,
+  },
+  {
+    id: "status-failed",
+    statusCode: "FAILED",
+    statusName: "Failed",
+    description: "Transaction failed.",
+    displayOrder: 13,
+    isActive: true,
+  },
+  {
+    id: "status-reversed",
+    statusCode: "REVERSED",
+    statusName: "Reversed",
+    description: "Transaction reversed.",
+    displayOrder: 14,
+    isActive: true,
+  },
+];
+
+const entityStatuses: EntityStatus[] = [
+  // Subscription
+  {
+    id: "entity-status-subscription-active",
+    entityTypeId: "entity-type-subscription",
+    statusId: "status-active",
+    displayOrder: 1,
+    isActive: true,
+    systemManaged: true,
+  },
+  {
+    id: "entity-status-subscription-cancelled",
+    entityTypeId: "entity-type-subscription",
+    statusId: "status-cancelled",
+    displayOrder: 2,
+    isActive: true,
+    systemManaged: true,
+  },
+  {
+    id: "entity-status-subscription-expired",
+    entityTypeId: "entity-type-subscription",
+    statusId: "status-expired",
+    displayOrder: 3,
+    isActive: true,
+    systemManaged: true,
+  },
+
+  // Redemption
+  {
+    id: "entity-status-redemption-success",
+    entityTypeId: "entity-type-redemption",
+    statusId: "status-success",
+    displayOrder: 1,
+    isActive: true,
+    systemManaged: true,
+  },
+  {
+    id: "entity-status-redemption-failed",
+    entityTypeId: "entity-type-redemption",
+    statusId: "status-failed",
+    displayOrder: 2,
+    isActive: true,
+    systemManaged: true,
+  },
+  {
+    id: "entity-status-redemption-reversed",
+    entityTypeId: "entity-type-redemption",
+    statusId: "status-reversed",
+    displayOrder: 3,
+    isActive: true,
+    systemManaged: true,
+  },
+
+  // Benefit
+  {
+    id: "entity-status-benefit-active",
+    entityTypeId: "entity-type-benefit",
+    statusId: "status-active",
+    displayOrder: 1,
+    isActive: true,
+    systemManaged: true,
+  },
+  {
+    id: "entity-status-benefit-inactive",
+    entityTypeId: "entity-type-benefit",
+    statusId: "status-inactive",
+    displayOrder: 2,
+    isActive: true,
+    systemManaged: true,
+  },
+  {
+    id: "entity-status-benefit-draft",
+    entityTypeId: "entity-type-benefit",
+    statusId: "status-draft",
+    displayOrder: 3,
+    isActive: true,
+    systemManaged: true,
+  },
+
+  // Staff
+  {
+    id: "entity-status-staff-active",
+    entityTypeId: "entity-type-staff",
+    statusId: "status-active",
+    displayOrder: 1,
+    isActive: true,
+    systemManaged: true,
+  },
+  {
+    id: "entity-status-staff-inactive",
+    entityTypeId: "entity-type-staff",
+    statusId: "status-inactive",
+    displayOrder: 2,
+    isActive: true,
+    systemManaged: true,
+  },
+  {
+    id: "entity-status-staff-relieved",
+    entityTypeId: "entity-type-staff",
+    statusId: "status-relieved",
+    displayOrder: 3,
+    isActive: true,
+    systemManaged: true,
+  },
+  {
+    id: "entity-status-staff-retired",
+    entityTypeId: "entity-type-staff",
+    statusId: "status-retired",
+    displayOrder: 4,
+    isActive: true,
+    systemManaged: true,
   },
 ];
 
@@ -1126,39 +1437,80 @@ const subscriptions: Subscription[] = [
 const redemptions: Redemption[] = [
   {
     id: "red-1",
-    organizationId: "org-sunrise",
-    customerId: "cust-1",
+    redemptionNumber: "RED-2026-0001",
+
     subscriptionId: "sub-1",
     benefitId: "ben-1",
     storeId: "store-1",
     staffId: "staff-dev-owner",
+
     method: RedemptionMethod.QR,
-    redeemedAt: "2026-07-20T14:30:00.000Z",
-    status: RedemptionStatus.COMPLETED,
+    redemptionDateTime: "2026-07-20T14:30:00.000Z",
+    quantity: 1,
+    redemptionStatusId: "status-success",
+
+    remarks: undefined,
+
+    createdAt: "2026-07-20T14:30:00.000Z",
+    createdBy: "staff-dev-owner",
+
+    updatedAt: "2026-07-20T14:30:00.000Z",
+    updatedBy: "staff-dev-owner",
+
+    versionNo: 1,
+    isDeleted: false,
   },
+
   {
     id: "red-2",
-    organizationId: "org-sunrise",
-    customerId: "cust-1",
+    redemptionNumber: "RED-2026-0002",
+
     subscriptionId: "sub-1",
     benefitId: "ben-2",
     storeId: "store-1",
     staffId: "staff-dev-owner",
+
     method: RedemptionMethod.QR,
-    redeemedAt: "2026-06-05T09:10:00.000Z",
-    status: RedemptionStatus.COMPLETED,
+    redemptionDateTime: "2026-06-05T09:10:00.000Z",
+    quantity: 1,
+    redemptionStatusId: "status-success",
+
+    remarks: undefined,
+
+    createdAt: "2026-06-05T09:10:00.000Z",
+    createdBy: "staff-dev-owner",
+
+    updatedAt: "2026-06-05T09:10:00.000Z",
+    updatedBy: "staff-dev-owner",
+
+    versionNo: 1,
+    isDeleted: false,
   },
+
   {
     id: "glow-red-1",
-    organizationId: "org-glow",
-    customerId: "cust-1",
+    redemptionNumber: "RED-2026-0003",
+
     subscriptionId: "glow-sub-1",
     benefitId: "glow-ben-1",
     storeId: "glow-store-1",
     staffId: "staff-dev-owner",
+
     method: RedemptionMethod.STAFF_ASSISTED,
-    redeemedAt: "2026-05-18T11:00:00.000Z",
-    status: RedemptionStatus.COMPLETED,
+    redemptionDateTime: "2026-05-18T11:00:00.000Z",
+    quantity: 1,
+    redemptionStatusId: "status-success",
+
+    remarks: undefined,
+
+    createdAt: "2026-05-18T11:00:00.000Z",
+    createdBy: "staff-dev-owner",
+
+    updatedAt: "2026-05-18T11:00:00.000Z",
+    updatedBy: "staff-dev-owner",
+
+    versionNo: 1,
+    isDeleted: false,
   },
 ];
 
@@ -1586,6 +1938,115 @@ export class InMemoryCustomerService implements CustomerService {
   }
 }
 
+class InMemoryEntityTypeService implements EntityTypeService {
+  async getEntityType(id: ID): Promise<EntityType | null> {
+    return entityTypes.find((entityType) => entityType.id === id) ?? null;
+  }
+
+  async getEntityTypeByCode(code: string): Promise<EntityType | null> {
+    const normalizedCode = code.trim().toUpperCase();
+
+    return (
+      entityTypes.find(
+        (entityType) =>
+          entityType.entityTypeCode.toUpperCase() === normalizedCode,
+      ) ?? null
+    );
+  }
+
+  async listEntityTypes(): Promise<EntityType[]> {
+    return [...entityTypes].sort((a, b) => a.displayOrder - b.displayOrder);
+  }
+
+  async listActiveEntityTypes(): Promise<EntityType[]> {
+    return (await this.listEntityTypes()).filter(
+      (entityType) => entityType.isActive,
+    );
+  }
+}
+
+class InMemoryStatusService implements StatusService {
+  async getStatus(id: ID): Promise<Status | null> {
+    return statuses.find((status) => status.id === id) ?? null;
+  }
+
+  async getStatusByCode(code: string): Promise<Status | null> {
+    const normalizedCode = code.trim().toUpperCase();
+
+    return (
+      statuses.find(
+        (status) => status.statusCode.toUpperCase() === normalizedCode,
+      ) ?? null
+    );
+  }
+
+  async listStatuses(): Promise<Status[]> {
+    return [...statuses].sort((a, b) => a.displayOrder - b.displayOrder);
+  }
+
+  async listActiveStatuses(): Promise<Status[]> {
+    return (await this.listStatuses()).filter((status) => status.isActive);
+  }
+}
+
+class InMemoryEntityStatusService implements EntityStatusService {
+  async getEntityStatus(id: ID): Promise<EntityStatus | null> {
+    return (
+      entityStatuses.find((entityStatus) => entityStatus.id === id) ?? null
+    );
+  }
+
+  async listByEntityType(entityTypeId: ID): Promise<EntityStatus[]> {
+    return entityStatuses
+      .filter(
+        (entityStatus) =>
+          entityStatus.entityTypeId === entityTypeId && entityStatus.isActive,
+      )
+      .sort((a, b) => a.displayOrder - b.displayOrder);
+  }
+
+  async listByEntityTypeCode(entityTypeCode: string): Promise<EntityStatus[]> {
+    const normalizedCode = entityTypeCode.trim().toUpperCase();
+
+    const entityType = entityTypes.find(
+      (item) => item.entityTypeCode.toUpperCase() === normalizedCode,
+    );
+
+    if (!entityType) {
+      return [];
+    }
+
+    return this.listByEntityType(entityType.id);
+  }
+
+  async listStatusesByEntityType(entityTypeId: ID): Promise<Status[]> {
+    const mappings = await this.listByEntityType(entityTypeId);
+
+    return mappings
+      .map((mapping) =>
+        statuses.find((status) => status.id === mapping.statusId),
+      )
+      .filter((status): status is Status => status !== undefined)
+      .sort((a, b) => a.displayOrder - b.displayOrder);
+  }
+
+  async listStatusesByEntityTypeCode(
+    entityTypeCode: string,
+  ): Promise<Status[]> {
+    const normalizedCode = entityTypeCode.trim().toUpperCase();
+
+    const entityType = entityTypes.find(
+      (item) => item.entityTypeCode.toUpperCase() === normalizedCode,
+    );
+
+    if (!entityType) {
+      return [];
+    }
+
+    return this.listStatusesByEntityType(entityType.id);
+  }
+}
+
 export class InMemoryMembershipProductService implements MembershipProductService {
   async listProducts(organizationId: ID): Promise<MembershipProduct[]> {
     return products.filter(
@@ -1865,26 +2326,75 @@ export class InMemoryBenefitService implements BenefitService {
   }
 }
 
-export class InMemoryRedemptionService implements RedemptionService {
+class InMemoryRedemptionService implements RedemptionService {
+  constructor(
+    private readonly statusService: StatusService,
+    private readonly entityStatusService: EntityStatusService,
+  ) {}
+
+  private async getAllowedStatus(statusCode: string): Promise<Status> {
+    const relationships =
+      await this.entityStatusService.listByEntityTypeCode("REDEMPTION");
+
+    for (const relationship of relationships) {
+      const status = await this.statusService.getStatus(relationship.statusId);
+
+      if (
+        status &&
+        status.statusCode.toUpperCase() === statusCode.toUpperCase()
+      ) {
+        return status;
+      }
+    }
+
+    throw new Error(`Status '${statusCode}' is not configured for Redemption.`);
+  }
+
   async performRedemption(input: PerformRedemptionInput): Promise<Redemption> {
+    const successStatus = await this.getAllowedStatus("SUCCESS");
+
+    const now = new Date().toISOString();
+
     const redemption: Redemption = {
-      id: genId("red"),
-      organizationId: input.organizationId,
-      customerId: input.customerId,
+      id: `red-${Date.now()}`,
+
+      redemptionNumber: `RED-${Date.now()}`,
+
       subscriptionId: input.subscriptionId,
       benefitId: input.benefitId,
       storeId: input.storeId,
       staffId: input.staffId,
+
       method: input.method,
-      promoCode: input.promoCode,
-      redeemedAt: new Date().toISOString(),
-      status: RedemptionStatus.COMPLETED,
+
+      redemptionDateTime: now,
+
+      quantity: input.quantity ?? 1,
+
+      redemptionStatusId: successStatus.id,
+
+      remarks: input.remarks,
+
+      createdAt: now,
+      createdBy: input.createdBy,
+
+      updatedAt: now,
+      updatedBy: input.createdBy,
+
+      versionNo: 1,
+      isDeleted: false,
     };
+
     redemptions.push(redemption);
+
     return redemption;
   }
+
   async listBySubscription(subscriptionId: ID): Promise<Redemption[]> {
-    return redemptions.filter((r) => r.subscriptionId === subscriptionId);
+    return redemptions.filter(
+      (redemption) =>
+        redemption.subscriptionId === subscriptionId && !redemption.isDeleted,
+    );
   }
 }
 
@@ -2036,6 +2546,9 @@ export class InMemoryUserAcquisitionService implements UserAcquisitionService {
   }
 }
 
+const statusService = new InMemoryStatusService();
+const entityStatusService = new InMemoryEntityStatusService();
+
 /** Convenience aggregate of the mock services (compile-demonstration only). */
 export const mockServices = {
   organization: new InMemoryOrganizationService(),
@@ -2044,9 +2557,12 @@ export const mockServices = {
   subscription: new InMemorySubscriptionService(),
   subscriptionPlan: new InMemorySubscriptionPlanService(),
   benefit: new InMemoryBenefitService(),
-  redemption: new InMemoryRedemptionService(),
+  status: new InMemoryStatusService(),
+  entityStatus: new InMemoryEntityStatusService(),
+  redemption: new InMemoryRedemptionService(statusService, entityStatusService),
   offer: new InMemoryOfferService(),
   auth: new InMemoryCustomerAuthService(),
   payment: new InMemoryPaymentService(),
   userAcquisition: new InMemoryUserAcquisitionService(),
+  entityType: new InMemoryEntityTypeService(),
 };

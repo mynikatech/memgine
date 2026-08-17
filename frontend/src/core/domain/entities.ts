@@ -27,6 +27,45 @@ export enum ManagementModel {
   MANAGED_SERVICE = "MANAGED_SERVICE",
 }
 
+/** Common Status Entity Object for all different Entities */
+export interface Status {
+  /** System-generated identifier for the status. */
+  id: ID;
+
+  /** Unique business code representing the status. */
+  statusCode: string;
+
+  /** Human-readable status name. */
+  statusName: string;
+
+  /** Explains the meaning of the status. */
+  description?: string;
+
+  /** Controls display sequence. */
+  displayOrder: number;
+
+  /** Whether the status is currently available for use. */
+  isActive: boolean;
+}
+
+export interface EntityType {
+  id: ID;
+  entityTypeCode: string;
+  entityTypeName: string;
+  description?: string;
+  displayOrder: number;
+  isActive: boolean;
+}
+
+export interface EntityStatus {
+  id: ID;
+  entityTypeId: ID;
+  statusId: ID;
+  displayOrder: number;
+  isActive: boolean;
+  systemManaged: boolean;
+}
+
 /** The business tenant. */
 export interface Organization {
   id: ID;
@@ -497,6 +536,62 @@ export interface Subscription {
   versionNo: number;
 }
 
+/* ------------------------------------------------------------------ *
+ * Redemption — a benefit redeemed against a subscription, at a store,
+ * by a staff member.
+ * ------------------------------------------------------------------ */
+
+/** How a redemption was performed at the counter. */
+export enum RedemptionMethod {
+  QR = "QR",
+  OTP = "OTP",
+  STAFF_ASSISTED = "STAFF_ASSISTED",
+}
+
+export interface Redemption {
+  /** System-generated redemption identifier. */
+  id: ID;
+
+  /** Business reference number for the redemption. */
+  redemptionNumber: string;
+
+  /** Subscription against which the benefit was redeemed. */
+  subscriptionId: ID;
+
+  /** Benefit that was redeemed. */
+  benefitId: ID;
+
+  /** Store where the redemption occurred. */
+  storeId: ID;
+
+  /** Staff member who processed/approved the redemption. */
+  staffId?: ID;
+
+  /** How the redemption was performed. */
+  method: RedemptionMethod;
+
+  /** Date and time at which the redemption occurred. */
+  redemptionDateTime: ISODateString;
+
+  /** Number of benefit units redeemed. */
+  quantity: number;
+
+  /** Current redemption transaction status. */
+  redemptionStatusId: ID;
+
+  /** Optional additional notes. */
+  remarks?: string;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+
+  updatedAt: ISODateString;
+  updatedBy: ID;
+
+  versionNo: number;
+  isDeleted: boolean;
+}
+
 /** How a membership purchase was initiated. */
 export enum PurchaseSource {
   CUSTOMER = "CUSTOMER",
@@ -510,37 +605,17 @@ export enum PaymentMethod {
   CASH = "CASH",
 }
 
-/* ------------------------------------------------------------------ *
- * Redemption — a benefit redeemed against a subscription, at a store,
- * by a staff member.
- * ------------------------------------------------------------------ */
+export interface RedemptionRow {
+  redemption: Redemption;
 
-export enum RedemptionStatus {
-  COMPLETED = "COMPLETED",
-  VOID = "VOID",
-}
+  subscriptionNumber: string;
+  customerName: string;
 
-/** How a redemption was performed at the counter. */
-export enum RedemptionMethod {
-  QR = "QR",
-  OTP = "OTP",
-  STAFF_ASSISTED = "STAFF_ASSISTED",
-}
+  benefitName: string;
+  storeName: string;
+  staffName: string;
 
-export interface Redemption {
-  id: ID;
-  organizationId: ID;
-  customerId: ID;
-  subscriptionId: ID;
-  benefitId: ID;
-  storeId: ID;
-  staffId: ID;
-  /** How the customer was identified / benefit presented. */
-  method: RedemptionMethod;
-  /** Optional staff promotional/referral code captured at the counter. */
-  promoCode?: string;
-  redeemedAt: ISODateString;
-  status: RedemptionStatus;
+  statusName: string;
 }
 
 export function createEmptyIntegrationConfiguration(

@@ -64,6 +64,7 @@ export const ORG_ADMIN_ROUTES: AdminRoute[] = [
   { title: "Offers", href: "/offers", icon: "pricetags-outline" },
   { title: "Customers", href: "/customers", icon: "people-outline" },
   { title: "Subscriptions", href: "/subscriptions", icon: "card-outline" },
+  { title: "Redemptions", href: "/redemptions", icon: "card-outline" },
   {
     title: "Settings",
     href: "/settings",

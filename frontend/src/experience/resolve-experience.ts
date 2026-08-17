@@ -173,7 +173,7 @@ export function resolveExperience(
         benefitsById.get(r.benefitId)?.benefitName ??
         "Reward redeemed",
       location: storesById.get(r.storeId)?.name ?? organization.displayName,
-      timeLabel: input.formatDate(r.redeemedAt),
+      timeLabel: input.formatDate(r.redemptionDateTime),
     }),
   );
 

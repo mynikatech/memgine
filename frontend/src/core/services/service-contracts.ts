@@ -4,6 +4,8 @@ import { CurrencyCode } from "../localization/localization";
 import {
   Benefit,
   Customer,
+  EntityStatus,
+  EntityType,
   MembershipProduct,
   PaymentMethod,
   PurchaseSource,
@@ -22,6 +24,7 @@ import {
   OrganizationUser,
   UserAcquisition,
   SubscriptionPlan,
+  Status,
 } from "../domain/entities";
 
 /**
@@ -60,14 +63,49 @@ export interface CreateSubscriptionInput {
 }
 
 export interface PerformRedemptionInput {
-  organizationId: ID;
-  customerId: ID;
   subscriptionId: ID;
   benefitId: ID;
   storeId: ID;
-  staffId: ID;
+  staffId?: ID;
+
   method: RedemptionMethod;
-  promoCode?: string;
+
+  quantity?: number;
+  remarks?: string;
+
+  createdBy: ID;
+}
+
+export interface EntityTypeService {
+  getEntityType(id: ID): Promise<EntityType | null>;
+
+  getEntityTypeByCode(code: string): Promise<EntityType | null>;
+
+  listEntityTypes(): Promise<EntityType[]>;
+
+  listActiveEntityTypes(): Promise<EntityType[]>;
+}
+
+export interface StatusService {
+  getStatus(id: ID): Promise<Status | null>;
+
+  getStatusByCode(code: string): Promise<Status | null>;
+
+  listStatuses(): Promise<Status[]>;
+
+  listActiveStatuses(): Promise<Status[]>;
+}
+
+export interface EntityStatusService {
+  getEntityStatus(id: ID): Promise<EntityStatus | null>;
+
+  listByEntityType(entityTypeId: ID): Promise<EntityStatus[]>;
+
+  listByEntityTypeCode(entityTypeCode: string): Promise<EntityStatus[]>;
+
+  listStatusesByEntityType(entityTypeId: ID): Promise<Status[]>;
+
+  listStatusesByEntityTypeCode(entityTypeCode: string): Promise<Status[]>;
 }
 
 export interface OrganizationService {
