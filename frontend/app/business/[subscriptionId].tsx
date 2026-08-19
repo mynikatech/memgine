@@ -247,6 +247,27 @@ export default function BusinessExperienceRoute() {
               )) ?? undefined)
             : undefined;
 
+          console.log("SUBSCRIPTION STATUS RESOLUTION", {
+            customerId,
+            subscriptionId: subscription.id,
+
+            subscriptionStatusId: subscription.subscriptionStatusId,
+
+            entityStatus: subscriptionEntityStatus
+              ? {
+                  id: subscriptionEntityStatus.id,
+                  statusId: subscriptionEntityStatus.statusId,
+                }
+              : null,
+
+            resolvedStatus: subscriptionStatus
+              ? {
+                  id: subscriptionStatus.id,
+                  statusCode: subscriptionStatus.statusCode,
+                }
+              : null,
+          });
+
           return {
             subscription,
             subscriptionStatus,
@@ -395,6 +416,14 @@ export default function BusinessExperienceRoute() {
    * --------------------------------------------------------------
    */
   if (status === "ready" && current && activeOrganizationId) {
+    console.log("BUSINESS EXPERIENCE ROUTE DEBUG", {
+      subscriptionId: current.subscription.id,
+      subscriptionStatusId: current.subscription.subscriptionStatusId,
+      subscriptionStatus: current.subscriptionStatus,
+      subscriptionStatusCode: current.subscriptionStatus?.statusCode,
+      benefits: current.benefits.length,
+      redemptions: current.redemptions.length,
+    });
     return (
       <BusinessExperience
         content={getBusinessContent(activeOrganizationId)}

@@ -24,7 +24,7 @@ import { MembershipCard } from "@/src/ui/domain";
 
 type Status = "loading" | "error" | "ready";
 
-const CUSTOMER_ID = "cust-1";
+//const CUSTOMER_ID = "cust-1";
 
 type CardVM = {
   subscription: Subscription;
@@ -69,7 +69,7 @@ export default function MyCards() {
 
   const { organization, configuration, setActiveBusiness } = useBusiness();
 
-  const { setActiveContext } = useCustomerContext();
+  const { customerId, setActiveContext } = useCustomerContext();
 
   const { t, formatDate } = useTranslation();
 
@@ -87,9 +87,7 @@ export default function MyCards() {
        * the current global user/customer.
        */
       const organizationUsers =
-        await mockServices.organization.listOrganizationUsersByUser(
-          CUSTOMER_ID,
-        );
+        await mockServices.organization.listOrganizationUsersByUser(customerId);
 
       /**
        * Step 2:
@@ -210,7 +208,11 @@ export default function MyCards() {
     } catch {
       setStatus("error");
     }
-  }, [organization.displayName, configuration.customerExperience.cardStyle]);
+  }, [
+    customerId,
+    organization.displayName,
+    configuration.customerExperience.cardStyle,
+  ]);
 
   useEffect(() => {
     load();

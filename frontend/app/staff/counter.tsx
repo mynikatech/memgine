@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -28,6 +29,7 @@ import {
 import { useBusiness, useTranslation } from "@/src/providers";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
+import { registerCustomerForOrganization } from "@/src/core/customer/customer-registration";
 
 const services: RedemptionServices = {
   subscription: mockServices.subscription,
@@ -38,22 +40,66 @@ const services: RedemptionServices = {
   membershipProduct: mockServices.membershipProduct,
   organization: mockServices.organization,
 };
+
 type Mode = "qr" | "phone" | "assisted" | "new";
+
+type CountryOption = {
+  country: string;
+  code: string;
+};
+
+const COUNTRY_OPTIONS: CountryOption[] = [
+  { country: "Canada", code: "+1" },
+  { country: "United States", code: "+1" },
+  { country: "India", code: "+91" },
+  { country: "United Kingdom", code: "+44" },
+  { country: "Australia", code: "+61" },
+  {
+    country: "United Arab Emirates",
+    code: "+971",
+  },
+  { country: "Singapore", code: "+65" },
+];
+
+const DEFAULT_COUNTRY = COUNTRY_OPTIONS[0];
+
+const MAX_PHONE_DIGITS = 10;
+
+const OTP_LENGTH = 6;
+
+const normalizePhone = (value: string): string =>
+  value.replace(/\D/g, "").slice(0, MAX_PHONE_DIGITS);
+
+const normalizeOtp = (value: string): string =>
+  value.replace(/\D/g, "").slice(0, OTP_LENGTH);
 
 const RESULT_STYLE: Record<
   RedemptionResult["kind"],
   { fg: string; bg: string }
 > = {
-  SUCCESS: { fg: "#15803D", bg: "#DCFCE7" },
-  PARTIAL: { fg: "#B45309", bg: "#FEF3C7" },
-  FAILED: { fg: "#B91C1C", bg: "#FEE2E2" },
-  INVALID: { fg: "#B91C1C", bg: "#FEE2E2" },
+  SUCCESS: {
+    fg: "#15803D",
+    bg: "#DCFCE7",
+  },
+  PARTIAL: {
+    fg: "#B45309",
+    bg: "#FEF3C7",
+  },
+  FAILED: {
+    fg: "#B91C1C",
+    bg: "#FEE2E2",
+  },
+  INVALID: {
+    fg: "#B91C1C",
+    bg: "#FEE2E2",
+  },
 };
 
 export default function StaffCounter() {
-  // Staff context is FIXED to the authenticated staff's organization.
   const { organization, principal } = useBusiness();
+
   const router = useRouter();
+
   const { t, formatMoney } = useTranslation();
 
   const orgId = organization.id;
@@ -63,6 +109,8 @@ export default function StaffCounter() {
   const staffRole = principal.kind === "STAFF" ? principal.role : "STAFF";
 
   const [store, setStore] = useState<Store | null>(null);
+
+  const storeId = store?.id ?? "";
 
   const [promoCode, setPromoCode] = useState("");
 
@@ -74,22 +122,49 @@ export default function StaffCounter() {
     [],
   );
 
-  const [newName, setNewName] = useState("");
+  /*
+   * New Customer
+   */
+  const [newFirstName, setNewFirstName] = useState("");
+
+  const [newLastName, setNewLastName] = useState("");
+
+  const [newCountryCode, setNewCountryCode] = useState(DEFAULT_COUNTRY.code);
+
+  const [newSelectedCountry, setNewSelectedCountry] =
+    useState<CountryOption>(DEFAULT_COUNTRY);
+
+  const [newCountryPickerVisible, setNewCountryPickerVisible] = useState(false);
 
   const [newPhone, setNewPhone] = useState("");
 
+  const [newOtpRequestId, setNewOtpRequestId] = useState("");
+
+  const [newDevCode, setNewDevCode] = useState("");
+
+  const [newOtpCode, setNewOtpCode] = useState("");
+
+  const [newOtpSent, setNewOtpSent] = useState(false);
+
+  /*
+   * Redemption result
+   */
   const [result, setResult] = useState<RedemptionResult | null>(null);
 
   const [error, setError] = useState("");
 
   const [busy, setBusy] = useState(false);
 
-  // QR
+  /*
+   * QR
+   */
   const [tokenText, setTokenText] = useState("");
 
   const [samples, setSamples] = useState<{ label: string; raw: string }[]>([]);
 
-  // Phone + OTP
+  /*
+   * Existing customer Phone + OTP
+   */
   const [phone, setPhone] = useState("");
 
   const [otpRequestId, setOtpRequestId] = useState("");
@@ -100,14 +175,18 @@ export default function StaffCounter() {
 
   const [otpSent, setOtpSent] = useState(false);
 
-  // Staff-assisted lookup
+  /*
+   * Staff assisted lookup
+   */
   const [searchTerm, setSearchTerm] = useState("");
 
   const [searchResults, setSearchResults] = useState<Customer[]>([]);
 
   const [searched, setSearched] = useState(false);
 
-  // Identified customer
+  /*
+   * Identified customer
+   */
   const [customer, setCustomer] = useState<Customer | null>(null);
 
   const [memberships, setMemberships] = useState<MembershipOption[]>([]);
@@ -118,21 +197,12 @@ export default function StaffCounter() {
     new Set(),
   );
 
-  const storeId = store?.id ?? "";
-
   /*
    * ------------------------------------------------------------
-   * Resolve the customer behind a subscription.
-   *
-   * Subscription no longer contains customerId.
-   *
-   * Subscription
-   *      ↓ organizationUserId
-   * OrganizationUser
-   *      ↓ userId
-   * Customer
+   * Resolve customer behind subscription
    * ------------------------------------------------------------
    */
+
   const getCustomerForSubscription = useCallback(
     async (subscriptionId: string) => {
       const subscription =
@@ -168,15 +238,10 @@ export default function StaffCounter() {
 
   /*
    * ------------------------------------------------------------
-   * Resolve the MembershipProduct behind a subscription.
-   *
-   * Subscription
-   *      ↓ subscriptionPlanId
-   * SubscriptionPlan
-   *      ↓ membershipProductId
-   * MembershipProduct
+   * Resolve product behind subscription
    * ------------------------------------------------------------
    */
+
   const getProductForSubscription = useCallback(
     async (subscriptionId: string) => {
       const subscription =
@@ -211,35 +276,72 @@ export default function StaffCounter() {
     [],
   );
 
+  /*
+   * ------------------------------------------------------------
+   * Reset identity
+   * ------------------------------------------------------------
+   */
+
   const resetIdentity = useCallback(() => {
     setTokenText("");
+
     setPhone("");
+
     setOtpRequestId("");
+
     setDevCode("");
+
     setOtpCode("");
+
     setOtpSent(false);
 
     setSearchTerm("");
+
     setSearchResults([]);
+
     setSearched(false);
 
-    setNewName("");
+    setNewFirstName("");
+
+    setNewLastName("");
+
+    setNewCountryCode(DEFAULT_COUNTRY.code);
+
+    setNewSelectedCountry(DEFAULT_COUNTRY);
+
+    setNewCountryPickerVisible(false);
+
     setNewPhone("");
 
+    setNewOtpRequestId("");
+
+    setNewDevCode("");
+
+    setNewOtpCode("");
+
+    setNewOtpSent(false);
+
     setCustomer(null);
+
     setMemberships([]);
+
+    setAvailableForSale([]);
+
     setSelectedSubId("");
+
     setSelectedBenefitIds(new Set());
 
     setResult(null);
+
     setError("");
   }, []);
 
   /*
    * ------------------------------------------------------------
-   * Load fixed store context + generate sample QR tokens.
+   * Load store + QR samples
    * ------------------------------------------------------------
    */
+
   useEffect(() => {
     let active = true;
 
@@ -250,17 +352,6 @@ export default function StaffCounter() {
         const subscriptions =
           await mockServices.subscription.listByOrganization(orgId);
 
-        /*
-         * Subscription no longer has "status".
-         *
-         * The current status is represented by:
-         *
-         * subscriptionStatusId
-         *
-         * and the reference-data value is:
-         *
-         * subscription-status-active
-         */
         const activeSubscriptions = subscriptions.filter(
           (subscription) =>
             subscription.subscriptionStatusId === "subscription-status-active",
@@ -272,9 +363,6 @@ export default function StaffCounter() {
         }[] = [];
 
         for (const subscription of activeSubscriptions) {
-          /*
-           * Resolve OrganizationUser → Customer.
-           */
           const organizationUser =
             await mockServices.organization.getOrganizationUser(
               subscription.organizationUserId,
@@ -288,9 +376,6 @@ export default function StaffCounter() {
             organizationUser.userId,
           );
 
-          /*
-           * Resolve SubscriptionPlan → MembershipProduct.
-           */
           const plan = await mockServices.subscriptionPlan.getPlan(
             subscription.subscriptionPlanId,
           );
@@ -316,12 +401,6 @@ export default function StaffCounter() {
               product.displayName ?? product.membershipProductName
             }`,
 
-            /*
-             * Redemption token format is intentionally unchanged.
-             *
-             * The token is an operational QR payload, not the
-             * Subscription entity itself.
-             */
             raw: encodeRedemptionToken({
               version: 1,
               code: `RDM-${subscription.id.toUpperCase()}`,
@@ -349,6 +428,7 @@ export default function StaffCounter() {
         }
 
         setStore(null);
+
         setSamples([]);
       }
     })();
@@ -361,11 +441,9 @@ export default function StaffCounter() {
   /*
    * ------------------------------------------------------------
    * Redemption context
-   *
-   * Redemption itself remains organization-level because the staff
-   * member is operating inside one business/store.
    * ------------------------------------------------------------
    */
+
   const ctx = (method: RedemptionMethod): RedemptionContext => ({
     organizationId: orgId,
     storeId,
@@ -379,6 +457,7 @@ export default function StaffCounter() {
    * Membership selection
    * ------------------------------------------------------------
    */
+
   const selectMembership = (
     subId: string,
     opts: MembershipOption[] = memberships,
@@ -401,6 +480,7 @@ export default function StaffCounter() {
    * Identify customer
    * ------------------------------------------------------------
    */
+
   const identifyCustomer = async (customerId: string) => {
     const cust = await mockServices.customer.getCustomer(customerId);
 
@@ -408,34 +488,22 @@ export default function StaffCounter() {
 
     if (!cust) {
       setMemberships([]);
+
       setAvailableForSale([]);
+
       setSelectedSubId("");
+
       setSelectedBenefitIds(new Set());
+
       return;
     }
 
-    /*
-     * listActiveMemberships has the organization/customer abstraction
-     * used by the redemption UI.
-     *
-     * Its implementation will resolve the OrganizationUser +
-     * SubscriptionPlan relationship.
-     */
     const opts = await listActiveMemberships(services, orgId, customerId);
 
     setMemberships(opts);
 
     /*
-     * ----------------------------------------------------------
-     * Determine owned MembershipProducts.
-     *
-     * MembershipOption contains Subscription, but Subscription
-     * no longer has membershipProductId.
-     *
-     * Resolve:
-     *
-     * Subscription → SubscriptionPlan → MembershipProduct
-     * ----------------------------------------------------------
+     * Determine already-owned products.
      */
     const ownedProductIds = new Set<string>();
 
@@ -449,10 +517,6 @@ export default function StaffCounter() {
       }
     }
 
-    /*
-     * Available published products that the customer
-     * does not already own.
-     */
     const catalog = await mockServices.membershipProduct.listProducts(orgId);
 
     setAvailableForSale(
@@ -467,37 +531,156 @@ export default function StaffCounter() {
       selectMembership(opts[0].subscription.id, opts);
     } else {
       setSelectedSubId("");
+
       setSelectedBenefitIds(new Set());
     }
   };
 
   /*
    * ------------------------------------------------------------
-   * Create or find customer
+   * New Customer country selection
    * ------------------------------------------------------------
    */
-  const createOrFindThenIdentify = async () => {
+
+  const selectNewCountry = (country: CountryOption) => {
+    setNewSelectedCountry(country);
+
+    setNewCountryCode(country.code);
+
+    setNewCountryPickerVisible(false);
+  };
+
+  /*
+   * ------------------------------------------------------------
+   * New Customer OTP
+   * ------------------------------------------------------------
+   */
+
+  const sendNewCustomerOtp = async () => {
     setError("");
 
-    if (!newName.trim() || !newPhone.trim()) {
-      setError("Enter both name and phone.");
+    if (!newFirstName.trim() || !newLastName.trim()) {
+      setError("Enter both first and last name.");
+
       return;
     }
 
-    const existing = (
-      await mockServices.customer.findCustomers({
-        phone: newPhone.trim(),
-      })
-    )[0];
+    const normalizedMobile = normalizePhone(newPhone);
 
-    const cust =
-      existing ??
-      (await mockServices.customer.createCustomer({
-        fullName: newName.trim(),
-        phone: newPhone.trim(),
-      }));
+    if (normalizedMobile.length !== MAX_PHONE_DIGITS) {
+      setError("Enter a 10-digit mobile number.");
 
-    await identifyCustomer(cust.id);
+      return;
+    }
+
+    try {
+      const normalizedCountryCode =
+        newCountryCode.trim() || DEFAULT_COUNTRY.code;
+
+      const fullMobile = `${normalizedCountryCode}${normalizedMobile}`;
+
+      console.log("STAFF NEW CUSTOMER SEND OTP", {
+        countryCode: normalizedCountryCode,
+        mobile: normalizedMobile,
+        fullMobile,
+      });
+
+      const res = await mockServices.auth.sendOtp({
+        mobile: fullMobile,
+      });
+
+      setNewOtpRequestId(String(res.requestId));
+
+      setNewDevCode(String(res.devCode ?? ""));
+
+      setNewOtpCode("");
+
+      setNewOtpSent(true);
+    } catch (error) {
+      console.error("STAFF NEW CUSTOMER SEND OTP ERROR", error);
+
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unable to send the verification code.",
+      );
+    }
+  };
+
+  const verifyNewCustomerOtp = async () => {
+    setError("");
+
+    const normalizedOtp = normalizeOtp(newOtpCode);
+
+    if (!newOtpRequestId) {
+      setError("Verification session has expired. Please request a new OTP.");
+
+      return;
+    }
+
+    if (normalizedOtp.length !== OTP_LENGTH) {
+      setError("Enter the 6-digit verification code.");
+
+      return;
+    }
+
+    try {
+      console.log("STAFF NEW CUSTOMER VERIFY OTP", {
+        requestId: newOtpRequestId,
+        codeLength: normalizedOtp.length,
+      });
+
+      const res = await mockServices.auth.verifyOtp({
+        requestId: newOtpRequestId,
+        code: normalizedOtp,
+      });
+
+      /*
+       * IMPORTANT:
+       *
+       * verifyOtp() returns only verified.
+       * It deliberately does not return customerId.
+       */
+      if (!res.verified) {
+        setError("Incorrect code. Please enter the OTP shown above.");
+
+        return;
+      }
+
+      const fullName = `${newFirstName.trim()} ${newLastName.trim()}`.trim();
+
+      const fullMobile = `${
+        newCountryCode.trim() || DEFAULT_COUNTRY.code
+      }${normalizePhone(newPhone)}`;
+
+      /*
+       * OTP has authenticated the mobile.
+       *
+       * Registration resolves/creates the customer
+       * and OrganizationUser.
+       */
+      const registration = await registerCustomerForOrganization({
+        organizationId: orgId,
+        fullName,
+        mobile: fullMobile,
+      });
+
+      console.log("STAFF CUSTOMER REGISTRATION COMPLETE", {
+        organizationId: orgId,
+        customerId: registration.customer.id,
+        organizationUserId: registration.organizationUser.id,
+      });
+
+      await identifyCustomer(registration.customer.id);
+    } catch (error) {
+      console.error("STAFF CUSTOMER REGISTRATION ERROR", error);
+
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unable to complete customer registration.",
+      );
+    }
   };
 
   /*
@@ -505,6 +688,7 @@ export default function StaffCounter() {
    * Price
    * ------------------------------------------------------------
    */
+
   const priceLabel = (product: MembershipProduct) => {
     const plan = product.plans[0];
 
@@ -522,14 +706,58 @@ export default function StaffCounter() {
    * Sell membership
    * ------------------------------------------------------------
    */
-  const sellProduct = (productId: string) => {
+
+  const sellProduct = async (productId: string) => {
     if (!customer) {
+      setError("Please identify the customer first.");
+
       return;
     }
 
-    router.push(
-      `/join?organizationId=${orgId}&productId=${productId}&customerId=${customer.id}&staffId=${staffId}&storeId=${storeId}&source=STAFF_ASSISTED`,
-    );
+    try {
+      /*
+       * Ensure OrganizationUser exists.
+       */
+      const registration = await registerCustomerForOrganization({
+        organizationId: orgId,
+        fullName: customer.fullName,
+        mobile: customer.phone ?? "",
+      });
+
+      console.log("STAFF SALE CUSTOMER READY", {
+        organizationId: orgId,
+        customerId: registration.customer.id,
+        organizationUserId: registration.organizationUser.id,
+        productId,
+      });
+
+      /*
+       * Staff-assisted purchase.
+       *
+       * JoinFlow uses source=STAFF_ASSISTED to
+       * display the staff-specific success message
+       * and Done button.
+       */
+      router.push({
+        pathname: "/join",
+        params: {
+          organizationId: orgId,
+          productId,
+          customerId: registration.customer.id,
+          staffId,
+          storeId,
+          source: "STAFF_ASSISTED",
+        },
+      });
+    } catch (error) {
+      console.error("STAFF SALE CUSTOMER REGISTRATION ERROR", error);
+
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unable to prepare the customer for purchase.",
+      );
+    }
   };
 
   /*
@@ -537,8 +765,10 @@ export default function StaffCounter() {
    * QR redemption
    * ------------------------------------------------------------
    */
+
   const runQr = async () => {
     setBusy(true);
+
     setResult(null);
 
     const res = await redeemFromToken(
@@ -548,63 +778,126 @@ export default function StaffCounter() {
     );
 
     setResult(res);
+
     setBusy(false);
   };
 
   /*
    * ------------------------------------------------------------
-   * OTP
+   * Existing customer Phone + OTP
    * ------------------------------------------------------------
    */
+
   const sendOtp = async () => {
     setError("");
 
-    if (!phone.trim()) {
-      setError("Enter a phone number.");
+    const normalizedPhone = normalizePhone(phone);
+
+    if (normalizedPhone.length !== MAX_PHONE_DIGITS) {
+      setError("Enter a 10-digit phone number.");
+
       return;
     }
 
-    const res = await mockServices.auth.sendOtp({
-      mobile: phone.trim(),
-    });
+    try {
+      const res = await mockServices.auth.sendOtp({
+        mobile: normalizedPhone,
+      });
 
-    setOtpRequestId(res.requestId);
+      setOtpRequestId(String(res.requestId));
 
-    setDevCode(res.devCode);
+      setDevCode(String(res.devCode ?? ""));
 
-    setOtpSent(true);
+      setOtpCode("");
+
+      setOtpSent(true);
+    } catch (error) {
+      console.error("COUNTER SEND OTP ERROR", error);
+
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unable to send the verification code.",
+      );
+    }
   };
 
   const verifyOtp = async () => {
     setError("");
 
-    const res = await mockServices.auth.verifyOtp({
-      requestId: otpRequestId,
-      code: otpCode.trim(),
-    });
+    const normalizedOtp = normalizeOtp(otpCode);
 
-    if (!res.verified || !res.customerId) {
-      setError("Incorrect code. Try again.");
+    if (!otpRequestId) {
+      setError("Verification session has expired. Please request a new OTP.");
+
       return;
     }
 
-    await identifyCustomer(res.customerId);
+    if (normalizedOtp.length !== OTP_LENGTH) {
+      setError("Enter the 6-digit verification code.");
+
+      return;
+    }
+
+    try {
+      const res = await mockServices.auth.verifyOtp({
+        requestId: otpRequestId,
+        code: normalizedOtp,
+      });
+
+      if (!res.verified) {
+        setError("Incorrect code. Please enter the OTP shown above.");
+
+        return;
+      }
+
+      /*
+       * Auth verifies the phone but does not return
+       * customerId.
+       *
+       * Resolve the existing customer by the verified
+       * mobile number.
+       */
+      const normalizedPhone = normalizePhone(phone);
+
+      const customers = await mockServices.customer.findCustomers({
+        phone: normalizedPhone,
+      });
+
+      if (customers.length === 0) {
+        setError("No customer found for this phone number.");
+
+        return;
+      }
+
+      await identifyCustomer(customers[0].id);
+    } catch (error) {
+      console.error("COUNTER VERIFY OTP ERROR", error);
+
+      setError(
+        error instanceof Error ? error.message : "Unable to verify the OTP.",
+      );
+    }
   };
 
   /*
    * ------------------------------------------------------------
-   * Staff-assisted customer search
+   * Staff assisted search
    * ------------------------------------------------------------
    */
+
   const runSearch = async () => {
     setError("");
+
     setCustomer(null);
+
     setMemberships([]);
 
     const term = searchTerm.trim();
 
     if (!term) {
       setError("Enter a phone number or name to search.");
+
       return;
     }
 
@@ -634,13 +927,14 @@ export default function StaffCounter() {
    * Manual redemption
    * ------------------------------------------------------------
    */
+
   const runManual = async (method: RedemptionMethod) => {
     setBusy(true);
+
     setResult(null);
 
     const res = await redeemBenefits(services, ctx(method), {
       subscriptionId: selectedSubId,
-
       benefitIds: Array.from(selectedBenefitIds),
     });
 
@@ -695,6 +989,7 @@ export default function StaffCounter() {
    * Benefit selection
    * ------------------------------------------------------------
    */
+
   const renderBenefitSelection = (method: RedemptionMethod) => {
     if (!customer) {
       return null;
@@ -762,7 +1057,6 @@ export default function StaffCounter() {
                     }}
                   >
                     <Text style={styles.benefitTitle}>
-                      {" "}
                       {benefit.displayName ?? benefit.benefitName}
                     </Text>
 
@@ -801,9 +1095,10 @@ export default function StaffCounter() {
 
   /*
    * ------------------------------------------------------------
-   * Sale catalog
+   * Sale catalogue
    * ------------------------------------------------------------
    */
+
   const renderSaleCatalog = () => {
     if (!customer) {
       return null;
@@ -870,6 +1165,7 @@ export default function StaffCounter() {
    * Render
    * ------------------------------------------------------------
    */
+
   return (
     <ScrollView
       testID="staff-counter-screen"
@@ -967,6 +1263,7 @@ export default function StaffCounter() {
               testID={`counter-mode-${currentMode}`}
               onPress={() => {
                 setMode(currentMode);
+
                 resetIdentity();
               }}
               style={[styles.modeBtn, on && styles.modeBtnOn]}
@@ -1039,9 +1336,11 @@ export default function StaffCounter() {
           <TextInput
             testID="counter-phone-input"
             value={phone}
-            onChangeText={setPhone}
+            onChangeText={(value) => setPhone(normalizePhone(value))}
             placeholder="Customer phone number"
             placeholderTextColor={COLORS.textMuted}
+            keyboardType="number-pad"
+            maxLength={MAX_PHONE_DIGITS}
             style={styles.input}
             editable={!otpSent}
           />
@@ -1049,8 +1348,13 @@ export default function StaffCounter() {
           {!otpSent ? (
             <Pressable
               testID="counter-send-otp"
+              disabled={normalizePhone(phone).length !== MAX_PHONE_DIGITS}
               onPress={sendOtp}
-              style={styles.primaryBtn}
+              style={[
+                styles.primaryBtn,
+                normalizePhone(phone).length !== MAX_PHONE_DIGITS &&
+                  styles.btnDisabled,
+              ]}
             >
               <Text style={styles.primaryBtnText}>Send OTP</Text>
             </Pressable>
@@ -1061,17 +1365,23 @@ export default function StaffCounter() {
               <TextInput
                 testID="counter-otp-input"
                 value={otpCode}
-                onChangeText={setOtpCode}
+                onChangeText={(value) => setOtpCode(normalizeOtp(value))}
                 placeholder="Enter OTP"
                 placeholderTextColor={COLORS.textMuted}
                 keyboardType="number-pad"
+                maxLength={OTP_LENGTH}
                 style={styles.input}
               />
 
               <Pressable
                 testID="counter-verify-otp"
+                disabled={normalizeOtp(otpCode).length !== OTP_LENGTH}
                 onPress={verifyOtp}
-                style={styles.primaryBtn}
+                style={[
+                  styles.primaryBtn,
+                  normalizeOtp(otpCode).length !== OTP_LENGTH &&
+                    styles.btnDisabled,
+                ]}
               >
                 <Text style={styles.primaryBtnText}>Verify</Text>
               </Pressable>
@@ -1158,38 +1468,169 @@ export default function StaffCounter() {
           <Text style={styles.cardTitle}>New Customer</Text>
 
           <Text style={styles.muted}>
-            Create a new member. If the phone already exists, that customer is
-            used.
+            Register a new customer with first name, last name and mobile OTP
+            verification before showing the membership catalogue.
           </Text>
 
           {!customer ? (
             <>
-              <TextInput
-                testID="counter-new-name"
-                value={newName}
-                onChangeText={setNewName}
-                placeholder="Full name"
-                placeholderTextColor={COLORS.textMuted}
-                style={styles.input}
-              />
+              <View style={styles.nameRow}>
+                <TextInput
+                  testID="counter-new-first-name"
+                  value={newFirstName}
+                  onChangeText={setNewFirstName}
+                  placeholder="First name"
+                  placeholderTextColor={COLORS.textMuted}
+                  autoCapitalize="words"
+                  style={[styles.input, styles.nameField]}
+                />
 
-              <TextInput
-                testID="counter-new-phone"
-                value={newPhone}
-                onChangeText={setNewPhone}
-                placeholder="Phone number"
-                placeholderTextColor={COLORS.textMuted}
-                keyboardType="phone-pad"
-                style={styles.input}
-              />
+                <TextInput
+                  testID="counter-new-last-name"
+                  value={newLastName}
+                  onChangeText={setNewLastName}
+                  placeholder="Last name"
+                  placeholderTextColor={COLORS.textMuted}
+                  autoCapitalize="words"
+                  style={[styles.input, styles.nameField]}
+                />
+              </View>
 
-              <Pressable
-                testID="counter-new-continue"
-                onPress={createOrFindThenIdentify}
-                style={styles.primaryBtn}
+              <View style={styles.phoneRow}>
+                <Pressable
+                  testID="counter-new-country-code-dropdown"
+                  onPress={() => setNewCountryPickerVisible(true)}
+                  style={[styles.countryDropdown, styles.countryCodeInput]}
+                >
+                  <Text style={styles.countryCodeText}>
+                    {newSelectedCountry.code}
+                  </Text>
+
+                  <Text style={styles.countryNameText}>
+                    {newSelectedCountry.country}
+                  </Text>
+                </Pressable>
+
+                <TextInput
+                  testID="counter-new-phone"
+                  value={newPhone}
+                  onChangeText={(value) => setNewPhone(normalizePhone(value))}
+                  placeholder="Mobile number"
+                  placeholderTextColor={COLORS.textMuted}
+                  keyboardType="number-pad"
+                  maxLength={MAX_PHONE_DIGITS}
+                  style={[styles.input, styles.phoneInput]}
+                />
+              </View>
+
+              <Text style={styles.phoneHint}>Enter exactly 10 digits</Text>
+
+              {!newOtpSent ? (
+                <Pressable
+                  testID="counter-new-send-otp"
+                  disabled={
+                    newFirstName.trim().length === 0 ||
+                    newLastName.trim().length === 0 ||
+                    normalizePhone(newPhone).length !== MAX_PHONE_DIGITS
+                  }
+                  onPress={sendNewCustomerOtp}
+                  style={[
+                    styles.primaryBtn,
+                    (newFirstName.trim().length === 0 ||
+                      newLastName.trim().length === 0 ||
+                      normalizePhone(newPhone).length !== MAX_PHONE_DIGITS) &&
+                      styles.btnDisabled,
+                  ]}
+                >
+                  <Text style={styles.primaryBtnText}>Send OTP</Text>
+                </Pressable>
+              ) : (
+                <>
+                  <Text style={styles.tiny}>Dev code: {newDevCode}</Text>
+
+                  <TextInput
+                    testID="counter-new-otp"
+                    value={newOtpCode}
+                    onChangeText={(value) => setNewOtpCode(normalizeOtp(value))}
+                    placeholder="Enter OTP"
+                    placeholderTextColor={COLORS.textMuted}
+                    keyboardType="number-pad"
+                    maxLength={OTP_LENGTH}
+                    style={styles.input}
+                  />
+
+                  <Pressable
+                    testID="counter-new-verify-otp"
+                    disabled={normalizeOtp(newOtpCode).length !== OTP_LENGTH}
+                    onPress={verifyNewCustomerOtp}
+                    style={[
+                      styles.primaryBtn,
+                      normalizeOtp(newOtpCode).length !== OTP_LENGTH &&
+                        styles.btnDisabled,
+                    ]}
+                  >
+                    <Text style={styles.primaryBtnText}>Verify & Continue</Text>
+                  </Pressable>
+                </>
+              )}
+
+              <Modal
+                visible={newCountryPickerVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setNewCountryPickerVisible(false)}
               >
-                <Text style={styles.primaryBtnText}>Continue</Text>
-              </Pressable>
+                <Pressable
+                  style={styles.modalOverlay}
+                  onPress={() => setNewCountryPickerVisible(false)}
+                >
+                  <Pressable
+                    onPress={(event) => event.stopPropagation()}
+                    style={styles.countryModal}
+                  >
+                    <Text style={styles.modalTitle}>Select country</Text>
+
+                    <View style={styles.countryList}>
+                      {COUNTRY_OPTIONS.map((country) => {
+                        const selected =
+                          newSelectedCountry.country === country.country;
+
+                        return (
+                          <Pressable
+                            key={`${country.country}-${country.code}`}
+                            testID={`counter-country-${country.country
+                              .toLowerCase()
+                              .replace(/\s+/g, "-")}`}
+                            onPress={() => selectNewCountry(country)}
+                            style={[
+                              styles.countryOption,
+                              selected && styles.countryOptionSelected,
+                            ]}
+                          >
+                            <View
+                              style={{
+                                flex: 1,
+                              }}
+                            >
+                              <Text style={styles.countryOptionName}>
+                                {country.country}
+                              </Text>
+
+                              <Text style={styles.countryOptionCode}>
+                                {country.code}
+                              </Text>
+                            </View>
+
+                            {selected ? (
+                              <Text style={styles.countrySelectedMark}>✓</Text>
+                            ) : null}
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </Pressable>
+                </Pressable>
+              </Modal>
             </>
           ) : null}
 
@@ -1329,6 +1770,57 @@ const styles = StyleSheet.create({
   inputMultiline: {
     minHeight: 70,
     textAlignVertical: "top",
+  },
+
+  nameRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+
+  nameField: {
+    flex: 1,
+  },
+
+  phoneRow: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "stretch",
+  },
+
+  countryCodeInput: {
+    width: 105,
+  },
+
+  countryDropdown: {
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    justifyContent: "center",
+  },
+
+  countryCodeText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+
+  countryNameText: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+
+  phoneInput: {
+    flex: 1,
+  },
+
+  phoneHint: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginTop: -2,
   },
 
   searchRow: {
@@ -1518,5 +2010,64 @@ const styles = StyleSheet.create({
   outcome: {
     fontSize: 13,
     color: COLORS.text,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    padding: 24,
+  },
+
+  countryModal: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    maxHeight: "75%",
+  },
+
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
+  },
+
+  countryList: {
+    gap: 8,
+  },
+
+  countryOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: COLORS.background,
+  },
+
+  countryOptionSelected: {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.accentSoft,
+  },
+
+  countryOptionName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+
+  countryOptionCode: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+
+  countrySelectedMark: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.accent,
   },
 });

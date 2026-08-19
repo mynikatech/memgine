@@ -83,6 +83,7 @@ export function BusinessExperience({
 
   const [tab, setTab] = useState<ExperienceTabKey>("card");
   const [referralOpen, setReferralOpen] = useState(false);
+  const [showAllHistory, setShowAllHistory] = useState(false);
 
   const exp = useMemo(
     () =>
@@ -506,85 +507,721 @@ export function BusinessExperience({
     </View>
   );
 
-  const HistoryTab = (
-    <View style={{ gap: theme.spacing.lg }} testID="experience-tab-history">
-      <Card padding="lg">
+  const HistoryTab = (() => {
+    const sortedActivity = [...exp.activity].sort((a, b) => {
+      const redemptionA = redemptions.find((r) => r.id === a.id);
+      const redemptionB = redemptions.find((r) => r.id === b.id);
+
+      const timeA = redemptionA
+        ? new Date(redemptionA.redemptionDateTime).getTime()
+        : 0;
+
+      const timeB = redemptionB
+        ? new Date(redemptionB.redemptionDateTime).getTime()
+        : 0;
+
+      return timeB - timeA;
+    });
+
+    const visibleActivity = showAllHistory
+      ? sortedActivity
+      : sortedActivity.slice(0, 3);
+
+    /*
+     * The summary follows the client-facing membership experience:
+     * a strong redemption/activity count rather than repeating the
+     * membership card that is already shown on the Card tab.
+     *
+     * Count only redemptions in the current calendar year so the label
+     * "REWARDS THIS YEAR" remains truthful.
+     */
+    const currentYear = new Date().getFullYear();
+
+    const redemptionsThisYear = redemptions.filter((redemption) => {
+      return (
+        new Date(redemption.redemptionDateTime).getFullYear() === currentYear
+      );
+    }).length;
+
+    /*
+     * Calendar is based on the latest redemption month rather than the
+     * current device month. This makes the demo meaningful even when the
+     * mock redemption data is from an earlier month.
+     */
+    const latestRedemption = [...redemptions].sort(
+      (a, b) =>
+        new Date(b.redemptionDateTime).getTime() -
+        new Date(a.redemptionDateTime).getTime(),
+    )[0];
+
+    const calendarBaseDate = latestRedemption
+      ? new Date(latestRedemption.redemptionDateTime)
+      : new Date();
+
+    const calendarYear = calendarBaseDate.getFullYear();
+    const calendarMonth = calendarBaseDate.getMonth();
+
+    const firstDayOfMonth = new Date(calendarYear, calendarMonth, 1);
+
+    /*
+     * Convert JavaScript Sunday-first indexing to Monday-first:
+     * Monday = 0 ... Sunday = 6
+     */
+    const firstWeekday = (firstDayOfMonth.getDay() + 6) % 7;
+
+    const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+
+    const calendarCells: Array<{
+      date: Date;
+      day: number;
+      currentMonth: boolean;
+    }> = [];
+
+    /*
+     * Previous-month days.
+     */
+    for (let i = firstWeekday - 1; i >= 0; i -= 1) {
+      const date = new Date(calendarYear, calendarMonth, -i);
+
+      calendarCells.push({
+        date,
+        day: date.getDate(),
+        currentMonth: false,
+      });
+    }
+
+    /*
+     * Current-month days.
+     */
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = new Date(calendarYear, calendarMonth, day);
+
+      calendarCells.push({
+        date,
+        day: date.getDate(),
+        currentMonth: true,
+      });
+    }
+
+    /*
+     * Next-month days so the calendar always forms complete weeks.
+     */
+    let nextDay = 1;
+
+    while (calendarCells.length % 7 !== 0) {
+      const date = new Date(calendarYear, calendarMonth + 1, nextDay);
+
+      calendarCells.push({
+        date,
+        day: date.getDate(),
+        currentMonth: false,
+      });
+
+      nextDay += 1;
+    }
+
+    /*
+     * Dates which contain at least one redemption.
+     */
+    const redemptionDates = new Set(
+      redemptions.map((r) => {
+        const date = new Date(r.redemptionDateTime);
+
+        return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+      }),
+    );
+
+    const dateKey = (date: Date) =>
+      `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+
+    /*
+     * Most visited store.
+     */
+    const storeCounts = new Map<string, number>();
+
+    redemptions.forEach((redemption) => {
+      storeCounts.set(
+        redemption.storeId,
+        (storeCounts.get(redemption.storeId) ?? 0) + 1,
+      );
+    });
+
+    let mostVisitedStore = exp.mostVisited;
+
+    if (storeCounts.size) {
+      let highestCount = 0;
+      let highestStoreId: string | undefined;
+
+      storeCounts.forEach((count, storeId) => {
+        if (count > highestCount) {
+          highestCount = count;
+          highestStoreId = storeId;
+        }
+      });
+
+      if (highestStoreId) {
+        mostVisitedStore =
+          exp.stores.find((store) => store.id === highestStoreId)?.name ??
+          exp.mostVisited;
+      }
+    }
+
+    /*
+     * Top redeemed benefit.
+     */
+    const benefitCounts = new Map<string, number>();
+
+    redemptions.forEach((redemption) => {
+      benefitCounts.set(
+        redemption.benefitId,
+        (benefitCounts.get(redemption.benefitId) ?? 0) + 1,
+      );
+    });
+
+    let topBenefit: string | undefined;
+
+    if (benefitCounts.size) {
+      let highestCount = 0;
+      let highestBenefitId: string | undefined;
+
+      benefitCounts.forEach((count, benefitId) => {
+        if (count > highestCount) {
+          highestCount = count;
+          highestBenefitId = benefitId;
+        }
+      });
+
+      if (highestBenefitId) {
+        topBenefit = benefitTitleById.get(highestBenefitId);
+      }
+    }
+
+    const monthLabel = calendarBaseDate.toLocaleDateString(undefined, {
+      month: "long",
+      year: "numeric",
+    });
+
+    const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
+
+    return (
+      <View
+        style={{
+          gap: theme.spacing.lg,
+        }}
+        testID="experience-tab-history"
+      >
+        {/* --------------------------- History heading --------------------------- */}
+
         <View
           style={{
             flexDirection: "row",
+            alignItems: "center",
             justifyContent: "space-between",
-            gap: theme.spacing.md,
           }}
         >
-          <View style={{ flex: 1 }}>
-            <Text variant="display" color="primary">
-              {exp.activityCount}
-            </Text>
+          <Text variant="h2" color="text">
+            {t("experience.tabHistory")}
+          </Text>
 
-            <Text variant="caption" color="textMuted">
-              {t("experience.redemptionsLabel")}
-            </Text>
-          </View>
-
-          {exp.mostVisited ? (
-            <View
-              style={{
-                flex: 1,
-                alignItems: "flex-end",
-              }}
+          {sortedActivity.length > 3 ? (
+            <Pressable
+              onPress={() => setShowAllHistory((current) => !current)}
+              hitSlop={8}
             >
-              <Text
-                variant="bodyStrong"
-                color="text"
-                style={{ textAlign: "right" }}
-              >
-                {exp.mostVisited}
+              <Text variant="label" color="primary">
+                {showAllHistory ? "Show Less" : "View All"}
               </Text>
-
-              <Text variant="caption" color="textMuted">
-                {t("experience.mostVisited")}
-              </Text>
-            </View>
+            </Pressable>
           ) : null}
         </View>
-      </Card>
 
-      <Section title={t("experience.tabHistory")}>
-        {exp.activity.length ? (
-          <Card padding="lg">
-            <View style={{ gap: 18 }}>
-              {exp.activity.map((a) => (
-                <View
-                  key={a.id}
-                  testID={`experience-activity-${a.id}`}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: theme.spacing.sm,
-                  }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <ActivityItem
-                      title={a.title}
-                      subtitle={`${a.location} · ${a.timeLabel}`}
-                    />
-                  </View>
+        {/* --------------------------- Redemption summary --------------------------- */}
 
-                  <Badge label={t("experience.redeemed")} tone="success" />
-                </View>
-              ))}
+        <Card
+          padding="lg"
+          testID="experience-history-summary"
+          style={{
+            overflow: "hidden",
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            backgroundColor: theme.colors.surface,
+          }}
+        >
+          <View
+            style={{
+              alignItems: "center",
+              paddingVertical: theme.spacing.md,
+              gap: theme.spacing.xs,
+            }}
+          >
+            <View
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: 36,
+                backgroundColor: theme.colors.primarySoft,
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: theme.spacing.xs,
+              }}
+            >
+              <Ionicons
+                name="gift-outline"
+                size={34}
+                color={theme.colors.primary}
+              />
             </View>
-          </Card>
+
+            <Text variant="title" color="text">
+              Redeemed
+            </Text>
+
+            <Text
+              variant="display"
+              color="primary"
+              style={{
+                fontSize: 44,
+                lineHeight: 50,
+                fontWeight: "600",
+              }}
+            >
+              {redemptionsThisYear}
+            </Text>
+
+            <Text
+              variant="caption"
+              color="textMuted"
+              style={{
+                letterSpacing: 1.5,
+                fontWeight: "600",
+              }}
+            >
+              REWARDS THIS YEAR
+            </Text>
+
+            <Text
+              variant="bodySmall"
+              color="textSecondary"
+              style={{
+                textAlign: "center",
+                marginTop: theme.spacing.sm,
+              }}
+            >
+              Your membership activity at {exp.displayName}
+            </Text>
+          </View>
+        </Card>
+
+        {/* --------------------------- Recent Activity --------------------------- */}
+
+        {visibleActivity.length ? (
+          <Section title="Recent Activity">
+            <View style={{ gap: theme.spacing.md }}>
+              {visibleActivity.map((activity) => {
+                const redemption = redemptions.find(
+                  (r) => r.id === activity.id,
+                );
+
+                const benefit = redemption
+                  ? exp.benefits.find((b) => b.id === redemption.benefitId)
+                  : undefined;
+
+                const iconName = benefit
+                  ? benefitIconForType(benefit.benefitTypeId)
+                  : "gift-outline";
+
+                return (
+                  <Card
+                    key={activity.id}
+                    padding="md"
+                    testID={`experience-activity-${activity.id}`}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: theme.colors.border,
+                      backgroundColor: theme.colors.surface,
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: theme.spacing.md,
+                      }}
+                    >
+                      {/* Benefit visual */}
+                      <View
+                        style={{
+                          width: 54,
+                          height: 54,
+                          borderRadius: theme.radius.md,
+                          backgroundColor: theme.colors.primarySoft,
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Ionicons
+                          name={iconName as keyof typeof Ionicons.glyphMap}
+                          size={27}
+                          color={theme.colors.primary}
+                        />
+                      </View>
+
+                      {/* Main activity information */}
+                      <View
+                        style={{
+                          flex: 1,
+                          gap: 2,
+                        }}
+                      >
+                        <Text
+                          variant="bodyStrong"
+                          color="text"
+                          numberOfLines={2}
+                        >
+                          {activity.title}
+                        </Text>
+
+                        <Text
+                          variant="bodySmall"
+                          color="textSecondary"
+                          numberOfLines={1}
+                        >
+                          {activity.location}
+                        </Text>
+
+                        <Text variant="caption" color="textMuted">
+                          {activity.timeLabel}
+                        </Text>
+                      </View>
+
+                      {/* Redemption status */}
+                      <View
+                        style={{
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        <Text
+                          variant="caption"
+                          color="primary"
+                          style={{
+                            fontWeight: "600",
+                            letterSpacing: 0.5,
+                          }}
+                        >
+                          {t("experience.redeemed").toUpperCase()}
+                        </Text>
+
+                        <View
+                          style={{
+                            width: 24,
+                            height: 24,
+                            borderRadius: 12,
+                            backgroundColor: theme.colors.primary,
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Ionicons
+                            name="checkmark"
+                            size={15}
+                            color={theme.colors.onPrimary}
+                          />
+                        </View>
+                      </View>
+                    </View>
+                  </Card>
+                );
+              })}
+            </View>
+          </Section>
         ) : (
-          <Card padding="lg">
-            <Text variant="bodySmall" color="textMuted">
+          <Card
+            padding="lg"
+            style={{
+              alignItems: "center",
+              paddingVertical: 32,
+            }}
+          >
+            <View
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 28,
+                backgroundColor: theme.colors.primarySoft,
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: theme.spacing.sm,
+              }}
+            >
+              <Ionicons
+                name="time-outline"
+                size={28}
+                color={theme.colors.primary}
+              />
+            </View>
+
+            <Text variant="bodyStrong" color="text">
+              {t("experience.tabHistory")}
+            </Text>
+
+            <Text
+              variant="bodySmall"
+              color="textMuted"
+              style={{
+                textAlign: "center",
+                marginTop: 4,
+              }}
+            >
               {t("experience.historyEmpty")}
             </Text>
           </Card>
         )}
-      </Section>
-    </View>
-  );
+
+        {/* ----------------------------- Activity ----------------------------- */}
+
+        <Card
+          padding="lg"
+          style={{
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+          }}
+        >
+          <View style={{ gap: theme.spacing.lg }}>
+            <View>
+              <Text variant="h2" color="text">
+                Activity
+              </Text>
+
+              <Text
+                variant="caption"
+                color="textMuted"
+                style={{ marginTop: 3 }}
+              >
+                {monthLabel}
+              </Text>
+            </View>
+
+            {/* Weekday header */}
+            <View
+              style={{
+                flexDirection: "row",
+              }}
+            >
+              {weekdayLabels.map((label, index) => (
+                <View
+                  key={`${label}-${index}`}
+                  style={{
+                    flex: 1,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text variant="caption" color="textMuted">
+                    {label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Calendar */}
+            <View style={{ gap: 8 }}>
+              {Array.from({
+                length: Math.ceil(calendarCells.length / 7),
+              }).map((_, weekIndex) => (
+                <View
+                  key={`week-${weekIndex}`}
+                  style={{
+                    flexDirection: "row",
+                  }}
+                >
+                  {calendarCells
+                    .slice(weekIndex * 7, weekIndex * 7 + 7)
+                    .map((cell) => {
+                      const hasActivity = redemptionDates.has(
+                        dateKey(cell.date),
+                      );
+
+                      const isLatest = latestRedemption
+                        ? dateKey(
+                            new Date(latestRedemption.redemptionDateTime),
+                          ) === dateKey(cell.date)
+                        : false;
+
+                      return (
+                        <View
+                          key={dateKey(cell.date)}
+                          style={{
+                            flex: 1,
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: 17,
+                              alignItems: "center",
+                              justifyContent: "center",
+                              backgroundColor: hasActivity
+                                ? theme.colors.primarySoft
+                                : "transparent",
+                              borderWidth: isLatest ? 1.5 : 0,
+                              borderColor: theme.colors.primary,
+                            }}
+                          >
+                            <Text
+                              variant="caption"
+                              color={
+                                !cell.currentMonth
+                                  ? "textMuted"
+                                  : hasActivity
+                                    ? "primary"
+                                    : "text"
+                              }
+                              style={{
+                                opacity: cell.currentMonth ? 1 : 0.35,
+                                fontWeight: hasActivity ? "600" : "400",
+                              }}
+                            >
+                              {cell.day}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })}
+                </View>
+              ))}
+            </View>
+
+            {/* Activity legend */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: theme.spacing.sm,
+              }}
+            >
+              <View
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 5,
+                  backgroundColor: theme.colors.primarySoft,
+                }}
+              />
+
+              <Text variant="caption" color="textMuted">
+                Redemption activity
+              </Text>
+            </View>
+          </View>
+        </Card>
+
+        {/* ----------------------------- Insights ----------------------------- */}
+
+        {mostVisitedStore || topBenefit ? (
+          <View style={{ gap: theme.spacing.sm }}>
+            {mostVisitedStore ? (
+              <Card
+                padding="md"
+                style={{
+                  backgroundColor: theme.colors.surfaceAlt,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: theme.spacing.md,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      backgroundColor: theme.colors.primarySoft,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons
+                      name="star-outline"
+                      size={18}
+                      color={theme.colors.primary}
+                    />
+                  </View>
+
+                  <Text variant="bodySmall" color="text" style={{ flex: 1 }}>
+                    Most Visited
+                  </Text>
+
+                  <Text
+                    variant="bodySmall"
+                    color="textSecondary"
+                    numberOfLines={1}
+                  >
+                    {mostVisitedStore}
+                  </Text>
+                </View>
+              </Card>
+            ) : null}
+
+            {topBenefit ? (
+              <Card
+                padding="md"
+                style={{
+                  backgroundColor: theme.colors.surfaceAlt,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: theme.spacing.md,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      backgroundColor: theme.colors.primarySoft,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons
+                      name="heart-outline"
+                      size={18}
+                      color={theme.colors.primary}
+                    />
+                  </View>
+
+                  <Text variant="bodySmall" color="text" style={{ flex: 1 }}>
+                    Top Benefit
+                  </Text>
+
+                  <Text
+                    variant="bodySmall"
+                    color="textSecondary"
+                    numberOfLines={1}
+                    style={{
+                      maxWidth: "55%",
+                      textAlign: "right",
+                    }}
+                  >
+                    {topBenefit}
+                  </Text>
+                </View>
+              </Card>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+    );
+  })();
 
   const ProfileTab = (
     <View style={{ gap: theme.spacing.lg }} testID="experience-tab-profile">

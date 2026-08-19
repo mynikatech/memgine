@@ -14,6 +14,7 @@ type InputProps = {
   keyboardType?: KeyboardTypeOptions;
   error?: string;
   testID?: string;
+  maxLength?: number;
 };
 
 export function Input({
@@ -28,7 +29,11 @@ export function Input({
 }: InputProps) {
   const theme = useTheme();
   const [focused, setFocused] = useState(false);
-  const borderColor = error ? theme.colors.danger : focused ? theme.colors.primary : theme.colors.border;
+  const borderColor = error
+    ? theme.colors.danger
+    : focused
+      ? theme.colors.primary
+      : theme.colors.border;
 
   return (
     <View style={{ gap: theme.spacing.xs }}>

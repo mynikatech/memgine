@@ -1,8 +1,7 @@
 import { BusinessContext } from "../context/business-context";
-import { BillingInterval, ID } from "../domain/common";
+import { ID } from "../domain/common";
 import {
   Benefit,
-  BenefitType,
   Customer,
   EntityType,
   EntityStatus,
@@ -19,7 +18,6 @@ import {
   Store,
   Subscription,
   Status,
-  SubscriptionStatus,
   SubscriptionPlan,
   Staff,
   OrganizationUser,
@@ -61,6 +59,23 @@ import {
   GLOW_STUDIO_CONTEXT,
   GLOW_STUDIO_ORGANIZATION,
 } from "../defaults/glow-studio";
+import {
+  STEEP_SIP_ACCOUNT,
+  STEEP_SIP_CONTEXT,
+  STEEP_SIP_ORGANIZATION,
+} from "../defaults/steep-sip";
+
+import {
+  STEEP_SIP_BENEFITS,
+  STEEP_SIP_CUSTOMER_ORGANIZATION_USER,
+  STEEP_SIP_CUSTOMERS,
+  STEEP_SIP_OFFERS,
+  STEEP_SIP_ORGANIZATION_USERS,
+  STEEP_SIP_PRODUCTS,
+  STEEP_SIP_STAFF,
+  STEEP_SIP_STORES,
+  STEEP_SIP_USER_ACQUISITIONS,
+} from "./steep-sip-demo-data";
 
 import {
   DEFAULT_ROLE_CAPABILITIES,
@@ -70,14 +85,17 @@ import {
 const ORGANIZATIONS: Organization[] = [
   SUNRISE_BAKERY_ORGANIZATION,
   GLOW_STUDIO_ORGANIZATION,
+  STEEP_SIP_ORGANIZATION,
 ];
 const ACCOUNTS: OrganizationAccount[] = [
   SUNRISE_BAKERY_ACCOUNT,
   GLOW_STUDIO_ACCOUNT,
+  STEEP_SIP_ACCOUNT,
 ];
 const BUSINESS_CONTEXTS_BY_ORG: Record<string, BusinessContext> = {
   [SUNRISE_BAKERY_ORGANIZATION.id]: SUNRISE_BAKERY_CONTEXT,
   [GLOW_STUDIO_ORGANIZATION.id]: GLOW_STUDIO_CONTEXT,
+  [STEEP_SIP_ORGANIZATION.id]: STEEP_SIP_CONTEXT,
 };
 const ORGANIZATION_DETAILS: OrganizationDetails[] = [
   {
@@ -640,6 +658,8 @@ const organizationUsers: OrganizationUser[] = [
     isDeleted: false,
     versionNo: 1,
   },
+  ...STEEP_SIP_ORGANIZATION_USERS,
+  STEEP_SIP_CUSTOMER_ORGANIZATION_USER,
 ];
 
 const userAcquisitions: UserAcquisition[] = [
@@ -692,6 +712,7 @@ const userAcquisitions: UserAcquisition[] = [
     isDeleted: false,
     versionNo: 1,
   },
+  ...STEEP_SIP_USER_ACQUISITIONS,
 ];
 
 const staff: Staff[] = [
@@ -776,6 +797,7 @@ const staff: Staff[] = [
     isDeleted: false,
     versionNo: 1,
   },
+  ...STEEP_SIP_STAFF,
 ];
 
 /**
@@ -850,6 +872,7 @@ const stores: Store[] = [
     isDeleted: false,
     versionNo: 1,
   },
+  ...STEEP_SIP_STORES,
 ];
 
 const benefits: Benefit[] = [
@@ -1015,6 +1038,7 @@ const benefits: Benefit[] = [
     isDeleted: false,
     versionNo: 1,
   },
+  ...STEEP_SIP_BENEFITS,
 ];
 const now = new Date().toISOString();
 const products: MembershipProduct[] = [
@@ -1321,6 +1345,7 @@ const products: MembershipProduct[] = [
     isDeleted: false,
     versionNo: 1,
   },
+  ...STEEP_SIP_PRODUCTS,
 ];
 
 const customers: Customer[] = [
@@ -1346,6 +1371,7 @@ const customers: Customer[] = [
     phone: "+14155550222",
     createdAt: "2026-08-10T14:00:00.000Z",
   },
+  ...STEEP_SIP_CUSTOMERS,
 ];
 
 const subscriptions: Subscription[] = [
@@ -1588,6 +1614,7 @@ const offers: Offer[] = [
     isDeleted: false,
     versionNo: 1,
   },
+  ...STEEP_SIP_OFFERS,
 ];
 
 export class InMemoryOrganizationService implements OrganizationService {
@@ -2403,20 +2430,52 @@ class InMemoryRedemptionService implements RedemptionService {
  * the UI can display it. Identifies the existing mock customer on success.
  */
 export class InMemoryCustomerAuthService implements CustomerAuthService {
-  private codes = new Map<string, string>();
+  private codes = new Map<
+    string,
+    {
+      code: string;
+      mobile: string;
+    }
+  >();
 
   async sendOtp(input: SendOtpInput): Promise<SendOtpResult> {
     const requestId = genId("otp");
     const devCode = String(Math.floor(100000 + Math.random() * 900000));
-    this.codes.set(requestId, devCode);
-    return { requestId, devCode };
+
+    this.codes.set(requestId, {
+      code: devCode,
+      mobile: input.mobile.trim(),
+    });
+
+    return {
+      requestId,
+      devCode,
+    };
   }
 
   async verifyOtp(input: VerifyOtpInput): Promise<VerifyOtpResult> {
-    const expected = this.codes.get(input.requestId);
-    const verified = !!expected && expected === input.code;
-    if (verified) this.codes.delete(input.requestId);
-    return { verified, customerId: verified ? "cust-1" : undefined };
+    const entry = this.codes.get(input.requestId);
+
+    const verified = !!entry && entry.code === input.code.trim();
+
+    if (!verified) {
+      return {
+        verified: false,
+      };
+    }
+
+    this.codes.delete(input.requestId);
+
+    /*
+     * Authentication verifies the mobile.
+     *
+     * Customer identity is resolved by CustomerService after OTP
+     * verification. Therefore this service deliberately does NOT
+     * manufacture or return "cust-1".
+     */
+    return {
+      verified: true,
+    };
   }
 }
 

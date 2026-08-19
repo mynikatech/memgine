@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Modal, Pressable, View } from "react-native";
 
 import { PaymentMethod } from "@/src/core";
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
@@ -35,22 +35,25 @@ import {
   ReceiptSummary,
 } from "@/src/ui/domain";
 
+import { registerCustomerForOrganization } from "@/src/core/customer/customer-registration";
+
 /**
- * Customer acquisition & subscription purchase journey (Stage 4).
+ * Customer acquisition & subscription purchase journey.
  *
- * The same journey is reused for:
- * - normal customer purchase
- * - staff-assisted purchase
+ * Reused for:
+ * - direct customer purchase
+ * - staff-assisted counter purchase
  *
- * The final Subscription entity is organization-user based:
+ * Subscription:
  *
  * Customer
  *   -> OrganizationUser
  *      -> Subscription
  *
- * Subscription also references SubscriptionPlan rather than
- * MembershipProduct directly.
+ * Subscription
+ *   -> SubscriptionPlan
  */
+
 type Step =
   | "landing"
   | "register"
@@ -61,29 +64,62 @@ type Step =
 
 const DEFAULT_CUSTOMER_ID = "cust-1";
 
+/*
+ * --------------------------------------------------------------
+ * Country / phone configuration
+ * --------------------------------------------------------------
+ */
+
+type CountryOption = {
+  country: string;
+  code: string;
+};
+
+const COUNTRY_OPTIONS: CountryOption[] = [
+  { country: "Canada", code: "+1" },
+  { country: "United States", code: "+1" },
+  { country: "India", code: "+91" },
+  { country: "United Kingdom", code: "+44" },
+  { country: "Australia", code: "+61" },
+  { country: "United Arab Emirates", code: "+971" },
+  { country: "Singapore", code: "+65" },
+];
+
+const DEFAULT_COUNTRY = COUNTRY_OPTIONS[0];
+
+const MAX_PHONE_DIGITS = 10;
+const OTP_LENGTH = 6;
+
+const normalizePhone = (value: string): string =>
+  value.replace(/\D/g, "").slice(0, MAX_PHONE_DIGITS);
+
+const normalizeOtp = (value: string): string =>
+  value.replace(/\D/g, "").slice(0, OTP_LENGTH);
+
+/*
+ * --------------------------------------------------------------
+ * Payment methods
+ * --------------------------------------------------------------
+ */
+
 const PAYMENT_METHODS: PaymentMethod[] = [
   PaymentMethod.UPI,
   PaymentMethod.CARD,
   PaymentMethod.CASH,
 ];
 
-/**
- * Generate a customer-facing subscription reference.
- *
- * This is mock/demo generation only. The real backend should generate
- * subscription_number centrally.
+/*
+ * --------------------------------------------------------------
+ * Subscription helpers
+ * --------------------------------------------------------------
  */
+
 const generateSubscriptionNumber = () => {
   const timestamp = Date.now().toString().slice(-8);
 
   return `SUB-${new Date().getFullYear()}-${timestamp}`;
 };
 
-/**
- * Calculate the subscription end date from the selected plan.
- *
- * The current mock plans use subscriptionPeriod + subscriptionPeriodUnit.
- */
 const calculateEndDate = (
   startDate: Date,
   period: number,
@@ -134,7 +170,7 @@ export default function JoinFlow() {
 
   const { organization, configuration, theme } = useBusiness();
 
-  const { setActiveContext } = useCustomerContext();
+  const { setActiveContext, setActiveCustomer } = useCustomerContext();
 
   const { t, formatMoney, formatDate } = useTranslation();
 
@@ -143,14 +179,14 @@ export default function JoinFlow() {
   const customerId = params.customerId ?? DEFAULT_CUSTOMER_ID;
 
   /*
-   * Staff-assisted sale is still supported by the UI.
-   *
-   * Purchase source is intentionally not stored on Subscription because
-   * it is not part of the final Subscription data model.
+   * Staff-assisted purchase is identified only by the navigation
+   * source. It is not persisted on Subscription.
    */
   const isStaffSale = params.source === "STAFF_ASSISTED";
 
   const [loading, setLoading] = useState(true);
+
+  const [loadError, setLoadError] = useState<string | undefined>();
 
   const [product, setProduct] = useState<MembershipProduct | null>(null);
 
@@ -164,8 +200,27 @@ export default function JoinFlow() {
 
   const [step, setStep] = useState<Step>(isStaffSale ? "review" : "landing");
 
+  const [firstName, setFirstName] = useState("");
+
+  const [lastName, setLastName] = useState("");
+
+  /*
+   * Canada / +1 is the default.
+   */
+  const [countryCode, setCountryCode] = useState(DEFAULT_COUNTRY.code);
+
+  const [selectedCountry, setSelectedCountry] =
+    useState<CountryOption>(DEFAULT_COUNTRY);
+
+  const [countryPickerVisible, setCountryPickerVisible] = useState(false);
+
   const [mobile, setMobile] = useState("");
 
+  const [email, setEmail] = useState("");
+
+  /*
+   * OTP state
+   */
   const [requestId, setRequestId] = useState("");
 
   const [devCode, setDevCode] = useState("");
@@ -174,29 +229,40 @@ export default function JoinFlow() {
 
   const [otpError, setOtpError] = useState<string | undefined>();
 
+  /*
+   * Subscription / payment state
+   */
   const [subscription, setSubscription] = useState<Subscription | null>(null);
 
   const [reference, setReference] = useState("");
 
-  /*
-   * Payment method is purchase-flow state.
-   * It is deliberately NOT read from Subscription because paymentMethod
-   * is no longer part of the final Subscription entity.
-   */
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
     PaymentMethod.UPI,
   );
 
   /*
    * --------------------------------------------------------------
-   * Load product, benefits, customer and OrganizationUser.
+   * Load product / customer / OrganizationUser
    * --------------------------------------------------------------
    */
+
   useEffect(() => {
     let mounted = true;
 
-    (async () => {
+    const load = async () => {
       try {
+        setLoading(true);
+        setLoadError(undefined);
+
+        console.log("JOIN LOAD", {
+          organizationId: orgId,
+          productId: params.productId,
+          customerId,
+          source: params.source,
+          staffId: params.staffId,
+          storeId: params.storeId,
+        });
+
         let pid = params.productId;
 
         if (!pid) {
@@ -205,64 +271,98 @@ export default function JoinFlow() {
           pid = list[0]?.id;
         }
 
-        const prod = pid
-          ? await mockServices.membershipProduct.getProduct(pid)
-          : null;
+        if (!pid) {
+          throw new Error(
+            `No membership product was supplied or found for organization ${orgId}.`,
+          );
+        }
 
-        const bens = pid ? await mockServices.benefit.listByProduct(pid) : [];
+        const prod = await mockServices.membershipProduct.getProduct(pid);
+
+        if (!prod) {
+          throw new Error(`Membership product not found: ${pid}`);
+        }
+
+        const bens = await mockServices.benefit.listByProduct(pid);
 
         const cust = await mockServices.customer.getCustomer(customerId);
 
+        let resolvedOrganizationUserId: string | null = null;
+
         /*
-         * ----------------------------------------------------------
-         * Resolve the OrganizationUser.
-         *
-         * A Subscription no longer stores customerId or organizationId.
-         * The ownership relationship is represented by:
-         *
-         * Customer/User
-         *      ↓
-         * OrganizationUser
-         *      ↓
-         * Subscription
-         * ----------------------------------------------------------
+         * For staff-assisted purchases the customer should already have
+         * an OrganizationUser. For direct purchases this may not exist yet.
          */
-        const organizationUsers =
-          await mockServices.organization.listOrganizationUsersByUser(
-            customerId,
+        try {
+          const organizationUsers =
+            await mockServices.organization.listOrganizationUsersByUser(
+              customerId,
+            );
+
+          const organizationUser = organizationUsers.find(
+            (item) => item.organizationId === orgId,
           );
 
-        const organizationUser = organizationUsers.find(
-          (item) => item.organizationId === orgId,
-        );
+          resolvedOrganizationUserId = organizationUser?.id ?? null;
+        } catch (organizationUserError) {
+          console.warn(
+            "JOIN ORGANIZATION USER LOOKUP FAILED",
+            organizationUserError,
+          );
+        }
 
         if (!mounted) {
           return;
         }
 
         setProduct(prod);
-        setBenefits(bens);
-        setCustomer(cust);
-        setOrganizationUserId(organizationUser?.id ?? null);
 
-        setLoading(false);
-      } catch {
+        setBenefits(bens);
+
+        setCustomer(cust);
+
+        setOrganizationUserId(resolvedOrganizationUserId);
+      } catch (error) {
+        console.error("JOIN LOAD ERROR", error);
+
+        if (!mounted) {
+          return;
+        }
+
+        setProduct(null);
+
+        setBenefits([]);
+
+        setCustomer(null);
+
+        setOrganizationUserId(null);
+
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load the membership.",
+        );
+      } finally {
         if (mounted) {
           setLoading(false);
         }
       }
-    })();
+    };
+
+    load();
 
     return () => {
       mounted = false;
     };
-  }, [params.productId, orgId, customerId]);
+  }, [
+    params.productId,
+    params.source,
+    params.staffId,
+    params.storeId,
+    orgId,
+    customerId,
+  ]);
 
-  /*
-   * The selected product contains its plans.
-   *
-   * The actual Subscription references the SubscriptionPlan.
-   */
   const plan = product?.plans[0];
 
   const intervalLabel = plan ? getSubscriptionPeriodLabel(plan) : "";
@@ -273,41 +373,184 @@ export default function JoinFlow() {
 
   /*
    * --------------------------------------------------------------
-   * OTP
+   * Country selection
+   * --------------------------------------------------------------
+   */
+
+  const selectCountry = (country: CountryOption) => {
+    setSelectedCountry(country);
+
+    setCountryCode(country.code);
+
+    setCountryPickerVisible(false);
+  };
+
+  /*
+   * --------------------------------------------------------------
+   * OTP - SEND
    * --------------------------------------------------------------
    */
 
   const sendOtp = useCallback(async () => {
-    const res = await mockServices.auth.sendOtp({
-      mobile,
-    });
+    try {
+      setOtpError(undefined);
 
-    setRequestId(res.requestId);
-    setDevCode(res.devCode);
-    setCode("");
-    setOtpError(undefined);
-    setStep("otp");
-  }, [mobile]);
+      const normalizedMobile = normalizePhone(mobile);
+
+      if (normalizedMobile.length !== MAX_PHONE_DIGITS) {
+        setOtpError("Enter a 10-digit mobile number.");
+
+        return;
+      }
+
+      const normalizedCountryCode = countryCode.trim() || DEFAULT_COUNTRY.code;
+
+      const fullMobile = `${normalizedCountryCode}${normalizedMobile}`;
+
+      console.log("JOIN SEND OTP", {
+        countryCode: normalizedCountryCode,
+        mobile: normalizedMobile,
+        fullMobile,
+      });
+
+      const res = await mockServices.auth.sendOtp({
+        mobile: fullMobile,
+      });
+
+      setRequestId(String(res.requestId));
+
+      setDevCode(String(res.devCode ?? ""));
+
+      setCode("");
+
+      setStep("otp");
+    } catch (error) {
+      console.error("SEND OTP ERROR", error);
+
+      setOtpError(
+        error instanceof Error
+          ? error.message
+          : "Unable to send verification code.",
+      );
+    }
+  }, [countryCode, mobile]);
+
+  /*
+   * --------------------------------------------------------------
+   * OTP - VERIFY
+   * --------------------------------------------------------------
+   *
+   * IMPORTANT:
+   *
+   * mockServices.auth.verifyOtp() returns:
+   *
+   *   { verified: true }
+   *
+   * It deliberately does NOT return customerId.
+   *
+   * Customer identity is resolved by the customer registration
+   * service after OTP authentication.
+   */
 
   const verifyOtp = useCallback(async () => {
-    const res = await mockServices.auth.verifyOtp({
-      requestId,
-      code,
-    });
+    try {
+      setOtpError(undefined);
 
-    if (!res.verified) {
-      setOtpError("Incorrect code. Try the dev code shown above.");
-      return;
+      const normalizedCode = normalizeOtp(code);
+
+      if (!requestId) {
+        setOtpError(
+          "Verification session has expired. Please request a new OTP.",
+        );
+
+        return;
+      }
+
+      if (normalizedCode.length !== OTP_LENGTH) {
+        setOtpError("Enter the 6-digit verification code.");
+
+        return;
+      }
+
+      console.log("JOIN VERIFY OTP", {
+        requestId,
+        codeLength: normalizedCode.length,
+      });
+
+      const res = await mockServices.auth.verifyOtp({
+        requestId,
+        code: normalizedCode,
+      });
+
+      /*
+       * Do NOT check res.customerId here.
+       */
+      if (!res.verified) {
+        setOtpError("Incorrect code. Please enter the OTP shown above.");
+
+        return;
+      }
+
+      const fullMobile = `${
+        countryCode.trim() || DEFAULT_COUNTRY.code
+      }${normalizePhone(mobile)}`;
+
+      /*
+       * OTP has authenticated the mobile.
+       *
+       * The registration helper now resolves/creates:
+       *
+       * Customer
+       *    ↓
+       * OrganizationUser
+       */
+      const registration = await registerCustomerForOrganization({
+        organizationId: orgId,
+        fullName: `${firstName.trim()} ${lastName.trim()}`.trim(),
+        mobile: fullMobile,
+        email: email.trim() || undefined,
+      });
+
+      setCustomer(registration.customer);
+
+      setOrganizationUserId(registration.organizationUser.id);
+
+      setActiveCustomer(registration.customer.id);
+
+      console.log("CUSTOMER REGISTRATION COMPLETE", {
+        organizationId: orgId,
+        customerId: registration.customer.id,
+        organizationUserId: registration.organizationUser.id,
+      });
+
+      setStep("review");
+    } catch (error) {
+      console.error("CUSTOMER REGISTRATION ERROR", error);
+
+      setOtpError(
+        error instanceof Error
+          ? error.message
+          : "Unable to complete registration.",
+      );
     }
-
-    setStep("review");
-  }, [requestId, code]);
+  }, [
+    requestId,
+    code,
+    orgId,
+    firstName,
+    lastName,
+    countryCode,
+    mobile,
+    email,
+    setActiveCustomer,
+  ]);
 
   /*
    * --------------------------------------------------------------
    * CREATE SUBSCRIPTION
    * --------------------------------------------------------------
    */
+
   const payAndSubscribe = useCallback(async () => {
     if (!product || !plan || !organizationUserId) {
       return;
@@ -315,95 +558,108 @@ export default function JoinFlow() {
 
     setStep("processing");
 
-    /*
-     * ----------------------------------------------------------
-     * Payment
-     *
-     * The mock payment service still performs the payment.
-     * The payment method remains purchase-flow information for
-     * the demo. It is not persisted in Subscription.
-     * ----------------------------------------------------------
-     */
-    const payment = await mockServices.payment.pay({
-      amountMinor: plan.price.amountMinor,
-
-      currency: plan.price.currency,
-
-      description: product.membershipProductName,
-    });
-
-    /*
-     * ----------------------------------------------------------
-     * Subscription dates
-     * ----------------------------------------------------------
-     */
-    const startDate = new Date();
-
-    const endDate = calculateEndDate(
-      startDate,
-      plan.subscriptionPeriod,
-      plan.subscriptionPeriodUnit,
-    );
-
-    const startDateString = startDate.toISOString().slice(0, 10);
-
-    const endDateString = endDate.toISOString().slice(0, 10);
-
-    const subscriptionDate = startDateString;
-
-    /*
-     * ----------------------------------------------------------
-     * Create the subscription using the FINAL data model.
-     *
-     * No:
-     *   organizationId
-     *   customerId
-     *   membershipProductId
-     *   planId
-     *
-     * Instead:
-     *   organizationUserId
-     *   subscriptionPlanId
-     * ----------------------------------------------------------
-     */
-    const sub = await mockServices.subscription.createSubscription({
-      subscriptionNumber: generateSubscriptionNumber(),
-
-      subscriptionPlanId: plan.id,
-
-      organizationUserId,
-
-      subscriptionDate,
-
-      startDate: startDateString,
-
-      endDate: endDateString,
-
-      subscriptionStatusId: "subscription-status-active",
-
-      totalAmount: {
+    try {
+      const payment = await mockServices.payment.pay({
         amountMinor: plan.price.amountMinor,
-
         currency: plan.price.currency,
-      },
+        description: product.membershipProductName,
+      });
 
-      createdBy: isStaffSale && params.staffId ? params.staffId : "user-system",
-    });
+      const subscriptionEntityStatuses =
+        await mockServices.entityStatus.listByEntityTypeCode("SUBSCRIPTION");
 
-    setSubscription(sub);
-    setReference(payment.reference);
+      let activeSubscriptionEntityStatus:
+        | (typeof subscriptionEntityStatuses)[number]
+        | undefined;
 
-    /*
-     * For normal customer purchases, enter the customer's
-     * membership card/business experience.
-     *
-     * Organization ID is resolved from the OrganizationUser.
-     */
-    if (!isStaffSale) {
+      for (const entityStatus of subscriptionEntityStatuses) {
+        const status = await mockServices.status.getStatus(
+          entityStatus.statusId,
+        );
+
+        if (status?.statusCode?.trim().toUpperCase() === "ACTIVE") {
+          activeSubscriptionEntityStatus = entityStatus;
+
+          break;
+        }
+      }
+
+      if (!activeSubscriptionEntityStatus) {
+        throw new Error("ACTIVE status is not configured for Subscription.");
+      }
+
+      const startDate = new Date();
+
+      const endDate = calculateEndDate(
+        startDate,
+        plan.subscriptionPeriod,
+        plan.subscriptionPeriodUnit,
+      );
+
+      const startDateString = startDate.toISOString().slice(0, 10);
+
+      const endDateString = endDate.toISOString().slice(0, 10);
+
+      const subscriptionDate = startDateString;
+
+      console.log("STAFF SUBSCRIPTION RELATIONSHIP", {
+        isStaffSale,
+        customerId,
+        organizationUserId,
+        organizationId: orgId,
+      });
+
+      const sub = await mockServices.subscription.createSubscription({
+        subscriptionNumber: generateSubscriptionNumber(),
+
+        subscriptionPlanId: plan.id,
+
+        organizationUserId,
+
+        subscriptionDate,
+
+        startDate: startDateString,
+
+        endDate: endDateString,
+
+        subscriptionStatusId: activeSubscriptionEntityStatus.id,
+
+        totalAmount: {
+          amountMinor: plan.price.amountMinor,
+          currency: plan.price.currency,
+        },
+
+        createdBy:
+          isStaffSale && params.staffId ? params.staffId : "user-system",
+      });
+
+      console.log("SUBSCRIPTION CREATED", {
+        subscriptionId: sub.id,
+        subscriptionStatusId: sub.subscriptionStatusId,
+      });
+
+      setSubscription(sub);
+
+      setReference(payment.reference);
+
+      /*
+       * Make the newly created subscription the active context
+       * for the temporary customer-experience demo link.
+       */
       setActiveContext(orgId, sub.id);
-    }
 
-    setStep("success");
+      setStep("success");
+    } catch (error) {
+      console.error("JOIN PURCHASE ERROR", error);
+
+      setStep("review");
+
+      setOtpError(
+        error instanceof Error
+          ? error.message
+          : "Unable to complete the purchase.",
+      );
+    }
   }, [
     product,
     plan,
@@ -423,7 +679,31 @@ export default function JoinFlow() {
   const close = () =>
     router.canGoBack() ? router.back() : router.replace("/cards");
 
-  const goToCard = () => (isStaffSale ? close() : router.replace("/cards"));
+  /*
+   * Temporary/demo customer experience.
+   *
+   * This is intentionally used for BOTH direct and staff-assisted
+   * purchases so we can demonstrate the newly created customer's
+   * actual subscription experience to the client.
+   */
+  const goToCustomerExperience = () => {
+    if (!subscription) {
+      return;
+    }
+
+    setActiveContext(orgId, subscription.id);
+
+    router.push(`/business/${subscription.id}`);
+  };
+
+  /*
+   * Staff sale: Done returns to Counter.
+   *
+   * Direct customer purchase does not need this action.
+   */
+  const goToCounter = () => {
+    router.back();
+  };
 
   const headerRight = (
     <IconButton
@@ -439,7 +719,8 @@ export default function JoinFlow() {
    * Loading
    * --------------------------------------------------------------
    */
-  if (loading || !product || !plan || !organizationUserId) {
+
+  if (loading) {
     return (
       <Screen
         testID="join-screen"
@@ -457,9 +738,45 @@ export default function JoinFlow() {
 
   /*
    * --------------------------------------------------------------
-   * MAIN SCREEN
+   * Load error
    * --------------------------------------------------------------
    */
+
+  if (loadError || !product || !plan) {
+    return (
+      <Screen
+        testID="join-screen"
+        edges={["top"]}
+        header={<BusinessHeader right={headerRight} />}
+      >
+        <StateView
+          kind="error"
+          message={loadError ?? "Unable to load the membership."}
+          testID="join-load-error"
+        />
+
+        <View
+          style={{
+            marginTop: theme.spacing.lg,
+          }}
+        >
+          <Button
+            label={t("common.done")}
+            fullWidth
+            onPress={close}
+            testID="join-error-close"
+          />
+        </View>
+      </Screen>
+    );
+  }
+
+  /*
+   * --------------------------------------------------------------
+   * MAIN
+   * --------------------------------------------------------------
+   */
+
   return (
     <Screen
       testID="join-screen"
@@ -468,11 +785,7 @@ export default function JoinFlow() {
         <BusinessHeader right={headerRight} testID="join-business-header" />
       }
     >
-      {/*
-       * ==========================================================
-       * LANDING
-       * ==========================================================
-       */}
+      {/* LANDING */}
       {step === "landing" ? (
         <View
           style={{
@@ -528,11 +841,7 @@ export default function JoinFlow() {
         </View>
       ) : null}
 
-      {/*
-       * ==========================================================
-       * REGISTER
-       * ==========================================================
-       */}
+      {/* REGISTER */}
       {step === "register" ? (
         <View
           style={{
@@ -540,34 +849,199 @@ export default function JoinFlow() {
           }}
           testID="join-register"
         >
-          <Text variant="h2" color="text">
-            {t("join.mobileLabel")}
-          </Text>
+          <View>
+            <Text variant="h2" color="text">
+              Let&apos;s get you set up
+            </Text>
+
+            <Text
+              variant="body"
+              color="textMuted"
+              style={{
+                marginTop: theme.spacing.sm,
+              }}
+            >
+              We just need a few details to create your membership.
+            </Text>
+          </View>
+
+          <View
+            style={{
+              flexDirection: "row",
+              gap: theme.spacing.sm,
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Input
+                label="First Name"
+                value={firstName}
+                onChangeText={setFirstName}
+                placeholder="First name"
+                testID="join-first-name-input"
+              />
+            </View>
+
+            <View style={{ flex: 1 }}>
+              <Input
+                label="Last Name"
+                value={lastName}
+                onChangeText={setLastName}
+                placeholder="Last name"
+                testID="join-last-name-input"
+              />
+            </View>
+          </View>
+
+          <View
+            style={{
+              flexDirection: "row",
+              gap: theme.spacing.sm,
+              alignItems: "flex-end",
+            }}
+          >
+            <View style={{ width: 125 }}>
+              <Text
+                variant="bodySmall"
+                color="textMuted"
+                style={{
+                  marginBottom: 6,
+                }}
+              >
+                ISD Code
+              </Text>
+
+              <Pressable
+                testID="join-country-code-dropdown"
+                onPress={() => setCountryPickerVisible(true)}
+                style={{
+                  minHeight: 48,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  borderRadius: theme.radius.md,
+                  paddingHorizontal: 12,
+                  justifyContent: "center",
+                  backgroundColor: theme.colors.background,
+                }}
+              >
+                <Text variant="body" color="text">
+                  {selectedCountry.code}
+                </Text>
+
+                <Text
+                  variant="bodySmall"
+                  color="textMuted"
+                  style={{
+                    marginTop: 2,
+                  }}
+                >
+                  {selectedCountry.country}
+                </Text>
+              </Pressable>
+            </View>
+
+            <View style={{ flex: 1 }}>
+              <Input
+                label={t("join.mobileLabel")}
+                value={mobile}
+                onChangeText={(value) => setMobile(normalizePhone(value))}
+                placeholder={t("join.mobilePlaceholder")}
+                keyboardType="number-pad"
+                maxLength={MAX_PHONE_DIGITS}
+                testID="join-mobile-input"
+              />
+            </View>
+          </View>
 
           <Input
-            label={t("join.mobileLabel")}
-            value={mobile}
-            onChangeText={setMobile}
-            placeholder={t("join.mobilePlaceholder")}
-            keyboardType="phone-pad"
-            testID="join-mobile-input"
+            label="Email (optional)"
+            value={email}
+            onChangeText={setEmail}
+            placeholder="you@example.com"
+            keyboardType="email-address"
+            testID="join-email-input"
           />
 
           <Button
             label={t("join.sendOtp")}
             fullWidth
-            disabled={mobile.replace(/\D/g, "").length < 8}
+            disabled={
+              firstName.trim().length === 0 ||
+              lastName.trim().length === 0 ||
+              mobile.length !== MAX_PHONE_DIGITS
+            }
             onPress={sendOtp}
             testID="join-send-otp"
           />
+
+          <Modal
+            visible={countryPickerVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setCountryPickerVisible(false)}
+          >
+            <Pressable
+              style={{
+                flex: 1,
+                backgroundColor: "rgba(0,0,0,0.45)",
+                justifyContent: "center",
+                padding: 24,
+              }}
+              onPress={() => setCountryPickerVisible(false)}
+            >
+              <Pressable
+                onPress={(event) => event.stopPropagation()}
+                style={{
+                  backgroundColor: theme.colors.background,
+                  borderRadius: theme.radius.lg,
+                  padding: theme.spacing.md,
+                  maxHeight: "75%",
+                }}
+              >
+                <Text variant="h2" color="text">
+                  Select country
+                </Text>
+
+                <View
+                  style={{
+                    marginTop: theme.spacing.md,
+                    gap: 8,
+                  }}
+                >
+                  {COUNTRY_OPTIONS.map((country) => (
+                    <Pressable
+                      key={`${country.country}-${country.code}`}
+                      testID={`join-country-${country.country
+                        .toLowerCase()
+                        .replace(/\s+/g, "-")}`}
+                      onPress={() => selectCountry(country)}
+                      style={{
+                        paddingVertical: 14,
+                        paddingHorizontal: 12,
+                        borderRadius: theme.radius.md,
+                        borderWidth: 1,
+                        borderColor:
+                          selectedCountry.country === country.country
+                            ? theme.colors.primary
+                            : theme.colors.border,
+                      }}
+                    >
+                      <Text variant="bodyStrong" color="text">
+                        {country.country}
+                      </Text>
+
+                      <Text variant="bodySmall" color="textMuted">
+                        {country.code}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </Pressable>
+            </Pressable>
+          </Modal>
         </View>
       ) : null}
 
-      {/*
-       * ==========================================================
-       * OTP
-       * ==========================================================
-       */}
+      {/* OTP */}
       {step === "otp" ? (
         <View
           style={{
@@ -580,11 +1054,17 @@ export default function JoinFlow() {
           </Text>
 
           <Text variant="bodySmall" color="textMuted">
-            {t("join.otpSentTo", { mobile })}
+            {t("join.otpSentTo", {
+              mobile: `${
+                countryCode.trim() || DEFAULT_COUNTRY.code
+              }${normalizePhone(mobile)}`,
+            })}
           </Text>
 
           <Badge
-            label={t("join.devOtp", { code: devCode })}
+            label={t("join.devOtp", {
+              code: devCode,
+            })}
             tone="info"
             testID="join-dev-otp"
           />
@@ -592,8 +1072,9 @@ export default function JoinFlow() {
           <Input
             label={t("join.otpLabel")}
             value={code}
-            onChangeText={setCode}
+            onChangeText={(value) => setCode(normalizeOtp(value))}
             keyboardType="number-pad"
+            maxLength={OTP_LENGTH}
             error={otpError}
             testID="join-otp-input"
           />
@@ -601,18 +1082,14 @@ export default function JoinFlow() {
           <Button
             label={t("join.verify")}
             fullWidth
-            disabled={code.length < 6}
+            disabled={code.length !== OTP_LENGTH}
             onPress={verifyOtp}
             testID="join-verify-otp"
           />
         </View>
       ) : null}
 
-      {/*
-       * ==========================================================
-       * REVIEW
-       * ==========================================================
-       */}
+      {/* REVIEW */}
       {step === "review" ? (
         <View
           style={{
@@ -657,10 +1134,6 @@ export default function JoinFlow() {
             totalMinor={plan.price.amountMinor}
           />
 
-          {/*
-           * Payment method is only relevant to staff-assisted
-           * sales in this current demo flow.
-           */}
           {isStaffSale ? (
             <Section title={t("join.paymentMethod")}>
               <View
@@ -723,20 +1196,23 @@ export default function JoinFlow() {
             </Card>
           </Section>
 
+          {!organizationUserId ? (
+            <Text variant="bodySmall" color="textMuted">
+              Complete customer registration to continue.
+            </Text>
+          ) : null}
+
           <Button
             label={t("join.payAndSubscribe")}
             fullWidth
+            disabled={!organizationUserId}
             onPress={payAndSubscribe}
             testID="join-pay"
           />
         </View>
       ) : null}
 
-      {/*
-       * ==========================================================
-       * PROCESSING
-       * ==========================================================
-       */}
+      {/* PROCESSING */}
       {step === "processing" ? (
         <StateView
           kind="loading"
@@ -745,11 +1221,7 @@ export default function JoinFlow() {
         />
       ) : null}
 
-      {/*
-       * ==========================================================
-       * SUCCESS
-       * ==========================================================
-       */}
+      {/* SUCCESS */}
       {step === "success" && subscription ? (
         <View
           style={{
@@ -770,22 +1242,44 @@ export default function JoinFlow() {
               color={theme.colors.success}
             />
 
-            <Text variant="h1" color="text">
-              {t("join.successTitle")}
-            </Text>
+            {isStaffSale ? (
+              <>
+                <Text variant="h1" color="text">
+                  Subscription Created
+                </Text>
 
-            <Text
-              variant="body"
-              color="textMuted"
-              style={{
-                textAlign: "center",
-              }}
-            >
-              {t("join.successBody", {
-                business: organization.displayName,
-                product: product.displayName ?? product.membershipProductName,
-              })}
-            </Text>
+                <Text
+                  variant="body"
+                  color="textMuted"
+                  style={{
+                    textAlign: "center",
+                  }}
+                >
+                  The subscription has been successfully created for{" "}
+                  {customer?.fullName ?? customerId}.
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text variant="h1" color="text">
+                  {t("join.successTitle")}
+                </Text>
+
+                <Text
+                  variant="body"
+                  color="textMuted"
+                  style={{
+                    textAlign: "center",
+                  }}
+                >
+                  {t("join.successBody", {
+                    business: organization.displayName,
+                    product:
+                      product.displayName ?? product.membershipProductName,
+                  })}
+                </Text>
+              </>
+            )}
 
             <Badge label={t("membership.active")} tone="success" />
           </View>
@@ -811,10 +1305,6 @@ export default function JoinFlow() {
                 } · ${intervalLabel}`,
               },
 
-              /*
-               * Payment method comes from the purchase flow state,
-               * NOT from Subscription.
-               */
               ...(isStaffSale
                 ? [
                     {
@@ -848,12 +1338,28 @@ export default function JoinFlow() {
             totalMinor={plan.price.amountMinor}
           />
 
+          {/*
+           * Temporary/demo link is deliberately shown
+           * for BOTH purchase paths.
+           *
+           * It demonstrates the newly created customer's
+           * customer-facing experience.
+           */}
           <Button
-            label={isStaffSale ? t("common.done") : t("join.viewCard")}
+            label="View Customer Experience"
             fullWidth
-            onPress={goToCard}
-            testID="join-view-card"
+            onPress={goToCustomerExperience}
+            testID="join-view-customer-experience"
           />
+
+          {isStaffSale ? (
+            <Button
+              label={t("common.done")}
+              fullWidth
+              onPress={() => router.replace("/staff/counter")}
+              testID="join-done"
+            />
+          ) : null}
         </View>
       ) : null}
     </Screen>

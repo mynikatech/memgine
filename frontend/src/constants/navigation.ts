@@ -86,24 +86,42 @@ export const ORG_ADMIN_ROUTES: AdminRoute[] = [
 
 /** Platform Admin (web) sidebar. */
 export const PLATFORM_ADMIN_ROUTES: AdminRoute[] = [
-  { title: "Dashboard", href: "/platform-dashboard", icon: "grid-outline" },
-  { title: "Organizations", href: "/organizations", icon: "business-outline" },
+  {
+    title: "Dashboard",
+    href: "/platform-dashboard",
+    icon: "grid-outline",
+  },
+
+  {
+    title: "Organizations",
+    href: "/organizations",
+    icon: "business-outline",
+  },
+
   {
     title: "Organization Types",
     href: "/organization-types",
     icon: "albums-outline",
   },
-  { title: "Templates", href: "/templates", icon: "duplicate-outline" },
+
+  {
+    title: "Templates",
+    href: "/templates",
+    icon: "duplicate-outline",
+  },
+
   {
     title: "Regional Settings",
     href: "/regional-settings",
     icon: "globe-outline",
   },
+
   {
     title: "Payment Configuration",
     href: "/payment-configuration",
     icon: "cash-outline",
   },
+
   {
     title: "Platform Settings",
     href: "/platform-settings",

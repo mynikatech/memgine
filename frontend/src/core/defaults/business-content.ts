@@ -5,11 +5,11 @@ import { SUNRISE_BAKERY_CONTENT } from "./sunrise-bakery-content";
 import { GLOW_STUDIO_CONTENT } from "./glow-studio-content";
 
 /**
- * Business content registry — maps an Organization to the resolved
- * TemplateDefaultContent that seeds its experience. This is the replaceable
- * content layer the Business Experience renderer reads from; adding a new
- * business here (or, later, loading from a backend) changes the rendered
- * experience with NO UI code changes.
+ * Content customized by existing/demo organizations.
+ *
+ * These are TENANT overrides.
+ *
+ * They are deliberately separate from platform default templates.
  */
 const BUSINESS_CONTENT_BY_ORG: Record<ID, TemplateDefaultContent> = {
   "org-sunrise": SUNRISE_BAKERY_CONTENT,
@@ -17,8 +17,11 @@ const BUSINESS_CONTENT_BY_ORG: Record<ID, TemplateDefaultContent> = {
 };
 
 /**
- * Resolve the content object for an organization, falling back to the template
- * default/starter content when a business has not customised anything yet.
+ * Resolve the content for an organization.
+ *
+ * Existing organizations can have customized content.
+ * A newly onboarded organization falls back to the
+ * appropriate platform template content.
  */
 export function getBusinessContent(organizationId: ID): TemplateDefaultContent {
   return BUSINESS_CONTENT_BY_ORG[organizationId] ?? F_AND_B_DEFAULT_CONTENT;
