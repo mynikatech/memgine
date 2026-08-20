@@ -110,7 +110,7 @@ export default function Profile() {
           <ListRow
             label="Org Admin"
             icon="business-outline"
-            onPress={() => router.push("/dashboard")}
+            onPress={() => router.push("/org-admin")}
             testID="profile-org-admin"
           />
           <ListRow

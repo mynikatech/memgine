@@ -54,30 +54,46 @@ export const STAFF_ROUTES: StaffRoute[] = [
 
 /** Organization Admin (web) sidebar. */
 export const ORG_ADMIN_ROUTES: AdminRoute[] = [
-  { title: "Dashboard", href: "/dashboard", icon: "grid-outline" },
-  { title: "Business", href: "/business", icon: "business-outline" },
-  { title: "Branding", href: "/branding", icon: "color-palette-outline" },
-  { title: "Stores", href: "/stores", icon: "storefront-outline" },
-  { title: "Staff", href: "/staff-members", icon: "people-outline" },
-  { title: "Memberships", href: "/memberships", icon: "card-outline" },
-  { title: "Benefits", href: "/benefits", icon: "gift-outline" },
-  { title: "Offers", href: "/offers", icon: "pricetags-outline" },
-  { title: "Customers", href: "/customers", icon: "people-outline" },
-  { title: "Subscriptions", href: "/subscriptions", icon: "card-outline" },
-  { title: "Redemptions", href: "/redemptions", icon: "card-outline" },
+  { title: "Dashboard", href: "/org-admin", icon: "grid-outline" },
+  { title: "Business", href: "/org-admin/business", icon: "business-outline" },
+  {
+    title: "Branding",
+    href: "/org-admin/branding",
+    icon: "color-palette-outline",
+  },
+  { title: "Stores", href: "/org-admin/stores", icon: "storefront-outline" },
+  { title: "Staff", href: "/org-admin/staff-members", icon: "people-outline" },
+  { title: "Benefits", href: "/org-admin/benefits", icon: "gift-outline" },
+  {
+    title: "Memberships",
+    href: "/org-admin/memberships",
+    icon: "card-outline",
+  },
+  { title: "Offers", href: "/org-admin/offers", icon: "pricetags-outline" },
+  { title: "Customers", href: "/org-admin/customers", icon: "people-outline" },
+  {
+    title: "Subscriptions",
+    href: "/org-admin/subscriptions",
+    icon: "card-outline",
+  },
+  {
+    title: "Redemptions",
+    href: "/org-admin/redemptions",
+    icon: "card-outline",
+  },
   {
     title: "Settings",
-    href: "/settings",
+    href: "/org-admin/settings",
     icon: "settings-outline",
     children: [
       {
         title: "Notifications",
-        href: "/notifications",
+        href: "/org-admin/settings/notifications",
         icon: "notifications-outline",
       },
       {
         title: "Integrations",
-        href: "/integrations",
+        href: "/org-admin/settings/integrations",
         icon: "git-network-outline",
       },
     ],
