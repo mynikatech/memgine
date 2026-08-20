@@ -82,7 +82,7 @@ export default function PlatformOrganizations() {
         </View>
 
         <Pressable
-          onPress={() => router.push("/organization-new")}
+          onPress={() => router.push("/platform-admin/organization-new")}
           style={({ pressed }) => [
             styles.primaryButton,
             {

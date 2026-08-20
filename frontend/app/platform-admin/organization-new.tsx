@@ -376,7 +376,7 @@ export default function OrganizationNew() {
 
         <Pressable
           disabled={busy}
-          onPress={() => router.replace("/organizations")}
+          onPress={() => router.replace("/platform-admin/organizations")}
           style={[
             styles.cancelButton,
             {

@@ -22,17 +22,31 @@ export default function Profile() {
   }, []);
 
   const initial = (customer?.fullName ?? "?").trim().charAt(0).toUpperCase();
-  const languageLabel = locale.toLowerCase().startsWith("en") ? t("profile.languageEnglish") : locale;
+  const languageLabel = locale.toLowerCase().startsWith("en")
+    ? t("profile.languageEnglish")
+    : locale;
   const regionLabel = `${currency} · ${timezone}`;
 
   return (
     <Screen
       testID="customer-profile-screen"
       edges={["top"]}
-      header={<Header title={t("profile.title")} subtitle={t("profile.subtitle")} testID="profile-header" />}
+      header={
+        <Header
+          title={t("profile.title")}
+          subtitle={t("profile.subtitle")}
+          testID="profile-header"
+        />
+      }
     >
       <Card padding="lg" testID="profile-identity">
-        <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: theme.spacing.md,
+          }}
+        >
           <View
             style={{
               width: 56,
@@ -102,7 +116,7 @@ export default function Profile() {
           <ListRow
             label="Platform Admin"
             icon="shield-checkmark-outline"
-            onPress={() => router.push("/platform-dashboard")}
+            onPress={() => router.push("/platform-admin")}
             testID="profile-platform-admin"
           />
         </Card>

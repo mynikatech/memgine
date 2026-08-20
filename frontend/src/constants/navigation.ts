@@ -88,43 +88,43 @@ export const ORG_ADMIN_ROUTES: AdminRoute[] = [
 export const PLATFORM_ADMIN_ROUTES: AdminRoute[] = [
   {
     title: "Dashboard",
-    href: "/platform-dashboard",
+    href: "/platform-admin",
     icon: "grid-outline",
   },
 
   {
     title: "Organizations",
-    href: "/organizations",
+    href: "/platform-admin/organizations",
     icon: "business-outline",
   },
 
   {
     title: "Organization Types",
-    href: "/organization-types",
+    href: "/platform-admin/organization-types",
     icon: "albums-outline",
   },
 
   {
     title: "Templates",
-    href: "/templates",
+    href: "/platform-admin/templates",
     icon: "duplicate-outline",
   },
 
   {
     title: "Regional Settings",
-    href: "/regional-settings",
+    href: "/platform-admin/regional-settings",
     icon: "globe-outline",
   },
 
   {
     title: "Payment Configuration",
-    href: "/payment-configuration",
+    href: "/platform-admin/payment-configuration",
     icon: "cash-outline",
   },
 
   {
     title: "Platform Settings",
-    href: "/platform-settings",
+    href: "/platform-admin/platform-settings",
     icon: "settings-outline",
   },
 ];
