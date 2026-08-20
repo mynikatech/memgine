@@ -56,7 +56,7 @@ export default function PlatformOrganizations() {
   const openOrganization = (organizationId: string) => {
     setActiveBusiness(organizationId);
 
-    router.replace("/dashboard");
+    router.replace("/org-admin");
   };
 
   return (

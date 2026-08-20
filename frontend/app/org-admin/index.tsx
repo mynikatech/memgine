@@ -516,7 +516,7 @@ export default function OrgAdminDashboard() {
               return (
                 <Pressable
                   key={redemption.id}
-                  onPress={() => router.push("/redemptions")}
+                  onPress={() => router.push("/org-admin/redemptions")}
                   style={({ pressed }) => [
                     styles.recentRow,
                     {

@@ -148,7 +148,7 @@ export default function OrganizationNew() {
        */
       setActiveBusiness(result.organization.id);
 
-      router.replace("/dashboard");
+      router.replace("/org-admin");
     } catch (err) {
       console.error("PLATFORM ORGANIZATION ONBOARDING ERROR", err);
 
