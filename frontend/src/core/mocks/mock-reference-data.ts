@@ -748,3 +748,5 @@ export class InMemoryReferenceDataService implements ReferenceDataService {
     return CURRENCIES.filter((item) => item.active);
   }
 }
+
+export const mockReferenceDataService = new InMemoryReferenceDataService();

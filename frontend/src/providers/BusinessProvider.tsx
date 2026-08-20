@@ -15,11 +15,10 @@ import {
   OrganizationAccount,
   PlanTier,
   Principal,
+  services,
   StaffRole,
-  SUNRISE_BAKERY_CONTEXT,
   TemplateDefinition,
   toFormattingContext,
-  onboardOrganization,
 } from "@/src/core";
 
 import { buildTheme, Theme } from "@/src/theme/theme";
@@ -27,11 +26,6 @@ import { buildTheme, Theme } from "@/src/theme/theme";
 type Entitlements = {
   planTier: PlanTier;
   managementModel: ManagementModel;
-};
-
-type OnboardBusinessInput = {
-  name: string;
-  organizationType: string;
 };
 
 type BusinessContextValue = {
@@ -50,27 +44,11 @@ type BusinessContextValue = {
 
   can: (capability: Capability) => boolean;
 
-  /**
-   * Switch the active organization.
-   */
   setActiveBusiness: (organizationId: ID) => void;
-
-  /**
-   * Create a new organization from a
-   * platform-level default template.
-   */
-  onboardBusiness: (input: OnboardBusinessInput) => Promise<Organization>;
 };
 
 const BusinessCtx = createContext<BusinessContextValue | null>(null);
 
-/**
- * Per-subtree theme override.
- *
- * Allows a specific business to render using its
- * own branding without changing the globally active
- * organization.
- */
 const ThemeOverrideCtx = createContext<Theme | null>(null);
 
 export function BusinessThemeScope({
@@ -88,57 +66,21 @@ export function BusinessThemeScope({
 }
 
 export function BusinessProvider({ children }: { children: ReactNode }) {
-  /*
-   * Current default organization for the demo.
-   *
-   * This controls the organization shown when the app
-   * initially opens.
-   *
-   * It is NOT used as an onboarding template.
-   */
   const [activeOrgId, setActiveOrgId] = useState<ID>(DEFAULT_ACTIVE_ORG_ID);
 
-  /**
-   * Onboard a new business.
-   *
-   * The onboarding service selects the appropriate
-   * platform template based on organization type.
-   *
-   * After successful creation the new organization
-   * becomes the active organization.
-   */
-  const onboardBusiness = async (
-    input: OnboardBusinessInput,
-  ): Promise<Organization> => {
-    const result = await onboardOrganization(input);
-
-    setActiveOrgId(result.organization.id);
-
-    return result.organization;
-  };
-
   const value = useMemo<BusinessContextValue>(() => {
-    /*
-     * Resolve the active organization's context.
-     *
-     * The new organization has already been registered
-     * by onboardOrganization(), so it can be resolved here.
-     *
-     * The Sunrise fallback exists only as a defensive
-     * development fallback for an invalid/unknown ID.
-     */
-    const ctx = BUSINESS_CONTEXTS[activeOrgId] ?? SUNRISE_BAKERY_CONTEXT;
+    const ctx = BUSINESS_CONTEXTS[activeOrgId];
+
+    if (!ctx) {
+      throw new Error(
+        `Active organization '${activeOrgId}' could not be resolved.`,
+      );
+    }
 
     const { organization, account, configuration, template } = ctx;
 
-    /*
-     * Build business-branded theme.
-     */
     const theme = buildTheme(configuration.branding);
 
-    /*
-     * Business localization.
-     */
     const active: LocaleProfile = {
       language: configuration.localization.defaultLanguage,
 
@@ -157,13 +99,6 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       availableLanguages: ["en"],
     };
 
-    /*
-     * Current development principal.
-     *
-     * This remains the OWNER used by the UI until
-     * authentication/Platform Admin identity is connected
-     * to the backend.
-     */
     const capabilities = DEFAULT_ROLE_CAPABILITIES[StaffRole.OWNER];
 
     const principal: Principal = {
@@ -204,8 +139,6 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       can: (capability: Capability) => hasCapability(principal, capability),
 
       setActiveBusiness: setActiveOrgId,
-
-      onboardBusiness,
     };
   }, [activeOrgId]);
 
@@ -222,10 +155,6 @@ export function useBusiness(): BusinessContextValue {
   return ctx;
 }
 
-/**
- * Returns the active business theme,
- * or a subtree-specific override.
- */
 export function useTheme(): Theme {
   const override = useContext(ThemeOverrideCtx);
 
@@ -234,9 +163,6 @@ export function useTheme(): Theme {
   return override ?? business.theme;
 }
 
-/**
- * Capability check helper.
- */
 export function useCan(capability: Capability): boolean {
   return useBusiness().can(capability);
 }

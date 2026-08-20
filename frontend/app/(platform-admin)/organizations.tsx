@@ -1,45 +1,62 @@
 import { router } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
-import { BUSINESS_CONTEXTS, type Organization } from "@/src/core";
+import { services, type Organization } from "@/src/core";
 
 import { useBusiness, useTheme } from "@/src/providers";
-import { Text } from "@/src/ui";
 
-type OrganizationContextItem = {
-  organization: Organization;
-};
+import { Text } from "@/src/ui";
 
 export default function PlatformOrganizations() {
   const theme = useTheme();
+
   const { organization: currentOrganization, setActiveBusiness } =
     useBusiness();
 
-  const organizations: OrganizationContextItem[] = Object.values(
-    BUSINESS_CONTEXTS,
-  )
-    .map((context) => ({
-      organization: context.organization,
-    }))
-    .sort((a, b) => {
-      if (a.organization.id === currentOrganization.id) {
-        return -1;
-      }
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
 
-      if (b.organization.id === currentOrganization.id) {
-        return 1;
-      }
+  const [loading, setLoading] = useState(true);
 
-      return a.organization.name.localeCompare(b.organization.name);
-    });
+  const [error, setError] = useState("");
+
+  const loadOrganizations = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const result = await services.organization.listOrganizations();
+
+      setOrganizations(result);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Unable to load organizations.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadOrganizations();
+  }, [loadOrganizations]);
+
+  const sortedOrganizations = [...organizations].sort((a, b) => {
+    if (a.id === currentOrganization.id) {
+      return -1;
+    }
+
+    if (b.id === currentOrganization.id) {
+      return 1;
+    }
+
+    return a.name.localeCompare(b.name);
+  });
 
   const openOrganization = (organizationId: string) => {
     setActiveBusiness(organizationId);
-    router.replace("/dashboard");
-  };
 
-  const goToOnboarding = () => {
-    router.push("/organization-new");
+    router.replace("/dashboard");
   };
 
   return (
@@ -53,10 +70,6 @@ export default function PlatformOrganizations() {
       contentContainerStyle={styles.container}
       showsVerticalScrollIndicator={false}
     >
-      {/* ============================================================
-          HEADER
-          ============================================================ */}
-
       <View style={styles.header}>
         <View style={styles.headerText}>
           <Text variant="title" color="text">
@@ -69,11 +82,12 @@ export default function PlatformOrganizations() {
         </View>
 
         <Pressable
-          onPress={goToOnboarding}
+          onPress={() => router.push("/organization-new")}
           style={({ pressed }) => [
             styles.primaryButton,
             {
               backgroundColor: theme.colors.primary,
+
               opacity: pressed ? theme.states.pressedOpacity : 1,
             },
           ]}
@@ -84,72 +98,85 @@ export default function PlatformOrganizations() {
         </Pressable>
       </View>
 
-      {/* ============================================================
-          CURRENT ORGANIZATION
-          ============================================================ */}
+      {loading ? (
+        <Text variant="bodySmall" color="textMuted">
+          Loading organizations...
+        </Text>
+      ) : null}
 
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text variant="h2" color="text">
-            Current Organization
-          </Text>
-
-          <Text variant="bodySmall" color="textMuted">
-            The organization currently active in the application.
-          </Text>
-        </View>
-
-        <OrganizationCard
-          organization={currentOrganization}
-          isCurrent
-          onOpen={() => openOrganization(currentOrganization.id)}
-        />
-      </View>
-
-      {/* ============================================================
-          OTHER ORGANIZATIONS
-          ============================================================ */}
-
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text variant="h2" color="text">
-            Other Organizations
-          </Text>
-
-          <Text variant="bodySmall" color="textMuted">
-            Select an organization to open its Organization Admin.
+      {error ? (
+        <View
+          style={[
+            styles.error,
+            {
+              borderColor: theme.colors.border,
+            },
+          ]}
+        >
+          <Text variant="bodySmall" color="text">
+            {error}
           </Text>
         </View>
+      ) : null}
 
-        <View style={styles.organizationList}>
-          {organizations
-            .filter(
-              ({ organization }) => organization.id !== currentOrganization.id,
-            )
-            .map(({ organization }) => (
-              <OrganizationCard
-                key={organization.id}
-                organization={organization}
-                onOpen={() => openOrganization(organization.id)}
-              />
-            ))}
+      {!loading && !error ? (
+        <>
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text variant="h2" color="text">
+                Current Organization
+              </Text>
 
-          {organizations.filter(
-            ({ organization }) => organization.id !== currentOrganization.id,
-          ).length === 0 ? (
-            <Text variant="bodySmall" color="textMuted">
-              No other organizations are available.
-            </Text>
-          ) : null}
-        </View>
-      </View>
+              <Text variant="bodySmall" color="textMuted">
+                The organization currently active in the application.
+              </Text>
+            </View>
+
+            <OrganizationCard
+              organization={currentOrganization}
+              isCurrent
+              onOpen={() => openOrganization(currentOrganization.id)}
+            />
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text variant="h2" color="text">
+                Other Organizations
+              </Text>
+
+              <Text variant="bodySmall" color="textMuted">
+                Select an organization to open its Organization Admin.
+              </Text>
+            </View>
+
+            <View style={styles.organizationList}>
+              {sortedOrganizations
+                .filter(
+                  (organization) => organization.id !== currentOrganization.id,
+                )
+                .map((organization) => (
+                  <OrganizationCard
+                    key={organization.id}
+                    organization={organization}
+                    onOpen={() => openOrganization(organization.id)}
+                  />
+                ))}
+
+              {sortedOrganizations.filter(
+                (organization) => organization.id !== currentOrganization.id,
+              ).length === 0 ? (
+                <Text variant="bodySmall" color="textMuted">
+                  No other organizations are available.
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </>
+      ) : null}
     </ScrollView>
   );
 }
-
-/* ==================================================================
-   ORGANIZATION CARD
-   ================================================================== */
 
 function OrganizationCard({
   organization,
@@ -168,6 +195,7 @@ function OrganizationCard({
         styles.organizationCard,
         {
           backgroundColor: theme.colors.card,
+
           borderColor: isCurrent ? theme.colors.primary : theme.colors.border,
         },
       ]}
@@ -199,7 +227,7 @@ function OrganizationCard({
         </Text>
 
         <Text variant="caption" color="textMuted">
-          Organization ID: {organization.id}
+          {organization.primaryEmail}
         </Text>
       </View>
 
@@ -209,6 +237,7 @@ function OrganizationCard({
           styles.openButton,
           {
             borderColor: theme.colors.border,
+
             backgroundColor: pressed
               ? theme.colors.surfaceAlt
               : theme.colors.card,
@@ -222,10 +251,6 @@ function OrganizationCard({
     </View>
   );
 }
-
-/* ==================================================================
-   STYLES
-   ================================================================== */
 
 const styles = StyleSheet.create({
   scroll: {
@@ -306,5 +331,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  error: {
+    padding: 14,
+    borderWidth: 1,
+    borderRadius: 8,
   },
 });

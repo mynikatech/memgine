@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -8,82 +8,146 @@ import {
   View,
 } from "react-native";
 
+import {
+  onboardOrganization,
+  services,
+  type ReferenceDataItem,
+} from "@/src/core";
+
 import { useBusiness, useTheme } from "@/src/providers";
 import { Text } from "@/src/ui";
-
-const BUSINESS_TYPES = [
-  {
-    label: "Bakery",
-    value: "BAKERY",
-  },
-  {
-    label: "Coffee Shop",
-    value: "COFFEE_SHOP",
-  },
-  {
-    label: "Salon",
-    value: "SALON",
-  },
-  {
-    label: "Gym",
-    value: "GYM",
-  },
-  {
-    label: "Other",
-    value: "OTHER",
-  },
-];
 
 export default function OrganizationNew() {
   const theme = useTheme();
 
-  const { onboardBusiness, organization: currentOrganization } = useBusiness();
+  const { setActiveBusiness } = useBusiness();
+
+  const [organizationTypes, setOrganizationTypes] = useState<
+    ReferenceDataItem[]
+  >([]);
+
+  const [loadingTypes, setLoadingTypes] = useState(true);
 
   const [businessName, setBusinessName] = useState("");
-  const [businessType, setBusinessType] = useState("BAKERY");
+
+  const [organizationTypeId, setOrganizationTypeId] = useState("");
 
   const [typeOpen, setTypeOpen] = useState(false);
+
   const [busy, setBusy] = useState(false);
+
   const [error, setError] = useState("");
 
-  const selectedType =
-    BUSINESS_TYPES.find((item) => item.value === businessType)?.label ??
-    "Bakery";
+  const [nameTouched, setNameTouched] = useState(false);
 
-  const canCreate = businessName.trim().length >= 2 && !busy;
+  useEffect(() => {
+    let mounted = true;
+
+    const loadOrganizationTypes = async () => {
+      try {
+        setLoadingTypes(true);
+
+        const types = await services.referenceData.listOrganizationTypes();
+
+        if (!mounted) {
+          return;
+        }
+
+        setOrganizationTypes(types.filter((item) => item.active));
+      } catch (err) {
+        if (!mounted) {
+          return;
+        }
+
+        setError(
+          err instanceof Error ? err.message : "Unable to load business types.",
+        );
+      } finally {
+        if (mounted) {
+          setLoadingTypes(false);
+        }
+      }
+    };
+
+    void loadOrganizationTypes();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const selectedType = useMemo(
+    () => organizationTypes.find((item) => item.id === organizationTypeId),
+    [organizationTypes, organizationTypeId],
+  );
+
+  const nameError =
+    nameTouched &&
+    businessName.trim().length > 0 &&
+    businessName.trim().length < 2
+      ? "Business name must contain at least 2 characters."
+      : nameTouched && businessName.trim().length > 150
+        ? "Business name must not exceed 150 characters."
+        : "";
+
+  const canCreate =
+    businessName.trim().length >= 2 &&
+    businessName.trim().length <= 150 &&
+    !!organizationTypeId &&
+    !busy &&
+    !loadingTypes;
 
   const handleCreate = async () => {
-    if (!canCreate) {
+    setNameTouched(true);
+    setError("");
+
+    if (businessName.trim().length < 2) {
+      setError("Please enter a valid business name.");
+      return;
+    }
+
+    if (businessName.trim().length > 150) {
+      setError("Business name must not exceed 150 characters.");
+      return;
+    }
+
+    if (!organizationTypeId) {
+      setError("Please select a business type.");
       return;
     }
 
     try {
       setBusy(true);
-      setError("");
 
       console.log("PLATFORM ORGANIZATION ONBOARDING START", {
         businessName: businessName.trim(),
-        businessType,
-        templateOrganizationId: currentOrganization.id,
+
+        organizationTypeId,
       });
 
-      const organization = await onboardBusiness({
+      const result = await onboardOrganization({
         name: businessName.trim(),
-        organizationType: businessType,
+
+        organizationTypeId,
       });
 
       console.log("PLATFORM ORGANIZATION ONBOARDING COMPLETE", {
-        organizationId: organization.id,
-        organizationName: organization.name,
+        organizationId: result.organization.id,
+
+        organizationName: result.organization.name,
+
+        organizationTypeId: result.organization.organizationTypeId,
+
+        templateId: result.context.template.id,
       });
 
       /*
-       * BusinessProvider has already switched the
-       * active organization to the newly created one.
-       *
-       * The existing Organization Admin dashboard
-       * will therefore render the new business.
+       * The newly created organization becomes
+       * the active organization only after successful
+       * onboarding.
        */
+      setActiveBusiness(result.organization.id);
+
       router.replace("/dashboard");
     } catch (err) {
       console.error("PLATFORM ORGANIZATION ONBOARDING ERROR", err);
@@ -107,23 +171,16 @@ export default function OrganizationNew() {
       contentContainerStyle={styles.container}
       showsVerticalScrollIndicator={false}
     >
-      {/* ==========================================================
-          HEADER
-          ========================================================== */}
-
       <View style={styles.header}>
         <Text variant="title" color="text">
           Onboard New Business
         </Text>
 
         <Text variant="bodySmall" color="textMuted">
-          Create a new business using the Memgine default business template.
+          Create a new business using the Memgine starter experience for its
+          business type.
         </Text>
       </View>
-
-      {/* ==========================================================
-          FORM CARD
-          ========================================================== */}
 
       <View
         style={[
@@ -146,10 +203,6 @@ export default function OrganizationNew() {
           </Text>
         </View>
 
-        {/* ========================================================
-            BUSINESS NAME
-            ======================================================== */}
-
         <View style={styles.field}>
           <Text variant="bodySmall" color="textMuted">
             Business Name
@@ -164,32 +217,32 @@ export default function OrganizationNew() {
                 setError("");
               }
             }}
+            onBlur={() => setNameTouched(true)}
             placeholder="Enter business name"
             placeholderTextColor={theme.colors.textMuted}
             editable={!busy}
             autoCapitalize="words"
             autoCorrect={false}
             returnKeyType="done"
+            maxLength={150}
             style={[
               styles.input,
               {
                 color: theme.colors.text,
-                borderColor: theme.colors.border,
+                borderColor: nameError
+                  ? theme.colors.primary
+                  : theme.colors.border,
                 backgroundColor: theme.colors.card,
               },
             ]}
           />
 
-          {businessName.trim().length > 0 && businessName.trim().length < 2 ? (
+          {nameError ? (
             <Text variant="caption" color="textMuted">
-              Business name must contain at least 2 characters.
+              {nameError}
             </Text>
           ) : null}
         </View>
-
-        {/* ========================================================
-            BUSINESS TYPE
-            ======================================================== */}
 
         <View style={styles.field}>
           <Text variant="bodySmall" color="textMuted">
@@ -197,19 +250,21 @@ export default function OrganizationNew() {
           </Text>
 
           <Pressable
-            disabled={busy}
+            disabled={busy || loadingTypes}
             onPress={() => setTypeOpen((value) => !value)}
             style={[
               styles.select,
               {
                 borderColor: theme.colors.border,
                 backgroundColor: theme.colors.card,
-                opacity: busy ? 0.6 : 1,
+                opacity: busy || loadingTypes ? 0.6 : 1,
               },
             ]}
           >
-            <Text variant="body" color="text">
-              {selectedType}
+            <Text variant="body" color={selectedType ? "text" : "textMuted"}>
+              {loadingTypes
+                ? "Loading business types..."
+                : (selectedType?.name ?? "Select business type")}
             </Text>
 
             <Text variant="body" color="textMuted">
@@ -217,7 +272,7 @@ export default function OrganizationNew() {
             </Text>
           </Pressable>
 
-          {typeOpen ? (
+          {typeOpen && !loadingTypes ? (
             <View
               style={[
                 styles.options,
@@ -227,28 +282,29 @@ export default function OrganizationNew() {
                 },
               ]}
             >
-              {BUSINESS_TYPES.map((item, index) => (
+              {organizationTypes.map((item, index) => (
                 <Pressable
-                  key={item.value}
+                  key={item.id}
                   disabled={busy}
                   onPress={() => {
-                    setBusinessType(item.value);
+                    setOrganizationTypeId(item.id);
                     setTypeOpen(false);
+                    setError("");
                   }}
                   style={[
                     styles.option,
                     {
                       borderBottomColor: theme.colors.border,
                       borderBottomWidth:
-                        index === BUSINESS_TYPES.length - 1 ? 0 : 1,
+                        index === organizationTypes.length - 1 ? 0 : 1,
                     },
                   ]}
                 >
                   <Text variant="body" color="text">
-                    {item.label}
+                    {item.name}
                   </Text>
 
-                  {item.value === businessType ? (
+                  {item.id === organizationTypeId ? (
                     <Text variant="body" color="textMuted">
                       ✓
                     </Text>
@@ -259,33 +315,28 @@ export default function OrganizationNew() {
           ) : null}
         </View>
 
-        {/* ========================================================
-            DEFAULT TEMPLATE
-            ======================================================== */}
+        {selectedType ? (
+          <View
+            style={[
+              styles.templateCard,
+              {
+                backgroundColor: theme.colors.surfaceAlt,
+                borderColor: theme.colors.border,
+              },
+            ]}
+          >
+            <Text variant="bodyStrong" color="text">
+              Memgine Starter Experience
+            </Text>
 
-        <View
-          style={[
-            styles.templateCard,
-            {
-              backgroundColor: theme.colors.surfaceAlt,
-              borderColor: theme.colors.border,
-            },
-          ]}
-        >
-          <Text variant="bodyStrong" color="text">
-            Default Memgine Template
-          </Text>
-
-          <Text variant="bodySmall" color="textMuted">
-            The current business template will be used to initialize the new
-            organization. The Organization Admin can customize configuration,
-            branding, stores, memberships and benefits afterward.
-          </Text>
-        </View>
-
-        {/* ========================================================
-            ERROR
-            ======================================================== */}
+            <Text variant="bodySmall" color="textMuted">
+              A starter experience appropriate for {selectedType.name} will be
+              copied into the new organization. The organization will own its
+              configuration and can customize branding, memberships, benefits,
+              offers, stores and integrations after onboarding.
+            </Text>
+          </View>
+        ) : null}
 
         {error ? (
           <View
@@ -293,7 +344,6 @@ export default function OrganizationNew() {
               styles.error,
               {
                 borderColor: theme.colors.border,
-                backgroundColor: theme.colors.card,
               },
             ]}
           >
@@ -303,10 +353,6 @@ export default function OrganizationNew() {
           </View>
         ) : null}
 
-        {/* ========================================================
-            CREATE
-            ======================================================== */}
-
         <Pressable
           disabled={!canCreate}
           onPress={handleCreate}
@@ -314,6 +360,7 @@ export default function OrganizationNew() {
             styles.createButton,
             {
               backgroundColor: theme.colors.primary,
+
               opacity: !canCreate
                 ? 0.5
                 : pressed
@@ -327,16 +374,9 @@ export default function OrganizationNew() {
           </Text>
         </Pressable>
 
-        {/* ========================================================
-            CANCEL
-            ======================================================== */}
-
         <Pressable
           disabled={busy}
-          onPress={() => {
-            setTypeOpen(false);
-            router.replace("/organizations");
-          }}
+          onPress={() => router.replace("/organizations")}
           style={[
             styles.cancelButton,
             {

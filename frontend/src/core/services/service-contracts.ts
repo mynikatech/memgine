@@ -108,58 +108,118 @@ export interface EntityStatusService {
   listStatusesByEntityTypeCode(entityTypeCode: string): Promise<Status[]>;
 }
 
+export interface OnboardOrganizationInput {
+  name: string;
+
+  /**
+   * Organization Type reference-data ID.
+   *
+   * Example:
+   * org-type-food-beverage
+   * org-type-beauty-wellness
+   */
+  organizationTypeId: ID;
+}
+
+export interface OnboardOrganizationResult {
+  organization: Organization;
+  account: OrganizationAccount;
+  context: BusinessContext;
+}
+
 export interface OrganizationService {
+  /**
+   * Organization queries
+   */
   getOrganization(id: ID): Promise<Organization | null>;
+
+  listOrganizations(): Promise<Organization[]>;
+
   getAccount(organizationId: ID): Promise<OrganizationAccount | null>;
+
   getBusinessContext(organizationId: ID): Promise<BusinessContext | null>;
+
+  /**
+   * Platform Admin onboarding.
+   *
+   * Creates a completely new organization and initializes it
+   * from the platform default template for the supplied
+   * organization type.
+   */
+  onboardOrganization(
+    input: OnboardOrganizationInput,
+  ): Promise<OnboardOrganizationResult>;
+
+  /**
+   * Store operations
+   */
   listStores(organizationId: ID): Promise<Store[]>;
+
   createStore(organizationId: ID, store: Store): Promise<Store>;
+
   updateStore(organizationId: ID, store: Store): Promise<Store>;
+
   deleteStore(organizationId: ID, storeId: ID): Promise<void>;
+
+  /**
+   * Organization user operations
+   */
   listOrganizationUsersByUser(userId: ID): Promise<OrganizationUser[]>;
+
   getOrganizationUser(id: ID): Promise<OrganizationUser | null>;
+
+  listOrganizationUsers(organizationId: ID): Promise<OrganizationUser[]>;
+
+  createOrganizationUser(
+    organizationId: ID,
+    organizationUser: OrganizationUser,
+  ): Promise<OrganizationUser>;
+
+  /**
+   * Organization configuration
+   */
   getOrganizationDetails(
     organizationId: ID,
   ): Promise<OrganizationDetails | null>;
+
   getOrganizationBranding(
     organizationId: ID,
   ): Promise<OrganizationBranding | null>;
+
   getNotificationConfiguration(
     organizationId: ID,
   ): Promise<NotificationConfiguration | null>;
+
   listIntegrationConfigurations(
     organizationId: ID,
   ): Promise<IntegrationConfiguration[]>;
+
   updateOrganization(
     organizationId: ID,
     organization: Organization,
   ): Promise<Organization>;
+
   updateOrganizationDetails(
     organizationId: ID,
     details: OrganizationDetails,
   ): Promise<OrganizationDetails>;
+
   updateOrganizationBranding(
     organizationId: ID,
     branding: OrganizationBranding,
   ): Promise<OrganizationBranding>;
+
   updateNotificationConfiguration(
     organizationId: ID,
     configuration: NotificationConfiguration,
   ): Promise<NotificationConfiguration>;
+
   updateIntegrationConfiguration(
     organizationId: ID,
     configuration: IntegrationConfiguration,
   ): Promise<IntegrationConfiguration>;
-  listIntegrationConfigurations(
-    organizationId: string,
-  ): Promise<IntegrationConfiguration[]>;
 
   createIntegrationConfiguration(
-    organizationId: string,
-    configuration: IntegrationConfiguration,
-  ): Promise<IntegrationConfiguration>;
-
-  updateIntegrationConfiguration(
     organizationId: string,
     configuration: IntegrationConfiguration,
   ): Promise<IntegrationConfiguration>;
@@ -168,15 +228,17 @@ export interface OrganizationService {
     organizationId: string,
     configurationId: string,
   ): Promise<void>;
+
+  /**
+   * Staff
+   */
   listStaff(organizationId: ID): Promise<Staff[]>;
+
   createStaff(organizationId: ID, staff: Staff): Promise<Staff>;
+
   updateStaff(organizationId: ID, staff: Staff): Promise<Staff>;
+
   deleteStaff(organizationId: ID, staffId: ID): Promise<void>;
-  listOrganizationUsers(organizationId: ID): Promise<OrganizationUser[]>;
-  createOrganizationUser(
-    organizationId: ID,
-    organizationUser: OrganizationUser,
-  ): Promise<OrganizationUser>;
 }
 
 export interface CustomerService {

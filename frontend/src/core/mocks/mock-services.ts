@@ -1,5 +1,18 @@
 import { BusinessContext } from "../context/business-context";
 import { ID } from "../domain/common";
+
+import { getDefaultBusinessTemplate } from "../defaults/default-business-template";
+
+import { registerBusinessContext } from "../defaults/business-registry";
+
+import {
+  registerBusinessContent,
+  cloneBusinessContent,
+} from "../defaults/business-content";
+
+import { CardStyle } from "../template/template-definition";
+
+import { TemplateCategory } from "../domain/common";
 import {
   Benefit,
   Customer,
@@ -48,6 +61,8 @@ import {
   SubscriptionPlanService,
   VerifyOtpInput,
   VerifyOtpResult,
+  OnboardOrganizationInput,
+  OnboardOrganizationResult,
 } from "../services/service-contracts";
 import {
   SUNRISE_BAKERY_ACCOUNT,
@@ -81,6 +96,8 @@ import {
   DEFAULT_ROLE_CAPABILITIES,
   StaffRole,
 } from "../permissions/permissions";
+
+import { BusinessConfiguration, ManagementModel, PlanTier } from "@/src/core";
 
 const ORGANIZATIONS: Organization[] = [
   SUNRISE_BAKERY_ORGANIZATION,
@@ -1935,6 +1952,179 @@ export class InMemoryOrganizationService implements OrganizationService {
       isDeleted: true,
       updatedAt: new Date().toISOString(),
       versionNo: INTEGRATION_CONFIGURATIONS[index].versionNo + 1,
+    };
+  }
+
+  async listOrganizations(): Promise<Organization[]> {
+    return ORGANIZATIONS.filter((organization) => !organization.isDeleted).sort(
+      (a, b) => a.name.localeCompare(b.name),
+    );
+  }
+
+  async onboardOrganization(
+    input: OnboardOrganizationInput,
+  ): Promise<OnboardOrganizationResult> {
+    const name = input.name.trim();
+
+    if (!name) {
+      throw new Error("Business name is required.");
+    }
+
+    if (name.length < 2) {
+      throw new Error("Business name must contain at least 2 characters.");
+    }
+
+    if (name.length > 150) {
+      throw new Error("Business name must not exceed 150 characters.");
+    }
+
+    const template = getDefaultBusinessTemplate(input.organizationTypeId);
+
+    const now = new Date().toISOString();
+
+    const organizationId: ID = `org-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+
+    const organizationCategory = template.template.category;
+
+    const organization: Organization = {
+      id: organizationId,
+
+      code: organizationId.replace(/^org-/, "").toUpperCase(),
+
+      name,
+
+      displayName: name,
+
+      organizationTypeId: input.organizationTypeId,
+
+      organizationStatusId: "org-status-active",
+
+      category: organizationCategory,
+
+      primaryEmail: "support@example.com",
+
+      primaryPhone: {
+        countryId: "country-ca",
+        callingCode: "+1",
+        number: "0000000000",
+      },
+
+      website: undefined,
+
+      createdAt: now,
+      createdBy: "platform-system",
+
+      updatedAt: now,
+      updatedBy: "platform-system",
+
+      isDeleted: false,
+      versionNo: 1,
+    };
+
+    const account: OrganizationAccount = {
+      organizationId: organization.id,
+
+      planTier: PlanTier.PRO,
+
+      managementModel: ManagementModel.SELF_SERVICE,
+    };
+
+    /*
+     * Initialize organization configuration from the
+     * selected platform template.
+     *
+     * These values now belong to the organization.
+     */
+    const configuration: BusinessConfiguration = {
+      templateId: template.template.id,
+
+      identity: {
+        displayName: name,
+
+        category: organizationCategory,
+      },
+
+      branding: {
+        logoUrl: "https://placeholder.memgine.app/logos/business.png",
+
+        primaryColor: "#2563EB",
+
+        secondaryColor: "#64748B",
+      },
+
+      customerExperience: {
+        welcomeMessage: `Welcome to ${name}!`,
+
+        cardStyle: CardStyle.MODERN,
+
+        showOffers: true,
+        showStores: true,
+        showActivity: true,
+      },
+
+      localization: {
+        defaultLanguage: "en-CA",
+
+        defaultCurrency: "CAD",
+
+        timezone: "America/Toronto",
+      },
+    };
+
+    /*
+     * Build the application BusinessContext.
+     *
+     * The template is the Memgine definition.
+     * The organization/account/configuration are new
+     * organization-owned values.
+     */
+    const context: BusinessContext = {
+      organization,
+
+      account,
+
+      configuration,
+
+      template: template.template,
+    };
+
+    /*
+     * Copy the platform starter content into the
+     * organization-owned content registry.
+     */
+    registerBusinessContent(
+      organization.id,
+      cloneBusinessContent(template.content),
+    );
+
+    /*
+     * Register the new organization in the current
+     * in-memory API/data implementation.
+     */
+    ORGANIZATIONS.push(organization);
+
+    ACCOUNTS.push(account);
+
+    BUSINESS_CONTEXTS_BY_ORG[organization.id] = context;
+
+    registerBusinessContext(context);
+
+    console.log("MOCK API ORGANIZATION ONBOARDED", {
+      organizationId: organization.id,
+
+      organizationName: organization.name,
+
+      organizationTypeId: organization.organizationTypeId,
+
+      templateId: template.id,
+    });
+
+    return {
+      organization,
+      account,
+      context,
     };
   }
 }
