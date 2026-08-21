@@ -677,7 +677,7 @@ export default function JoinFlow() {
    */
 
   const close = () =>
-    router.canGoBack() ? router.back() : router.replace("/cards");
+    router.canGoBack() ? router.back() : router.replace("/customer/cards");
 
   /*
    * Temporary/demo customer experience.
@@ -1356,7 +1356,7 @@ export default function JoinFlow() {
             <Button
               label={t("common.done")}
               fullWidth
-              onPress={() => router.replace("/staff/counter")}
+              onPress={() => router.replace("/counter")}
               testID="join-done"
             />
           ) : null}

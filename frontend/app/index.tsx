@@ -8,7 +8,7 @@ import { Platform } from "react-native";
  */
 export default function Index() {
   if (Platform.OS === "web") {
-    return <Redirect href="/staff/counter" />;
+    return <Redirect href="/counter" />;
   }
-  return <Redirect href="/cards" />;
+  return <Redirect href="/customer/cards" />;
 }

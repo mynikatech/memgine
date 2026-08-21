@@ -320,7 +320,7 @@ export default function DiscoverGateway() {
    */
 
   const exit = () =>
-    router.canGoBack() ? router.back() : router.replace("/cards");
+    router.canGoBack() ? router.back() : router.replace("/customer/cards");
 
   /*
    * Start the existing purchase flow.

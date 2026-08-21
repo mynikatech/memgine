@@ -36,7 +36,11 @@ export default function CustomerLayout() {
           title: t("customer.yourMemberships"),
           tabBarButtonTestID: "customer-tab-cards",
           tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? "card" : "card-outline"} size={size} color={color} />
+            <Ionicons
+              name={focused ? "card" : "card-outline"}
+              size={size}
+              color={color}
+            />
           ),
         }}
       />
@@ -46,7 +50,11 @@ export default function CustomerLayout() {
           title: t("customer.profile"),
           tabBarButtonTestID: "customer-tab-profile",
           tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? "person" : "person-outline"} size={size} color={color} />
+            <Ionicons
+              name={focused ? "person" : "person-outline"}
+              size={size}
+              color={color}
+            />
           ),
         }}
       />

@@ -86,7 +86,7 @@ export default function BrandingPreview() {
           </Text>
 
           <Text variant="body" color="textSecondary">
-            This screen is using the organization's branding configuration.
+            This screen is using the organization&apos;s branding configuration.
           </Text>
 
           <View

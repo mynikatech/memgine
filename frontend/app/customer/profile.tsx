@@ -104,7 +104,7 @@ export default function Profile() {
           <ListRow
             label="Staff Counter"
             icon="calculator-outline"
-            onPress={() => router.push("/staff/counter")}
+            onPress={() => router.push("/counter")}
             testID="profile-staff-counter"
           />
           <ListRow

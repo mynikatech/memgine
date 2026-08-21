@@ -23,6 +23,13 @@ export type AdminRoute = {
   children?: AdminRoute[];
 };
 
+export type CounterRoute = {
+  name: string;
+  title: string;
+  href: string;
+  icon: IoniconName;
+};
+
 /** Customer (mobile/native) bottom-tab shells. */
 export const CUSTOMER_ROUTES: CustomerRoute[] = [
   { name: "home", title: "Home", icon: "home-outline" },
@@ -30,24 +37,26 @@ export const CUSTOMER_ROUTES: CustomerRoute[] = [
   { name: "profile", title: "Profile", icon: "person-outline" },
 ];
 
-/** Staff (web/desktop) sidebar shells. */
-export const STAFF_ROUTES: StaffRoute[] = [
+/** Counter (web/desktop) sidebar shells. */
+
+/** Counter (web/desktop) sidebar shells. */
+export const COUNTER_ROUTES: CounterRoute[] = [
   {
     name: "counter",
     title: "Counter",
-    href: "/staff/counter",
-    icon: "calculator-outline",
+    href: "/counter",
+    icon: "storefront-outline",
   },
   {
     name: "customers",
     title: "Customers",
-    href: "/staff/customers",
+    href: "/counter/customers",
     icon: "people-outline",
   },
   {
     name: "configuration",
     title: "Configuration",
-    href: "/staff/configuration",
+    href: "/counter/configuration",
     icon: "settings-outline",
   },
 ];

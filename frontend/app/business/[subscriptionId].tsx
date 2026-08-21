@@ -406,7 +406,7 @@ export default function BusinessExperienceRoute() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace("/cards");
+      router.replace("/customer/cards");
     }
   };
 

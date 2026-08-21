@@ -6,5 +6,5 @@ import { Redirect } from "expo-router";
  * selecting a membership. This route redirects to keep any old links working.
  */
 export default function CustomerHomeRedirect() {
-  return <Redirect href="/cards" />;
+  return <Redirect href="/customer/cards" />;
 }
