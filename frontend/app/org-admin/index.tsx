@@ -12,6 +12,7 @@ import {
   type Subscription,
 } from "@/src/core";
 
+import { APP_ROUTES } from "@/src/constants/navigation";
 import { useBusiness, useTheme } from "@/src/providers";
 
 import { Text } from "@/src/ui";
@@ -417,33 +418,37 @@ export default function OrgAdminDashboard() {
         <MetricCard
           label="Customers"
           value={data.customers.length}
-          href="/customers"
+          href={APP_ROUTES.orgAdmin.customers}
         />
 
         <MetricCard
           label="Memberships"
           value={data.productsCount}
-          href="/memberships"
+          href={APP_ROUTES.orgAdmin.memberships}
         />
 
         <MetricCard
           label="Subscriptions"
           value={data.subscriptions.length}
-          href="/subscriptions"
+          href={APP_ROUTES.orgAdmin.subscriptions}
         />
 
         <MetricCard
           label="Benefits"
           value={data.benefits.length}
-          href="/benefits"
+          href={APP_ROUTES.orgAdmin.benefits}
         />
 
-        <MetricCard label="Stores" value={data.stores.length} href="/stores" />
+        <MetricCard
+          label="Stores"
+          value={data.stores.length}
+          href={APP_ROUTES.orgAdmin.stores}
+        />
 
         <MetricCard
           label="Staff"
           value={data.staffCount}
-          href="/staff-members"
+          href={APP_ROUTES.orgAdmin.staffMembers}
         />
       </View>
 
@@ -483,7 +488,7 @@ export default function OrgAdminDashboard() {
             label="Total Redemptions"
             value={data.redemptions.length}
             compact
-            href="/redemptions"
+            href={APP_ROUTES.orgAdmin.redemptions}
           />
 
           {redemptionStatusCounts.map(({ status, count }) => (
@@ -492,7 +497,7 @@ export default function OrgAdminDashboard() {
               label={status.statusName}
               value={count}
               compact
-              href="/redemptions"
+              href={APP_ROUTES.orgAdmin.redemptions}
             />
           ))}
         </View>
@@ -516,7 +521,7 @@ export default function OrgAdminDashboard() {
               return (
                 <Pressable
                   key={redemption.id}
-                  onPress={() => router.push("/org-admin/redemptions")}
+                  onPress={() => router.push(APP_ROUTES.orgAdmin.redemptions)}
                   style={({ pressed }) => [
                     styles.recentRow,
                     {

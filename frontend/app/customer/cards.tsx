@@ -11,6 +11,7 @@ import type {
 } from "@/src/core";
 
 import { mockServices } from "@/src/core";
+import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
 import {
   BusinessThemeScope,
@@ -236,7 +237,7 @@ export default function MyCards() {
      */
     setActiveContext(organizationId, vm.subscription.id);
 
-    router.push(`/business/${vm.subscription.id}`);
+    router.push(APP_ROUTES.business.subscription(vm.subscription.id) as never);
   };
 
   const hasCards = groups.some((group) => group.cards.length > 0);

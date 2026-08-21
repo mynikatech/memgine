@@ -1,6 +1,7 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
+import { APP_ROUTES } from "@/src/constants/navigation";
 
 import type {
   Benefit,
@@ -395,7 +396,10 @@ export default function BusinessExperienceRoute() {
     }
 
     router.push(
-      `/join?organizationId=${organizationUser.organizationId}&productId=${productId}`,
+      APP_ROUTES.join.membership(
+        organizationUser.organizationId,
+        productId,
+      ) as never,
     );
   };
 
@@ -406,7 +410,7 @@ export default function BusinessExperienceRoute() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace("/customer/cards");
+      router.replace(APP_ROUTES.customer.cards);
     }
   };
 

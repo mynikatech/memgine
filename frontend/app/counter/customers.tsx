@@ -16,7 +16,7 @@ import type {
   Store,
   Subscription,
 } from "@/src/core";
-
+import { APP_ROUTES } from "@/src/constants/navigation";
 import { mockServices } from "@/src/core";
 import { useBusiness, useTranslation } from "@/src/providers";
 import { Screen } from "@/src/layout";
@@ -461,7 +461,11 @@ export default function StaffCustomers() {
                              * This is intentionally a small demo bridge
                              * from Staff → Customers to that experience.
                              */
-                            router.push(`/business/${subscription.id}`);
+                            router.push(
+                              APP_ROUTES.business.subscription(
+                                subscription.id,
+                              ) as never,
+                            );
                           }}
                           testID={`view-membership-${subscription.id}`}
                         >

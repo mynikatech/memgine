@@ -26,6 +26,7 @@ import {
   Store,
 } from "@/src/core";
 
+import { APP_ROUTES } from "@/src/constants/navigation";
 import { useBusiness, useTranslation } from "@/src/providers";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
@@ -739,7 +740,7 @@ export default function StaffCounter() {
        * and Done button.
        */
       router.push({
-        pathname: "/join",
+        pathname: APP_ROUTES.join.root,
         params: {
           organizationId: orgId,
           productId,

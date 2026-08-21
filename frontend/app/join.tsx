@@ -12,6 +12,7 @@ import type {
   Subscription,
 } from "@/src/core";
 import { mockServices } from "@/src/core";
+import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
 import {
   useBusiness,
@@ -677,7 +678,9 @@ export default function JoinFlow() {
    */
 
   const close = () =>
-    router.canGoBack() ? router.back() : router.replace("/customer/cards");
+    router.canGoBack()
+      ? router.back()
+      : router.replace(APP_ROUTES.customer.cards);
 
   /*
    * Temporary/demo customer experience.
@@ -693,7 +696,7 @@ export default function JoinFlow() {
 
     setActiveContext(orgId, subscription.id);
 
-    router.push(`/business/${subscription.id}`);
+    router.push(APP_ROUTES.business.subscription(subscription.id) as never);
   };
 
   /*
@@ -1356,7 +1359,7 @@ export default function JoinFlow() {
             <Button
               label={t("common.done")}
               fullWidth
-              onPress={() => router.replace("/counter")}
+              onPress={() => router.replace(APP_ROUTES.counter.root)}
               testID="join-done"
             />
           ) : null}

@@ -2,6 +2,8 @@ import { router } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
+import { APP_ROUTES } from "@/src/constants/navigation";
+
 import { services, type Organization } from "@/src/core";
 
 import { useBusiness, useTheme } from "@/src/providers";
@@ -56,7 +58,7 @@ export default function PlatformOrganizations() {
   const openOrganization = (organizationId: string) => {
     setActiveBusiness(organizationId);
 
-    router.replace("/org-admin");
+    router.replace(APP_ROUTES.orgAdmin.root);
   };
 
   return (
@@ -82,7 +84,9 @@ export default function PlatformOrganizations() {
         </View>
 
         <Pressable
-          onPress={() => router.push("/platform-admin/organization-new")}
+          onPress={() =>
+            router.push(APP_ROUTES.platformAdmin.organizationNew as never)
+          }
           style={({ pressed }) => [
             styles.primaryButton,
             {

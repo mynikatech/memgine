@@ -31,10 +31,9 @@ export default function CounterLayout() {
 
   const isWide = width >= 900;
 
-  const go = (href: string) => {
+  const go = (href: (typeof COUNTER_ROUTES)[number]["href"]) => {
     router.push(href as never);
   };
-
   const Nav = ({ horizontal }: { horizontal?: boolean }) => (
     <View style={horizontal ? styles.navRow : styles.nav}>
       {COUNTER_ROUTES.map((route) => {

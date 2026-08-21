@@ -17,6 +17,8 @@ import {
 import { useBusiness, useTheme } from "@/src/providers";
 import { Text } from "@/src/ui";
 
+import { APP_ROUTES } from "@/src/constants/navigation";
+
 export default function OrganizationNew() {
   const theme = useTheme();
 
@@ -148,7 +150,7 @@ export default function OrganizationNew() {
        */
       setActiveBusiness(result.organization.id);
 
-      router.replace("/org-admin");
+      router.replace(APP_ROUTES.orgAdmin.root);
     } catch (err) {
       console.error("PLATFORM ORGANIZATION ONBOARDING ERROR", err);
 
@@ -376,7 +378,7 @@ export default function OrganizationNew() {
 
         <Pressable
           disabled={busy}
-          onPress={() => router.replace("/platform-admin/organizations")}
+          onPress={() => router.replace(APP_ROUTES.platformAdmin.organizations)}
           style={[
             styles.cancelButton,
             {

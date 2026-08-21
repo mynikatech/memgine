@@ -12,6 +12,7 @@ import type {
 } from "@/src/core";
 import { getBusinessContent, mockServices } from "@/src/core";
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
+import { APP_ROUTES } from "@/src/constants/navigation";
 import { BusinessExperience } from "@/src/experience";
 import {
   useBusiness,
@@ -320,7 +321,9 @@ export default function DiscoverGateway() {
    */
 
   const exit = () =>
-    router.canGoBack() ? router.back() : router.replace("/customer/cards");
+    router.canGoBack()
+      ? router.back()
+      : router.replace(APP_ROUTES.customer.cards);
 
   /*
    * Start the existing purchase flow.
@@ -328,7 +331,7 @@ export default function DiscoverGateway() {
   const joinMembership = (pid: string) => {
     setDetailProduct(null);
 
-    router.push(`/join?organizationId=${organizationId}&productId=${pid}`);
+    router.push(APP_ROUTES.join.membership(organizationId, pid) as never);
   };
 
   /*

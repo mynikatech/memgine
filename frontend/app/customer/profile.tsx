@@ -4,6 +4,7 @@ import { View } from "react-native";
 
 import type { Customer } from "@/src/core";
 import { mockServices } from "@/src/core";
+import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
 import { useBusiness, useTranslation } from "@/src/providers";
 import { Card, Header, ListRow, Section, Text } from "@/src/ui";
@@ -22,9 +23,11 @@ export default function Profile() {
   }, []);
 
   const initial = (customer?.fullName ?? "?").trim().charAt(0).toUpperCase();
+
   const languageLabel = locale.toLowerCase().startsWith("en")
     ? t("profile.languageEnglish")
     : locale;
+
   const regionLabel = `${currency} · ${timezone}`;
 
   return (
@@ -61,10 +64,12 @@ export default function Profile() {
               {initial}
             </Text>
           </View>
+
           <View style={{ flex: 1 }}>
             <Text variant="title" color="text">
               {customer?.fullName ?? "—"}
             </Text>
+
             {customer?.email ? (
               <Text variant="bodySmall" color="textMuted">
                 {customer.email}
@@ -83,6 +88,7 @@ export default function Profile() {
             showChevron={false}
             testID="profile-language"
           />
+
           <ListRow
             label={t("profile.region")}
             value={regionLabel}
@@ -101,22 +107,25 @@ export default function Profile() {
             onPress={() => {}}
             testID="profile-about"
           />
+
           <ListRow
-            label="Staff Counter"
+            label="Counter"
             icon="calculator-outline"
-            onPress={() => router.push("/counter")}
-            testID="profile-staff-counter"
+            onPress={() => router.push(APP_ROUTES.counter.root)}
+            testID="profile-counter"
           />
+
           <ListRow
             label="Org Admin"
             icon="business-outline"
-            onPress={() => router.push("/org-admin")}
+            onPress={() => router.push(APP_ROUTES.orgAdmin.root)}
             testID="profile-org-admin"
           />
+
           <ListRow
             label="Platform Admin"
             icon="shield-checkmark-outline"
-            onPress={() => router.push("/platform-admin")}
+            onPress={() => router.push(APP_ROUTES.platformAdmin.root)}
             testID="profile-platform-admin"
           />
         </Card>
