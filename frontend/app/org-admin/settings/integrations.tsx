@@ -8,19 +8,13 @@ import {
   View,
 } from "react-native";
 
-import {
-  InMemoryReferenceDataService,
-  InMemoryOrganizationService,
-  IntegrationConfiguration,
-  ReferenceDataItem,
-  createEmptyIntegrationConfiguration,
-} from "@/src/core";
+import type { IntegrationConfiguration, ReferenceDataItem } from "@/src/core";
+
+import { createEmptyIntegrationConfiguration, services } from "@/src/core";
+
 import { useBusiness } from "@/src/providers";
 import { DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
 import { IntegrationConfigurationForm } from "@/src/ui/admin/IntegrationConfigurationForm";
-
-const organizationService = new InMemoryOrganizationService();
-const referenceDataService = new InMemoryReferenceDataService();
 
 export default function Integrations() {
   const { organization } = useBusiness();
@@ -54,18 +48,22 @@ export default function Integrations() {
 
       try {
         const [integrationList, typeList, statusList] = await Promise.all([
-          organizationService.listIntegrationConfigurations(organization.id),
-          referenceDataService.listIntegrationTypes(),
-          referenceDataService.listOrganizationStatuses(),
+          services.organization.listIntegrationConfigurations(organization.id),
+          services.referenceData.listIntegrationTypes(),
+          services.referenceData.listOrganizationStatuses(),
         ]);
 
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
 
         setIntegrations(integrationList);
         setIntegrationTypes(typeList);
         setStatuses(statusList);
       } catch (loadError) {
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
 
         setError(
           loadError instanceof Error
@@ -79,7 +77,7 @@ export default function Integrations() {
       }
     }
 
-    load();
+    void load();
 
     return () => {
       mounted = false;
@@ -152,7 +150,7 @@ export default function Integrations() {
       let saved: IntegrationConfiguration;
 
       if (existing) {
-        saved = await organizationService.updateIntegrationConfiguration(
+        saved = await services.organization.updateIntegrationConfiguration(
           organization.id,
           configuration,
         );
@@ -161,7 +159,7 @@ export default function Integrations() {
           current.map((item) => (item.id === saved.id ? saved : item)),
         );
       } else {
-        saved = await organizationService.createIntegrationConfiguration(
+        saved = await services.organization.createIntegrationConfiguration(
           organization.id,
           configuration,
         );
@@ -288,6 +286,7 @@ const styles = StyleSheet.create({
     padding: 24,
     gap: 24,
   },
+
   scroll: {
     flex: 1,
   },
@@ -298,13 +297,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 16,
   },
+
   headerMobile: {
     flexDirection: "column",
     alignItems: "stretch",
   },
+
   addButtonMobile: {
     width: "100%",
   },
+
   addButton: {
     minHeight: 44,
     paddingHorizontal: 16,

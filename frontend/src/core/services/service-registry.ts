@@ -9,6 +9,9 @@ import {
   SubscriptionPlanService,
   BenefitService,
   OfferService,
+  UserAcquisitionService,
+  RedemptionService,
+  StatusService,
 } from "./service-contracts";
 
 import { ReferenceDataService } from "./reference-data";
@@ -34,6 +37,9 @@ export type MemgineServices = {
   subscriptionPlan: SubscriptionPlanService;
   benefit: BenefitService;
   offer: OfferService;
+  userAcquisition: UserAcquisitionService;
+  redemption: RedemptionService;
+  status: StatusService;
   referenceData: ReferenceDataService;
 };
 
@@ -45,5 +51,8 @@ export const services: MemgineServices = {
   subscriptionPlan: mockServices.subscriptionPlan,
   benefit: mockServices.benefit,
   offer: mockServices.offer,
+  userAcquisition: mockServices.userAcquisition,
+  redemption: mockServices.redemption,
+  status: mockServices.status,
   referenceData: mockReferenceDataService,
 };

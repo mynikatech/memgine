@@ -8,25 +8,12 @@ import type {
   Store,
 } from "@/src/core";
 
-import {
-  InMemoryMembershipProductService,
-  InMemoryOfferService,
-  InMemoryOrganizationService,
-  InMemoryReferenceDataService,
-} from "@/src/core";
+import { services } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
 import { DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
 
 import { OfferForm } from "@/src/ui/admin/OfferForm";
-
-const organizationService = new InMemoryOrganizationService();
-
-const membershipProductService = new InMemoryMembershipProductService();
-
-const offerService = new InMemoryOfferService();
-
-const referenceDataService = new InMemoryReferenceDataService();
 
 export default function OrgAdminOffers() {
   const { organization } = useBusiness();
@@ -51,10 +38,10 @@ export default function OrgAdminOffers() {
       try {
         const [offerList, productList, storeList, statusList] =
           await Promise.all([
-            offerService.listByOrganization(organization.id),
-            membershipProductService.listProducts(organization.id),
-            organizationService.listStores(organization.id),
-            referenceDataService.listOfferStatuses(),
+            services.offer.listByOrganization(organization.id),
+            services.membershipProduct.listProducts(organization.id),
+            services.organization.listStores(organization.id),
+            services.referenceData.listOfferStatuses(),
           ]);
 
         if (!mounted) {
@@ -185,6 +172,11 @@ export default function OrgAdminOffers() {
   const createEmptyOffer = (): Offer => {
     const now = new Date().toISOString();
 
+    const draftStatus =
+      offerStatuses.find((item) => item.code === "DRAFT") ??
+      offerStatuses.find((item) => item.id === "offer-status-draft") ??
+      offerStatuses[0];
+
     return {
       id: `offer-${Date.now()}`,
 
@@ -202,7 +194,7 @@ export default function OrgAdminOffers() {
       effectiveDate: now.substring(0, 10),
       expiryDate: undefined,
 
-      statusId: "offer-status-draft",
+      statusId: draftStatus?.id ?? "",
 
       createdAt: now,
       createdBy: "user-system",
@@ -230,7 +222,7 @@ export default function OrgAdminOffers() {
       const existing = offers.some((item) => item.id === updatedOffer.id);
 
       if (existing) {
-        const updated = await offerService.updateOffer(
+        const updated = await services.offer.updateOffer(
           organization.id,
           updatedOffer,
         );
@@ -239,7 +231,7 @@ export default function OrgAdminOffers() {
           current.map((item) => (item.id === updated.id ? updated : item)),
         );
       } else {
-        const created = await offerService.createOffer(
+        const created = await services.offer.createOffer(
           organization.id,
           updatedOffer,
         );

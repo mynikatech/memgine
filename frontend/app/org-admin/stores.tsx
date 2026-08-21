@@ -1,24 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
-import {
+import type {
   CityReference,
   CountryReference,
-  InMemoryOrganizationService,
-  InMemoryReferenceDataService,
   ReferenceDataItem,
   RegionReference,
   Store,
 } from "@/src/core";
+import { services } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
 import { DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
 
 import { StoreForm } from "@/src/ui/admin/StoreForm";
-
-const organizationService = new InMemoryOrganizationService();
-
-const referenceDataService = new InMemoryReferenceDataService();
 
 export default function OrgAdminStores() {
   const { organization } = useBusiness();
@@ -43,10 +38,10 @@ export default function OrgAdminStores() {
       try {
         const [storeList, typeList, statusList, countryList] =
           await Promise.all([
-            organizationService.listStores(organization.id),
-            referenceDataService.listStoreTypes(),
-            referenceDataService.listStoreStatuses(),
-            referenceDataService.listCountries(),
+            services.organization.listStores(organization.id),
+            services.referenceData.listStoreTypes(),
+            services.referenceData.listStoreStatuses(),
+            services.referenceData.listCountries(),
           ]);
 
         if (!mounted) {
@@ -58,6 +53,10 @@ export default function OrgAdminStores() {
         setStoreStatuses(statusList);
         setCountries(countryList);
       } catch (error) {
+        if (!mounted) {
+          return;
+        }
+
         Alert.alert(
           "Unable to load stores",
           error instanceof Error ? error.message : "Unable to load stores.",
@@ -69,7 +68,7 @@ export default function OrgAdminStores() {
       }
     }
 
-    load();
+    void load();
 
     return () => {
       mounted = false;
@@ -77,14 +76,14 @@ export default function OrgAdminStores() {
   }, [organization.id]);
 
   /**
-   * Address reference-data dependencies
+   * Address reference-data dependencies:
    *
    * Country -> Regions
    * Region -> Cities
    */
   const handleCountryChange = async (countryCode: string) => {
     try {
-      const regionList = await referenceDataService.listRegions(countryCode);
+      const regionList = await services.referenceData.listRegions(countryCode);
 
       setRegions(regionList);
       setCities([]);
@@ -101,7 +100,7 @@ export default function OrgAdminStores() {
     regionCode: string,
   ) => {
     try {
-      const cityList = await referenceDataService.listCities(
+      const cityList = await services.referenceData.listCities(
         countryCode,
         regionCode,
       );
@@ -210,11 +209,8 @@ export default function OrgAdminStores() {
   const handleAdd = () => {
     setEditingStore(createEmptyStore());
 
-    /*
-     * New store has no country selected,
-     * therefore no regions/cities should
-     * be displayed initially.
-     */
+    // New store has no country selected,
+    // therefore no dependent reference data.
     setRegions([]);
     setCities([]);
 
@@ -225,20 +221,19 @@ export default function OrgAdminStores() {
     setEditingStore(store);
 
     /*
-     * Load dependent reference data for
-     * the existing address before opening
-     * the edit form.
+     * Load dependent reference data for the
+     * existing address before opening the form.
      */
     if (store.address.countryCode) {
       try {
-        const regionList = await referenceDataService.listRegions(
+        const regionList = await services.referenceData.listRegions(
           store.address.countryCode,
         );
 
         setRegions(regionList);
 
         if (store.address.region) {
-          const cityList = await referenceDataService.listCities(
+          const cityList = await services.referenceData.listCities(
             store.address.countryCode,
             store.address.region,
           );
@@ -271,7 +266,7 @@ export default function OrgAdminStores() {
       const existing = stores.some((item) => item.id === store.id);
 
       if (existing) {
-        const updated = await organizationService.updateStore(
+        const updated = await services.organization.updateStore(
           organization.id,
           store,
         );
@@ -280,7 +275,7 @@ export default function OrgAdminStores() {
           current.map((item) => (item.id === updated.id ? updated : item)),
         );
       } else {
-        const created = await organizationService.createStore(
+        const created = await services.organization.createStore(
           organization.id,
           store,
         );
@@ -348,7 +343,7 @@ export default function OrgAdminStores() {
       ) : (
         <DataTable
           columns={columns}
-          data={stores}
+          data={stores.filter((item) => !item.isDeleted)}
           keyExtractor={(item) => item.id}
           emptyMessage="No stores configured."
           actions={[

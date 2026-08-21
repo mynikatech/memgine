@@ -12,7 +12,7 @@ import type {
   Subscription,
 } from "@/src/core";
 
-import { mockServices } from "@/src/core";
+import { services } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
 
@@ -22,7 +22,7 @@ import { DataTable, type DataTableColumn, Input, Text } from "@/src/ui";
  * Resolved row used by this screen.
  *
  * Redemption continues to contain IDs only.
- * These related entities are resolved for presentation.
+ * Related entities are resolved for presentation.
  * ------------------------------------------------------------------ */
 
 type RedemptionRow = {
@@ -58,21 +58,23 @@ export default function OrgAdminRedemptions() {
 
       try {
         /*
-         * Load all organization-level data required to resolve
-         * Redemption relationship IDs into business values.
+         * Load organization-level data required to resolve
+         * Redemption relationship IDs into display values.
+         *
+         * UI consumes only provider-neutral application services.
          */
 
         const [subscriptions, organizationUsers, benefits, stores, staff] =
           await Promise.all([
-            mockServices.subscription.listByOrganization(organization.id),
+            services.subscription.listByOrganization(organization.id),
 
-            mockServices.organization.listOrganizationUsers(organization.id),
+            services.organization.listOrganizationUsers(organization.id),
 
-            mockServices.benefit.listByOrganization(organization.id),
+            services.benefit.listByOrganization(organization.id),
 
-            mockServices.organization.listStores(organization.id),
+            services.organization.listStores(organization.id),
 
-            mockServices.organization.listStaff(organization.id),
+            services.organization.listStaff(organization.id),
           ]);
 
         if (!mounted) {
@@ -124,8 +126,7 @@ export default function OrgAdminRedemptions() {
             .filter((subscription) => !subscription.isDeleted)
             .map(async (subscription) => ({
               subscription,
-
-              redemptions: await mockServices.redemption.listBySubscription(
+              redemptions: await services.redemption.listBySubscription(
                 subscription.id,
               ),
             })),
@@ -160,9 +161,8 @@ export default function OrgAdminRedemptions() {
 
           if (!customer) {
             customer =
-              (await mockServices.customer.getCustomer(
-                organizationUser.userId,
-              )) ?? undefined;
+              (await services.customer.getCustomer(organizationUser.userId)) ??
+              undefined;
 
             if (customer) {
               customerMap.set(customer.id, customer);
@@ -173,10 +173,6 @@ export default function OrgAdminRedemptions() {
             if (redemption.isDeleted) {
               continue;
             }
-
-            /*
-             * Redemption relationships
-             */
 
             const benefit = benefitMap.get(redemption.benefitId);
 
@@ -190,12 +186,10 @@ export default function OrgAdminRedemptions() {
              * Generic Status
              *
              * redemptionStatusId -> Status
-             *
-             * No RedemptionStatus enum.
              */
 
             const status =
-              (await mockServices.status.getStatus(
+              (await services.status.getStatus(
                 redemption.redemptionStatusId,
               )) ?? undefined;
 
@@ -238,7 +232,7 @@ export default function OrgAdminRedemptions() {
       }
     }
 
-    load();
+    void load();
 
     return () => {
       mounted = false;
@@ -309,7 +303,6 @@ export default function OrgAdminRedemptions() {
         key: "redemption",
         title: "Redemption",
         width: 155,
-
         render: (item) => (
           <Text variant="bodyStrong" color="text" numberOfLines={1}>
             {item.redemption.redemptionNumber}
@@ -321,7 +314,6 @@ export default function OrgAdminRedemptions() {
         key: "customer",
         title: "Customer",
         width: 140,
-
         render: (item) => (
           <Text variant="body" color="text" numberOfLines={1}>
             {item.customer?.fullName ?? "Unknown Customer"}
@@ -333,7 +325,6 @@ export default function OrgAdminRedemptions() {
         key: "subscription",
         title: "Subscription",
         width: 150,
-
         render: (item) => (
           <Text variant="body" color="text" numberOfLines={1}>
             {item.subscription.subscriptionNumber}
@@ -395,7 +386,6 @@ export default function OrgAdminRedemptions() {
         key: "status",
         title: "Status",
         width: 110,
-
         render: (item) => (
           <Text variant="body" color="text" numberOfLines={1}>
             {item.status?.statusName ?? item.status?.statusCode ?? "Unknown"}
@@ -421,10 +411,6 @@ export default function OrgAdminRedemptions() {
         contentContainerStyle={styles.screen}
         showsVerticalScrollIndicator={false}
       >
-        {/* ==========================================================
-            HEADER
-            ========================================================== */}
-
         <View style={styles.header}>
           <View style={styles.headerText}>
             <Text variant="title" color="text">
@@ -436,10 +422,6 @@ export default function OrgAdminRedemptions() {
             </Text>
           </View>
         </View>
-
-        {/* ==========================================================
-            SUMMARY
-            ========================================================== */}
 
         <View style={styles.summary}>
           <View style={styles.summaryCard}>
@@ -463,10 +445,6 @@ export default function OrgAdminRedemptions() {
           </View>
         </View>
 
-        {/* ==========================================================
-            SEARCH
-            ========================================================== */}
-
         <View style={styles.searchContainer}>
           <Input
             label="Search Redemptions"
@@ -475,10 +453,6 @@ export default function OrgAdminRedemptions() {
             placeholder="Search redemption, customer, benefit, subscription or status"
           />
         </View>
-
-        {/* ==========================================================
-            TABLE
-            ========================================================== */}
 
         {loading ? (
           <View style={styles.center}>
@@ -507,10 +481,6 @@ export default function OrgAdminRedemptions() {
         )}
       </ScrollView>
 
-      {/* ============================================================
-          VIEW MODAL
-          ============================================================ */}
-
       <Modal
         visible={selectedRedemption !== null}
         transparent
@@ -520,10 +490,6 @@ export default function OrgAdminRedemptions() {
         {selectedRedemption ? (
           <View style={styles.modalOverlay}>
             <View style={styles.viewModal}>
-              {/* ----------------------------------------------------
-                  MODAL HEADER
-                  ---------------------------------------------------- */}
-
               <View style={styles.modalHeader}>
                 <View style={styles.headerText}>
                   <View style={styles.redemptionTitleRow}>
@@ -554,10 +520,6 @@ export default function OrgAdminRedemptions() {
                   </Text>
                 </Pressable>
               </View>
-
-              {/* ----------------------------------------------------
-                  DETAILS
-                  ---------------------------------------------------- */}
 
               <ScrollView
                 showsVerticalScrollIndicator={false}
@@ -732,10 +694,6 @@ export default function OrgAdminRedemptions() {
                   />
                 </View>
 
-                {/* --------------------------------------------------
-                    CLOSE
-                    -------------------------------------------------- */}
-
                 <View style={styles.modalActions}>
                   <Pressable
                     onPress={() => setSelectedRedemption(null)}
@@ -866,10 +824,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
-  /* ================================================================
-     MODAL
-     ================================================================ */
 
   modalOverlay: {
     flex: 1,

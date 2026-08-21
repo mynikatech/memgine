@@ -1,17 +1,11 @@
 import { useEffect, useState } from "react";
 import { Alert, View } from "react-native";
 
-import {
-  InMemoryOrganizationService,
-  InMemoryReferenceDataService,
-  OrganizationBranding,
-} from "@/src/core";
+import { OrganizationBranding, services } from "@/src/core";
+
 import { useBusiness } from "@/src/providers";
 import { StateView } from "@/src/ui";
 import { BrandingForm } from "@/src/ui/admin/BrandingForm";
-
-const organizationService = new InMemoryOrganizationService();
-const referenceDataService = new InMemoryReferenceDataService();
 
 export default function OrgAdminBranding() {
   const { organization } = useBusiness();
@@ -19,11 +13,11 @@ export default function OrgAdminBranding() {
   const [branding, setBranding] = useState<OrganizationBranding | null>(null);
 
   const [themeTemplates, setThemeTemplates] = useState<
-    Awaited<ReturnType<typeof referenceDataService.listThemeTemplates>>
+    Awaited<ReturnType<typeof services.referenceData.listThemeTemplates>>
   >([]);
 
   const [brandingStatuses, setBrandingStatuses] = useState<
-    Awaited<ReturnType<typeof referenceDataService.listBrandingStatuses>>
+    Awaited<ReturnType<typeof services.referenceData.listBrandingStatuses>>
   >([]);
 
   const [loading, setLoading] = useState(true);
@@ -38,18 +32,22 @@ export default function OrgAdminBranding() {
 
       try {
         const [organizationBranding, templates, statuses] = await Promise.all([
-          organizationService.getOrganizationBranding(organization.id),
-          referenceDataService.listThemeTemplates(),
-          referenceDataService.listBrandingStatuses(),
+          services.organization.getOrganizationBranding(organization.id),
+          services.referenceData.listThemeTemplates(),
+          services.referenceData.listBrandingStatuses(),
         ]);
 
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
 
         setBranding(organizationBranding);
         setThemeTemplates(templates);
         setBrandingStatuses(statuses);
       } catch (loadError) {
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
 
         setError(
           loadError instanceof Error
@@ -63,7 +61,7 @@ export default function OrgAdminBranding() {
       }
     }
 
-    load();
+    void load();
 
     return () => {
       mounted = false;
@@ -101,7 +99,7 @@ export default function OrgAdminBranding() {
       themeTemplates={themeTemplates}
       brandingStatuses={brandingStatuses}
       onSave={async (updatedBranding: OrganizationBranding) => {
-        await organizationService.updateOrganizationBranding(
+        await services.organization.updateOrganizationBranding(
           organization.id,
           updatedBranding,
         );

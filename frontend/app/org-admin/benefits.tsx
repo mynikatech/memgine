@@ -1,20 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
-import {
-  Benefit,
-  InMemoryBenefitService,
-  InMemoryReferenceDataService,
-  ReferenceDataItem,
-} from "@/src/core";
+import { Benefit, ReferenceDataItem, services } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
 import { DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
 
 import { BenefitForm } from "@/src/ui/admin/BenefitForm";
-
-const benefitService = new InMemoryBenefitService();
-const referenceDataService = new InMemoryReferenceDataService();
 
 export default function OrgAdminBenefits() {
   const { organization } = useBusiness();
@@ -46,10 +38,10 @@ export default function OrgAdminBenefits() {
       try {
         const [benefitList, categoryList, typeList, statusList] =
           await Promise.all([
-            benefitService.listByOrganization(organization.id),
-            referenceDataService.listBenefitCategories(),
-            referenceDataService.listBenefitTypes(),
-            referenceDataService.listBenefitStatuses(),
+            services.benefit.listByOrganization(organization.id),
+            services.referenceData.listBenefitCategories(),
+            services.referenceData.listBenefitTypes(),
+            services.referenceData.listBenefitStatuses(),
           ]);
 
         if (!mounted) {
@@ -76,7 +68,7 @@ export default function OrgAdminBenefits() {
       }
     }
 
-    load();
+    void load();
 
     return () => {
       mounted = false;
@@ -102,7 +94,6 @@ export default function OrgAdminBenefits() {
         title: "Benefit Code",
         width: 150,
       },
-
       {
         key: "benefitName",
         title: "Benefit Name",
@@ -113,7 +104,6 @@ export default function OrgAdminBenefits() {
           </Text>
         ),
       },
-
       {
         key: "benefitCategoryId",
         title: "Category",
@@ -124,7 +114,6 @@ export default function OrgAdminBenefits() {
           </Text>
         ),
       },
-
       {
         key: "benefitTypeId",
         title: "Type",
@@ -135,13 +124,11 @@ export default function OrgAdminBenefits() {
           </Text>
         ),
       },
-
       {
         key: "effectiveDate",
         title: "Effective",
         width: 130,
       },
-
       {
         key: "expiryDate",
         title: "Expiry",
@@ -152,7 +139,6 @@ export default function OrgAdminBenefits() {
           </Text>
         ),
       },
-
       {
         key: "benefitStatusId",
         title: "Status",
@@ -214,7 +200,7 @@ export default function OrgAdminBenefits() {
       const existing = benefits.some((item) => item.id === benefit.id);
 
       if (existing) {
-        const updated = await benefitService.updateBenefit(
+        const updated = await services.benefit.updateBenefit(
           organization.id,
           benefit,
         );
@@ -223,7 +209,7 @@ export default function OrgAdminBenefits() {
           current.map((item) => (item.id === updated.id ? updated : item)),
         );
       } else {
-        const created = await benefitService.createBenefit(
+        const created = await services.benefit.createBenefit(
           organization.id,
           benefit,
         );
@@ -243,7 +229,7 @@ export default function OrgAdminBenefits() {
 
   const handleDelete = async (benefit: Benefit) => {
     try {
-      await benefitService.deleteBenefit(organization.id, benefit.id);
+      await services.benefit.deleteBenefit(organization.id, benefit.id);
 
       setBenefits((current) =>
         current.filter((item) => item.id !== benefit.id),
@@ -264,7 +250,6 @@ export default function OrgAdminBenefits() {
       contentContainerStyle={styles.screen}
       showsVerticalScrollIndicator={false}
     >
-      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerText}>
           <Text variant="title" color="text">
@@ -291,7 +276,6 @@ export default function OrgAdminBenefits() {
         </Pressable>
       </View>
 
-      {/* Benefit List */}
       {loading ? (
         <View style={styles.center}>
           <Text variant="body" color="textMuted">
@@ -317,7 +301,6 @@ export default function OrgAdminBenefits() {
         />
       )}
 
-      {/* Benefit Form */}
       <Modal
         visible={formVisible}
         onClose={() => {

@@ -9,14 +9,12 @@ import {
 } from "react-native";
 
 import {
-  Customer,
-  ID,
-  InMemoryCustomerService,
-  InMemoryOrganizationService,
-  InMemoryUserAcquisitionService,
-  OrganizationUser,
-  Store,
-  UserAcquisition,
+  services,
+  type Customer,
+  type ID,
+  type OrganizationUser,
+  type Store,
+  type UserAcquisition,
 } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
@@ -25,10 +23,6 @@ import { DataTable, DataTableColumn, Text } from "@/src/ui";
 
 import { CustomerForm } from "@/src/ui/admin/CustomerForm";
 import { Input } from "@/src/ui/Input";
-
-const customerService = new InMemoryCustomerService();
-const organizationService = new InMemoryOrganizationService();
-const acquisitionService = new InMemoryUserAcquisitionService();
 
 type CustomerRow = {
   organizationUser: OrganizationUser;
@@ -71,6 +65,15 @@ export default function OrgAdminCustomers() {
    * ------------------------------------------------------------
    * Load Customers
    * ------------------------------------------------------------
+   *
+   * UI consumes provider-neutral services only.
+   *
+   * The actual implementation may be:
+   *   - mock/in-memory
+   *   - API-backed
+   *   - another implementation
+   *
+   * The screen does not need to know which one.
    */
   const loadCustomers = useCallback(async () => {
     if (!mountedRef.current) {
@@ -80,12 +83,9 @@ export default function OrgAdminCustomers() {
     setLoading(true);
 
     try {
-      /*
-       * Load organization users and stores.
-       */
       const [organizationUsers, organizationStores] = await Promise.all([
-        organizationService.listOrganizationUsers(organization.id),
-        organizationService.listStores(organization.id),
+        services.organization.listOrganizationUsers(organization.id),
+        services.organization.listStores(organization.id),
       ]);
 
       if (!mountedRef.current) {
@@ -111,7 +111,7 @@ export default function OrgAdminCustomers() {
 
       const resolvedCustomers = await Promise.all(
         customerUsers.map(async (organizationUser) => {
-          const customer = await customerService.getCustomer(
+          const customer = await services.customer.getCustomer(
             organizationUser.userId,
           );
 
@@ -142,7 +142,7 @@ export default function OrgAdminCustomers() {
        *   3. Does NOT yet have an OrganizationUser CUSTOMER
        *      relationship.
        */
-      const acquisitions = await acquisitionService.listByOrganization(
+      const acquisitions = await services.userAcquisition.listByOrganization(
         organization.id,
       );
 
@@ -160,7 +160,7 @@ export default function OrgAdminCustomers() {
             (acquisition) => !existingCustomerUserIds.has(acquisition.userId),
           )
           .map(async (acquisition) => {
-            const customer = await customerService.getCustomer(
+            const customer = await services.customer.getCustomer(
               acquisition.userId,
             );
 
@@ -183,6 +183,7 @@ export default function OrgAdminCustomers() {
       const prospectiveCustomers: ProspectRow[] = acquisitionRows.filter(
         (item): item is ProspectRow => item !== null,
       );
+
       if (!mountedRef.current) {
         return;
       }
@@ -208,7 +209,7 @@ export default function OrgAdminCustomers() {
   useEffect(() => {
     mountedRef.current = true;
 
-    loadCustomers();
+    void loadCustomers();
 
     return () => {
       mountedRef.current = false;
@@ -421,8 +422,6 @@ export default function OrgAdminCustomers() {
    * Add Prospective Customer
    * ------------------------------------------------------------
    *
-   * IMPORTANT:
-   *
    * This does NOT create OrganizationUser.
    *
    * The CustomerForm gives us a Customer draft and an
@@ -439,14 +438,13 @@ export default function OrgAdminCustomers() {
   ) => {
     try {
       let emailMatch: Customer | null = null;
-
       let phoneMatch: Customer | null = null;
 
       /*
        * Check email.
        */
       if (draftCustomer.email) {
-        const matches = await customerService.findCustomers({
+        const matches = await services.customer.findCustomers({
           email: draftCustomer.email,
         });
 
@@ -457,7 +455,7 @@ export default function OrgAdminCustomers() {
        * Check phone.
        */
       if (draftCustomer.phone) {
-        const matches = await customerService.findCustomers({
+        const matches = await services.customer.findCustomers({
           phone: draftCustomer.phone,
         });
 
@@ -492,7 +490,7 @@ export default function OrgAdminCustomers() {
          * Check whether this organization already has an
          * acquisition for this user.
          */
-        const existingAcquisitions = await acquisitionService.getByUser(
+        const existingAcquisitions = await services.userAcquisition.getByUser(
           existingCustomer.id,
         );
 
@@ -516,7 +514,7 @@ export default function OrgAdminCustomers() {
           organizationId: organization.id,
         };
 
-        await acquisitionService.createAcquisition(acquisition);
+        await services.userAcquisition.createAcquisition(acquisition);
 
         setShowCustomerForm(false);
 
@@ -537,7 +535,7 @@ export default function OrgAdminCustomers() {
        * Create the global Customer first.
        * ----------------------------------------------------------
        */
-      const createdCustomer = await customerService.createCustomer({
+      const createdCustomer = await services.customer.createCustomer({
         fullName: draftCustomer.fullName,
         email: draftCustomer.email,
         phone: draftCustomer.phone,
@@ -554,7 +552,7 @@ export default function OrgAdminCustomers() {
         organizationId: organization.id,
       };
 
-      await acquisitionService.createAcquisition(acquisition);
+      await services.userAcquisition.createAcquisition(acquisition);
 
       setShowCustomerForm(false);
 
@@ -606,9 +604,6 @@ export default function OrgAdminCustomers() {
         contentContainerStyle={styles.screen}
         showsVerticalScrollIndicator={false}
       >
-        {/* ======================================================
-            Header
-            ====================================================== */}
         <View style={styles.header}>
           <View style={styles.headerText}>
             <Text variant="title" color="text">
@@ -636,9 +631,6 @@ export default function OrgAdminCustomers() {
           </Pressable>
         </View>
 
-        {/* ======================================================
-            Search
-            ====================================================== */}
         <View style={styles.searchContainer}>
           <Text variant="label" color="textSecondary">
             Search Customers
@@ -659,9 +651,6 @@ export default function OrgAdminCustomers() {
           </View>
         ) : (
           <>
-            {/* ==================================================
-                Existing Customers
-                ================================================== */}
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <View style={styles.sectionHeaderText}>
@@ -699,9 +688,6 @@ export default function OrgAdminCustomers() {
               />
             </View>
 
-            {/* ==================================================
-                Prospective Customers
-                ================================================== */}
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <View style={styles.sectionHeaderText}>
@@ -743,9 +729,6 @@ export default function OrgAdminCustomers() {
         )}
       </ScrollView>
 
-      {/* ==========================================================
-          ADD CUSTOMER MODAL
-          ========================================================== */}
       <Modal
         visible={showCustomerForm}
         transparent
@@ -788,9 +771,6 @@ export default function OrgAdminCustomers() {
         </View>
       </Modal>
 
-      {/* ==========================================================
-          VIEW CUSTOMER MODAL
-          ========================================================== */}
       <Modal
         visible={selectedCustomer !== null}
         transparent
@@ -838,7 +818,6 @@ export default function OrgAdminCustomers() {
                 </Pressable>
               </View>
 
-              {/* Basic details */}
               <View style={styles.detailsGrid}>
                 <DetailItem
                   label="Name"
@@ -861,7 +840,6 @@ export default function OrgAdminCustomers() {
                 />
               </View>
 
-              {/* Existing Customer Details */}
               {selectedCustomer.type === "EXISTING" ? (
                 <View style={styles.infoCard}>
                   <Text variant="bodyStrong" color="text">
@@ -893,7 +871,6 @@ export default function OrgAdminCustomers() {
                   />
                 </View>
               ) : (
-                /* Prospective Customer Details */
                 <View style={styles.infoCard}>
                   <Text variant="bodyStrong" color="text">
                     Acquisition Information
@@ -957,10 +934,6 @@ export default function OrgAdminCustomers() {
   );
 }
 
-/* ================================================================
-   Detail Item
-   ================================================================ */
-
 function DetailItem({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.detailItem}>
@@ -974,10 +947,6 @@ function DetailItem({ label, value }: { label: string; value: string }) {
     </View>
   );
 }
-
-/* ================================================================
-   Styles
-   ================================================================ */
 
 const styles = StyleSheet.create({
   scroll: {
@@ -1050,8 +1019,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
-  /* Modal */
 
   modalOverlay: {
     flex: 1,

@@ -7,20 +7,12 @@ import type {
   Staff,
   Store,
 } from "@/src/core";
-import {
-  InMemoryOrganizationService,
-  InMemoryReferenceDataService,
-  StaffRole,
-} from "@/src/core";
+import { StaffRole, services } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
 import { DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
 
 import { StaffForm } from "@/src/ui/admin/StaffForm";
-
-const organizationService = new InMemoryOrganizationService();
-
-const referenceDataService = new InMemoryReferenceDataService();
 
 export default function OrgAdminStaff() {
   const { organization } = useBusiness();
@@ -33,9 +25,7 @@ export default function OrgAdminStaff() {
   const [staffStatuses, setStaffStatuses] = useState<ReferenceDataItem[]>([]);
 
   const [loading, setLoading] = useState(true);
-
   const [formVisible, setFormVisible] = useState(false);
-
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
 
   useEffect(() => {
@@ -46,10 +36,10 @@ export default function OrgAdminStaff() {
 
       try {
         const [staffList, userList, storeList, statusList] = await Promise.all([
-          organizationService.listStaff(organization.id),
-          organizationService.listOrganizationUsers(organization.id),
-          organizationService.listStores(organization.id),
-          referenceDataService.listStaffStatuses(),
+          services.organization.listStaff(organization.id),
+          services.organization.listOrganizationUsers(organization.id),
+          services.organization.listStores(organization.id),
+          services.referenceData.listStaffStatuses(),
         ]);
 
         if (!mounted) {
@@ -76,7 +66,7 @@ export default function OrgAdminStaff() {
       }
     }
 
-    load();
+    void load();
 
     return () => {
       mounted = false;
@@ -87,13 +77,10 @@ export default function OrgAdminStaff() {
     switch (role) {
       case StaffRole.OWNER:
         return "Owner";
-
       case StaffRole.MANAGER:
         return "Manager";
-
       case StaffRole.STAFF:
         return "Staff";
-
       default:
         return role;
     }
@@ -112,9 +99,8 @@ export default function OrgAdminStaff() {
 
   const getUserName = (organizationUserId: string, staffName: string) => {
     /*
-     * The global User entity is not yet part of the
-     * mock layer, so Staff.fullName is currently the
-     * display name.
+     * The global User entity is not yet part of the mock layer,
+     * so Staff.fullName remains the display name for now.
      */
     const user = organizationUsers.find(
       (item) => item.id === organizationUserId,
@@ -201,7 +187,6 @@ export default function OrgAdminStaff() {
       storeId: stores.length > 0 ? stores[0].id : undefined,
 
       joiningDate: now.substring(0, 10),
-
       relievingDate: undefined,
 
       staffStatusId: "staff-status-active",
@@ -238,7 +223,7 @@ export default function OrgAdminStaff() {
       const existing = staff.some((item) => item.id === updatedStaff.id);
 
       if (existing) {
-        const updated = await organizationService.updateStaff(
+        const updated = await services.organization.updateStaff(
           organization.id,
           updatedStaff,
         );
@@ -247,7 +232,7 @@ export default function OrgAdminStaff() {
           current.map((item) => (item.id === updated.id ? updated : item)),
         );
       } else {
-        const created = await organizationService.createStaff(
+        const created = await services.organization.createStaff(
           organization.id,
           updatedStaff,
         );
@@ -267,7 +252,7 @@ export default function OrgAdminStaff() {
 
   const handleCreateOrganizationUser = async (user: OrganizationUser) => {
     try {
-      const created = await organizationService.createOrganizationUser(
+      const created = await services.organization.createOrganizationUser(
         organization.id,
         user,
       );

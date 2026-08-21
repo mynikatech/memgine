@@ -3,22 +3,12 @@ import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import type { Benefit, MembershipProduct, ReferenceDataItem } from "@/src/core";
 
-import {
-  InMemoryBenefitService,
-  InMemoryMembershipProductService,
-  InMemoryReferenceDataService,
-} from "@/src/core";
+import { services } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
 import { DataTable, type DataTableColumn, Modal, Text } from "@/src/ui";
 
 import { MembershipForm } from "@/src/ui/admin/MembershipForm";
-
-const membershipProductService = new InMemoryMembershipProductService();
-
-const benefitService = new InMemoryBenefitService();
-
-const referenceDataService = new InMemoryReferenceDataService();
 
 export default function MembershipsAdmin() {
   const { organization } = useBusiness();
@@ -66,15 +56,15 @@ export default function MembershipsAdmin() {
           planStatusList,
           currencyList,
         ] = await Promise.all([
-          membershipProductService.listProducts(organization.id),
+          services.membershipProduct.listProducts(organization.id),
 
-          benefitService.listByOrganization(organization.id),
+          services.benefit.listByOrganization(organization.id),
 
-          referenceDataService.listProductCategories(),
-          referenceDataService.listProductTypes(),
-          referenceDataService.listProductStatuses(),
-          referenceDataService.listSubscriptionPlanStatuses(),
-          referenceDataService.listCurrencies(),
+          services.referenceData.listProductCategories(),
+          services.referenceData.listProductTypes(),
+          services.referenceData.listProductStatuses(),
+          services.referenceData.listSubscriptionPlanStatuses(),
+          services.referenceData.listCurrencies(),
         ]);
 
         if (!mounted) {
@@ -117,6 +107,10 @@ export default function MembershipsAdmin() {
     return items.find((item) => item.id === id)?.name ?? "Unknown";
   };
 
+  const formatPlanPrice = (amountMinor: number, currency: string) => {
+    return `${currency} ${(amountMinor / 100).toFixed(2)}`;
+  };
+
   const getPlanSummary = (product: MembershipProduct) => {
     const activePlans = product.plans.filter((plan) => !plan.isDeleted);
 
@@ -133,10 +127,6 @@ export default function MembershipsAdmin() {
           )}`,
       )
       .join(", ");
-  };
-
-  const formatPlanPrice = (amountMinor: number, currency: string) => {
-    return `${currency} ${(amountMinor / 100).toFixed(2)}`;
   };
 
   const columns = useMemo<DataTableColumn<MembershipProduct>[]>(
@@ -249,7 +239,7 @@ export default function MembershipsAdmin() {
 
       productStatusId: activeStatus?.id ?? "",
 
-      effectiveDate: new Date().toISOString().substring(0, 10),
+      effectiveDate: now.substring(0, 10),
 
       expiryDate: undefined,
 
@@ -283,7 +273,7 @@ export default function MembershipsAdmin() {
       const existing = products.some((item) => item.id === updatedProduct.id);
 
       if (existing) {
-        const updated = await membershipProductService.updateProduct(
+        const updated = await services.membershipProduct.updateProduct(
           organization.id,
           updatedProduct,
         );
@@ -292,7 +282,7 @@ export default function MembershipsAdmin() {
           current.map((item) => (item.id === updated.id ? updated : item)),
         );
       } else {
-        const created = await membershipProductService.createProduct(
+        const created = await services.membershipProduct.createProduct(
           organization.id,
           updatedProduct,
         );
@@ -324,7 +314,7 @@ export default function MembershipsAdmin() {
           style: "destructive",
           onPress: async () => {
             try {
-              await membershipProductService.deleteProduct(
+              await services.membershipProduct.deleteProduct(
                 organization.id,
                 product.id,
               );

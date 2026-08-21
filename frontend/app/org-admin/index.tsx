@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 
 import {
-  mockServices,
+  services,
   type Benefit,
   type Customer,
   type Redemption,
@@ -20,13 +20,17 @@ import { Text } from "@/src/ui";
 /* ------------------------------------------------------------------
  * Organization Dashboard
  *
- * This is intentionally a simple aggregation of the existing
- * domain services.
+ * The dashboard aggregates existing domain services.
  *
- * No Dashboard-specific service/entity/view-model is introduced.
+ * UI dependency flow:
  *
- * KPI cards are navigation shortcuts into the corresponding
- * organization-admin screens.
+ * UI
+ *   ↓
+ * services registry
+ *   ↓
+ * API / mock implementation
+ *
+ * No mock service is consumed directly by the UI.
  * ------------------------------------------------------------------ */
 
 type DashboardData = {
@@ -50,10 +54,6 @@ export default function OrgAdminDashboard() {
 
   const [error, setError] = useState<string | null>(null);
 
-  /* ================================================================
-   * LOAD DASHBOARD DATA
-   * ================================================================ */
-
   useEffect(() => {
     let mounted = true;
 
@@ -62,36 +62,31 @@ export default function OrgAdminDashboard() {
       setError(null);
 
       try {
-        /*
-         * Dashboard consumes existing organization/domain services.
-         * It does not own any of this data.
-         */
-
         const [customers, products, benefits, stores, staff, subscriptions] =
           await Promise.all([
-            mockServices.customer.findCustomers({}),
+            services.customer.findCustomers({}),
 
-            mockServices.membershipProduct.listProducts(organization.id),
+            services.membershipProduct.listProducts(organization.id),
 
-            mockServices.benefit.listByOrganization(organization.id),
+            services.benefit.listByOrganization(organization.id),
 
-            mockServices.organization.listStores(organization.id),
+            services.organization.listStores(organization.id),
 
-            mockServices.organization.listStaff(organization.id),
+            services.organization.listStaff(organization.id),
 
-            mockServices.subscription.listByOrganization(organization.id),
+            services.subscription.listByOrganization(organization.id),
           ]);
 
         /*
          * Redemptions are currently exposed through subscriptions.
-         * Aggregate the organization's redemption records here.
+         * Resolve the organization's redemption records through the
+         * redemption service.
          */
-
         const redemptionResults = await Promise.all(
           subscriptions
             .filter((subscription) => !subscription.isDeleted)
             .map((subscription) =>
-              mockServices.redemption.listBySubscription(subscription.id),
+              services.redemption.listBySubscription(subscription.id),
             ),
         );
 
@@ -100,13 +95,11 @@ export default function OrgAdminDashboard() {
           .filter((redemption) => !redemption.isDeleted);
 
         /*
-         * Resolve the generic Status records actually referenced
-         * by subscriptions and redemptions.
+         * Resolve the generic Status records referenced by
+         * subscriptions and redemptions.
          *
-         * Do not assume status IDs such as:
-         * "subscription-status-active"
+         * Do not hard-code status IDs or status names here.
          */
-
         const statusIds = new Set<string>();
 
         subscriptions.forEach((subscription) => {
@@ -123,7 +116,7 @@ export default function OrgAdminDashboard() {
 
         const resolvedStatuses = await Promise.all(
           Array.from(statusIds).map(async (statusId) => {
-            const status = await mockServices.status.getStatus(statusId);
+            const status = await services.status.getStatus(statusId);
 
             return [statusId, status] as const;
           }),
@@ -142,10 +135,6 @@ export default function OrgAdminDashboard() {
         }
 
         setData({
-          /*
-           * Customer does not currently have isDeleted,
-           * so use the service result directly.
-           */
           customers,
 
           productsCount: products.filter((product) => !product.isDeleted)
@@ -178,7 +167,7 @@ export default function OrgAdminDashboard() {
       }
     }
 
-    loadDashboard();
+    void loadDashboard();
 
     return () => {
       mounted = false;
@@ -388,10 +377,6 @@ export default function OrgAdminDashboard() {
       ]}
       showsVerticalScrollIndicator={false}
     >
-      {/* ============================================================
-          HEADER
-          ============================================================ */}
-
       <View style={styles.header}>
         <View style={styles.headerText}>
           <Text variant="title" color="text">
@@ -403,16 +388,6 @@ export default function OrgAdminDashboard() {
           </Text>
         </View>
       </View>
-
-      {/* ============================================================
-          KPI CARDS
-
-          These are intentionally navigation shortcuts.
-
-          The Dashboard does not duplicate business workflows;
-          clicking a card takes the administrator to the existing
-          domain screen where the actual records can be managed.
-          ============================================================ */}
 
       <View style={styles.cardsGrid}>
         <MetricCard
@@ -452,10 +427,6 @@ export default function OrgAdminDashboard() {
         />
       </View>
 
-      {/* ============================================================
-          SUBSCRIPTION OVERVIEW
-          ============================================================ */}
-
       <DashboardSection
         title="Subscription Overview"
         subtitle="Current subscription status distribution"
@@ -474,10 +445,6 @@ export default function OrgAdminDashboard() {
           </View>
         )}
       </DashboardSection>
-
-      {/* ============================================================
-          REDEMPTION OVERVIEW
-          ============================================================ */}
 
       <DashboardSection
         title="Redemption Overview"
@@ -502,10 +469,6 @@ export default function OrgAdminDashboard() {
           ))}
         </View>
       </DashboardSection>
-
-      {/* ============================================================
-          RECENT REDEMPTIONS
-          ============================================================ */}
 
       <DashboardSection
         title="Recent Redemptions"
@@ -564,10 +527,6 @@ export default function OrgAdminDashboard() {
 
 /* ==================================================================
    METRIC CARD
-
-   KPI cards are actual navigation controls rather than static
-   numbers. This gives the Dashboard a useful purpose without
-   introducing a separate Dashboard service.
    ================================================================== */
 
 function MetricCard({
@@ -765,10 +724,6 @@ const styles = StyleSheet.create({
     gap: 4,
   },
 
-  /* ---------------------------------------------------------------
-   * KPI cards
-   * --------------------------------------------------------------- */
-
   cardsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -797,10 +752,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
 
-  /* ---------------------------------------------------------------
-   * Sections
-   * --------------------------------------------------------------- */
-
   section: {
     borderWidth: 1,
     borderRadius: 10,
@@ -811,10 +762,6 @@ const styles = StyleSheet.create({
   sectionHeader: {
     gap: 4,
   },
-
-  /* ---------------------------------------------------------------
-   * Statuses
-   * --------------------------------------------------------------- */
 
   statusList: {
     gap: 0,
@@ -828,10 +775,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     paddingVertical: 10,
   },
-
-  /* ---------------------------------------------------------------
-   * Redemptions
-   * --------------------------------------------------------------- */
 
   redemptionSummary: {
     flexDirection: "row",
@@ -866,10 +809,6 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     gap: 3,
   },
-
-  /* ---------------------------------------------------------------
-   * Loading / error
-   * --------------------------------------------------------------- */
 
   loadingCard: {
     minHeight: 160,

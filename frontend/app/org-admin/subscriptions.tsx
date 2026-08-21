@@ -9,22 +9,10 @@ import type {
   SubscriptionPlan,
 } from "@/src/core";
 
-import {
-  InMemoryCustomerService,
-  InMemoryMembershipProductService,
-  InMemoryOrganizationService,
-  InMemorySubscriptionPlanService,
-  InMemorySubscriptionService,
-} from "@/src/core";
+import { services } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
 import { DataTable, DataTableColumn, Input, Text } from "@/src/ui";
-
-const subscriptionService = new InMemorySubscriptionService();
-const subscriptionPlanService = new InMemorySubscriptionPlanService();
-const customerService = new InMemoryCustomerService();
-const organizationService = new InMemoryOrganizationService();
-const membershipProductService = new InMemoryMembershipProductService();
 
 type SubscriptionRow = {
   subscription: Subscription;
@@ -41,12 +29,6 @@ export default function OrgAdminSubscriptions() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  /*
-   * This is the important state for the View action.
-   *
-   * DataTable -> handleView(row) -> setSelectedSubscription(row)
-   * -> Modal becomes visible.
-   */
   const [selectedSubscription, setSelectedSubscription] =
     useState<SubscriptionRow | null>(null);
 
@@ -57,29 +39,9 @@ export default function OrgAdminSubscriptions() {
       setLoading(true);
 
       try {
-        /*
-         * Final Subscription model:
-         *
-         * Subscription
-         *   ├── organizationUserId
-         *   │       ↓
-         *   │   OrganizationUser
-         *   │       ├── organizationId
-         *   │       └── userId
-         *   │               ↓
-         *   │           Customer
-         *   │
-         *   └── subscriptionPlanId
-         *           ↓
-         *       SubscriptionPlan
-         *           └── membershipProductId
-         *                   ↓
-         *               MembershipProduct
-         */
-
         const [subscriptions, organizationUsers] = await Promise.all([
-          subscriptionService.listByOrganization(organization.id),
-          organizationService.listOrganizationUsers(organization.id),
+          services.subscription.listByOrganization(organization.id),
+          services.organization.listOrganizationUsers(organization.id),
         ]);
 
         const organizationUserMap = new Map<string, OrganizationUser>(
@@ -91,22 +53,18 @@ export default function OrgAdminSubscriptions() {
         const resolved = await Promise.all(
           subscriptions
             .filter((subscription) => !subscription.isDeleted)
-            .map(async (subscription) => {
+            .map(async (subscription): Promise<SubscriptionRow | null> => {
               const organizationUser = organizationUserMap.get(
                 subscription.organizationUserId,
               );
 
-              /*
-               * A subscription without its OrganizationUser relationship
-               * cannot be reliably displayed in this organization.
-               */
               if (!organizationUser) {
                 return null;
               }
 
               const [customer, subscriptionPlan] = await Promise.all([
-                customerService.getCustomer(organizationUser.userId),
-                subscriptionPlanService.getPlan(
+                services.customer.getCustomer(organizationUser.userId),
+                services.subscriptionPlan.getPlan(
                   subscription.subscriptionPlanId,
                 ),
               ]);
@@ -115,7 +73,7 @@ export default function OrgAdminSubscriptions() {
 
               if (subscriptionPlan) {
                 membershipProduct =
-                  (await membershipProductService.getProduct(
+                  (await services.membershipProduct.getProduct(
                     subscriptionPlan.membershipProductId,
                   )) ?? undefined;
               }
@@ -134,16 +92,9 @@ export default function OrgAdminSubscriptions() {
           return;
         }
 
-        /*
-         * Explicit type guard.
-         *
-         * This avoids the earlier:
-         * "SubscriptionRow | null is not assignable..."
-         * problem.
-         */
         const validRows = resolved.filter(
-          (item) => item !== null,
-        ) as SubscriptionRow[];
+          (item): item is SubscriptionRow => item !== null,
+        );
 
         setRows(validRows);
       } catch {
@@ -159,18 +110,12 @@ export default function OrgAdminSubscriptions() {
       }
     }
 
-    load();
+    void load();
 
     return () => {
       mounted = false;
     };
   }, [organization.id]);
-
-  /*
-   * ------------------------------------------------------------
-   * Search
-   * ------------------------------------------------------------
-   */
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -180,35 +125,22 @@ export default function OrgAdminSubscriptions() {
     }
 
     return rows.filter(
-      ({ subscription, customer, subscriptionPlan, membershipProduct }) => {
-        return (
-          subscription.subscriptionNumber.toLowerCase().includes(query) ||
-          subscription.id.toLowerCase().includes(query) ||
-          subscription.subscriptionStatusId.toLowerCase().includes(query) ||
-          subscription.organizationUserId.toLowerCase().includes(query) ||
-          subscriptionPlan?.subscriptionPlanName
-            .toLowerCase()
-            .includes(query) ||
-          subscriptionPlan?.subscriptionPlanCode
-            .toLowerCase()
-            .includes(query) ||
-          membershipProduct?.membershipProductName
-            .toLowerCase()
-            .includes(query) ||
-          membershipProduct?.displayName?.toLowerCase().includes(query) ||
-          customer?.fullName.toLowerCase().includes(query) ||
-          customer?.email?.toLowerCase().includes(query) ||
-          customer?.phone?.toLowerCase().includes(query)
-        );
-      },
+      ({ subscription, customer, subscriptionPlan, membershipProduct }) =>
+        subscription.subscriptionNumber.toLowerCase().includes(query) ||
+        subscription.id.toLowerCase().includes(query) ||
+        subscription.subscriptionStatusId.toLowerCase().includes(query) ||
+        subscription.organizationUserId.toLowerCase().includes(query) ||
+        subscriptionPlan?.subscriptionPlanName.toLowerCase().includes(query) ||
+        subscriptionPlan?.subscriptionPlanCode.toLowerCase().includes(query) ||
+        membershipProduct?.membershipProductName
+          .toLowerCase()
+          .includes(query) ||
+        membershipProduct?.displayName?.toLowerCase().includes(query) ||
+        customer?.fullName.toLowerCase().includes(query) ||
+        customer?.email?.toLowerCase().includes(query) ||
+        customer?.phone?.toLowerCase().includes(query),
     );
   }, [rows, search]);
-
-  /*
-   * ------------------------------------------------------------
-   * Summary
-   * ------------------------------------------------------------
-   */
 
   const activeCount = useMemo(
     () =>
@@ -218,12 +150,6 @@ export default function OrgAdminSubscriptions() {
       ).length,
     [rows],
   );
-
-  /*
-   * ------------------------------------------------------------
-   * Columns
-   * ------------------------------------------------------------
-   */
 
   const columns = useMemo<DataTableColumn<SubscriptionRow>[]>(
     () => [
@@ -339,24 +265,6 @@ export default function OrgAdminSubscriptions() {
     [],
   );
 
-  /*
-   * ------------------------------------------------------------
-   * View Subscription
-   * ------------------------------------------------------------
-   *
-   * IMPORTANT:
-   *
-   * Do NOT use Alert.alert here.
-   *
-   * This is the same pattern used by Customers:
-   *
-   * DataTable View
-   *      ↓
-   * setSelectedSubscription(row)
-   *      ↓
-   * Modal visible={selectedSubscription !== null}
-   */
-
   const handleView = (row: SubscriptionRow) => {
     setSelectedSubscription(row);
   };
@@ -368,10 +276,6 @@ export default function OrgAdminSubscriptions() {
         contentContainerStyle={styles.screen}
         showsVerticalScrollIndicator={false}
       >
-        {/* ======================================================
-            Header
-            ====================================================== */}
-
         <View style={styles.header}>
           <View style={styles.headerText}>
             <Text variant="title" color="text">
@@ -383,10 +287,6 @@ export default function OrgAdminSubscriptions() {
             </Text>
           </View>
         </View>
-
-        {/* ======================================================
-            Summary
-            ====================================================== */}
 
         <View style={styles.summary}>
           <View style={styles.summaryCard}>
@@ -410,10 +310,6 @@ export default function OrgAdminSubscriptions() {
           </View>
         </View>
 
-        {/* ======================================================
-            Search
-            ====================================================== */}
-
         <View style={styles.searchContainer}>
           <Input
             label="Search Subscriptions"
@@ -422,10 +318,6 @@ export default function OrgAdminSubscriptions() {
             placeholder="Search customer, subscription, plan or status"
           />
         </View>
-
-        {/* ======================================================
-            Grid
-            ====================================================== */}
 
         {loading ? (
           <View style={styles.center}>
@@ -453,10 +345,6 @@ export default function OrgAdminSubscriptions() {
         )}
       </ScrollView>
 
-      {/* ==========================================================
-          VIEW SUBSCRIPTION MODAL
-          ========================================================== */}
-
       <Modal
         visible={selectedSubscription !== null}
         transparent
@@ -466,10 +354,6 @@ export default function OrgAdminSubscriptions() {
         {selectedSubscription ? (
           <View style={styles.modalOverlay}>
             <View style={styles.viewModal}>
-              {/* ------------------------------------------------
-                  Modal Header
-                  ------------------------------------------------ */}
-
               <View style={styles.modalHeader}>
                 <View style={styles.headerText}>
                   <View style={styles.subscriptionTitleRow}>
@@ -501,10 +385,6 @@ export default function OrgAdminSubscriptions() {
                   </Text>
                 </Pressable>
               </View>
-
-              {/* ------------------------------------------------
-                  Subscription Details
-                  ------------------------------------------------ */}
 
               <ScrollView
                 showsVerticalScrollIndicator={false}
@@ -621,10 +501,6 @@ export default function OrgAdminSubscriptions() {
                   />
                 </View>
 
-                {/* ------------------------------------------------
-                    Plan Information
-                    ------------------------------------------------ */}
-
                 {selectedSubscription.subscriptionPlan ? (
                   <View style={styles.infoCard}>
                     <Text variant="bodyStrong" color="text">
@@ -676,10 +552,6 @@ export default function OrgAdminSubscriptions() {
                   </View>
                 ) : null}
 
-                {/* ------------------------------------------------
-                    Product Information
-                    ------------------------------------------------ */}
-
                 {selectedSubscription.membershipProduct ? (
                   <View style={styles.infoCard}>
                     <Text variant="bodyStrong" color="text">
@@ -720,10 +592,6 @@ export default function OrgAdminSubscriptions() {
                   </View>
                 ) : null}
 
-                {/* ------------------------------------------------
-                    Close
-                    ------------------------------------------------ */}
-
                 <View style={styles.modalActions}>
                   <Pressable
                     onPress={() => setSelectedSubscription(null)}
@@ -743,10 +611,6 @@ export default function OrgAdminSubscriptions() {
   );
 }
 
-/* ================================================================
-   Detail Item
-   ================================================================ */
-
 function DetailItem({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.detailItem}>
@@ -760,10 +624,6 @@ function DetailItem({ label, value }: { label: string; value: string }) {
     </View>
   );
 }
-
-/* ================================================================
-   Formatting
-   ================================================================ */
 
 function formatDate(value: string): string {
   if (!value) {
@@ -813,10 +673,6 @@ function formatStatus(value: string): string {
 function formatMoney(value: { amountMinor: number; currency: string }): string {
   return `${value.currency} ${(value.amountMinor / 100).toFixed(2)}`;
 }
-
-/* ================================================================
-   Styles
-   ================================================================ */
 
 const styles = StyleSheet.create({
   scroll: {
@@ -869,10 +725,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
-  /* ==============================================================
-     Modal
-     ============================================================== */
 
   modalOverlay: {
     flex: 1,

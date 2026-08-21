@@ -1,18 +1,13 @@
 import { useEffect, useState } from "react";
 import { Alert, View } from "react-native";
 
-import {
-  InMemoryOrganizationService,
-  InMemoryReferenceDataService,
-  NotificationConfiguration,
-} from "@/src/core";
+import type { NotificationConfiguration, ReferenceDataItem } from "@/src/core";
+
+import { services } from "@/src/core";
+
 import { useBusiness } from "@/src/providers";
 import { StateView } from "@/src/ui";
 import { NotificationConfigurationForm } from "@/src/ui/admin/NotificationConfigurationForm";
-
-const organizationService = new InMemoryOrganizationService();
-
-const referenceDataService = new InMemoryReferenceDataService();
 
 export default function OrgAdminNotifications() {
   const { organization } = useBusiness();
@@ -21,7 +16,7 @@ export default function OrgAdminNotifications() {
     useState<NotificationConfiguration | null>(null);
 
   const [notificationStatuses, setNotificationStatuses] = useState<
-    Awaited<ReturnType<typeof referenceDataService.listOrganizationStatuses>>
+    ReferenceDataItem[]
   >([]);
 
   const [loading, setLoading] = useState(true);
@@ -37,16 +32,20 @@ export default function OrgAdminNotifications() {
 
       try {
         const [notificationConfiguration, statuses] = await Promise.all([
-          organizationService.getNotificationConfiguration(organization.id),
-          referenceDataService.listOrganizationStatuses(),
+          services.organization.getNotificationConfiguration(organization.id),
+          services.referenceData.listOrganizationStatuses(),
         ]);
 
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
 
         setConfiguration(notificationConfiguration);
         setNotificationStatuses(statuses);
       } catch (loadError) {
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
 
         setError(
           loadError instanceof Error
@@ -60,12 +59,37 @@ export default function OrgAdminNotifications() {
       }
     }
 
-    load();
+    void load();
 
     return () => {
       mounted = false;
     };
   }, [organization.id]);
+
+  const handleSave = async (
+    updatedConfiguration: NotificationConfiguration,
+  ) => {
+    try {
+      const saved = await services.organization.updateNotificationConfiguration(
+        organization.id,
+        updatedConfiguration,
+      );
+
+      setConfiguration(saved);
+
+      Alert.alert(
+        "Notifications updated",
+        "Your notification configuration has been saved.",
+      );
+    } catch (saveError) {
+      Alert.alert(
+        "Unable to update notifications",
+        saveError instanceof Error
+          ? saveError.message
+          : "Unable to save notification configuration.",
+      );
+    }
+  };
 
   if (loading) {
     return (
@@ -96,19 +120,7 @@ export default function OrgAdminNotifications() {
       organization={organization}
       configuration={configuration}
       notificationStatuses={notificationStatuses}
-      onSave={async (updatedConfiguration) => {
-        await organizationService.updateNotificationConfiguration(
-          organization.id,
-          updatedConfiguration,
-        );
-
-        setConfiguration(updatedConfiguration);
-
-        Alert.alert(
-          "Notifications updated",
-          "Your notification configuration has been saved.",
-        );
-      }}
+      onSave={handleSave}
     />
   );
 }

@@ -1,61 +1,77 @@
 import { useEffect, useState } from "react";
 import { Alert, View } from "react-native";
 
-import {
-  InMemoryOrganizationService,
-  InMemoryReferenceDataService,
-  Organization,
-  OrganizationDetails,
-} from "@/src/core";
+import { Organization, OrganizationDetails, services } from "@/src/core";
+
 import { useBusiness } from "@/src/providers";
 import { StateView } from "@/src/ui";
 import { BusinessForm } from "@/src/ui/admin/BusinessForm";
-
-const organizationService = new InMemoryOrganizationService();
-const referenceDataService = new InMemoryReferenceDataService();
 
 export default function OrgAdminBusiness() {
   const { organization } = useBusiness();
 
   const [details, setDetails] = useState<OrganizationDetails | null>(null);
+
   const [organizationTypes, setOrganizationTypes] = useState<
-    Awaited<ReturnType<typeof referenceDataService.listOrganizationTypes>>
+    Awaited<ReturnType<typeof services.referenceData.listOrganizationTypes>>
   >([]);
+
   const [organizationStatuses, setOrganizationStatuses] = useState<
-    Awaited<ReturnType<typeof referenceDataService.listOrganizationStatuses>>
+    Awaited<ReturnType<typeof services.referenceData.listOrganizationStatuses>>
   >([]);
+
   const [countries, setCountries] = useState<
-    Awaited<ReturnType<typeof referenceDataService.listCountries>>
+    Awaited<ReturnType<typeof services.referenceData.listCountries>>
   >([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   const [regions, setRegions] = useState<
-    Awaited<ReturnType<typeof referenceDataService.listRegions>>
+    Awaited<ReturnType<typeof services.referenceData.listRegions>>
   >([]);
+
   const [cities, setCities] = useState<
-    Awaited<ReturnType<typeof referenceDataService.listCities>>
+    Awaited<ReturnType<typeof services.referenceData.listCities>>
   >([]);
 
-  // 3. User changes country
   const handleCountryChange = async (countryCode: string) => {
-    const regionList = await referenceDataService.listRegions(countryCode);
+    try {
+      const regionList = await services.referenceData.listRegions(countryCode);
 
-    setRegions(regionList);
-    setCities([]);
+      setRegions(regionList);
+      setCities([]);
+    } catch (loadError) {
+      Alert.alert(
+        "Unable to load regions",
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load regions.",
+      );
+    }
   };
 
-  // 4. User changes region
   const handleRegionChange = async (
     countryCode: string,
     regionCode: string,
   ) => {
-    const cityList = await referenceDataService.listCities(
-      countryCode,
-      regionCode,
-    );
+    try {
+      const cityList = await services.referenceData.listCities(
+        countryCode,
+        regionCode,
+      );
 
-    setCities(cityList);
+      setCities(cityList);
+    } catch (loadError) {
+      Alert.alert(
+        "Unable to load cities",
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load cities.",
+      );
+    }
   };
+
   useEffect(() => {
     let mounted = true;
 
@@ -66,16 +82,16 @@ export default function OrgAdminBusiness() {
       try {
         const [organizationDetails, types, statuses, countryList] =
           await Promise.all([
-            organizationService.getOrganizationDetails(organization.id),
-            referenceDataService.listOrganizationTypes(),
-            referenceDataService.listOrganizationStatuses(),
-            referenceDataService.listCountries(),
+            services.organization.getOrganizationDetails(organization.id),
+            services.referenceData.listOrganizationTypes(),
+            services.referenceData.listOrganizationStatuses(),
+            services.referenceData.listCountries(),
           ]);
 
         const countryCode = organizationDetails?.address.countryCode;
 
         const regionList = countryCode
-          ? await referenceDataService.listRegions(countryCode)
+          ? await services.referenceData.listRegions(countryCode)
           : [];
 
         const currentRegion = regionList.find(
@@ -86,13 +102,15 @@ export default function OrgAdminBusiness() {
 
         const cityList =
           countryCode && currentRegion
-            ? await referenceDataService.listCities(
+            ? await services.referenceData.listCities(
                 countryCode,
                 currentRegion.code,
               )
             : [];
 
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
 
         setDetails(organizationDetails);
         setOrganizationTypes(types);
@@ -101,18 +119,24 @@ export default function OrgAdminBusiness() {
         setRegions(regionList);
         setCities(cityList);
       } catch (loadError) {
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
+
         setError(
           loadError instanceof Error
             ? loadError.message
             : "Unable to load business information.",
         );
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     }
 
-    load();
+    void load();
+
     return () => {
       mounted = false;
     };
@@ -157,27 +181,31 @@ export default function OrgAdminBusiness() {
         updatedOrganization: Organization,
         updatedDetails: OrganizationDetails,
       ) => {
-        await organizationService.updateOrganization(
-          organization.id,
-          updatedOrganization,
-        );
+        try {
+          await services.organization.updateOrganization(
+            organization.id,
+            updatedOrganization,
+          );
 
-        // The current mock has no seeded OrganizationDetails row yet. Keep the
-        // edited details in screen state until the mock data is seeded; the real
-        // service will persist this through updateOrganizationDetails().
-        if (details) {
-          await organizationService.updateOrganizationDetails(
+          await services.organization.updateOrganizationDetails(
             organization.id,
             updatedDetails,
           );
+
+          setDetails(updatedDetails);
+
+          Alert.alert(
+            "Business updated",
+            "Your business information has been saved.",
+          );
+        } catch (saveError) {
+          Alert.alert(
+            "Unable to save business",
+            saveError instanceof Error
+              ? saveError.message
+              : "Unable to save business information.",
+          );
         }
-
-        setDetails(updatedDetails);
-
-        Alert.alert(
-          "Business updated",
-          "Your business information has been saved.",
-        );
       }}
     />
   );
