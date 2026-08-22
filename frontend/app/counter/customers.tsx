@@ -16,8 +16,8 @@ import type {
   Store,
   Subscription,
 } from "@/src/core";
+import { services } from "@/src/core";
 import { APP_ROUTES } from "@/src/constants/navigation";
-import { mockServices } from "@/src/core";
 import { useBusiness, useTranslation } from "@/src/providers";
 import { Screen } from "@/src/layout";
 import {
@@ -75,14 +75,12 @@ export default function StaffCustomers() {
        * matching the logic used when a subscription is created.
        */
       const subscriptionEntityStatuses =
-        await mockServices.entityStatus.listByEntityTypeCode("SUBSCRIPTION");
+        await services.entityStatus.listByEntityTypeCode("SUBSCRIPTION");
 
       let activeEntityStatusId: string | undefined;
 
       for (const entityStatus of subscriptionEntityStatuses) {
-        const status = await mockServices.status.getStatus(
-          entityStatus.statusId,
-        );
+        const status = await services.status.getStatus(entityStatus.statusId);
 
         if (status?.statusCode?.trim().toUpperCase() === "ACTIVE") {
           activeEntityStatusId = entityStatus.id;
@@ -106,14 +104,12 @@ export default function StaffCustomers() {
        * Customer
        */
       const organizationUsers =
-        await mockServices.organization.listOrganizationUsers(organization.id);
+        await services.organization.listOrganizationUsers(organization.id);
 
       /*
        * Stores are organization-level data, so load them once.
        */
-      const stores = await mockServices.organization.listStores(
-        organization.id,
-      );
+      const stores = await services.organization.listStores(organization.id);
 
       const storesById = new Map<string, Store>(
         stores.map((store) => [store.id, store]),
@@ -128,7 +124,7 @@ export default function StaffCustomers() {
                 "org-user-type-customer",
           )
           .map(async (organizationUser) => {
-            const customer = await mockServices.customer.getCustomer(
+            const customer = await services.customer.getCustomer(
               organizationUser.userId,
             );
 
@@ -141,7 +137,7 @@ export default function StaffCustomers() {
              * OrganizationUser.
              */
             const subscriptions =
-              await mockServices.subscription.listByOrganizationUser(
+              await services.subscription.listByOrganizationUser(
                 organizationUser.id,
               );
 
@@ -164,7 +160,7 @@ export default function StaffCustomers() {
              * Redemptions
              */
             for (const subscription of subscriptions) {
-              const plan = await mockServices.subscriptionPlan.getPlan(
+              const plan = await services.subscriptionPlan.getPlan(
                 subscription.subscriptionPlanId,
               );
 
@@ -172,7 +168,7 @@ export default function StaffCustomers() {
                 continue;
               }
 
-              const product = await mockServices.membershipProduct.getProduct(
+              const product = await services.membershipProduct.getProduct(
                 plan.membershipProductId,
               );
 
@@ -180,7 +176,7 @@ export default function StaffCustomers() {
                 products.push(product);
               }
 
-              const benefits = await mockServices.benefit.listByProduct(
+              const benefits = await services.benefit.listByProduct(
                 plan.membershipProductId,
               );
 
@@ -189,9 +185,7 @@ export default function StaffCustomers() {
               );
 
               const subscriptionRedemptions =
-                await mockServices.redemption.listBySubscription(
-                  subscription.id,
-                );
+                await services.redemption.listBySubscription(subscription.id);
 
               for (const redemption of subscriptionRedemptions) {
                 const benefit = benefitsById.get(redemption.benefitId);

@@ -11,7 +11,7 @@ import type {
   MembershipProduct,
   Subscription,
 } from "@/src/core";
-import { mockServices } from "@/src/core";
+import { services } from "@/src/core";
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
 import {
@@ -267,7 +267,7 @@ export default function JoinFlow() {
         let pid = params.productId;
 
         if (!pid) {
-          const list = await mockServices.membershipProduct.listProducts(orgId);
+          const list = await services.membershipProduct.listProducts(orgId);
 
           pid = list[0]?.id;
         }
@@ -278,15 +278,15 @@ export default function JoinFlow() {
           );
         }
 
-        const prod = await mockServices.membershipProduct.getProduct(pid);
+        const prod = await services.membershipProduct.getProduct(pid);
 
         if (!prod) {
           throw new Error(`Membership product not found: ${pid}`);
         }
 
-        const bens = await mockServices.benefit.listByProduct(pid);
+        const bens = await services.benefit.listByProduct(pid);
 
-        const cust = await mockServices.customer.getCustomer(customerId);
+        const cust = await services.customer.getCustomer(customerId);
 
         let resolvedOrganizationUserId: string | null = null;
 
@@ -296,9 +296,7 @@ export default function JoinFlow() {
          */
         try {
           const organizationUsers =
-            await mockServices.organization.listOrganizationUsersByUser(
-              customerId,
-            );
+            await services.organization.listOrganizationUsersByUser(customerId);
 
           const organizationUser = organizationUsers.find(
             (item) => item.organizationId === orgId,
@@ -414,7 +412,7 @@ export default function JoinFlow() {
         fullMobile,
       });
 
-      const res = await mockServices.auth.sendOtp({
+      const res = await services.auth.sendOtp({
         mobile: fullMobile,
       });
 
@@ -443,7 +441,7 @@ export default function JoinFlow() {
    *
    * IMPORTANT:
    *
-   * mockServices.auth.verifyOtp() returns:
+   * services.auth.verifyOtp() returns:
    *
    *   { verified: true }
    *
@@ -478,7 +476,7 @@ export default function JoinFlow() {
         codeLength: normalizedCode.length,
       });
 
-      const res = await mockServices.auth.verifyOtp({
+      const res = await services.auth.verifyOtp({
         requestId,
         code: normalizedCode,
       });
@@ -560,23 +558,21 @@ export default function JoinFlow() {
     setStep("processing");
 
     try {
-      const payment = await mockServices.payment.pay({
+      const payment = await services.payment.pay({
         amountMinor: plan.price.amountMinor,
         currency: plan.price.currency,
         description: product.membershipProductName,
       });
 
       const subscriptionEntityStatuses =
-        await mockServices.entityStatus.listByEntityTypeCode("SUBSCRIPTION");
+        await services.entityStatus.listByEntityTypeCode("SUBSCRIPTION");
 
       let activeSubscriptionEntityStatus:
         | (typeof subscriptionEntityStatuses)[number]
         | undefined;
 
       for (const entityStatus of subscriptionEntityStatuses) {
-        const status = await mockServices.status.getStatus(
-          entityStatus.statusId,
-        );
+        const status = await services.status.getStatus(entityStatus.statusId);
 
         if (status?.statusCode?.trim().toUpperCase() === "ACTIVE") {
           activeSubscriptionEntityStatus = entityStatus;
@@ -610,7 +606,7 @@ export default function JoinFlow() {
         organizationId: orgId,
       });
 
-      const sub = await mockServices.subscription.createSubscription({
+      const sub = await services.subscription.createSubscription({
         subscriptionNumber: generateSubscriptionNumber(),
 
         subscriptionPlanId: plan.id,

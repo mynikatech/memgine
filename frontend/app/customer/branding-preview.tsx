@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 
-import { InMemoryOrganizationService, OrganizationBranding } from "@/src/core";
+import { OrganizationBranding, services } from "@/src/core";
 import { useBusiness } from "@/src/providers";
 import { Button, Card, Text } from "@/src/ui";
-
-const organizationService = new InMemoryOrganizationService();
 
 export default function BrandingPreview() {
   const { organization } = useBusiness();
@@ -17,7 +15,7 @@ export default function BrandingPreview() {
 
     async function load() {
       const organizationBranding =
-        await organizationService.getOrganizationBranding(organization.id);
+        await services.organization.getOrganizationBranding(organization.id);
 
       if (mounted) {
         setBranding(organizationBranding);

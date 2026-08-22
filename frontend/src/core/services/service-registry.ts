@@ -12,6 +12,9 @@ import {
   UserAcquisitionService,
   RedemptionService,
   StatusService,
+  EntityStatusService,
+  CustomerAuthService,
+  PaymentService,
 } from "./service-contracts";
 
 import { ReferenceDataService } from "./reference-data";
@@ -40,6 +43,9 @@ export type MemgineServices = {
   userAcquisition: UserAcquisitionService;
   redemption: RedemptionService;
   status: StatusService;
+  entityStatus: EntityStatusService;
+  auth: CustomerAuthService;
+  payment: PaymentService;
   referenceData: ReferenceDataService;
 };
 
@@ -55,4 +61,7 @@ export const services: MemgineServices = {
   redemption: mockServices.redemption,
   status: mockServices.status,
   referenceData: mockReferenceDataService,
+  entityStatus: mockServices.entityStatus,
+  auth: mockServices.auth,
+  payment: mockServices.payment,
 };

@@ -10,7 +10,7 @@ import type {
   Store,
   Subscription,
 } from "@/src/core";
-import { getBusinessContent, mockServices } from "@/src/core";
+import { getBusinessContent, services } from "@/src/core";
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { BusinessExperience } from "@/src/experience";
@@ -89,7 +89,7 @@ export default function DiscoverGateway() {
        * ------------------------------------------------------------
        */
       const context = organizationId
-        ? await mockServices.organization.getBusinessContext(organizationId)
+        ? await services.organization.getBusinessContext(organizationId)
         : null;
 
       if (!context) {
@@ -131,8 +131,7 @@ export default function DiscoverGateway() {
        *          -> Subscription
        * ------------------------------------------------------------
        */
-      const all =
-        await mockServices.subscription.listByCustomer(activeCustomerId);
+      const all = await services.subscription.listByCustomer(activeCustomerId);
 
       /*
        * ------------------------------------------------------------
@@ -147,7 +146,7 @@ export default function DiscoverGateway() {
 
       for (const subscription of all) {
         const organizationUser =
-          await mockServices.organization.getOrganizationUser(
+          await services.organization.getOrganizationUser(
             subscription.organizationUserId,
           );
 
@@ -177,7 +176,7 @@ export default function DiscoverGateway() {
           /*
            * Subscription -> SubscriptionPlan
            */
-          const plan = await mockServices.subscriptionPlan.getPlan(
+          const plan = await services.subscriptionPlan.getPlan(
             subscription.subscriptionPlanId,
           );
 
@@ -188,7 +187,7 @@ export default function DiscoverGateway() {
           /*
            * SubscriptionPlan -> MembershipProduct
            */
-          const product = await mockServices.membershipProduct.getProduct(
+          const product = await services.membershipProduct.getProduct(
             plan.membershipProductId,
           );
 
@@ -199,14 +198,14 @@ export default function DiscoverGateway() {
           /*
            * MembershipProduct -> Benefits
            */
-          const benefits = await mockServices.benefit.listByProduct(
+          const benefits = await services.benefit.listByProduct(
             plan.membershipProductId,
           );
 
           /*
            * Subscription -> Redemptions
            */
-          const redemptions = await mockServices.redemption.listBySubscription(
+          const redemptions = await services.redemption.listBySubscription(
             subscription.id,
           );
 
@@ -229,11 +228,11 @@ export default function DiscoverGateway() {
        * ------------------------------------------------------------
        */
       const [orgOffers, orgStores, catalog] = await Promise.all([
-        mockServices.offer.listByOrganization(organizationId),
+        services.offer.listByOrganization(organizationId),
 
-        mockServices.organization.listStores(organizationId),
+        services.organization.listStores(organizationId),
 
-        mockServices.membershipProduct.listProducts(organizationId),
+        services.membershipProduct.listProducts(organizationId),
       ]);
 
       /*
@@ -274,7 +273,7 @@ export default function DiscoverGateway() {
         setDetailProduct(detail);
 
         setDetailBenefits(
-          detail ? await mockServices.benefit.listByProduct(detail.id) : [],
+          detail ? await services.benefit.listByProduct(detail.id) : [],
         );
       } else {
         setDetailProduct(null);

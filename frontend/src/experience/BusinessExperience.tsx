@@ -15,7 +15,7 @@ import type {
   Subscription,
   TemplateDefaultContent,
 } from "@/src/core";
-import { getBusinessContent, mockServices } from "@/src/core";
+import { getBusinessContent, services } from "@/src/core";
 import { useBusiness, useTranslation } from "@/src/providers";
 import { Badge, Button, Card, Modal, Section, Text } from "@/src/ui";
 import {
@@ -178,10 +178,9 @@ export function BusinessExperience({
 
     if (!ids.length) return;
 
-    const organizationUser =
-      await mockServices.organization.getOrganizationUser(
-        subscription.organizationUserId,
-      );
+    const organizationUser = await services.organization.getOrganizationUser(
+      subscription.organizationUserId,
+    );
 
     if (!organizationUser) {
       return;

@@ -1,6 +1,6 @@
 import type { Customer, OrganizationUser } from "@/src/core";
 
-import { mockServices } from "@/src/core";
+import { services } from "@/src/core";
 
 export interface RegisterCustomerInput {
   organizationId: string;
@@ -52,7 +52,7 @@ export async function registerCustomerForOrganization(
 
   if (input.customerId) {
     customer =
-      (await mockServices.customer.getCustomer(input.customerId)) ?? undefined;
+      (await services.customer.getCustomer(input.customerId)) ?? undefined;
   }
 
   /*
@@ -60,7 +60,7 @@ export async function registerCustomerForOrganization(
    * using their verified mobile number.
    */
   if (!customer) {
-    const matches = await mockServices.customer.findCustomers({
+    const matches = await services.customer.findCustomers({
       phone: mobile,
     });
 
@@ -71,7 +71,7 @@ export async function registerCustomerForOrganization(
    * New customer.
    */
   if (!customer) {
-    customer = await mockServices.customer.createCustomer({
+    customer = await services.customer.createCustomer({
       fullName: input.fullName.trim(),
       phone: mobile,
       email: input.email?.trim() || undefined,
@@ -92,7 +92,7 @@ export async function registerCustomerForOrganization(
    */
 
   const organizationUsers =
-    await mockServices.organization.listOrganizationUsersByUser(customer.id);
+    await services.organization.listOrganizationUsersByUser(customer.id);
 
   let organizationUser = organizationUsers.find(
     (item) =>
@@ -116,24 +116,19 @@ export async function registerCustomerForOrganization(
    */
   const now = new Date().toISOString();
 
-  organizationUser = await mockServices.organization.createOrganizationUser(
+  organizationUser = await services.organization.createOrganizationUser(
     input.organizationId,
     {
       id: `org-user-${Date.now()}`,
       organizationId: input.organizationId,
       userId: customer.id,
-
       organizationUserTypeId: "org-user-type-customer",
       organizationUserStatusId: "status-active",
-
       joiningDate: now.substring(0, 10),
-
       createdAt: now,
       createdBy: "user-system",
-
       updatedAt: now,
       updatedBy: "user-system",
-
       isDeleted: false,
       versionNo: 1,
     },

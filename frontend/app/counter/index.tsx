@@ -16,13 +16,13 @@ import {
   listActiveMemberships,
   MembershipOption,
   MembershipProduct,
-  mockServices,
   redeemBenefits,
   redeemFromToken,
   RedemptionContext,
   RedemptionMethod,
   RedemptionResult,
   RedemptionServices,
+  services,
   Store,
 } from "@/src/core";
 
@@ -31,16 +31,6 @@ import { useBusiness, useTranslation } from "@/src/providers";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
 import { registerCustomerForOrganization } from "@/src/core/customer/customer-registration";
-
-const services: RedemptionServices = {
-  subscription: mockServices.subscription,
-  subscriptionPlan: mockServices.subscriptionPlan,
-  benefit: mockServices.benefit,
-  redemption: mockServices.redemption,
-  customer: mockServices.customer,
-  membershipProduct: mockServices.membershipProduct,
-  organization: mockServices.organization,
-};
 
 type Mode = "qr" | "phone" | "assisted" | "new";
 
@@ -207,22 +197,21 @@ export default function StaffCounter() {
   const getCustomerForSubscription = useCallback(
     async (subscriptionId: string) => {
       const subscription =
-        await mockServices.subscription.getSubscription(subscriptionId);
+        await services.subscription.getSubscription(subscriptionId);
 
       if (!subscription) {
         return null;
       }
 
-      const organizationUser =
-        await mockServices.organization.getOrganizationUser(
-          subscription.organizationUserId,
-        );
+      const organizationUser = await services.organization.getOrganizationUser(
+        subscription.organizationUserId,
+      );
 
       if (!organizationUser) {
         return null;
       }
 
-      const customer = await mockServices.customer.getCustomer(
+      const customer = await services.customer.getCustomer(
         organizationUser.userId,
       );
 
@@ -246,13 +235,13 @@ export default function StaffCounter() {
   const getProductForSubscription = useCallback(
     async (subscriptionId: string) => {
       const subscription =
-        await mockServices.subscription.getSubscription(subscriptionId);
+        await services.subscription.getSubscription(subscriptionId);
 
       if (!subscription) {
         return null;
       }
 
-      const plan = await mockServices.subscriptionPlan.getPlan(
+      const plan = await services.subscriptionPlan.getPlan(
         subscription.subscriptionPlanId,
       );
 
@@ -260,7 +249,7 @@ export default function StaffCounter() {
         return null;
       }
 
-      const product = await mockServices.membershipProduct.getProduct(
+      const product = await services.membershipProduct.getProduct(
         plan.membershipProductId,
       );
 
@@ -348,10 +337,10 @@ export default function StaffCounter() {
 
     (async () => {
       try {
-        const orgStores = await mockServices.organization.listStores(orgId);
+        const orgStores = await services.organization.listStores(orgId);
 
         const subscriptions =
-          await mockServices.subscription.listByOrganization(orgId);
+          await services.subscription.listByOrganization(orgId);
 
         const activeSubscriptions = subscriptions.filter(
           (subscription) =>
@@ -365,7 +354,7 @@ export default function StaffCounter() {
 
         for (const subscription of activeSubscriptions) {
           const organizationUser =
-            await mockServices.organization.getOrganizationUser(
+            await services.organization.getOrganizationUser(
               subscription.organizationUserId,
             );
 
@@ -373,11 +362,11 @@ export default function StaffCounter() {
             continue;
           }
 
-          const customer = await mockServices.customer.getCustomer(
+          const customer = await services.customer.getCustomer(
             organizationUser.userId,
           );
 
-          const plan = await mockServices.subscriptionPlan.getPlan(
+          const plan = await services.subscriptionPlan.getPlan(
             subscription.subscriptionPlanId,
           );
 
@@ -385,7 +374,7 @@ export default function StaffCounter() {
             continue;
           }
 
-          const product = await mockServices.membershipProduct.getProduct(
+          const product = await services.membershipProduct.getProduct(
             plan.membershipProductId,
           );
 
@@ -393,7 +382,7 @@ export default function StaffCounter() {
             continue;
           }
 
-          const benefits = await mockServices.benefit.listByProduct(
+          const benefits = await services.benefit.listByProduct(
             plan.membershipProductId,
           );
 
@@ -483,7 +472,7 @@ export default function StaffCounter() {
    */
 
   const identifyCustomer = async (customerId: string) => {
-    const cust = await mockServices.customer.getCustomer(customerId);
+    const cust = await services.customer.getCustomer(customerId);
 
     setCustomer(cust);
 
@@ -509,7 +498,7 @@ export default function StaffCounter() {
     const ownedProductIds = new Set<string>();
 
     for (const option of opts) {
-      const plan = await mockServices.subscriptionPlan.getPlan(
+      const plan = await services.subscriptionPlan.getPlan(
         option.subscription.subscriptionPlanId,
       );
 
@@ -518,7 +507,7 @@ export default function StaffCounter() {
       }
     }
 
-    const catalog = await mockServices.membershipProduct.listProducts(orgId);
+    const catalog = await services.membershipProduct.listProducts(orgId);
 
     setAvailableForSale(
       catalog.filter(
@@ -586,7 +575,7 @@ export default function StaffCounter() {
         fullMobile,
       });
 
-      const res = await mockServices.auth.sendOtp({
+      const res = await services.auth.sendOtp({
         mobile: fullMobile,
       });
 
@@ -631,7 +620,7 @@ export default function StaffCounter() {
         codeLength: normalizedOtp.length,
       });
 
-      const res = await mockServices.auth.verifyOtp({
+      const res = await services.auth.verifyOtp({
         requestId: newOtpRequestId,
         code: normalizedOtp,
       });
@@ -801,7 +790,7 @@ export default function StaffCounter() {
     }
 
     try {
-      const res = await mockServices.auth.sendOtp({
+      const res = await services.auth.sendOtp({
         mobile: normalizedPhone,
       });
 
@@ -841,7 +830,7 @@ export default function StaffCounter() {
     }
 
     try {
-      const res = await mockServices.auth.verifyOtp({
+      const res = await services.auth.verifyOtp({
         requestId: otpRequestId,
         code: normalizedOtp,
       });
@@ -861,7 +850,7 @@ export default function StaffCounter() {
        */
       const normalizedPhone = normalizePhone(phone);
 
-      const customers = await mockServices.customer.findCustomers({
+      const customers = await services.customer.findCustomers({
         phone: normalizedPhone,
       });
 
@@ -902,11 +891,11 @@ export default function StaffCounter() {
       return;
     }
 
-    const byName = await mockServices.customer.findCustomers({
+    const byName = await services.customer.findCustomers({
       nameContains: term,
     });
 
-    const byPhone = await mockServices.customer.findCustomers({
+    const byPhone = await services.customer.findCustomers({
       phone: term,
     });
 

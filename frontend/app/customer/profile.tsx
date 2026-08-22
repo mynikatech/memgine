@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { View } from "react-native";
 
 import type { Customer } from "@/src/core";
-import { mockServices } from "@/src/core";
+import { services } from "@/src/core";
+
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
 import { useBusiness, useTranslation } from "@/src/providers";
@@ -19,7 +20,27 @@ export default function Profile() {
   const [customer, setCustomer] = useState<Customer | null>(null);
 
   useEffect(() => {
-    mockServices.customer.getCustomer(CUSTOMER_ID).then(setCustomer);
+    let mounted = true;
+
+    async function loadCustomer() {
+      try {
+        const result = await services.customer.getCustomer(CUSTOMER_ID);
+
+        if (mounted) {
+          setCustomer(result);
+        }
+      } catch {
+        if (mounted) {
+          setCustomer(null);
+        }
+      }
+    }
+
+    void loadCustomer();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const initial = (customer?.fullName ?? "?").trim().charAt(0).toUpperCase();

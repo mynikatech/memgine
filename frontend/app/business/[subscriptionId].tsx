@@ -12,7 +12,7 @@ import type {
   Subscription,
   Status as DomainStatus,
 } from "@/src/core";
-import { getBusinessContent, mockServices } from "@/src/core";
+import { getBusinessContent, services } from "@/src/core";
 import { BusinessExperience } from "@/src/experience";
 import {
   useBusiness,
@@ -98,7 +98,7 @@ export default function BusinessExperienceRoute() {
        * ------------------------------------------------------------
        */
       const initial = subscriptionId
-        ? await mockServices.subscription.getSubscription(subscriptionId)
+        ? await services.subscription.getSubscription(subscriptionId)
         : null;
 
       if (!initial) {
@@ -117,7 +117,7 @@ export default function BusinessExperienceRoute() {
        * ------------------------------------------------------------
        */
       const initialOrganizationUser =
-        await mockServices.organization.getOrganizationUser(
+        await services.organization.getOrganizationUser(
           initial.organizationUserId,
         );
 
@@ -150,7 +150,7 @@ export default function BusinessExperienceRoute() {
        * ------------------------------------------------------------
        */
       const customerSubscriptions =
-        await mockServices.subscription.listByCustomer(customerId);
+        await services.subscription.listByCustomer(customerId);
 
       /*
        * We need to identify which of those subscriptions belong
@@ -162,7 +162,7 @@ export default function BusinessExperienceRoute() {
       const resolvedSubscriptions = await Promise.all(
         customerSubscriptions.map(async (subscription) => {
           const organizationUser =
-            await mockServices.organization.getOrganizationUser(
+            await services.organization.getOrganizationUser(
               subscription.organizationUserId,
             );
 
@@ -198,7 +198,7 @@ export default function BusinessExperienceRoute() {
           /*
            * Subscription -> SubscriptionPlan
            */
-          const plan = await mockServices.subscriptionPlan.getPlan(
+          const plan = await services.subscriptionPlan.getPlan(
             subscription.subscriptionPlanId,
           );
 
@@ -209,7 +209,7 @@ export default function BusinessExperienceRoute() {
           /*
            * SubscriptionPlan -> MembershipProduct
            */
-          const product = await mockServices.membershipProduct.getProduct(
+          const product = await services.membershipProduct.getProduct(
             plan.membershipProductId,
           );
 
@@ -220,14 +220,14 @@ export default function BusinessExperienceRoute() {
           /*
            * MembershipProduct -> Benefits
            */
-          const benefits = await mockServices.benefit.listByProduct(
+          const benefits = await services.benefit.listByProduct(
             plan.membershipProductId,
           );
 
           /*
            * Subscription -> Redemptions
            */
-          const redemptions = await mockServices.redemption.listBySubscription(
+          const redemptions = await services.redemption.listBySubscription(
             subscription.id,
           );
 
@@ -238,12 +238,12 @@ export default function BusinessExperienceRoute() {
            * EntityStatus.statusId points to the generic Status record.
            */
           const subscriptionEntityStatus =
-            await mockServices.entityStatus.getEntityStatus(
+            await services.entityStatus.getEntityStatus(
               subscription.subscriptionStatusId,
             );
 
           const subscriptionStatus = subscriptionEntityStatus
-            ? ((await mockServices.status.getStatus(
+            ? ((await services.status.getStatus(
                 subscriptionEntityStatus.statusId,
               )) ?? undefined)
             : undefined;
@@ -294,11 +294,11 @@ export default function BusinessExperienceRoute() {
        * ------------------------------------------------------------
        */
       const [orgOffers, orgStores, catalog] = await Promise.all([
-        mockServices.offer.listByOrganization(organizationId),
+        services.offer.listByOrganization(organizationId),
 
-        mockServices.organization.listStores(organizationId),
+        services.organization.listStores(organizationId),
 
-        mockServices.membershipProduct.listProducts(organizationId),
+        services.membershipProduct.listProducts(organizationId),
       ]);
 
       /*
@@ -386,10 +386,9 @@ export default function BusinessExperienceRoute() {
       return;
     }
 
-    const organizationUser =
-      await mockServices.organization.getOrganizationUser(
-        current.subscription.organizationUserId,
-      );
+    const organizationUser = await services.organization.getOrganizationUser(
+      current.subscription.organizationUserId,
+    );
 
     if (!organizationUser) {
       return;

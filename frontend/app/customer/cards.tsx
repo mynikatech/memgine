@@ -10,7 +10,8 @@ import type {
   Subscription,
 } from "@/src/core";
 
-import { mockServices } from "@/src/core";
+import { services } from "@/src/core";
+
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
 import {
@@ -88,7 +89,7 @@ export default function MyCards() {
        * the current global user/customer.
        */
       const organizationUsers =
-        await mockServices.organization.listOrganizationUsersByUser(customerId);
+        await services.organization.listOrganizationUsersByUser(customerId);
 
       /**
        * Step 2:
@@ -97,7 +98,7 @@ export default function MyCards() {
        */
       const subscriptionLists = await Promise.all(
         organizationUsers.map((organizationUser) =>
-          mockServices.subscription.listByOrganizationUser(organizationUser.id),
+          services.subscription.listByOrganizationUser(organizationUser.id),
         ),
       );
 
@@ -128,7 +129,7 @@ export default function MyCards() {
          * Subscription
          *     -> SubscriptionPlan
          */
-        const plan = await mockServices.subscriptionPlan.getPlan(
+        const plan = await services.subscriptionPlan.getPlan(
           subscription.subscriptionPlanId,
         );
 
@@ -140,7 +141,7 @@ export default function MyCards() {
          * SubscriptionPlan
          *     -> MembershipProduct
          */
-        const product = await mockServices.membershipProduct.getProduct(
+        const product = await services.membershipProduct.getProduct(
           plan.membershipProductId,
         );
 
@@ -152,7 +153,7 @@ export default function MyCards() {
          * MembershipProduct
          *     -> Benefits
          */
-        const benefits = await mockServices.benefit.listByProduct(
+        const benefits = await services.benefit.listByProduct(
           plan.membershipProductId,
         );
 
@@ -175,7 +176,7 @@ export default function MyCards() {
            * Glow cards should use Glow branding, etc.
            */
           const ctx =
-            await mockServices.organization.getBusinessContext(organizationId);
+            await services.organization.getBusinessContext(organizationId);
 
           const organizationName =
             ctx?.organization.displayName ?? organization.displayName;
