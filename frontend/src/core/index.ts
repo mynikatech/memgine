@@ -25,8 +25,6 @@ export * from "./defaults/glow-studio";
 export * from "./defaults/glow-studio-content";
 export * from "./defaults/business-registry";
 export * from "./defaults/business-content";
-export * from "./mocks/mock-services";
-export * from "./mocks/mock-reference-data";
 export * from "./customer/customer-registration";
 export * from "./defaults/default-business-template";
 export * from "./organization/organization-onboarding";
