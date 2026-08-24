@@ -3,13 +3,17 @@ import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { LogBox } from "react-native";
 
+import { services } from "@/src/core";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
-import { BusinessProvider, CustomerContextProvider, LocalizationProvider } from "@/src/providers";
-
+import {
+  BusinessProvider,
+  CustomerContextProvider,
+  LocalizationProvider,
+} from "@/src/providers";
 
 // Disable logbox errors etc so that users can see the app
 // and agent works as expected.
-LogBox.ignoreAllLogs(true)
+LogBox.ignoreAllLogs(true);
 
 // Keep the native splash visible from cold start until icon fonts register.
 // Required because @expo/vector-icons' componentDidMount fallback fires
@@ -24,6 +28,26 @@ export default function RootLayout() {
     if (loaded || error) {
       SplashScreen.hideAsync();
     }
+  }, [loaded, error]);
+
+  useEffect(() => {
+    if (!loaded && !error) {
+      return;
+    }
+
+    async function refreshReferenceData() {
+      try {
+        await Promise.all([
+          services.referenceData.refresh(),
+          services.template.refresh(),
+        ]);
+        console.log("Reference data refreshed successfully.");
+      } catch (refreshError) {
+        console.error("Failed to refresh reference data:", refreshError);
+      }
+    }
+
+    void refreshReferenceData();
   }, [loaded, error]);
 
   // If the CDN is unreachable we fall through on error rather than wedging

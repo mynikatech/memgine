@@ -11,6 +11,8 @@ export * from "./permissions/permissions";
 export * from "./localization/localization";
 export * from "./template/template-definition";
 export * from "./template/salon-template-definition";
+export * from "./services/template";
+export * from "./services/template-cache";
 export * from "./template/template-content";
 export * from "./config/business-configuration";
 export * from "./context/business-context";

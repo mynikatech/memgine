@@ -2,6 +2,8 @@ import { mockServices } from "../mocks/mock-services";
 import { mockReferenceDataService } from "../mocks/mock-reference-data";
 import { mockStatusService } from "../mocks/mock-status";
 
+import { mockTemplateService } from "../mocks/mock-template";
+
 import {
   OrganizationService,
   CustomerService,
@@ -18,6 +20,7 @@ import {
 
 import type { ReferenceDataService } from "./reference-data";
 import type { StatusService } from "./status";
+import type { TemplateService } from "./template";
 
 /**
  * Application service registry.
@@ -58,6 +61,13 @@ export type MemgineServices = {
    * Ordinary reference data only.
    */
   referenceData: ReferenceDataService;
+
+  /**
+   * Platform template catalogue.
+   *
+   * Templates are deliberately separate from ordinary reference data.
+   */
+  template: TemplateService;
 };
 
 export const services: MemgineServices = {
@@ -77,4 +87,6 @@ export const services: MemgineServices = {
   payment: mockServices.payment,
 
   referenceData: mockReferenceDataService,
+
+  template: mockTemplateService,
 };

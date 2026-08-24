@@ -12,8 +12,8 @@ export default function OrgAdminBranding() {
 
   const [branding, setBranding] = useState<OrganizationBranding | null>(null);
 
-  const [themeTemplates, setThemeTemplates] = useState<
-    Awaited<ReturnType<typeof services.referenceData.listThemeTemplates>>
+  const [templates, setTemplates] = useState<
+    Awaited<ReturnType<typeof services.template.listTemplates>>
   >([]);
 
   const [brandingStatuses, setBrandingStatuses] = useState<
@@ -33,7 +33,7 @@ export default function OrgAdminBranding() {
       try {
         const [organizationBranding, templates, statuses] = await Promise.all([
           services.organization.getOrganizationBranding(organization.id),
-          services.referenceData.listThemeTemplates(),
+          services.template.listTemplates(),
           services.status.listOrganizationBrandingStatuses(),
         ]);
 
@@ -42,7 +42,7 @@ export default function OrgAdminBranding() {
         }
 
         setBranding(organizationBranding);
-        setThemeTemplates(templates);
+        setTemplates(templates);
         setBrandingStatuses(statuses);
       } catch (loadError) {
         if (!mounted) {
@@ -96,7 +96,7 @@ export default function OrgAdminBranding() {
     <BrandingForm
       organization={organization}
       branding={branding}
-      themeTemplates={themeTemplates}
+      templates={templates}
       brandingStatuses={brandingStatuses}
       onSave={async (updatedBranding: OrganizationBranding) => {
         await services.organization.updateOrganizationBranding(

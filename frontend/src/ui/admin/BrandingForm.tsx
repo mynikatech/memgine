@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+
 import {
   ScrollView,
   StyleSheet,
@@ -10,10 +11,12 @@ import {
   ID,
   Organization,
   OrganizationBranding,
-  ReferenceDataItem,
+  TemplateCatalogueItem,
   Status,
 } from "@/src/core";
+
 import { useTheme } from "@/src/providers";
+
 import {
   Button,
   Card,
@@ -27,8 +30,17 @@ import {
 type BrandingFormProps = {
   organization: Organization;
   branding: OrganizationBranding | null;
-  themeTemplates: ReferenceDataItem[];
+
+  /**
+   * Platform templates.
+   *
+   * This is deliberately NOT ReferenceDataItem[].
+   * Templates are a separate domain concept.
+   */
+  templates: TemplateCatalogueItem[];
+
   brandingStatuses: Status[];
+
   onSave: (branding: OrganizationBranding) => Promise<void>;
 };
 
@@ -45,18 +57,24 @@ function createEmptyBranding(
     organizationId,
     brandingName: "",
     themeTemplateId: defaultTemplateId,
+
     logoUrl: undefined,
     darkThemeLogoUrl: undefined,
     faviconUrl: undefined,
     splashScreenImageUrl: undefined,
+
     primaryColor: undefined,
     secondaryColor: undefined,
     accentColor: undefined,
+
     brandingStatusId: defaultStatusId,
+
     createdAt: now,
     createdBy,
+
     updatedAt: now,
     updatedBy: createdBy,
+
     isDeleted: false,
     versionNo: 1,
   };
@@ -65,7 +83,7 @@ function createEmptyBranding(
 export function BrandingForm({
   organization,
   branding,
-  themeTemplates,
+  templates,
   brandingStatuses,
   onSave,
 }: BrandingFormProps) {
@@ -75,7 +93,19 @@ export function BrandingForm({
   const compact = width < 760;
   const narrow = width < 520;
 
-  const defaultTemplateId = themeTemplates[0]?.id ?? "";
+  /**
+   * For a new branding record, select the platform default template
+   * for this organization's organization type.
+   *
+   * We deliberately do NOT simply use templates[0].
+   */
+  const defaultTemplate =
+    templates.find(
+      (item) => item.organizationTypeId === organization.organizationTypeId,
+    ) ?? templates[0];
+
+  const defaultTemplateId = defaultTemplate?.id ?? "";
+
   const defaultStatusId = brandingStatuses[0]?.id ?? "";
 
   const [form, setForm] = useState<OrganizationBranding>(
@@ -104,6 +134,7 @@ export function BrandingForm({
     branding,
     organization.id,
     organization.updatedBy,
+    organization.organizationTypeId,
     defaultTemplateId,
     defaultStatusId,
   ]);
@@ -118,19 +149,35 @@ export function BrandingForm({
     }));
   };
 
+  const templateItems = templates.map((item) => ({
+    id: item.id,
+    code: item.id,
+    name: item.template.displayName,
+    displayOrder: 0,
+    active: true,
+  }));
+
   const save = async () => {
     setSaving(true);
 
     try {
       await onSave({
         ...form,
+
         brandingName: form.brandingName.trim(),
+
         logoUrl: form.logoUrl?.trim() || undefined,
+
         darkThemeLogoUrl: form.darkThemeLogoUrl?.trim() || undefined,
+
         faviconUrl: form.faviconUrl?.trim() || undefined,
+
         splashScreenImageUrl: form.splashScreenImageUrl?.trim() || undefined,
+
         primaryColor: form.primaryColor?.trim() || undefined,
+
         secondaryColor: form.secondaryColor?.trim() || undefined,
+
         accentColor: form.accentColor?.trim() || undefined,
       });
     } finally {
@@ -148,7 +195,11 @@ export function BrandingForm({
         },
       ]}
     >
-      <View style={{ gap: theme.spacing.xs }}>
+      <View
+        style={{
+          gap: theme.spacing.xs,
+        }}
+      >
         <Text variant="h1" color="text">
           Branding
         </Text>
@@ -174,7 +225,7 @@ export function BrandingForm({
               <ReferenceSelect
                 label="Theme Template"
                 value={form.themeTemplateId}
-                items={themeTemplates}
+                items={templateItems}
                 onChange={(value) => update("themeTemplateId", value)}
                 placeholder="Select theme template"
               />
@@ -315,20 +366,25 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
   },
+
   content: {
     gap: 16,
   },
+
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 16,
   },
+
   fullWidth: {
     width: "100%",
   },
+
   halfWidth: {
     width: "48%",
   },
+
   preview: {
     minHeight: 160,
     borderRadius: 16,
@@ -336,12 +392,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
   },
+
   previewAccent: {
     width: 72,
     height: 8,
     borderRadius: 4,
     marginTop: 12,
   },
+
   actions: {
     alignItems: "flex-end",
     paddingBottom: 24,
