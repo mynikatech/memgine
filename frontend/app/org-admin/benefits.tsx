@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
-import { Benefit, ReferenceDataItem, services } from "@/src/core";
+import { Benefit, ReferenceDataItem, services, Status } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
 import { DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
@@ -19,9 +19,7 @@ export default function OrgAdminBenefits() {
 
   const [benefitTypes, setBenefitTypes] = useState<ReferenceDataItem[]>([]);
 
-  const [benefitStatuses, setBenefitStatuses] = useState<ReferenceDataItem[]>(
-    [],
-  );
+  const [benefitStatuses, setBenefitStatuses] = useState<Status[]>([]);
 
   const [loading, setLoading] = useState(true);
 
@@ -41,7 +39,7 @@ export default function OrgAdminBenefits() {
             services.benefit.listByOrganization(organization.id),
             services.referenceData.listBenefitCategories(),
             services.referenceData.listBenefitTypes(),
-            services.referenceData.listBenefitStatuses(),
+            services.status.listBenefitStatuses(),
           ]);
 
         if (!mounted) {
@@ -82,7 +80,7 @@ export default function OrgAdminBenefits() {
     benefitTypes.find((item) => item.id === id)?.name ?? "Unknown";
 
   const getStatusName = (id: string) =>
-    benefitStatuses.find((item) => item.id === id)?.name ?? "Unknown";
+    benefitStatuses.find((item) => item.id === id)?.statusName ?? "Unknown";
 
   const getDisplayName = (benefit: Benefit) =>
     benefit.displayName ?? benefit.benefitName;

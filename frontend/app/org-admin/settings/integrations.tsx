@@ -8,7 +8,11 @@ import {
   View,
 } from "react-native";
 
-import type { IntegrationConfiguration, ReferenceDataItem } from "@/src/core";
+import type {
+  IntegrationConfiguration,
+  ReferenceDataItem,
+  Status,
+} from "@/src/core";
 
 import { createEmptyIntegrationConfiguration, services } from "@/src/core";
 
@@ -27,7 +31,7 @@ export default function Integrations() {
     [],
   );
 
-  const [statuses, setStatuses] = useState<ReferenceDataItem[]>([]);
+  const [statuses, setStatuses] = useState<Status[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +54,7 @@ export default function Integrations() {
         const [integrationList, typeList, statusList] = await Promise.all([
           services.organization.listIntegrationConfigurations(organization.id),
           services.referenceData.listIntegrationTypes(),
-          services.referenceData.listOrganizationStatuses(),
+          services.status.listIntegrationConfigurationStatuses(),
         ]);
 
         if (!mounted) {
@@ -88,7 +92,7 @@ export default function Integrations() {
     integrationTypes.find((item) => item.id === id)?.name ?? "Unknown";
 
   const getStatusName = (id: string) =>
-    statuses.find((item) => item.id === id)?.name ?? "Unknown";
+    statuses.find((item) => item.id === id)?.statusName ?? "Unknown";
 
   const columns = useMemo<DataTableColumn<IntegrationConfiguration>[]>(
     () => [

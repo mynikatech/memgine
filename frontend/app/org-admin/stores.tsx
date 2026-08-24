@@ -5,6 +5,7 @@ import type {
   CityReference,
   CountryReference,
   ReferenceDataItem,
+  Status,
   RegionReference,
   Store,
 } from "@/src/core";
@@ -20,7 +21,7 @@ export default function OrgAdminStores() {
 
   const [stores, setStores] = useState<Store[]>([]);
   const [storeTypes, setStoreTypes] = useState<ReferenceDataItem[]>([]);
-  const [storeStatuses, setStoreStatuses] = useState<ReferenceDataItem[]>([]);
+  const [storeStatuses, setStoreStatuses] = useState<Status[]>([]);
   const [countries, setCountries] = useState<CountryReference[]>([]);
   const [regions, setRegions] = useState<RegionReference[]>([]);
   const [cities, setCities] = useState<CityReference[]>([]);
@@ -40,7 +41,7 @@ export default function OrgAdminStores() {
           await Promise.all([
             services.organization.listStores(organization.id),
             services.referenceData.listStoreTypes(),
-            services.referenceData.listStoreStatuses(),
+            services.status.listStoreStatuses(),
             services.referenceData.listCountries(),
           ]);
 
@@ -118,7 +119,7 @@ export default function OrgAdminStores() {
     storeTypes.find((item) => item.id === id)?.name ?? "Unknown";
 
   const getStoreStatusName = (id: string) =>
-    storeStatuses.find((item) => item.id === id)?.name ?? "Unknown";
+    storeStatuses.find((item) => item.id === id)?.statusName ?? "Unknown";
 
   const columns = useMemo<DataTableColumn<Store>[]>(
     () => [

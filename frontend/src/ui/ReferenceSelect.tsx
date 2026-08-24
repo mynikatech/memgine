@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+
 import { Pressable, View } from "react-native";
 
 import { useTheme } from "@/src/providers";
@@ -12,27 +13,78 @@ export type ReferenceSelectItem = {
   callingCode?: string;
 };
 
-type ReferenceSelectProps = {
+type ReferenceSelectProps<T> = {
   label?: string;
   value: string;
-  items: ReferenceSelectItem[];
+  items: T[];
   onChange: (id: string) => void;
   placeholder?: string;
   disabled?: boolean;
   allowClear?: boolean;
   testID?: string;
-  renderItemLabel?: (item: ReferenceSelectItem) => string;
+
+  /**
+   * Returns the identifier used as the selected value.
+   *
+   * Defaults to reading `item.id`.
+   */
+  getItemId?: (item: T) => string;
+
+  /**
+   * Returns the text displayed for an item.
+   *
+   * Defaults to:
+   *   - item.name
+   *   - item.statusName
+   *   - item.code
+   *   - item.statusCode
+   *   - String(item.id)
+   *
+   * Prefer supplying this explicitly for domain-specific types.
+   */
+  renderItemLabel?: (item: T) => string;
 };
 
-function defaultLabel(item: ReferenceSelectItem): string {
-  if (item.callingCode) {
-    return `${item.name} (${item.callingCode})`;
-  }
+function defaultItemId<T>(item: T): string {
+  const candidate = item as { id?: unknown };
 
-  return item.name;
+  return String(candidate.id ?? "");
 }
 
-export function ReferenceSelect({
+function defaultItemLabel<T>(item: T): string {
+  const candidate = item as {
+    name?: unknown;
+    statusName?: unknown;
+    code?: unknown;
+    statusCode?: unknown;
+    id?: unknown;
+    callingCode?: unknown;
+  };
+
+  if (candidate.name) {
+    if (candidate.callingCode) {
+      return `${String(candidate.name)} (${String(candidate.callingCode)})`;
+    }
+
+    return String(candidate.name);
+  }
+
+  if (candidate.statusName) {
+    return String(candidate.statusName);
+  }
+
+  if (candidate.code) {
+    return String(candidate.code);
+  }
+
+  if (candidate.statusCode) {
+    return String(candidate.statusCode);
+  }
+
+  return String(candidate.id ?? "");
+}
+
+export function ReferenceSelect<T>({
   label,
   value,
   items,
@@ -41,14 +93,15 @@ export function ReferenceSelect({
   allowClear = false,
   disabled,
   testID,
-  renderItemLabel = defaultLabel,
-}: ReferenceSelectProps) {
+  getItemId = defaultItemId,
+  renderItemLabel = defaultItemLabel,
+}: ReferenceSelectProps<T>) {
   const theme = useTheme();
   const [open, setOpen] = useState(false);
 
   const selected = useMemo(
-    () => items.find((item) => item.id === value),
-    [items, value],
+    () => items.find((item) => getItemId(item) === value),
+    [items, value, getItemId],
   );
 
   return (
@@ -83,6 +136,7 @@ export function ReferenceSelect({
         <Text variant="body" color={selected ? "text" : "textMuted"}>
           {selected ? renderItemLabel(selected) : placeholder}
         </Text>
+
         <Text variant="bodySmall" color="textMuted">
           ▾
         </Text>
@@ -119,13 +173,16 @@ export function ReferenceSelect({
               </Text>
             </Pressable>
           ) : null}
+
           {items.map((item) => {
-            const selectedItem = item.id === value;
+            const itemId = getItemId(item);
+            const selectedItem = itemId === value;
+
             return (
               <Pressable
-                key={item.id}
+                key={itemId}
                 onPress={() => {
-                  onChange(item.id);
+                  onChange(itemId);
                   setOpen(false);
                 }}
                 style={({ pressed }) => ({

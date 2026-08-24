@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { Alert, View } from "react-native";
 
-import type { NotificationConfiguration, ReferenceDataItem } from "@/src/core";
+import type {
+  NotificationConfiguration,
+  ReferenceDataItem,
+  Status,
+} from "@/src/core";
 
 import { services } from "@/src/core";
 
@@ -15,9 +19,9 @@ export default function OrgAdminNotifications() {
   const [configuration, setConfiguration] =
     useState<NotificationConfiguration | null>(null);
 
-  const [notificationStatuses, setNotificationStatuses] = useState<
-    ReferenceDataItem[]
-  >([]);
+  const [notificationStatuses, setNotificationStatuses] = useState<Status[]>(
+    [],
+  );
 
   const [loading, setLoading] = useState(true);
 
@@ -33,7 +37,7 @@ export default function OrgAdminNotifications() {
       try {
         const [notificationConfiguration, statuses] = await Promise.all([
           services.organization.getNotificationConfiguration(organization.id),
-          services.referenceData.listOrganizationStatuses(),
+          services.status.listOrganizationStatuses(),
         ]);
 
         if (!mounted) {

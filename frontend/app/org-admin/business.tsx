@@ -17,7 +17,7 @@ export default function OrgAdminBusiness() {
   >([]);
 
   const [organizationStatuses, setOrganizationStatuses] = useState<
-    Awaited<ReturnType<typeof services.referenceData.listOrganizationStatuses>>
+    Awaited<ReturnType<typeof services.status.listOrganizationStatuses>>
   >([]);
 
   const [countries, setCountries] = useState<
@@ -84,7 +84,7 @@ export default function OrgAdminBusiness() {
           await Promise.all([
             services.organization.getOrganizationDetails(organization.id),
             services.referenceData.listOrganizationTypes(),
-            services.referenceData.listOrganizationStatuses(),
+            services.status.listOrganizationStatuses(),
             services.referenceData.listCountries(),
           ]);
 

@@ -4,6 +4,7 @@ import { ID } from "../domain/common";
 import { getDefaultBusinessTemplate } from "../defaults/default-business-template";
 
 import { registerBusinessContext } from "../defaults/business-registry";
+import { mockStatusService } from "./mock-status";
 
 import {
   registerBusinessContent,
@@ -43,8 +44,6 @@ import {
   CustomerAuthService,
   CustomerLookupQuery,
   CustomerService,
-  EntityStatusService,
-  EntityTypeService,
   MembershipProductService,
   OfferService,
   OrganizationService,
@@ -2155,115 +2154,6 @@ export class InMemoryCustomerService implements CustomerService {
   }
 }
 
-class InMemoryEntityTypeService implements EntityTypeService {
-  async getEntityType(id: ID): Promise<EntityType | null> {
-    return entityTypes.find((entityType) => entityType.id === id) ?? null;
-  }
-
-  async getEntityTypeByCode(code: string): Promise<EntityType | null> {
-    const normalizedCode = code.trim().toUpperCase();
-
-    return (
-      entityTypes.find(
-        (entityType) =>
-          entityType.entityTypeCode.toUpperCase() === normalizedCode,
-      ) ?? null
-    );
-  }
-
-  async listEntityTypes(): Promise<EntityType[]> {
-    return [...entityTypes].sort((a, b) => a.displayOrder - b.displayOrder);
-  }
-
-  async listActiveEntityTypes(): Promise<EntityType[]> {
-    return (await this.listEntityTypes()).filter(
-      (entityType) => entityType.isActive,
-    );
-  }
-}
-
-class InMemoryStatusService implements StatusService {
-  async getStatus(id: ID): Promise<Status | null> {
-    return statuses.find((status) => status.id === id) ?? null;
-  }
-
-  async getStatusByCode(code: string): Promise<Status | null> {
-    const normalizedCode = code.trim().toUpperCase();
-
-    return (
-      statuses.find(
-        (status) => status.statusCode.toUpperCase() === normalizedCode,
-      ) ?? null
-    );
-  }
-
-  async listStatuses(): Promise<Status[]> {
-    return [...statuses].sort((a, b) => a.displayOrder - b.displayOrder);
-  }
-
-  async listActiveStatuses(): Promise<Status[]> {
-    return (await this.listStatuses()).filter((status) => status.isActive);
-  }
-}
-
-class InMemoryEntityStatusService implements EntityStatusService {
-  async getEntityStatus(id: ID): Promise<EntityStatus | null> {
-    return (
-      entityStatuses.find((entityStatus) => entityStatus.id === id) ?? null
-    );
-  }
-
-  async listByEntityType(entityTypeId: ID): Promise<EntityStatus[]> {
-    return entityStatuses
-      .filter(
-        (entityStatus) =>
-          entityStatus.entityTypeId === entityTypeId && entityStatus.isActive,
-      )
-      .sort((a, b) => a.displayOrder - b.displayOrder);
-  }
-
-  async listByEntityTypeCode(entityTypeCode: string): Promise<EntityStatus[]> {
-    const normalizedCode = entityTypeCode.trim().toUpperCase();
-
-    const entityType = entityTypes.find(
-      (item) => item.entityTypeCode.toUpperCase() === normalizedCode,
-    );
-
-    if (!entityType) {
-      return [];
-    }
-
-    return this.listByEntityType(entityType.id);
-  }
-
-  async listStatusesByEntityType(entityTypeId: ID): Promise<Status[]> {
-    const mappings = await this.listByEntityType(entityTypeId);
-
-    return mappings
-      .map((mapping) =>
-        statuses.find((status) => status.id === mapping.statusId),
-      )
-      .filter((status): status is Status => status !== undefined)
-      .sort((a, b) => a.displayOrder - b.displayOrder);
-  }
-
-  async listStatusesByEntityTypeCode(
-    entityTypeCode: string,
-  ): Promise<Status[]> {
-    const normalizedCode = entityTypeCode.trim().toUpperCase();
-
-    const entityType = entityTypes.find(
-      (item) => item.entityTypeCode.toUpperCase() === normalizedCode,
-    );
-
-    if (!entityType) {
-      return [];
-    }
-
-    return this.listStatusesByEntityType(entityType.id);
-  }
-}
-
 export class InMemoryMembershipProductService implements MembershipProductService {
   async listProducts(organizationId: ID): Promise<MembershipProduct[]> {
     return products.filter(
@@ -2544,27 +2434,23 @@ export class InMemoryBenefitService implements BenefitService {
 }
 
 class InMemoryRedemptionService implements RedemptionService {
-  constructor(
-    private readonly statusService: StatusService,
-    private readonly entityStatusService: EntityStatusService,
-  ) {}
+  constructor(private readonly statusService: StatusService) {}
 
   private async getAllowedStatus(statusCode: string): Promise<Status> {
-    const relationships =
-      await this.entityStatusService.listByEntityTypeCode("REDEMPTION");
+    const statuses =
+      await this.statusService.listStatusesByEntityTypeCode("REDEMPTION");
 
-    for (const relationship of relationships) {
-      const status = await this.statusService.getStatus(relationship.statusId);
+    const status = statuses.find(
+      (item) => item.statusCode.toUpperCase() === statusCode.toUpperCase(),
+    );
 
-      if (
-        status &&
-        status.statusCode.toUpperCase() === statusCode.toUpperCase()
-      ) {
-        return status;
-      }
+    if (!status) {
+      throw new Error(
+        `Status '${statusCode}' is not configured for Redemption.`,
+      );
     }
 
-    throw new Error(`Status '${statusCode}' is not configured for Redemption.`);
+    return status;
   }
 
   async performRedemption(input: PerformRedemptionInput): Promise<Redemption> {
@@ -2574,7 +2460,6 @@ class InMemoryRedemptionService implements RedemptionService {
 
     const redemption: Redemption = {
       id: `red-${Date.now()}`,
-
       redemptionNumber: `RED-${Date.now()}`,
 
       subscriptionId: input.subscriptionId,
@@ -2583,9 +2468,7 @@ class InMemoryRedemptionService implements RedemptionService {
       staffId: input.staffId,
 
       method: input.method,
-
       redemptionDateTime: now,
-
       quantity: input.quantity ?? 1,
 
       redemptionStatusId: successStatus.id,
@@ -2795,9 +2678,6 @@ export class InMemoryUserAcquisitionService implements UserAcquisitionService {
   }
 }
 
-const statusService = new InMemoryStatusService();
-const entityStatusService = new InMemoryEntityStatusService();
-
 /** Convenience aggregate of the mock services (compile-demonstration only). */
 export const mockServices = {
   organization: new InMemoryOrganizationService(),
@@ -2806,12 +2686,9 @@ export const mockServices = {
   subscription: new InMemorySubscriptionService(),
   subscriptionPlan: new InMemorySubscriptionPlanService(),
   benefit: new InMemoryBenefitService(),
-  status: new InMemoryStatusService(),
-  entityStatus: new InMemoryEntityStatusService(),
-  redemption: new InMemoryRedemptionService(statusService, entityStatusService),
+  redemption: new InMemoryRedemptionService(mockStatusService),
   offer: new InMemoryOfferService(),
   auth: new InMemoryCustomerAuthService(),
   payment: new InMemoryPaymentService(),
   userAcquisition: new InMemoryUserAcquisitionService(),
-  entityType: new InMemoryEntityTypeService(),
 };

@@ -6,6 +6,7 @@ import type {
   CityReference,
   RegionReference,
   ReferenceDataItem,
+  Status,
   Store,
 } from "@/src/core";
 import { useTheme } from "@/src/providers";
@@ -18,7 +19,7 @@ import { AddressForm } from "@/src/ui/AddressForm";
 type StoreFormProps = {
   store: Store;
   storeTypes: ReferenceDataItem[];
-  storeStatuses: ReferenceDataItem[];
+  storeStatuses: Status[];
   countries: CountryReference[];
   regions: RegionReference[];
   cities: CityReference[];

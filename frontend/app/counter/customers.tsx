@@ -75,7 +75,9 @@ export default function StaffCustomers() {
        * matching the logic used when a subscription is created.
        */
       const subscriptionEntityStatuses =
-        await services.entityStatus.listByEntityTypeCode("SUBSCRIPTION");
+        await services.status.listEntityStatusesByEntityTypeCode(
+          "SUBSCRIPTION",
+        );
 
       let activeEntityStatusId: string | undefined;
 

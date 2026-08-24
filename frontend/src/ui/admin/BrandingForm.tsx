@@ -11,6 +11,7 @@ import {
   Organization,
   OrganizationBranding,
   ReferenceDataItem,
+  Status,
 } from "@/src/core";
 import { useTheme } from "@/src/providers";
 import {
@@ -27,7 +28,7 @@ type BrandingFormProps = {
   organization: Organization;
   branding: OrganizationBranding | null;
   themeTemplates: ReferenceDataItem[];
-  brandingStatuses: ReferenceDataItem[];
+  brandingStatuses: Status[];
   onSave: (branding: OrganizationBranding) => Promise<void>;
 };
 

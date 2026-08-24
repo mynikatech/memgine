@@ -15,6 +15,7 @@ import {
   PhoneNumber,
   ReferenceDataItem,
   RegionReference,
+  Status,
 } from "@/src/core";
 
 import { useTheme } from "@/src/providers";
@@ -38,7 +39,7 @@ type BusinessFormProps = {
   regions: RegionReference[];
   cities: CityReference[];
   organizationTypes: ReferenceDataItem[];
-  organizationStatuses: ReferenceDataItem[];
+  organizationStatuses: Status[];
   onCountryChange?: (countryCode: string) => void;
   onRegionChange?: (countryCode: string, regionCode: string) => void;
   onSave: (

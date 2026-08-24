@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import type {
   OrganizationUser,
   ReferenceDataItem,
+  Status,
   Staff,
   Store,
 } from "@/src/core";
@@ -22,7 +23,7 @@ type StaffFormProps = {
 
   stores: Store[];
 
-  staffStatuses: ReferenceDataItem[];
+  staffStatuses: Status[];
 
   onCreateOrganizationUser?: (
     user: OrganizationUser,

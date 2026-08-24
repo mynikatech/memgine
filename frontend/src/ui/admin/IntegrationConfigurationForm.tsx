@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 
-import { IntegrationConfiguration, ReferenceDataItem } from "@/src/core";
+import {
+  IntegrationConfiguration,
+  ReferenceDataItem,
+  Status,
+} from "@/src/core";
 import { useTheme } from "@/src/providers";
 
 import { ReferenceSelect } from "../ReferenceSelect";
@@ -11,7 +15,7 @@ import { Input } from "../Input";
 type Props = {
   configuration: IntegrationConfiguration | null;
   integrationTypes: ReferenceDataItem[];
-  statuses: ReferenceDataItem[];
+  statuses: Status[];
   onSave: (configuration: IntegrationConfiguration) => Promise<void>;
   onCancel?: () => void;
 };

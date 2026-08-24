@@ -4,11 +4,12 @@ import { CurrencyCode } from "../localization/localization";
 import {
   Benefit,
   Customer,
-  EntityStatus,
-  EntityType,
   MembershipProduct,
   PaymentMethod,
   PurchaseSource,
+  EntityStatus,
+  EntityType,
+  Status,
   Offer,
   Staff,
   Organization,
@@ -24,7 +25,6 @@ import {
   OrganizationUser,
   UserAcquisition,
   SubscriptionPlan,
-  Status,
 } from "../domain/entities";
 
 /**
@@ -74,38 +74,6 @@ export interface PerformRedemptionInput {
   remarks?: string;
 
   createdBy: ID;
-}
-
-export interface EntityTypeService {
-  getEntityType(id: ID): Promise<EntityType | null>;
-
-  getEntityTypeByCode(code: string): Promise<EntityType | null>;
-
-  listEntityTypes(): Promise<EntityType[]>;
-
-  listActiveEntityTypes(): Promise<EntityType[]>;
-}
-
-export interface StatusService {
-  getStatus(id: ID): Promise<Status | null>;
-
-  getStatusByCode(code: string): Promise<Status | null>;
-
-  listStatuses(): Promise<Status[]>;
-
-  listActiveStatuses(): Promise<Status[]>;
-}
-
-export interface EntityStatusService {
-  getEntityStatus(id: ID): Promise<EntityStatus | null>;
-
-  listByEntityType(entityTypeId: ID): Promise<EntityStatus[]>;
-
-  listByEntityTypeCode(entityTypeCode: string): Promise<EntityStatus[]>;
-
-  listStatusesByEntityType(entityTypeId: ID): Promise<Status[]>;
-
-  listStatusesByEntityTypeCode(entityTypeCode: string): Promise<Status[]>;
 }
 
 export interface OnboardOrganizationInput {
@@ -361,4 +329,24 @@ export interface UserAcquisitionService {
   listBySourceStore(storeId: ID): Promise<UserAcquisition[]>;
 
   createAcquisition(acquisition: UserAcquisition): Promise<UserAcquisition>;
+}
+
+export interface StatusService {
+  getStatus(id: ID): Promise<Status | null>;
+
+  getStatusByCode(code: string): Promise<Status | null>;
+
+  listStatuses(): Promise<Status[]>;
+
+  listActiveStatuses(): Promise<Status[]>;
+
+  listStatusesByEntityType(entityTypeId: ID): Promise<Status[]>;
+
+  listStatusesByEntityTypeCode(entityTypeCode: string): Promise<Status[]>;
+
+  listEntityStatuses(entityTypeId: ID): Promise<EntityStatus[]>;
+
+  listEntityStatusesByEntityTypeCode(
+    entityTypeCode: string,
+  ): Promise<EntityStatus[]>;
 }

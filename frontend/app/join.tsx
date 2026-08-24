@@ -565,17 +565,15 @@ export default function JoinFlow() {
       });
 
       const subscriptionEntityStatuses =
-        await services.entityStatus.listByEntityTypeCode("SUBSCRIPTION");
+        await services.status.listStatusesByEntityTypeCode("SUBSCRIPTION");
 
       let activeSubscriptionEntityStatus:
         | (typeof subscriptionEntityStatuses)[number]
         | undefined;
 
-      for (const entityStatus of subscriptionEntityStatuses) {
-        const status = await services.status.getStatus(entityStatus.statusId);
-
+      for (const status of subscriptionEntityStatuses) {
         if (status?.statusCode?.trim().toUpperCase() === "ACTIVE") {
-          activeSubscriptionEntityStatus = entityStatus;
+          activeSubscriptionEntityStatus = status;
 
           break;
         }

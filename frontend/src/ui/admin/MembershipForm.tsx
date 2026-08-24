@@ -5,6 +5,7 @@ import type {
   Benefit,
   MembershipProduct,
   ReferenceDataItem,
+  Status,
   SubscriptionPlan,
 } from "@/src/core";
 
@@ -22,8 +23,8 @@ type MembershipFormProps = {
 
   productCategories: ReferenceDataItem[];
   productTypes: ReferenceDataItem[];
-  productStatuses: ReferenceDataItem[];
-  subscriptionPlanStatuses: ReferenceDataItem[];
+  productStatuses: Status[];
+  subscriptionPlanStatuses: Status[];
   currencies: ReferenceDataItem[];
 
   onSave: (product: MembershipProduct) => Promise<void>;
@@ -106,7 +107,8 @@ export function MembershipForm({
         "",
 
       subscriptionPlanStatusId:
-        subscriptionPlanStatuses.find((item) => item.code === "ACTIVE")?.id ??
+        subscriptionPlanStatuses.find((item) => item.statusCode === "ACTIVE")
+          ?.id ??
         subscriptionPlanStatuses[0]?.id ??
         "",
 

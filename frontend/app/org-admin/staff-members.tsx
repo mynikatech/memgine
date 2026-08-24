@@ -4,6 +4,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import type {
   OrganizationUser,
   ReferenceDataItem,
+  Status,
   Staff,
   Store,
 } from "@/src/core";
@@ -22,7 +23,7 @@ export default function OrgAdminStaff() {
     OrganizationUser[]
   >([]);
   const [stores, setStores] = useState<Store[]>([]);
-  const [staffStatuses, setStaffStatuses] = useState<ReferenceDataItem[]>([]);
+  const [staffStatuses, setStaffStatuses] = useState<Status[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [formVisible, setFormVisible] = useState(false);
@@ -39,7 +40,7 @@ export default function OrgAdminStaff() {
           services.organization.listStaff(organization.id),
           services.organization.listOrganizationUsers(organization.id),
           services.organization.listStores(organization.id),
-          services.referenceData.listStaffStatuses(),
+          services.status.listStaffStatuses(),
         ]);
 
         if (!mounted) {
@@ -95,7 +96,7 @@ export default function OrgAdminStaff() {
   };
 
   const getStatusName = (statusId: string) =>
-    staffStatuses.find((item) => item.id === statusId)?.name ?? "Unknown";
+    staffStatuses.find((item) => item.id === statusId)?.statusName ?? "Unknown";
 
   const getUserName = (organizationUserId: string, staffName: string) => {
     /*

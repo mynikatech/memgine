@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
-import type { Benefit, MembershipProduct, ReferenceDataItem } from "@/src/core";
+import type {
+  Benefit,
+  MembershipProduct,
+  ReferenceDataItem,
+  Status,
+} from "@/src/core";
 
 import { services } from "@/src/core";
 
@@ -23,12 +28,10 @@ export default function MembershipsAdmin() {
 
   const [productTypes, setProductTypes] = useState<ReferenceDataItem[]>([]);
 
-  const [productStatuses, setProductStatuses] = useState<ReferenceDataItem[]>(
-    [],
-  );
+  const [productStatuses, setProductStatuses] = useState<Status[]>([]);
 
   const [subscriptionPlanStatuses, setSubscriptionPlanStatuses] = useState<
-    ReferenceDataItem[]
+    Status[]
   >([]);
 
   const [currencies, setCurrencies] = useState<ReferenceDataItem[]>([]);
@@ -62,8 +65,8 @@ export default function MembershipsAdmin() {
 
           services.referenceData.listProductCategories(),
           services.referenceData.listProductTypes(),
-          services.referenceData.listProductStatuses(),
-          services.referenceData.listSubscriptionPlanStatuses(),
+          services.status.listMembershipProductStatuses(),
+          services.status.listSubscriptionPlanStatuses(),
           services.referenceData.listCurrencies(),
         ]);
 
@@ -103,9 +106,21 @@ export default function MembershipsAdmin() {
     };
   }, [organization.id]);
 
-  const getReferenceName = (items: ReferenceDataItem[], id: string) => {
-    return items.find((item) => item.id === id)?.name ?? "Unknown";
-  };
+  type ReferenceLookupItem = ReferenceDataItem | Status;
+
+  function getReferenceName(items: ReferenceLookupItem[], id: string): string {
+    const item = items.find((candidate) => candidate.id === id);
+
+    if (!item) {
+      return "Unknown";
+    }
+
+    if ("statusName" in item) {
+      return item.statusName;
+    }
+
+    return item.name;
+  }
 
   const formatPlanPrice = (amountMinor: number, currency: string) => {
     return `${currency} ${(amountMinor / 100).toFixed(2)}`;
@@ -220,7 +235,7 @@ export default function MembershipsAdmin() {
       productTypes[0];
 
     const activeStatus =
-      productStatuses.find((item) => item.code === "ACTIVE") ??
+      productStatuses.find((item) => item.statusCode === "ACTIVE") ??
       productStatuses[0];
 
     return {

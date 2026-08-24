@@ -5,6 +5,7 @@ import type {
   MembershipProduct,
   Offer,
   ReferenceDataItem,
+  Status,
   Store,
 } from "@/src/core";
 
@@ -16,7 +17,7 @@ type OfferFormProps = {
   offer: Offer;
   membershipProducts: MembershipProduct[];
   stores: Store[];
-  offerStatuses: ReferenceDataItem[];
+  offerStatuses: Status[];
 
   onSave: (offer: Offer) => Promise<void>;
   onCancel: () => void;
@@ -58,10 +59,10 @@ export function OfferForm({
   const statusItems = useMemo(
     () =>
       offerStatuses
-        .filter((item) => item.active)
+        .filter((item) => item.isActive)
         .map((item) => ({
           id: item.id,
-          name: item.name,
+          name: item.statusName,
         })),
     [offerStatuses],
   );

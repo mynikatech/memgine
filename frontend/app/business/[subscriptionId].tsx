@@ -238,7 +238,7 @@ export default function BusinessExperienceRoute() {
            * EntityStatus.statusId points to the generic Status record.
            */
           const subscriptionEntityStatus =
-            await services.entityStatus.getEntityStatus(
+            await services.status.getEntityStatus(
               subscription.subscriptionStatusId,
             );
 

@@ -1,5 +1,6 @@
 import { storage } from "@/src/utils/storage";
 import type { StorageItemValue } from "@/src/utils/storage/storage-base";
+
 import type {
   CityReference,
   CountryReference,
@@ -63,11 +64,6 @@ export class CachedReferenceDataService implements ReferenceDataService {
       data,
     };
 
-    /*
-     * The storage layer is JSON-based and the cache envelope is
-     * intentionally opaque to it. A cache write failure must never
-     * prevent reference data from being returned.
-     */
     await storage.setItem(
       key,
       envelope as Parameters<typeof storage.setItem>[1],
@@ -88,12 +84,6 @@ export class CachedReferenceDataService implements ReferenceDataService {
     );
   }
 
-  async listOrganizationStatuses(): Promise<ReferenceDataItem[]> {
-    return this.getOrLoad(`${CACHE_PREFIX}.organization-statuses`, () =>
-      this.source.listOrganizationStatuses(),
-    );
-  }
-
   async listRegions(countryCode: string): Promise<RegionReference[]> {
     const normalized = countryCode.trim().toUpperCase();
 
@@ -107,6 +97,7 @@ export class CachedReferenceDataService implements ReferenceDataService {
     regionCode: string,
   ): Promise<CityReference[]> {
     const country = countryCode.trim().toUpperCase();
+
     const region = regionCode.trim().toUpperCase();
 
     return this.getOrLoad(`${CACHE_PREFIX}.cities.${country}.${region}`, () =>
@@ -117,12 +108,6 @@ export class CachedReferenceDataService implements ReferenceDataService {
   async listThemeTemplates(): Promise<ReferenceDataItem[]> {
     return this.getOrLoad(`${CACHE_PREFIX}.theme-templates`, () =>
       this.source.listThemeTemplates(),
-    );
-  }
-
-  async listBrandingStatuses(): Promise<ReferenceDataItem[]> {
-    return this.getOrLoad(`${CACHE_PREFIX}.branding-statuses`, () =>
-      this.source.listBrandingStatuses(),
     );
   }
 
@@ -138,18 +123,6 @@ export class CachedReferenceDataService implements ReferenceDataService {
     );
   }
 
-  async listStoreStatuses(): Promise<ReferenceDataItem[]> {
-    return this.getOrLoad(`${CACHE_PREFIX}.store-statuses`, () =>
-      this.source.listStoreStatuses(),
-    );
-  }
-
-  async listStaffStatuses(): Promise<ReferenceDataItem[]> {
-    return this.getOrLoad(`${CACHE_PREFIX}.staff-statuses`, () =>
-      this.source.listStaffStatuses(),
-    );
-  }
-
   async listBenefitCategories(): Promise<ReferenceDataItem[]> {
     return this.getOrLoad(`${CACHE_PREFIX}.benefit-categories`, () =>
       this.source.listBenefitCategories(),
@@ -159,12 +132,6 @@ export class CachedReferenceDataService implements ReferenceDataService {
   async listBenefitTypes(): Promise<ReferenceDataItem[]> {
     return this.getOrLoad(`${CACHE_PREFIX}.benefit-types`, () =>
       this.source.listBenefitTypes(),
-    );
-  }
-
-  async listBenefitStatuses(): Promise<ReferenceDataItem[]> {
-    return this.getOrLoad(`${CACHE_PREFIX}.benefit-statuses`, () =>
-      this.source.listBenefitStatuses(),
     );
   }
 
@@ -180,27 +147,9 @@ export class CachedReferenceDataService implements ReferenceDataService {
     );
   }
 
-  async listProductStatuses(): Promise<ReferenceDataItem[]> {
-    return this.getOrLoad(`${CACHE_PREFIX}.product-statuses`, () =>
-      this.source.listProductStatuses(),
-    );
-  }
-
-  async listSubscriptionPlanStatuses(): Promise<ReferenceDataItem[]> {
-    return this.getOrLoad(`${CACHE_PREFIX}.subscription-plan-statuses`, () =>
-      this.source.listSubscriptionPlanStatuses(),
-    );
-  }
-
   async listCurrencies(): Promise<ReferenceDataItem[]> {
     return this.getOrLoad(`${CACHE_PREFIX}.currencies`, () =>
       this.source.listCurrencies(),
-    );
-  }
-
-  async listOfferStatuses(): Promise<ReferenceDataItem[]> {
-    return this.getOrLoad(`${CACHE_PREFIX}.offer-statuses`, () =>
-      this.source.listOfferStatuses(),
     );
   }
 }

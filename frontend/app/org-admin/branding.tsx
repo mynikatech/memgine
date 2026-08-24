@@ -17,7 +17,7 @@ export default function OrgAdminBranding() {
   >([]);
 
   const [brandingStatuses, setBrandingStatuses] = useState<
-    Awaited<ReturnType<typeof services.referenceData.listBrandingStatuses>>
+    Awaited<ReturnType<typeof services.status.listOrganizationBrandingStatuses>>
   >([]);
 
   const [loading, setLoading] = useState(true);
@@ -34,7 +34,7 @@ export default function OrgAdminBranding() {
         const [organizationBranding, templates, statuses] = await Promise.all([
           services.organization.getOrganizationBranding(organization.id),
           services.referenceData.listThemeTemplates(),
-          services.referenceData.listBrandingStatuses(),
+          services.status.listOrganizationBrandingStatuses(),
         ]);
 
         if (!mounted) {

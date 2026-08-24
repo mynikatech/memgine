@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 
-import type { Benefit, ReferenceDataItem } from "@/src/core";
+import type { Benefit, ReferenceDataItem, Status } from "@/src/core";
 
 import { useTheme } from "@/src/providers";
 
@@ -15,7 +15,7 @@ type BenefitFormProps = {
 
   benefitCategories: ReferenceDataItem[];
   benefitTypes: ReferenceDataItem[];
-  benefitStatuses: ReferenceDataItem[];
+  benefitStatuses: Status[];
 
   onSave: (benefit: Benefit) => Promise<void>;
   onCancel: () => void;

@@ -5,6 +5,7 @@ import type {
   MembershipProduct,
   Offer,
   ReferenceDataItem,
+  Status,
   Store,
 } from "@/src/core";
 
@@ -21,7 +22,7 @@ export default function OrgAdminOffers() {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [products, setProducts] = useState<MembershipProduct[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
-  const [offerStatuses, setOfferStatuses] = useState<ReferenceDataItem[]>([]);
+  const [offerStatuses, setOfferStatuses] = useState<Status[]>([]);
 
   const [loading, setLoading] = useState(true);
 
@@ -41,7 +42,7 @@ export default function OrgAdminOffers() {
             services.offer.listByOrganization(organization.id),
             services.membershipProduct.listProducts(organization.id),
             services.organization.listStores(organization.id),
-            services.referenceData.listOfferStatuses(),
+            services.status.listOfferStatuses(),
           ]);
 
         if (!mounted) {
@@ -94,7 +95,7 @@ export default function OrgAdminOffers() {
   };
 
   const getStatusName = (statusId: string) =>
-    offerStatuses.find((item) => item.id === statusId)?.name ?? "Unknown";
+    offerStatuses.find((item) => item.id === statusId)?.statusName ?? "Unknown";
 
   const columns = useMemo<DataTableColumn<Offer>[]>(
     () => [
@@ -173,7 +174,7 @@ export default function OrgAdminOffers() {
     const now = new Date().toISOString();
 
     const draftStatus =
-      offerStatuses.find((item) => item.code === "DRAFT") ??
+      offerStatuses.find((item) => item.statusCode === "DRAFT") ??
       offerStatuses.find((item) => item.id === "offer-status-draft") ??
       offerStatuses[0];
 

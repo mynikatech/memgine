@@ -11,6 +11,7 @@ import {
   NotificationConfiguration,
   Organization,
   ReferenceDataItem,
+  Status,
 } from "@/src/core";
 import { useTheme } from "@/src/providers";
 import { Button, Card, Input, ReferenceSelect, Section, Text } from "@/src/ui";
@@ -18,7 +19,7 @@ import { Button, Card, Input, ReferenceSelect, Section, Text } from "@/src/ui";
 type NotificationConfigurationFormProps = {
   organization: Organization;
   configuration: NotificationConfiguration | null;
-  notificationStatuses: ReferenceDataItem[];
+  notificationStatuses: Status[];
   onSave: (configuration: NotificationConfiguration) => Promise<void>;
 };
 
@@ -113,7 +114,7 @@ export function NotificationConfigurationForm({
   const narrow = width < 520;
 
   const defaultStatusId =
-    notificationStatuses.find((status) => status.code === "ACTIVE")?.id ??
+    notificationStatuses.find((status) => status.statusCode === "ACTIVE")?.id ??
     notificationStatuses[0]?.id ??
     "status-active";
 
