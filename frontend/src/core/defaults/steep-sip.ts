@@ -28,7 +28,7 @@ export const STEEP_SIP_ORGANIZATION: Organization = {
   legalName: "STEEP & SIP",
   displayName: "STEEP & SIP",
 
-  organizationTypeId: "org-type-food-beverage",
+  organizationTypeId: "organization-type-bakery",
   organizationStatusId: "org-status-active",
 
   category: TemplateCategory.FOOD_AND_BEVERAGE,

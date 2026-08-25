@@ -59,6 +59,10 @@ export const APP_ROUTES = {
     customers: "/org-admin/customers",
     subscriptions: "/org-admin/subscriptions",
     redemptions: "/org-admin/redemptions",
+    customerExperience: "/org-admin/customer-experience",
+    customerExperiencePreview: "/org-admin/customer-experience-preview",
+    customerExperienceSection: (section: string) =>
+      `/org-admin/customer-experience/${encodeURIComponent(section)}`,
 
     settings: {
       root: "/org-admin/settings",
@@ -183,6 +187,11 @@ export const ORG_ADMIN_ROUTES: AdminRoute[] = [
     title: "Offers",
     href: APP_ROUTES.orgAdmin.offers,
     icon: "pricetags-outline",
+  },
+  {
+    title: "Customer Experience",
+    href: APP_ROUTES.orgAdmin.customerExperience,
+    icon: "phone-portrait-outline",
   },
   {
     title: "Customers",

@@ -233,6 +233,39 @@ export function resolveExperience(
       iconOutline: "time-outline",
     });
   }
+  console.log(
+    "🔎 PROPOSED TAB RESOLUTION:",
+    JSON.stringify(
+      {
+        business: organization.displayName,
+        organizationId: organization.id,
+
+        configured: {
+          showOffers: cx.showOffers,
+          showStores: cx.showStores,
+          showActivity: cx.showActivity,
+        },
+
+        template: {
+          templateId: template.id,
+          templateCategory: template.category,
+          offers: templateHas(TemplateSectionKey.OFFERS),
+          stores: templateHas(TemplateSectionKey.STORES),
+          activity: templateHas(TemplateSectionKey.ACTIVITY),
+        },
+
+        resolved: {
+          showOffers,
+          showStores,
+          showActivity,
+        },
+
+        tabs: tabs.map((tab) => tab.key),
+      },
+      null,
+      2,
+    ),
+  );
   tabs.push({
     key: "profile",
     labelKey: "experience.tabProfile",

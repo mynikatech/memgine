@@ -23,7 +23,7 @@ export const GLOW_STUDIO_ORGANIZATION: Organization = {
   legalName: "Glow Studio Inc.",
   displayName: "Glow Studio",
 
-  organizationTypeId: "org-type-beauty-wellness",
+  organizationTypeId: "organization-type-salon",
   organizationStatusId: "org-status-active",
 
   category: TemplateCategory.BEAUTY_AND_WELLNESS,

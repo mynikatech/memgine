@@ -7,7 +7,7 @@ import {
   View,
 } from "react-native";
 
-import {
+import type {
   ID,
   Organization,
   OrganizationBranding,
@@ -23,24 +23,15 @@ import {
   Input,
   ReferenceSelect,
   Section,
-  Text,
   BrandColourSelect,
+  Text,
 } from "@/src/ui";
 
 type BrandingFormProps = {
   organization: Organization;
   branding: OrganizationBranding | null;
-
-  /**
-   * Platform templates.
-   *
-   * This is deliberately NOT ReferenceDataItem[].
-   * Templates are a separate domain concept.
-   */
   templates: TemplateCatalogueItem[];
-
   brandingStatuses: Status[];
-
   onSave: (branding: OrganizationBranding) => Promise<void>;
 };
 
@@ -54,28 +45,39 @@ function createEmptyBranding(
 
   return {
     id: `branding-${organizationId}`,
+
     organizationId,
+
     brandingName: "",
+
     themeTemplateId: defaultTemplateId,
 
     logoUrl: undefined,
+
     darkThemeLogoUrl: undefined,
+
     faviconUrl: undefined,
+
     splashScreenImageUrl: undefined,
 
     primaryColor: undefined,
+
     secondaryColor: undefined,
+
     accentColor: undefined,
 
     brandingStatusId: defaultStatusId,
 
     createdAt: now,
+
     createdBy,
 
     updatedAt: now,
+
     updatedBy: createdBy,
 
     isDeleted: false,
+
     versionNo: 1,
   };
 }
@@ -88,17 +90,13 @@ export function BrandingForm({
   onSave,
 }: BrandingFormProps) {
   const theme = useTheme();
+
   const { width } = useWindowDimensions();
 
   const compact = width < 760;
+
   const narrow = width < 520;
 
-  /**
-   * For a new branding record, select the platform default template
-   * for this organization's organization type.
-   *
-   * We deliberately do NOT simply use templates[0].
-   */
   const defaultTemplate =
     templates.find(
       (item) => item.organizationTypeId === organization.organizationTypeId,
@@ -145,15 +143,20 @@ export function BrandingForm({
   ) => {
     setForm((current) => ({
       ...current,
+
       [field]: value,
     }));
   };
 
   const templateItems = templates.map((item) => ({
     id: item.id,
+
     code: item.id,
+
     name: item.template.displayName,
+
     displayOrder: 0,
+
     active: true,
   }));
 
@@ -190,22 +193,21 @@ export function BrandingForm({
       style={styles.screen}
       contentContainerStyle={[
         styles.content,
+
         {
           padding: narrow ? theme.spacing.md : theme.spacing.xl,
         },
       ]}
     >
-      <View
-        style={{
-          gap: theme.spacing.xs,
-        }}
-      >
+      <View style={{ gap: theme.spacing.xs }}>
         <Text variant="h1" color="text">
           Branding
         </Text>
 
         <Text variant="bodySmall" color="textSecondary">
-          Manage how your organization appears across the Memgine experience.
+          Manage the organization&apos;s core brand identity and visual
+          foundation. Customer Experience configuration and preview are managed
+          separately.
         </Text>
       </View>
 

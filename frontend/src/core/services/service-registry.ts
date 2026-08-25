@@ -1,8 +1,9 @@
 import { mockServices } from "../mocks/mock-services";
 import { mockReferenceDataService } from "../mocks/mock-reference-data";
 import { mockStatusService } from "../mocks/mock-status";
-
 import { mockTemplateService } from "../mocks/mock-template";
+import { InMemoryCustomerExperienceService } from "../mocks/mock-customer-experience";
+import { mockNotificationService } from "../mocks/mock-notification";
 
 import {
   OrganizationService,
@@ -21,72 +22,78 @@ import {
 import type { ReferenceDataService } from "./reference-data";
 import type { StatusService } from "./status";
 import type { TemplateService } from "./template";
+import type { CustomerExperienceService } from "./customer-experience";
+import type { NotificationService } from "./notification";
 
-/**
- * Application service registry.
- *
- * UI components consume provider-neutral services.
- *
- * Current implementation:
- *   Mock API/data implementation
- *
- * Production implementation:
- *   API-backed implementation
- *
- * The UI should not change when the implementation changes.
- */
+const customerExperienceService = new InMemoryCustomerExperienceService(
+  mockServices.organization,
+  mockTemplateService,
+);
+
 export type MemgineServices = {
   organization: OrganizationService;
+
   customer: CustomerService;
+
   membershipProduct: MembershipProductService;
+
   subscription: SubscriptionService;
+
   subscriptionPlan: SubscriptionPlanService;
+
   benefit: BenefitService;
+
   offer: OfferService;
+
   userAcquisition: UserAcquisitionService;
+
   redemption: RedemptionService;
 
-  /**
-   * Canonical status domain.
-   *
-   * Status, EntityType and EntityStatus are intentionally kept separate
-   * from ordinary reference data.
-   */
   status: StatusService;
 
   auth: CustomerAuthService;
+
   payment: PaymentService;
 
-  /**
-   * Ordinary reference data only.
-   */
   referenceData: ReferenceDataService;
 
-  /**
-   * Platform template catalogue.
-   *
-   * Templates are deliberately separate from ordinary reference data.
-   */
   template: TemplateService;
+
+  customerExperience: CustomerExperienceService;
+
+  notification: NotificationService;
 };
 
 export const services: MemgineServices = {
   organization: mockServices.organization,
+
   customer: mockServices.customer,
+
   membershipProduct: mockServices.membershipProduct,
+
   subscription: mockServices.subscription,
+
   subscriptionPlan: mockServices.subscriptionPlan,
+
   benefit: mockServices.benefit,
+
   offer: mockServices.offer,
+
   userAcquisition: mockServices.userAcquisition,
+
   redemption: mockServices.redemption,
 
   status: mockStatusService,
 
   auth: mockServices.auth,
+
   payment: mockServices.payment,
 
   referenceData: mockReferenceDataService,
 
   template: mockTemplateService,
+
+  customerExperience: customerExperienceService,
+
+  notification: mockNotificationService,
 };

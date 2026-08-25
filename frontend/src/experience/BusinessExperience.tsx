@@ -4,9 +4,11 @@ import { Image, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
+import type { CardStyle } from "@/src/core/template/template-definition";
 
 import type {
   Benefit,
+  CustomerExperienceDefinition,
   MembershipProduct,
   Offer,
   Redemption,
@@ -15,9 +17,11 @@ import type {
   Subscription,
   TemplateDefaultContent,
 } from "@/src/core";
+
 import { getBusinessContent, services } from "@/src/core";
 import { useBusiness, useTranslation } from "@/src/providers";
 import { Badge, Button, Card, Modal, Section, Text } from "@/src/ui";
+
 import {
   ActivityItem,
   benefitIconForType,
@@ -30,22 +34,30 @@ import {
 import { ExperienceTabKey, resolveExperience } from "./resolve-experience";
 
 /**
- * BusinessExperience — the reusable, config-driven renderer for the F&B
- * template. Fed a business's content + a customer's subscription/domain data,
- * it renders a branded, tabbed experience (Card / Offers / History / Profile)
- * bounded by the TemplateDefinition. It contains NO business-specific values.
+ * BusinessExperience
+ *
+ * This is the SINGLE customer-facing renderer used by:
+ *
+ * 1. Actual customer experience
+ * 2. Customer Experience overall preview
+ * 3. Individual Customer Experience section previews
+ *
+ * Preview mode does not create a second customer UI. It uses this same
+ * renderer and optionally locks it to a particular tab.
  */
+
 type Props = {
   content: TemplateDefaultContent;
+
   subscription?: Subscription;
   subscriptionStatus?: Status;
   product?: MembershipProduct;
+
   benefits: Benefit[];
   offers: Offer[];
   stores: Store[];
   redemptions: Redemption[];
 
-  /** The customer's memberships within THIS SAME organization. */
   memberships: {
     subscription: Subscription;
     product: MembershipProduct;
@@ -54,11 +66,37 @@ type Props = {
   selectedSubscriptionId: string;
   onSelectSubscription: (subscriptionId: string) => void;
 
-  /** Published products for this org the customer does NOT currently own. */
   availableMemberships: MembershipProduct[];
 
   onJoin: (productId: string) => void;
   onExit: () => void;
+
+  /**
+   * Optional Customer Experience configuration.
+   *
+   * When supplied, preview uses this definition instead of the currently
+   * active BusinessConfiguration customer-experience settings.
+   */
+  previewDefinition?: CustomerExperienceDefinition;
+
+  /**
+   * When supplied, the renderer opens directly on that customer tab.
+   *
+   * The tab bar remains visible in normal overall preview mode.
+   */
+  initialTab?: ExperienceTabKey;
+
+  /**
+   * Preview mode removes actions which should not be available while an
+   * administrator is reviewing the customer experience.
+   */
+  previewMode?: boolean;
+
+  /**
+   * In individual section preview, only the selected customer tab is shown.
+   * The tab bar is still available unless hideTabBar is explicitly true.
+   */
+  hideTabBar?: boolean;
 };
 
 export function BusinessExperience({
@@ -76,22 +114,91 @@ export function BusinessExperience({
   availableMemberships,
   onJoin,
   onExit,
+  previewDefinition,
+  initialTab = "card",
+  previewMode = false,
+  hideTabBar = false,
 }: Props) {
   const { organization, configuration, template, theme } = useBusiness();
   const { t, formatDate, formatMoney } = useTranslation();
   const insets = useSafeAreaInsets();
 
-  const [tab, setTab] = useState<ExperienceTabKey>("card");
+  /**
+   * Build the configuration used by resolveExperience.
+   *
+   * Actual customer experience continues to use BusinessConfiguration.
+   *
+   * Preview uses the CustomerExperienceDefinition so the proposed draft
+   * immediately affects the rendered experience.
+   */
+  const resolvedConfiguration = useMemo(() => {
+    if (!previewDefinition) {
+      return configuration;
+    }
+
+    return {
+      ...configuration,
+
+      identity: {
+        ...configuration.identity,
+        displayName:
+          previewDefinition.businessIdentity.displayName ||
+          configuration.identity.displayName,
+      },
+
+      branding: {
+        ...configuration.branding,
+
+        logoUrl:
+          previewDefinition.businessIdentity.logoUrl ??
+          configuration.branding.logoUrl,
+
+        primaryColor:
+          previewDefinition.theme.primaryColor ??
+          configuration.branding.primaryColor,
+
+        secondaryColor:
+          previewDefinition.theme.secondaryColor ??
+          configuration.branding.secondaryColor,
+      },
+
+      customerExperience: {
+        ...configuration.customerExperience,
+
+        cardStyle:
+          (previewDefinition.membership
+            .cardStyle as typeof configuration.customerExperience.cardStyle) ??
+          configuration.customerExperience.cardStyle,
+
+        showOffers: previewDefinition.sections.offers,
+        showStores: previewDefinition.sections.stores,
+        showActivity: previewDefinition.sections.activity,
+      },
+    };
+  }, [configuration, previewDefinition]);
+
+  /**
+   * Content used by the resolver.
+   *
+   * Draft preview uses the content stored inside CustomerExperienceDefinition.
+   */
+  const resolvedContent = previewDefinition?.content ?? content;
+
+  const [tab, setTab] = useState<ExperienceTabKey>(initialTab);
   const [referralOpen, setReferralOpen] = useState(false);
   const [showAllHistory, setShowAllHistory] = useState(false);
+
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
 
   const exp = useMemo(
     () =>
       resolveExperience({
         organization,
-        configuration,
+        configuration: resolvedConfiguration,
         template,
-        content,
+        content: resolvedContent,
         subscription,
         subscriptionStatus,
         product,
@@ -103,9 +210,9 @@ export function BusinessExperience({
       }),
     [
       organization,
-      configuration,
+      resolvedConfiguration,
       template,
-      content,
+      resolvedContent,
       subscription,
       subscriptionStatus,
       product,
@@ -117,9 +224,12 @@ export function BusinessExperience({
     ],
   );
 
-  const cardStyle = configuration.customerExperience.cardStyle;
-
-  /* ----------------------------- redeem selection ---------------------------- */
+  const cardStyle: CardStyle =
+    previewDefinition?.membership.cardStyle ??
+    configuration.customerExperience.cardStyle;
+  /* ------------------------------------------------------------------ */
+  /* Redemption                                                         */
+  /* ------------------------------------------------------------------ */
 
   type RedemptionToken = {
     token: string;
@@ -136,8 +246,6 @@ export function BusinessExperience({
 
   const [redeemToken, setRedeemToken] = useState<RedemptionToken | null>(null);
 
-  // All available benefits are selected by default; reset when the focused
-  // membership changes.
   useEffect(() => {
     setSelectedBenefitIds(
       new Set(
@@ -163,14 +271,8 @@ export function BusinessExperience({
       return next;
     });
 
-  /**
-   * Create the customer's redemption token.
-   *
-   * Subscription no longer contains customerId / organizationId directly.
-   * Those values are resolved through OrganizationUser.
-   */
   const redeemSelected = async () => {
-    if (!subscription) return;
+    if (!subscription || previewMode) return;
 
     const ids = exp.redeemableBenefits
       .filter((b) => b.available && selectedBenefitIds.has(b.id))
@@ -191,11 +293,7 @@ export function BusinessExperience({
         .toUpperCase()
         .replace(/[^A-Z0-9]/g, "")}-${Date.now().toString(36).toUpperCase()}`,
 
-      // Final data model:
-      // OrganizationUser.userId identifies the underlying customer/user.
       customerId: organizationUser.userId,
-
-      // OrganizationUser belongs to the organization.
       organizationId: organizationUser.organizationId,
 
       subscriptionId: subscription.id,
@@ -216,13 +314,9 @@ export function BusinessExperience({
 
   const hasRedeemable = exp.redeemableBenefits.some((b) => b.available);
 
-  console.log("REDEMPTION UI DEBUG", {
-    membershipActive: exp.membership?.active,
-    redeemableBenefits: exp.redeemableBenefits.length,
-    availableBenefits: exp.redeemableBenefits.filter((b) => b.available).length,
-  });
-
-  /* ------------------------------ sub-renderers ------------------------------ */
+  /* ------------------------------------------------------------------ */
+  /* Sub-renderers                                                      */
+  /* ------------------------------------------------------------------ */
 
   const HeroImage = ({
     uri,
@@ -294,6 +388,10 @@ export function BusinessExperience({
     return `${formatMoney(plan.price.amountMinor)} · ${interval}`;
   };
 
+  /* ------------------------------------------------------------------ */
+  /* Card                                                               */
+  /* ------------------------------------------------------------------ */
+
   const CardTab = (
     <View style={{ gap: theme.spacing.lg }} testID="experience-tab-card">
       {exp.heroPromotion ? renderPromotionCard(exp.heroPromotion) : null}
@@ -306,6 +404,30 @@ export function BusinessExperience({
             tier={exp.membership.tier}
             validUntil={exp.membership.validUntilLabel}
             active={exp.membership.active}
+            cardStyle={cardStyle}
+          />
+        </Section>
+      ) : previewMode ? (
+        /**
+         * Configuration preview fallback.
+         *
+         * Actual customer mode uses exp.membership above because that is
+         * domain-derived from Subscription + MembershipProduct.
+         *
+         * Preview mode can still show the configured membership card even
+         * when there is no selected customer subscription.
+         */
+        <Section title={t("experience.yourMemberships")}>
+          <MembershipCard
+            testID="experience-preview-membership-card"
+            organizationName={exp.displayName}
+            tier={
+              previewDefinition?.membership.headline ??
+              content.membership.tierName ??
+              "Membership"
+            }
+            validUntil="—"
+            active={previewDefinition?.membership.enabled ?? true}
             cardStyle={cardStyle}
           />
         </Section>
@@ -340,7 +462,7 @@ export function BusinessExperience({
                   <Pressable
                     key={b.id}
                     testID={`experience-redeem-benefit-${b.id}`}
-                    disabled={!b.available}
+                    disabled={!b.available || previewMode}
                     onPress={() => toggleBenefit(b.id)}
                     style={({ pressed }) => ({
                       flexDirection: "row",
@@ -400,35 +522,37 @@ export function BusinessExperience({
                 </Text>
               ) : null}
 
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginTop: theme.spacing.sm,
-                }}
-              >
-                <Text variant="caption" color="textMuted">
-                  {t("experience.selectedCount", {
-                    count: selectedCount,
-                  })}
-                </Text>
-
-                <Button
-                  label={t("experience.redeemSelected")}
-                  disabled={selectedCount === 0}
-                  onPress={() => {
-                    void redeemSelected();
+              {!previewMode ? (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginTop: theme.spacing.sm,
                   }}
-                  testID="experience-redeem-selected"
-                />
-              </View>
+                >
+                  <Text variant="caption" color="textMuted">
+                    {t("experience.selectedCount", {
+                      count: selectedCount,
+                    })}
+                  </Text>
+
+                  <Button
+                    label={t("experience.redeemSelected")}
+                    disabled={selectedCount === 0}
+                    onPress={() => {
+                      void redeemSelected();
+                    }}
+                    testID="experience-redeem-selected"
+                  />
+                </View>
+              ) : null}
             </View>
           </Card>
         </Section>
       ) : null}
 
-      {availableMemberships.length ? (
+      {!previewMode && availableMemberships.length ? (
         <Section title={t("experience.availableMemberships")}>
           <View style={{ gap: theme.spacing.md }}>
             {availableMemberships.map((p) => (
@@ -480,6 +604,10 @@ export function BusinessExperience({
     </View>
   );
 
+  /* ------------------------------------------------------------------ */
+  /* Offers                                                             */
+  /* ------------------------------------------------------------------ */
+
   const OffersTab = (
     <View style={{ gap: theme.spacing.lg }} testID="experience-tab-offers">
       <Section title={t("experience.todaysPerks")}>
@@ -501,10 +629,22 @@ export function BusinessExperience({
               description={o.description}
             />
           ))}
+
+          {!exp.offers.length ? (
+            <Card padding="lg">
+              <Text variant="bodySmall" color="textMuted">
+                No offers are currently available.
+              </Text>
+            </Card>
+          ) : null}
         </View>
       </Section>
     </View>
   );
+
+  /* ------------------------------------------------------------------ */
+  /* History                                                            */
+  /* ------------------------------------------------------------------ */
 
   const HistoryTab = (() => {
     const sortedActivity = [...exp.activity].sort((a, b) => {
@@ -526,27 +666,13 @@ export function BusinessExperience({
       ? sortedActivity
       : sortedActivity.slice(0, 3);
 
-    /*
-     * The summary follows the client-facing membership experience:
-     * a strong redemption/activity count rather than repeating the
-     * membership card that is already shown on the Card tab.
-     *
-     * Count only redemptions in the current calendar year so the label
-     * "REWARDS THIS YEAR" remains truthful.
-     */
     const currentYear = new Date().getFullYear();
 
-    const redemptionsThisYear = redemptions.filter((redemption) => {
-      return (
-        new Date(redemption.redemptionDateTime).getFullYear() === currentYear
-      );
-    }).length;
+    const redemptionsThisYear = redemptions.filter(
+      (redemption) =>
+        new Date(redemption.redemptionDateTime).getFullYear() === currentYear,
+    ).length;
 
-    /*
-     * Calendar is based on the latest redemption month rather than the
-     * current device month. This makes the demo meaningful even when the
-     * mock redemption data is from an earlier month.
-     */
     const latestRedemption = [...redemptions].sort(
       (a, b) =>
         new Date(b.redemptionDateTime).getTime() -
@@ -562,10 +688,6 @@ export function BusinessExperience({
 
     const firstDayOfMonth = new Date(calendarYear, calendarMonth, 1);
 
-    /*
-     * Convert JavaScript Sunday-first indexing to Monday-first:
-     * Monday = 0 ... Sunday = 6
-     */
     const firstWeekday = (firstDayOfMonth.getDay() + 6) % 7;
 
     const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
@@ -576,9 +698,6 @@ export function BusinessExperience({
       currentMonth: boolean;
     }> = [];
 
-    /*
-     * Previous-month days.
-     */
     for (let i = firstWeekday - 1; i >= 0; i -= 1) {
       const date = new Date(calendarYear, calendarMonth, -i);
 
@@ -589,9 +708,6 @@ export function BusinessExperience({
       });
     }
 
-    /*
-     * Current-month days.
-     */
     for (let day = 1; day <= daysInMonth; day += 1) {
       const date = new Date(calendarYear, calendarMonth, day);
 
@@ -602,9 +718,6 @@ export function BusinessExperience({
       });
     }
 
-    /*
-     * Next-month days so the calendar always forms complete weeks.
-     */
     let nextDay = 1;
 
     while (calendarCells.length % 7 !== 0) {
@@ -619,9 +732,6 @@ export function BusinessExperience({
       nextDay += 1;
     }
 
-    /*
-     * Dates which contain at least one redemption.
-     */
     const redemptionDates = new Set(
       redemptions.map((r) => {
         const date = new Date(r.redemptionDateTime);
@@ -633,9 +743,6 @@ export function BusinessExperience({
     const dateKey = (date: Date) =>
       `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 
-    /*
-     * Most visited store.
-     */
     const storeCounts = new Map<string, number>();
 
     redemptions.forEach((redemption) => {
@@ -665,9 +772,6 @@ export function BusinessExperience({
       }
     }
 
-    /*
-     * Top redeemed benefit.
-     */
     const benefitCounts = new Map<string, number>();
 
     redemptions.forEach((redemption) => {
@@ -703,14 +807,7 @@ export function BusinessExperience({
     const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
 
     return (
-      <View
-        style={{
-          gap: theme.spacing.lg,
-        }}
-        testID="experience-tab-history"
-      >
-        {/* --------------------------- History heading --------------------------- */}
-
+      <View style={{ gap: theme.spacing.lg }} testID="experience-tab-history">
         <View
           style={{
             flexDirection: "row",
@@ -733,8 +830,6 @@ export function BusinessExperience({
             </Pressable>
           ) : null}
         </View>
-
-        {/* --------------------------- Redemption summary --------------------------- */}
 
         <Card
           padding="lg"
@@ -811,8 +906,6 @@ export function BusinessExperience({
           </View>
         </Card>
 
-        {/* --------------------------- Recent Activity --------------------------- */}
-
         {visibleActivity.length ? (
           <Section title="Recent Activity">
             <View style={{ gap: theme.spacing.md }}>
@@ -847,7 +940,6 @@ export function BusinessExperience({
                         gap: theme.spacing.md,
                       }}
                     >
-                      {/* Benefit visual */}
                       <View
                         style={{
                           width: 54,
@@ -865,7 +957,6 @@ export function BusinessExperience({
                         />
                       </View>
 
-                      {/* Main activity information */}
                       <View
                         style={{
                           flex: 1,
@@ -893,7 +984,6 @@ export function BusinessExperience({
                         </Text>
                       </View>
 
-                      {/* Redemption status */}
                       <View
                         style={{
                           alignItems: "center",
@@ -977,8 +1067,6 @@ export function BusinessExperience({
           </Card>
         )}
 
-        {/* ----------------------------- Activity ----------------------------- */}
-
         <Card
           padding="lg"
           style={{
@@ -1001,12 +1089,7 @@ export function BusinessExperience({
               </Text>
             </View>
 
-            {/* Weekday header */}
-            <View
-              style={{
-                flexDirection: "row",
-              }}
-            >
+            <View style={{ flexDirection: "row" }}>
               {weekdayLabels.map((label, index) => (
                 <View
                   key={`${label}-${index}`}
@@ -1022,7 +1105,6 @@ export function BusinessExperience({
               ))}
             </View>
 
-            {/* Calendar */}
             <View style={{ gap: 8 }}>
               {Array.from({
                 length: Math.ceil(calendarCells.length / 7),
@@ -1093,7 +1175,6 @@ export function BusinessExperience({
               ))}
             </View>
 
-            {/* Activity legend */}
             <View
               style={{
                 flexDirection: "row",
@@ -1116,8 +1197,6 @@ export function BusinessExperience({
             </View>
           </View>
         </Card>
-
-        {/* ----------------------------- Insights ----------------------------- */}
 
         {mostVisitedStore || topBenefit ? (
           <View style={{ gap: theme.spacing.sm }}>
@@ -1221,6 +1300,10 @@ export function BusinessExperience({
       </View>
     );
   })();
+
+  /* ------------------------------------------------------------------ */
+  /* Profile                                                            */
+  /* ------------------------------------------------------------------ */
 
   const ProfileTab = (
     <View style={{ gap: theme.spacing.lg }} testID="experience-tab-profile">
@@ -1347,7 +1430,9 @@ export function BusinessExperience({
           ? HistoryTab
           : ProfileTab;
 
-  /* --------------------------------- layout --------------------------------- */
+  /* ------------------------------------------------------------------ */
+  /* Layout                                                             */
+  /* ------------------------------------------------------------------ */
 
   return (
     <View
@@ -1357,38 +1442,40 @@ export function BusinessExperience({
         paddingTop: insets.top,
       }}
     >
-      {/* Platform return action — the ONLY Memgine chrome inside a business. */}
-      <View
-        style={{
-          paddingHorizontal: theme.spacing.lg,
-          paddingTop: theme.spacing.sm,
-        }}
-      >
-        <Pressable
-          onPress={onExit}
-          testID="experience-back"
-          style={({ pressed }) => ({
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 4,
-            alignSelf: "flex-start",
-            paddingVertical: 6,
-            opacity: pressed ? theme.states.pressedOpacity : 1,
-          })}
+      {/* Only show the platform return action outside the customer app. */}
+      {previewMode ? (
+        <View
+          style={{
+            paddingHorizontal: theme.spacing.lg,
+            paddingTop: theme.spacing.sm,
+          }}
         >
-          <Ionicons
-            name="chevron-back"
-            size={18}
-            color={theme.colors.primary}
-          />
+          <Pressable
+            onPress={onExit}
+            testID="experience-back"
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 4,
+              alignSelf: "flex-start",
+              paddingVertical: 6,
+              opacity: pressed ? theme.states.pressedOpacity : 1,
+            })}
+          >
+            <Ionicons
+              name="chevron-back"
+              size={18}
+              color={theme.colors.primary}
+            />
 
-          <Text variant="label" color="primary">
-            {t("experience.back")}
-          </Text>
-        </Pressable>
-      </View>
+            <Text variant="label" color="primary">
+              {t("experience.back")}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
 
-      {/* Persistent branded identity header. */}
+      {/* Branded customer header */}
       <View
         style={{
           flexDirection: "row",
@@ -1433,10 +1520,7 @@ export function BusinessExperience({
         }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Unobtrusive membership selector — only when the customer holds more
-            than one membership at THIS business. Switching changes only the
-            selected subscription; org / branding / template stay the same. */}
-        {memberships.length > 1 ? (
+        {memberships.length > 1 && !previewMode ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -1496,66 +1580,73 @@ export function BusinessExperience({
         {tabContent}
       </ScrollView>
 
-      {/* Subtle platform footer. */}
-      <View
-        style={{
-          alignItems: "center",
-          paddingVertical: 6,
-          borderTopWidth: 1,
-          borderTopColor: theme.colors.border,
-          backgroundColor: theme.colors.surface,
-        }}
-      >
-        <Text variant="caption" color="textMuted">
-          {t("experience.poweredBy")}
-        </Text>
-      </View>
+      {/* Customer navigation */}
+      {!hideTabBar ? (
+        <View
+          style={{
+            flexDirection: "row",
+            borderTopWidth: 1,
+            borderTopColor: theme.colors.border,
+            backgroundColor: theme.colors.background,
+            paddingBottom: insets.bottom,
+          }}
+        >
+          {exp.tabs.map((tb) => {
+            const focused = tb.key === tab;
 
-      {/* Business navigation — config-driven bottom tabs. */}
-      <View
-        style={{
-          flexDirection: "row",
-          borderTopWidth: 1,
-          borderTopColor: theme.colors.border,
-          backgroundColor: theme.colors.background,
-          paddingBottom: insets.bottom,
-        }}
-      >
-        {exp.tabs.map((tb) => {
-          const focused = tb.key === tab;
+            return (
+              <Pressable
+                key={tb.key}
+                testID={`experience-tabbar-${tb.key}`}
+                onPress={() => setTab(tb.key)}
+                style={{
+                  flex: 1,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingVertical: 10,
+                  gap: 2,
+                }}
+              >
+                <Ionicons
+                  name={
+                    (focused
+                      ? tb.icon
+                      : tb.iconOutline) as keyof typeof Ionicons.glyphMap
+                  }
+                  size={22}
+                  color={
+                    focused ? theme.colors.primary : theme.colors.textMuted
+                  }
+                />
 
-          return (
-            <Pressable
-              key={tb.key}
-              testID={`experience-tabbar-${tb.key}`}
-              onPress={() => setTab(tb.key)}
-              style={{
-                flex: 1,
-                alignItems: "center",
-                justifyContent: "center",
-                paddingVertical: 10,
-                gap: 2,
-              }}
-            >
-              <Ionicons
-                name={
-                  (focused
-                    ? tb.icon
-                    : tb.iconOutline) as keyof typeof Ionicons.glyphMap
-                }
-                size={22}
-                color={focused ? theme.colors.primary : theme.colors.textMuted}
-              />
+                <Text
+                  variant="caption"
+                  color={focused ? "primary" : "textMuted"}
+                >
+                  {t(tb.labelKey)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
 
-              <Text variant="caption" color={focused ? "primary" : "textMuted"}>
-                {t(tb.labelKey)}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      {!previewMode ? (
+        <View
+          style={{
+            alignItems: "center",
+            paddingVertical: 6,
+            borderTopWidth: 1,
+            borderTopColor: theme.colors.border,
+            backgroundColor: theme.colors.surface,
+          }}
+        >
+          <Text variant="caption" color="textMuted">
+            {t("experience.poweredBy")}
+          </Text>
+        </View>
+      ) : null}
 
-      {/* Referral — MODAL presentation. */}
       <Modal
         visible={referralOpen}
         onClose={() => setReferralOpen(false)}
@@ -1592,81 +1683,86 @@ export function BusinessExperience({
         ) : null}
       </Modal>
 
-      {/* Redemption token — one QR/code for ALL selected benefits (mocked). */}
-      <Modal
-        visible={!!redeemToken}
-        onClose={() => setRedeemToken(null)}
-        title={t("experience.redeemBenefits")}
-        testID="experience-redeem-token-modal"
-      >
-        {redeemToken ? (
-          <View
-            style={{
-              alignItems: "center",
-              gap: theme.spacing.md,
-            }}
-          >
-            <QrPlaceholder size={200} />
-
-            <View style={{ alignItems: "center" }}>
-              <Text variant="caption" color="textMuted">
-                {t("experience.redemptionCode")}
-              </Text>
-
-              <Text variant="title" color="text">
-                {redeemToken.token}
-              </Text>
-            </View>
-
+      {!previewMode ? (
+        <Modal
+          visible={!!redeemToken}
+          onClose={() => setRedeemToken(null)}
+          title={t("experience.redeemBenefits")}
+          testID="experience-redeem-token-modal"
+        >
+          {redeemToken ? (
             <View
               style={{
-                alignSelf: "stretch",
-                gap: 6,
+                alignItems: "center",
+                gap: theme.spacing.md,
               }}
             >
-              {redeemToken.benefitIds.map((id) => (
-                <View
-                  key={id}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: theme.spacing.sm,
-                  }}
-                >
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={16}
-                    color={theme.colors.primary}
-                  />
+              <QrPlaceholder size={200} />
 
-                  <Text variant="bodySmall" color="text">
-                    {benefitTitleById.get(id) ?? id}
-                  </Text>
-                </View>
-              ))}
+              <View style={{ alignItems: "center" }}>
+                <Text variant="caption" color="textMuted">
+                  {t("experience.redemptionCode")}
+                </Text>
+
+                <Text variant="title" color="text">
+                  {redeemToken.token}
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  alignSelf: "stretch",
+                  gap: 6,
+                }}
+              >
+                {redeemToken.benefitIds.map((id) => (
+                  <View
+                    key={id}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: theme.spacing.sm,
+                    }}
+                  >
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={16}
+                      color={theme.colors.primary}
+                    />
+
+                    <Text variant="bodySmall" color="text">
+                      {benefitTitleById.get(id) ?? id}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              <Text variant="caption" color="textMuted">
+                {t("experience.benefitsCount", {
+                  count: redeemToken.benefitIds.length,
+                })}
+              </Text>
+
+              <Text
+                variant="bodySmall"
+                color="textMuted"
+                style={{
+                  textAlign: "center",
+                }}
+              >
+                {t("experience.redeemTokenHint")}
+              </Text>
             </View>
-
-            <Text variant="caption" color="textMuted">
-              {t("experience.benefitsCount", {
-                count: redeemToken.benefitIds.length,
-              })}
-            </Text>
-
-            <Text
-              variant="bodySmall"
-              color="textMuted"
-              style={{ textAlign: "center" }}
-            >
-              {t("experience.redeemTokenHint")}
-            </Text>
-          </View>
-        ) : null}
-      </Modal>
+          ) : null}
+        </Modal>
+      ) : null}
     </View>
   );
 }
 
-/* --------------------------- tiny local helpers --------------------------- */
+/* ---------------------------------------------------------------------- */
+/* Helpers                                                                */
+/* ---------------------------------------------------------------------- */
 
 function InfoRow({
   icon,

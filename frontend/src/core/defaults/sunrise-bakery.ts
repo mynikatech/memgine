@@ -22,7 +22,7 @@ export const SUNRISE_BAKERY_ORGANIZATION: Organization = {
   legalName: "Sunrise Bakery LLC",
   displayName: "Sunrise Bakery",
 
-  organizationTypeId: "org-type-food-beverage",
+  organizationTypeId: "organization-type-bakery",
   organizationStatusId: "org-status-active",
 
   category: TemplateCategory.FOOD_AND_BEVERAGE,

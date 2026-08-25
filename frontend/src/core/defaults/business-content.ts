@@ -20,6 +20,18 @@ const BUSINESS_CONTENT_BY_ORG: Record<ID, TemplateDefaultContent> = {
   "org-sunrise": SUNRISE_BAKERY_CONTENT,
 
   "org-glow": GLOW_STUDIO_CONTENT,
+
+  /*
+   * STEEP & SIP is the current development/demo F&B organization.
+   * It uses the default F&B/Bakery template and therefore needs
+   * organization-owned starter content just like a newly onboarded
+   * F&B business.
+   *
+   * Without this entry getBusinessContent("org-steep-sip") throws,
+   * which prevents the Customer Experience preview and the customer
+   * Business Experience from rendering at all.
+   */
+  "org-steep-sip": F_AND_B_DEFAULT_CONTENT,
 };
 
 /**
@@ -59,6 +71,7 @@ export function getBusinessContent(organizationId: ID): TemplateDefaultContent {
 
   return content;
 }
+
 /**
  * Resolve starter content when creating a new organization.
  *
