@@ -9,8 +9,8 @@ import type {
   Offer,
   Organization,
   Redemption,
-  Store,
   Status,
+  Store,
   Subscription,
   TemplateDefaultContent,
   TemplateDefinition,
@@ -22,16 +22,14 @@ import { TemplateSectionKey } from "@/src/core";
  * resolve-experience — the pure, framework-free brain of the Business
  * Experience renderer.
  *
- * It composes a single view model from the three separated layers plus live
- * domain data, honouring their precedence:
- *   - Domain data     (subscription, product, benefits, offers, stores, …)
- *   - BusinessConfiguration (identity name, brand, section on/off flags)
- *   - TemplateDefaultContent (replaceable copy & imagery)
- * bounded by what the TemplateDefinition permits (mandatory vs optional
- * sections, and which navigation surfaces they may occupy).
+ * Production:
+ *   Domain data comes from the real customer.
  *
- * No business value is hard-coded here; everything is derived from inputs, so
- * the same function drives ANY F&B business.
+ * Admin preview:
+ *   Domain data may come from preview/mock data supplied by the admin
+ *   preview layer.
+ *
+ * The renderer itself does not know or care where the data originated.
  */
 
 export type ExperienceTabKey = "card" | "offers" | "history" | "profile";
@@ -61,45 +59,94 @@ export interface ResolvedActivity {
   timeLabel: string;
 }
 
-export type RedeemableBenefit = Benefit & { available: boolean };
+export type RedeemableBenefit = Benefit & {
+  available: boolean;
+};
 
 export interface ResolvedExperience {
   displayName: string;
   monogram: string;
   tagline: string;
   heroImageUrl: string;
+
   heroPromotion?: DefaultPromotionContent;
   featuredPromotion?: DefaultPromotionContent;
+
   membership?: ResolvedMembership;
+
   benefits: Benefit[];
   redeemableBenefits: RedeemableBenefit[];
+
   offers: Offer[];
   stores: Store[];
+
   activity: ResolvedActivity[];
   activityCount: number;
   mostVisited?: string;
+
   businessInformation?: DefaultBusinessInformationContent;
   businessPreferences?: DefaultBusinessPreferencesContent;
   referral?: DefaultReferralContent;
+
   showOffers: boolean;
   showStores: boolean;
   showActivity: boolean;
+
   tabs: ExperienceTab[];
+}
+
+export interface PreviewMembershipOverride {
+  /**
+   * Product comes directly from the organization's configured
+   * membership products.
+   */
+  product: MembershipProduct;
+
+  /**
+   * Preview state is deliberately independent of a real customer.
+   */
+  active: boolean;
+
+  /**
+   * Optional deterministic preview values.
+   */
+  validUntilLabel?: string;
+  memberId?: string;
 }
 
 export interface ResolveExperienceInput {
   organization: Organization;
+
   configuration: BusinessConfiguration;
+
   template: TemplateDefinition;
+
   content: TemplateDefaultContent;
+
+  /**
+   * Production customer data.
+   *
+   * These remain optional because the admin preview does not need
+   * a real customer subscription.
+   */
   subscription?: Subscription;
   subscriptionStatus?: Status;
   product?: MembershipProduct;
+
   benefits: Benefit[];
   offers: Offer[];
   stores: Store[];
   redemptions: Redemption[];
+
   formatDate: (date: string) => string;
+
+  /**
+   * Admin preview only.
+   *
+   * When supplied, this takes precedence over the real customer
+   * subscription/product combination above.
+   */
+  previewMembership?: PreviewMembershipOverride;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -115,33 +162,71 @@ export function resolveExperience(
     subscription,
     subscriptionStatus,
     product,
+    previewMembership,
   } = input;
+
   const cx = configuration.customerExperience;
 
   const templateHas = (key: TemplateSectionKey) =>
-    template.sections.some((s) => s.key === key);
+    template.sections.some((section) => section.key === key);
 
-  // Optional sections are only surfaced when the template permits them AND the
-  // business has switched them on. Mandatory sections are always present.
+  /*
+   * Optional sections are only surfaced when the template permits them
+   * AND the business has switched them on.
+   */
   const showOffers = cx.showOffers && templateHas(TemplateSectionKey.OFFERS);
+
   const showStores = cx.showStores && templateHas(TemplateSectionKey.STORES);
+
   const showActivity =
     cx.showActivity && templateHas(TemplateSectionKey.ACTIVITY);
 
-  // Membership status is domain-derived (subscription + product). The focused
-  // membership is OPTIONAL — an org-level (QR) entry may have no owned membership.
+  /* ---------------------------------------------------------------------- */
+  /* Membership                                                             */
+  /* ---------------------------------------------------------------------- */
+
   let membership: ResolvedMembership | undefined;
-  if (subscription && product) {
-    console.log("RESOLVE EXP", {
-      membershipActive: subscriptionStatus?.statusCode.toUpperCase(),
-    });
-    //subscription-status-active
+
+  /*
+   * ADMIN PREVIEW
+   *
+   * The preview membership is derived from an organization's configured
+   * MembershipProduct. It does NOT require a real customer subscription.
+   */
+  if (previewMembership) {
+    const previewProduct = previewMembership.product;
+
+    membership = {
+      tier: previewProduct.displayName ?? previewProduct.membershipProductName,
+
+      productName: previewProduct.membershipProductName,
+
+      description: previewProduct.description ?? content.membership.description,
+
+      active: previewMembership.active,
+
+      validUntilLabel: previewMembership.validUntilLabel ?? "—",
+
+      daysRemaining: null,
+
+      memberId:
+        previewMembership.memberId ??
+        `MG-PREVIEW-${previewProduct.id
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, "")}`,
+    };
+  } else if (subscription && product) {
+    /*
+     * PRODUCTION CUSTOMER EXPERIENCE
+     *
+     * This remains exactly subscription/domain driven.
+     */
     const active = subscriptionStatus?.statusCode.toUpperCase() === "ACTIVE";
-    /**const active =
-      subscription.subscriptionStatusId === "subscription-status-active";**/
+
     const validUntilLabel = subscription.endDate
       ? input.formatDate(subscription.endDate)
       : "—";
+
     const daysRemaining = subscription.endDate
       ? Math.max(
           0,
@@ -150,65 +235,105 @@ export function resolveExperience(
           ),
         )
       : null;
+
     membership = {
       tier: product.displayName ?? product.membershipProductName,
+
       productName: product.membershipProductName,
+
       description: product.description ?? content.membership.description,
+
       active,
+
       validUntilLabel,
+
       daysRemaining,
+
       memberId: `MG-${subscription.id.toUpperCase().replace(/[^A-Z0-9]/g, "")}`,
     };
   }
 
-  const benefitsById = new Map(input.benefits.map((b) => [b.id, b]));
-  const storesById = new Map(input.stores.map((s) => [s.id, s]));
+  /* ---------------------------------------------------------------------- */
+  /* Benefits / redemptions                                                 */
+  /* ---------------------------------------------------------------------- */
 
-  // A benefit is unavailable (already used) if it appears in this
-  // subscription's redemption history. Empty when there is no focused membership.
-  const usedBenefitIds = new Set(input.redemptions.map((r) => r.benefitId));
+  const benefitsById = new Map(
+    input.benefits.map((benefit) => [benefit.id, benefit]),
+  );
+
+  const storesById = new Map(input.stores.map((store) => [store.id, store]));
+
+  /*
+   * Redemptions are:
+   *
+   * - real customer redemptions in production
+   * - deterministic mock redemptions in preview
+   */
+  const usedBenefitIds = new Set(
+    input.redemptions.map((redemption) => redemption.benefitId),
+  );
+
   const redeemableBenefits: RedeemableBenefit[] = membership
-    ? input.benefits.map((b) => ({
-        ...b,
-        available: !usedBenefitIds.has(b.id),
+    ? input.benefits.map((benefit) => ({
+        ...benefit,
+        available: !usedBenefitIds.has(benefit.id),
       }))
     : [];
 
-  const activity: ResolvedActivity[] = input.redemptions.map(
-    (r: Redemption) => ({
-      id: r.id,
-      title:
-        benefitsById.get(r.benefitId)?.displayName ??
-        benefitsById.get(r.benefitId)?.benefitName ??
-        "Reward redeemed",
-      location: storesById.get(r.storeId)?.name ?? organization.displayName,
-      timeLabel: input.formatDate(r.redemptionDateTime),
-    }),
-  );
+  /* ---------------------------------------------------------------------- */
+  /* Activity                                                               */
+  /* ---------------------------------------------------------------------- */
 
-  // Most-visited store (simple domain-derived summary for the History tab).
+  const activity: ResolvedActivity[] = input.redemptions.map((redemption) => ({
+    id: redemption.id,
+
+    title:
+      benefitsById.get(redemption.benefitId)?.displayName ??
+      benefitsById.get(redemption.benefitId)?.benefitName ??
+      "Reward redeemed",
+
+    location:
+      storesById.get(redemption.storeId)?.name ?? organization.displayName,
+
+    timeLabel: input.formatDate(redemption.redemptionDateTime),
+  }));
+
+  /* ---------------------------------------------------------------------- */
+  /* Most visited store                                                     */
+  /* ---------------------------------------------------------------------- */
+
   let mostVisited: string | undefined;
+
   if (input.redemptions.length) {
     const counts = new Map<string, number>();
-    for (const r of input.redemptions)
-      counts.set(r.storeId, (counts.get(r.storeId) ?? 0) + 1);
+
+    for (const redemption of input.redemptions) {
+      counts.set(redemption.storeId, (counts.get(redemption.storeId) ?? 0) + 1);
+    }
+
     let topId: string | undefined;
     let topN = -1;
-    counts.forEach((n, id) => {
-      if (n > topN) {
-        topN = n;
+
+    counts.forEach((count, id) => {
+      if (count > topN) {
+        topN = count;
         topId = id;
       }
     });
+
     mostVisited = topId ? storesById.get(topId)?.name : undefined;
   }
 
+  /* ---------------------------------------------------------------------- */
+  /* Identity                                                               */
+  /* ---------------------------------------------------------------------- */
+
   const displayName = configuration.identity.displayName;
 
-  // Tabs are computed from the template's section catalogue + config flags —
-  // NOT a fixed vertical page. Card (mandatory overview) and Profile
-  // (business detail/preferences/referral) always exist; Offers and History
-  // appear only when their optional sections are enabled.
+  /* ---------------------------------------------------------------------- */
+  /* Tabs                                                                   */
+  /* ---------------------------------------------------------------------- */
+
   const tabs: ExperienceTab[] = [
     {
       key: "card",
@@ -217,6 +342,7 @@ export function resolveExperience(
       iconOutline: "wallet-outline",
     },
   ];
+
   if (showOffers) {
     tabs.push({
       key: "offers",
@@ -225,6 +351,7 @@ export function resolveExperience(
       iconOutline: "pricetags-outline",
     });
   }
+
   if (showActivity) {
     tabs.push({
       key: "history",
@@ -233,39 +360,7 @@ export function resolveExperience(
       iconOutline: "time-outline",
     });
   }
-  console.log(
-    "🔎 PROPOSED TAB RESOLUTION:",
-    JSON.stringify(
-      {
-        business: organization.displayName,
-        organizationId: organization.id,
 
-        configured: {
-          showOffers: cx.showOffers,
-          showStores: cx.showStores,
-          showActivity: cx.showActivity,
-        },
-
-        template: {
-          templateId: template.id,
-          templateCategory: template.category,
-          offers: templateHas(TemplateSectionKey.OFFERS),
-          stores: templateHas(TemplateSectionKey.STORES),
-          activity: templateHas(TemplateSectionKey.ACTIVITY),
-        },
-
-        resolved: {
-          showOffers,
-          showStores,
-          showActivity,
-        },
-
-        tabs: tabs.map((tab) => tab.key),
-      },
-      null,
-      2,
-    ),
-  );
   tabs.push({
     key: "profile",
     labelKey: "experience.tabProfile",
@@ -275,35 +370,59 @@ export function resolveExperience(
 
   return {
     displayName,
+
     monogram: displayName.trim().charAt(0).toUpperCase(),
+
     tagline: content.businessIdentity.tagline,
+
     heroImageUrl: content.businessIdentity.heroImageUrl,
+
     heroPromotion: templateHas(TemplateSectionKey.HERO_PROMOTION)
       ? content.heroPromotion
       : undefined,
+
     featuredPromotion: templateHas(TemplateSectionKey.FEATURED_PROMOTION)
       ? content.featuredPromotion
       : undefined,
+
     membership,
+
+    /*
+     * Benefits are the benefits supplied to this particular
+     * selected membership.
+     */
     benefits: membership ? input.benefits : [],
+
     redeemableBenefits,
+
     offers: input.offers,
+
     stores: input.stores,
+
     activity,
+
     activityCount: input.redemptions.length,
+
     mostVisited,
+
     businessInformation: templateHas(TemplateSectionKey.BUSINESS_INFORMATION)
       ? content.businessInformation
       : undefined,
+
     businessPreferences: templateHas(TemplateSectionKey.BUSINESS_PREFERENCES)
       ? content.businessPreferences
       : undefined,
+
     referral: templateHas(TemplateSectionKey.REFERRAL)
       ? content.referral
       : undefined,
+
     showOffers,
+
     showStores,
+
     showActivity,
+
     tabs,
   };
 }

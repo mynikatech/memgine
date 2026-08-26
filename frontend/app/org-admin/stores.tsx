@@ -15,6 +15,8 @@ import { useBusiness } from "@/src/providers";
 import { DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
 
 import { StoreForm } from "@/src/ui/admin/StoreForm";
+import { useRouter } from "expo-router";
+import { APP_ROUTES } from "@/src/constants/navigation";
 
 export default function OrgAdminStores() {
   const { organization } = useBusiness();
@@ -29,6 +31,7 @@ export default function OrgAdminStores() {
   const [loading, setLoading] = useState(true);
   const [formVisible, setFormVisible] = useState(false);
   const [editingStore, setEditingStore] = useState<Store | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     let mounted = true;
@@ -342,18 +345,40 @@ export default function OrgAdminStores() {
           </Text>
         </View>
       ) : (
-        <DataTable
-          columns={columns}
-          data={stores.filter((item) => !item.isDeleted)}
-          keyExtractor={(item) => item.id}
-          emptyMessage="No stores configured."
-          actions={[
-            {
-              label: "Edit",
-              onPress: handleEdit,
-            },
-          ]}
-        />
+        <>
+          <DataTable
+            columns={columns}
+            data={stores.filter((item) => !item.isDeleted)}
+            keyExtractor={(item) => item.id}
+            emptyMessage="No stores configured."
+            actions={[
+              {
+                label: "Edit",
+                onPress: handleEdit,
+              },
+            ]}
+          />
+
+          <Pressable
+            onPress={() =>
+              router.push(
+                APP_ROUTES.orgAdmin.customerExperienceSection(
+                  "stores",
+                ) as never,
+              )
+            }
+            style={({ pressed }) => [
+              styles.previewLink,
+              {
+                opacity: pressed ? 0.6 : 1,
+              },
+            ]}
+          >
+            <Text variant="body" color="primary">
+              Preview
+            </Text>
+          </Pressable>
+        </>
       )}
 
       <Modal
@@ -415,6 +440,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#0F766E",
+  },
+
+  previewLink: {
+    alignSelf: "flex-start",
+    minHeight: 40,
+    justifyContent: "center",
+    paddingHorizontal: 0,
   },
 
   center: {

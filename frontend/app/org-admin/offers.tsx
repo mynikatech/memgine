@@ -15,6 +15,8 @@ import { useBusiness } from "@/src/providers";
 import { DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
 
 import { OfferForm } from "@/src/ui/admin/OfferForm";
+import { useRouter } from "expo-router";
+import { APP_ROUTES } from "@/src/constants/navigation";
 
 export default function OrgAdminOffers() {
   const { organization } = useBusiness();
@@ -29,6 +31,8 @@ export default function OrgAdminOffers() {
   const [formVisible, setFormVisible] = useState(false);
 
   const [editingOffer, setEditingOffer] = useState<Offer | null>(null);
+
+  const router = useRouter();
 
   useEffect(() => {
     let mounted = true;
@@ -289,18 +293,40 @@ export default function OrgAdminOffers() {
           </Text>
         </View>
       ) : (
-        <DataTable
-          columns={columns}
-          data={offers.filter((item) => !item.isDeleted)}
-          keyExtractor={(item) => item.id}
-          emptyMessage="No offers configured."
-          actions={[
-            {
-              label: "Edit",
-              onPress: handleEdit,
-            },
-          ]}
-        />
+        <>
+          <DataTable
+            columns={columns}
+            data={offers.filter((item) => !item.isDeleted)}
+            keyExtractor={(item) => item.id}
+            emptyMessage="No offers configured."
+            actions={[
+              {
+                label: "Edit",
+                onPress: handleEdit,
+              },
+            ]}
+          />
+
+          <Pressable
+            onPress={() =>
+              router.push(
+                APP_ROUTES.orgAdmin.customerExperienceSection(
+                  "offers",
+                ) as never,
+              )
+            }
+            style={({ pressed }) => [
+              styles.previewLink,
+              {
+                opacity: pressed ? 0.6 : 1,
+              },
+            ]}
+          >
+            <Text variant="body" color="primary">
+              Preview
+            </Text>
+          </Pressable>
+        </>
       )}
 
       <Modal
@@ -364,6 +390,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#0F766E",
+  },
+
+  previewLink: {
+    alignSelf: "flex-start",
+    minHeight: 40,
+    justifyContent: "center",
+    paddingHorizontal: 0,
   },
 
   center: {

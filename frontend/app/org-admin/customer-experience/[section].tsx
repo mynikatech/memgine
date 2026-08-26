@@ -1,28 +1,19 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-
 import { useCallback, useEffect, useState } from "react";
-
 import { ScrollView, View } from "react-native";
 
-import type {
-  Benefit,
-  CustomerExperience,
-  MembershipProduct,
-  Offer,
-  Redemption,
-  Status,
-  Store,
-  Subscription,
-} from "@/src/core";
+import type { CustomerExperience } from "@/src/core";
+import { services } from "@/src/core";
 
-import { getBusinessContent, services } from "@/src/core";
+import type { PreviewDomainData, PreviewMembership } from "@/src/experience";
+
+import { loadPreviewData } from "@/src/experience";
 
 import { BusinessExperience } from "@/src/experience/BusinessExperience";
 
 import { useBusiness } from "@/src/providers";
 
 import { Button, Card, Header, StateView, Text } from "@/src/ui";
-
 import { Screen } from "@/src/layout";
 
 type StatusState = "loading" | "error" | "ready";
@@ -36,21 +27,6 @@ type SectionKey =
   | "business-information"
   | "business-preferences"
   | "referral";
-
-type MembershipBundle = {
-  subscription: Subscription;
-  subscriptionStatus?: Status;
-  product: MembershipProduct;
-  benefits: Benefit[];
-  redemptions: Redemption[];
-};
-
-type PreviewData = {
-  memberships: MembershipBundle[];
-  availableMemberships: MembershipProduct[];
-  offers: Offer[];
-  stores: Store[];
-};
 
 const SECTION_TITLES: Record<SectionKey, string> = {
   membership: "Membership Preview",
@@ -89,12 +65,24 @@ export default function CustomerExperienceSectionPreview() {
 
   const [experience, setExperience] = useState<CustomerExperience | null>(null);
 
-  const [previewData, setPreviewData] = useState<PreviewData | null>(null);
+  const [previewData, setPreviewData] = useState<PreviewDomainData | null>(
+    null,
+  );
+
+  const [selectedMembershipId, setSelectedMembershipId] = useState("");
 
   const load = useCallback(async () => {
     setStatus("loading");
 
     try {
+      /*
+       * Customer Experience configuration is the only configuration
+       * loaded from the actual organization.
+       *
+       * Customer/customer-subscription data is NOT loaded here.
+       *
+       * All customer-facing domain data comes from loadPreviewData().
+       */
       const result = await services.customerExperience.getCustomerExperience(
         organization.id,
       );
@@ -108,6 +96,14 @@ export default function CustomerExperienceSectionPreview() {
 
       setExperience(result);
       setPreviewData(data);
+
+      /*
+       * First configured membership is the current default.
+       *
+       * We intentionally do not hard-code Gold/Silver/Platinum here.
+       * Later this can be replaced by membership.displayOrder.
+       */
+      setSelectedMembershipId(data.selectedSubscriptionId);
 
       setStatus("ready");
     } catch (error) {
@@ -151,23 +147,43 @@ export default function CustomerExperienceSectionPreview() {
           title="Unable to load preview"
           message="Unable to initialize this customer experience preview."
           actionLabel="Retry"
-          onAction={() => {
-            void load();
-          }}
+          onAction={() => void load()}
         />
       </Screen>
     );
   }
 
-  const selected = previewData.memberships[0];
-
-  const membershipList = previewData.memberships.map((membership) => ({
-    subscription: membership.subscription,
-    product: membership.product,
-  }));
+  /*
+   * IMPORTANT:
+   *
+   * The selected membership comes exclusively from previewData.
+   *
+   * There is no organization-user lookup and no real customer
+   * subscription involved in this screen.
+   */
+  const selected: PreviewMembership | undefined =
+    previewData.memberships.find(
+      (membership: PreviewMembership) =>
+        membership.subscription.id === selectedMembershipId,
+    ) ?? previewData.memberships[0];
 
   /*
-   * Map configuration sections to the REAL customer tabs.
+   * BusinessExperience expects subscriptions to exist for the
+   * membership selector. These are synthetic preview subscriptions
+   * created by loadPreviewData().
+   */
+  const membershipList = previewData.memberships.map(
+    (membership: PreviewMembership) => ({
+      subscription: membership.subscription,
+      product: membership.product,
+    }),
+  );
+
+  const selectedSubscriptionId = selected?.subscription.id ?? "";
+
+  /*
+   * Individual section previews open the appropriate customer tab
+   * where applicable.
    */
   const initialTab =
     section === "offers"
@@ -190,6 +206,7 @@ export default function CustomerExperienceSectionPreview() {
         }}
         showsVerticalScrollIndicator={false}
       >
+        {/* Preview header */}
         <Card padding="md">
           <View
             style={{
@@ -223,6 +240,54 @@ export default function CustomerExperienceSectionPreview() {
           </View>
         </Card>
 
+        {/*
+         * Membership selector
+         *
+         * Only the membership section needs its own selector because
+         * this is the individual membership preview.
+         *
+         * The selector changes the synthetic preview membership,
+         * not a real customer's subscription.
+         */}
+        {section === "membership" && membershipList.length > 1 ? (
+          <Card padding="md">
+            <Text variant="label" color="textMuted">
+              Memberships
+            </Text>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{
+                gap: 8,
+                paddingTop: 10,
+              }}
+            >
+              {membershipList.map((membership) => {
+                const isSelected =
+                  membership.subscription.id === selectedSubscriptionId;
+
+                const label =
+                  membership.product.displayName ??
+                  membership.product.membershipProductName;
+
+                return (
+                  <Button
+                    key={membership.subscription.id}
+                    label={label}
+                    size="sm"
+                    variant={isSelected ? "primary" : "secondary"}
+                    onPress={() =>
+                      setSelectedMembershipId(membership.subscription.id)
+                    }
+                  />
+                );
+              })}
+            </ScrollView>
+          </Card>
+        ) : null}
+
+        {/* Customer experience renderer */}
         <View
           style={{
             overflow: "hidden",
@@ -238,119 +303,29 @@ export default function CustomerExperienceSectionPreview() {
             subscription={selected?.subscription}
             subscriptionStatus={selected?.subscriptionStatus}
             product={selected?.product}
-            benefits={selected?.benefits ?? []}
+            benefits={
+              section === "benefits"
+                ? previewData.benefits
+                : (selected?.benefits ?? [])
+            }
             offers={previewData.offers}
             stores={previewData.stores}
             redemptions={selected?.redemptions ?? []}
             memberships={membershipList}
-            selectedSubscriptionId={selected?.subscription.id ?? ""}
-            onSelectSubscription={() => {
-              /*
-               * Read-only preview.
-               */
+            selectedSubscriptionId={selectedSubscriptionId}
+            onSelectSubscription={(subscriptionId) => {
+              setSelectedMembershipId(subscriptionId);
             }}
             availableMemberships={previewData.availableMemberships}
-            onJoin={() => {
-              /*
-               * Read-only preview.
-               */
-            }}
-            onExit={() => {
-              /*
-               * Read-only preview.
-               */
-            }}
+            onJoin={() => {}}
+            onExit={() => router.back()}
             previewDefinition={experience.experienceDefinition}
             initialTab={initialTab}
             previewMode
+            previewSection={section}
           />
         </View>
       </ScrollView>
     </Screen>
   );
-}
-
-/* ========================================================================== */
-/* PREVIEW DATA                                                               */
-/* ========================================================================== */
-
-async function loadPreviewData(organizationId: string): Promise<PreviewData> {
-  const organizationUsers =
-    await services.organization.listOrganizationUsers(organizationId);
-
-  const memberships: MembershipBundle[] = [];
-
-  for (const organizationUser of organizationUsers) {
-    const subscriptions = await services.subscription.listByOrganizationUser(
-      organizationUser.id,
-    );
-
-    for (const subscription of subscriptions) {
-      const plan = await services.subscriptionPlan.getPlan(
-        subscription.subscriptionPlanId,
-      );
-
-      if (!plan) {
-        continue;
-      }
-
-      const product = await services.membershipProduct.getProduct(
-        plan.membershipProductId,
-      );
-
-      if (!product) {
-        continue;
-      }
-
-      const benefits = await services.benefit.listByProduct(
-        plan.membershipProductId,
-      );
-
-      const redemptions = await services.redemption.listBySubscription(
-        subscription.id,
-      );
-
-      const entityStatus = await services.status.getEntityStatus(
-        subscription.subscriptionStatusId,
-      );
-
-      const subscriptionStatus = entityStatus
-        ? ((await services.status.getStatus(entityStatus.statusId)) ??
-          undefined)
-        : undefined;
-
-      memberships.push({
-        subscription,
-        subscriptionStatus,
-        product,
-        benefits,
-        redemptions,
-      });
-    }
-  }
-
-  const [offers, stores, products] = await Promise.all([
-    services.offer.listByOrganization(organizationId),
-
-    services.organization.listStores(organizationId),
-
-    services.membershipProduct.listProducts(organizationId),
-  ]);
-
-  const ownedProductIds = new Set(
-    memberships.map((membership) => membership.product.id),
-  );
-
-  const availableMemberships = products.filter(
-    (product) =>
-      product.productStatusId === "product-status-active" &&
-      !ownedProductIds.has(product.id),
-  );
-
-  return {
-    memberships,
-    availableMemberships,
-    offers,
-    stores,
-  };
 }

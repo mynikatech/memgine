@@ -46,6 +46,17 @@ import { ExperienceTabKey, resolveExperience } from "./resolve-experience";
  * renderer and optionally locks it to a particular tab.
  */
 
+export type CustomerExperiencePreviewSection =
+  | "membership"
+  | "benefits"
+  | "offers"
+  | "stores"
+  | "activity"
+  | "business-information"
+  | "business-preferences"
+  | "referral"
+  | "profile";
+
 type Props = {
   content: TemplateDefaultContent;
 
@@ -87,6 +98,16 @@ type Props = {
   initialTab?: ExperienceTabKey;
 
   /**
+   * Optional controlled tab state.
+   *
+   * Used by the admin Current/Proposed comparison so each preview panel
+   * owns its own tab selection. When omitted, the renderer remains
+   * self-contained and behaves as before.
+   */
+  activeTab?: ExperienceTabKey;
+  onTabChange?: (tab: ExperienceTabKey) => void;
+
+  /**
    * Preview mode removes actions which should not be available while an
    * administrator is reviewing the customer experience.
    */
@@ -97,6 +118,19 @@ type Props = {
    * The tab bar is still available unless hideTabBar is explicitly true.
    */
   hideTabBar?: boolean;
+
+  /**
+   * Admin-only callback used by the overall preview to open the matching
+   * individual preview from inside the customer tab itself.
+   */
+  onPreviewTab?: (tab: ExperienceTabKey) => void;
+
+  /**
+   * When supplied, preview only this individual customer-facing section.
+   * This deliberately bypasses the customer tab as a whole so an individual
+   * preview never renders unrelated sections from the same tab.
+   */
+  previewSection?: CustomerExperiencePreviewSection;
 };
 
 export function BusinessExperience({
@@ -116,8 +150,12 @@ export function BusinessExperience({
   onExit,
   previewDefinition,
   initialTab = "card",
+  activeTab,
+  onTabChange,
   previewMode = false,
   hideTabBar = false,
+  onPreviewTab,
+  previewSection,
 }: Props) {
   const { organization, configuration, template, theme } = useBusiness();
   const { t, formatDate, formatMoney } = useTranslation();
@@ -191,6 +229,16 @@ export function BusinessExperience({
   useEffect(() => {
     setTab(initialTab);
   }, [initialTab]);
+
+  const effectiveTab = activeTab ?? tab;
+
+  const handleTabChange = (nextTab: ExperienceTabKey) => {
+    if (activeTab === undefined) {
+      setTab(nextTab);
+    }
+
+    onTabChange?.(nextTab);
+  };
 
   const exp = useMemo(
     () =>
@@ -388,12 +436,41 @@ export function BusinessExperience({
     return `${formatMoney(plan.price.amountMinor)} · ${interval}`;
   };
 
+  const renderTabPreviewLink = (tabKey: ExperienceTabKey) => {
+    if (!previewMode || !onPreviewTab || previewSection) {
+      return null;
+    }
+
+    return (
+      <Pressable
+        onPress={() => onPreviewTab(tabKey)}
+        accessibilityRole="link"
+        hitSlop={6}
+        style={({ pressed }) => ({
+          alignSelf: "flex-start",
+          paddingVertical: 2,
+          opacity: pressed ? theme.states.pressedOpacity : 1,
+        })}
+      >
+        <Text
+          variant="bodySmall"
+          color="primary"
+          style={{ textDecorationLine: "underline", fontWeight: "600" }}
+        >
+          Preview
+        </Text>
+      </Pressable>
+    );
+  };
+
   /* ------------------------------------------------------------------ */
   /* Card                                                               */
   /* ------------------------------------------------------------------ */
 
   const CardTab = (
     <View style={{ gap: theme.spacing.lg }} testID="experience-tab-card">
+      {renderTabPreviewLink("card")}
+
       {exp.heroPromotion ? renderPromotionCard(exp.heroPromotion) : null}
 
       {exp.membership ? (
@@ -610,6 +687,8 @@ export function BusinessExperience({
 
   const OffersTab = (
     <View style={{ gap: theme.spacing.lg }} testID="experience-tab-offers">
+      {renderTabPreviewLink("offers")}
+
       <Section title={t("experience.todaysPerks")}>
         {exp.featuredPromotion
           ? renderPromotionCard(exp.featuredPromotion)
@@ -808,6 +887,8 @@ export function BusinessExperience({
 
     return (
       <View style={{ gap: theme.spacing.lg }} testID="experience-tab-history">
+        {renderTabPreviewLink("history")}
+
         <View
           style={{
             flexDirection: "row",
@@ -1307,6 +1388,8 @@ export function BusinessExperience({
 
   const ProfileTab = (
     <View style={{ gap: theme.spacing.lg }} testID="experience-tab-profile">
+      {renderTabPreviewLink("profile")}
+
       {exp.showStores && exp.stores.length ? (
         <Section title={t("experience.locations")}>
           <Card padding="lg">
@@ -1422,13 +1505,268 @@ export function BusinessExperience({
   );
 
   const tabContent =
-    tab === "card"
+    effectiveTab === "card"
       ? CardTab
-      : tab === "offers"
+      : effectiveTab === "offers"
         ? OffersTab
-        : tab === "history"
+        : effectiveTab === "history"
           ? HistoryTab
           : ProfileTab;
+
+  /* ------------------------------------------------------------------ */
+  /* Individual section preview                                         */
+  /* ------------------------------------------------------------------ */
+
+  const individualSectionContent = (() => {
+    switch (previewSection) {
+      case "membership":
+        return (
+          <View
+            style={{ gap: theme.spacing.lg }}
+            testID="experience-preview-section-membership"
+          >
+            <Section title={t("experience.yourMemberships")}>
+              <MembershipCard
+                testID="experience-preview-membership-card"
+                organizationName={exp.displayName}
+                tier={
+                  exp.membership?.tier ??
+                  previewDefinition?.membership.headline ??
+                  resolvedContent.membership.tierName ??
+                  "Membership"
+                }
+                validUntil={exp.membership?.validUntilLabel ?? "—"}
+                active={
+                  exp.membership?.active ??
+                  previewDefinition?.membership.enabled ??
+                  true
+                }
+                cardStyle={cardStyle}
+              />
+            </Section>
+          </View>
+        );
+
+      case "benefits":
+        return (
+          <View
+            style={{ gap: theme.spacing.lg }}
+            testID="experience-preview-section-benefits"
+          >
+            <Section title={t("experience.yourBenefits")}>
+              {exp.benefits.length ? (
+                <Card padding="lg">
+                  <View style={{ gap: 18 }}>
+                    {exp.benefits.map((b) => (
+                      <BenefitItem
+                        key={b.id}
+                        testID={`experience-preview-benefit-${b.id}`}
+                        title={b.displayName ?? b.benefitName}
+                        subtitle={b.description}
+                        icon={benefitIconForType(b.benefitTypeId)}
+                      />
+                    ))}
+                  </View>
+                </Card>
+              ) : (
+                <Card padding="lg">
+                  <Text variant="bodySmall" color="textMuted">
+                    No membership benefits are currently configured.
+                  </Text>
+                </Card>
+              )}
+            </Section>
+          </View>
+        );
+
+      case "offers":
+        return OffersTab;
+
+      case "activity":
+        return HistoryTab;
+
+      case "stores":
+        return (
+          <View
+            style={{ gap: theme.spacing.lg }}
+            testID="experience-preview-section-stores"
+          >
+            <Section title={t("experience.locations")}>
+              {exp.stores.length ? (
+                <Card padding="lg">
+                  <View style={{ gap: 18 }}>
+                    {exp.stores.map((s) => (
+                      <View
+                        key={s.id}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: theme.spacing.md,
+                        }}
+                      >
+                        <Ionicons
+                          name="location-outline"
+                          size={20}
+                          color={theme.colors.primary}
+                        />
+
+                        <View style={{ flex: 1 }}>
+                          <Text variant="bodyStrong" color="text">
+                            {s.name}
+                          </Text>
+
+                          <Text variant="bodySmall" color="textMuted">
+                            {s.address.line1}
+                            {s.address.city ? `, ${s.address.city}` : ""}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </Card>
+              ) : (
+                <Card padding="lg">
+                  <Text variant="bodySmall" color="textMuted">
+                    No store locations are currently configured.
+                  </Text>
+                </Card>
+              )}
+            </Section>
+          </View>
+        );
+
+      case "business-information":
+        return (
+          <View
+            style={{ gap: theme.spacing.lg }}
+            testID="experience-preview-section-business-information"
+          >
+            <Section title={t("experience.about")}>
+              {exp.businessInformation ? (
+                <Card padding="lg">
+                  <View style={{ gap: theme.spacing.md }}>
+                    <Text variant="body" color="textSecondary">
+                      {exp.businessInformation.about}
+                    </Text>
+
+                    <InfoRow
+                      icon="mail-outline"
+                      label={t("experience.email")}
+                      value={exp.businessInformation.supportEmail}
+                      theme={theme}
+                    />
+
+                    <InfoRow
+                      icon="call-outline"
+                      label={t("experience.phone")}
+                      value={exp.businessInformation.supportPhone}
+                      theme={theme}
+                    />
+
+                    <InfoRow
+                      icon="globe-outline"
+                      label={t("experience.website")}
+                      value={exp.businessInformation.website}
+                      theme={theme}
+                    />
+                  </View>
+                </Card>
+              ) : (
+                <Card padding="lg">
+                  <Text variant="bodySmall" color="textMuted">
+                    Business information is not configured for this template.
+                  </Text>
+                </Card>
+              )}
+            </Section>
+          </View>
+        );
+
+      case "business-preferences":
+        return (
+          <View
+            style={{ gap: theme.spacing.lg }}
+            testID="experience-preview-section-business-preferences"
+          >
+            <Section title={t("experience.preferences")}>
+              {exp.businessPreferences ? (
+                <Card padding="lg">
+                  <View style={{ gap: theme.spacing.md }}>
+                    <PrefRow
+                      label={t("experience.notifications")}
+                      on={exp.businessPreferences.notifications}
+                      t={t}
+                      theme={theme}
+                    />
+
+                    <PrefRow
+                      label={t("experience.marketingEmails")}
+                      on={exp.businessPreferences.marketingEmails}
+                      t={t}
+                      theme={theme}
+                    />
+                  </View>
+                </Card>
+              ) : (
+                <Card padding="lg">
+                  <Text variant="bodySmall" color="textMuted">
+                    Business preferences are not configured for this template.
+                  </Text>
+                </Card>
+              )}
+            </Section>
+          </View>
+        );
+
+      case "referral":
+        return (
+          <View
+            style={{ gap: theme.spacing.lg }}
+            testID="experience-preview-section-referral"
+          >
+            <Section title={t("experience.referral")}>
+              {exp.referral ? (
+                <Card padding="lg">
+                  <View style={{ gap: theme.spacing.sm }}>
+                    <Text variant="title" color="text">
+                      {exp.referral.headline}
+                    </Text>
+
+                    <Text variant="bodySmall" color="textMuted">
+                      {exp.referral.description}
+                    </Text>
+
+                    <Button
+                      label={t("experience.referral")}
+                      variant="secondary"
+                      onPress={() => setReferralOpen(true)}
+                      testID="experience-preview-referral"
+                      disabled={previewMode}
+                    />
+                  </View>
+                </Card>
+              ) : (
+                <Card padding="lg">
+                  <Text variant="bodySmall" color="textMuted">
+                    Referral is not configured for this template.
+                  </Text>
+                </Card>
+              )}
+            </Section>
+          </View>
+        );
+
+      case "profile":
+        return ProfileTab;
+
+      default:
+        return null;
+    }
+  })();
+
+  const renderedContent = previewSection
+    ? individualSectionContent
+    : tabContent;
 
   /* ------------------------------------------------------------------ */
   /* Layout                                                             */
@@ -1520,7 +1858,7 @@ export function BusinessExperience({
         }}
         showsVerticalScrollIndicator={false}
       >
-        {memberships.length > 1 && !previewMode ? (
+        {memberships.length > 1 ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -1577,7 +1915,7 @@ export function BusinessExperience({
           </ScrollView>
         ) : null}
 
-        {tabContent}
+        {renderedContent}
       </ScrollView>
 
       {/* Customer navigation */}
@@ -1592,13 +1930,13 @@ export function BusinessExperience({
           }}
         >
           {exp.tabs.map((tb) => {
-            const focused = tb.key === tab;
+            const focused = tb.key === effectiveTab;
 
             return (
               <Pressable
                 key={tb.key}
                 testID={`experience-tabbar-${tb.key}`}
-                onPress={() => setTab(tb.key)}
+                onPress={() => handleTabChange(tb.key)}
                 style={{
                   flex: 1,
                   alignItems: "center",

@@ -310,7 +310,7 @@ export default function CustomerExperienceConfiguration() {
                           {section.title}
                         </Text>
 
-                        {enabled ? (
+                        <View style={styles.sectionStatus}>
                           <Pressable
                             onPress={() => openSectionPreview(section.key)}
                             accessibilityRole="link"
@@ -323,11 +323,13 @@ export default function CustomerExperienceConfiguration() {
                               Preview
                             </Text>
                           </Pressable>
-                        ) : (
-                          <Text variant="caption" color="textMuted">
-                            Not enabled
-                          </Text>
-                        )}
+
+                          {!enabled ? (
+                            <Text variant="caption" color="textMuted">
+                              Not enabled
+                            </Text>
+                          ) : null}
+                        </View>
                       </View>
 
                       <Text variant="bodySmall" color="textSecondary">
@@ -343,7 +345,7 @@ export default function CustomerExperienceConfiguration() {
       </Card>
 
       {/* ================================================================= */}
-      {/* SAVE                                                               */}
+      {/* SAVE                                                              */}
       {/* ================================================================= */}
 
       <View style={styles.actions}>
@@ -431,6 +433,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 16,
+  },
+
+  sectionStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
 
   previewLink: {

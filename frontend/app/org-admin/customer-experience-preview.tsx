@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "expo-router";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import type {
   Benefit,
@@ -8,13 +8,19 @@ import type {
   MembershipProduct,
   Offer,
   Redemption,
-  Status,
   Store,
+  Status,
   Subscription,
   TemplateDefaultContent,
 } from "@/src/core";
 
 import { getBusinessContent, services } from "@/src/core";
+
+import type { PreviewDomainData } from "@/src/experience/customer-experience-preview-data";
+import type { ExperienceTabKey } from "@/src/experience/resolve-experience";
+import { loadPreviewData } from "@/src/experience/customer-experience-preview-data";
+
+import { APP_ROUTES } from "@/src/constants/navigation";
 
 import { useBusiness } from "@/src/providers";
 import { Screen } from "@/src/layout";
@@ -37,48 +43,25 @@ type PreviewMode = "current" | "proposed";
 
 type PreviewPanelProps = {
   title: string;
+
   subtitle: string;
+
   experience?: CustomerExperience | null;
+
   mode: PreviewMode;
+
   domainData: PreviewDomainData;
+
   content: TemplateDefaultContent;
-};
 
-type MembershipBundle = {
-  subscription: Subscription;
-  subscriptionStatus?: Status;
-  product: MembershipProduct;
-  benefits: Benefit[];
-  redemptions: Redemption[];
-};
+  selectedMembershipId: string;
 
-type PreviewDomainData = {
-  /*
-   * Currently selected/representative membership.
-   */
-  subscription?: Subscription;
-  subscriptionStatus?: Status;
-  product?: MembershipProduct;
+  onSelectMembership: (membershipId: string) => void;
 
-  /*
-   * Domain data used by BusinessExperience.
-   */
-  benefits: Benefit[];
-  offers: Offer[];
-  stores: Store[];
-  redemptions: Redemption[];
+  activeTab: ExperienceTabKey;
+  onTabChange: (tab: ExperienceTabKey) => void;
 
-  /*
-   * Membership switcher data used by the Card tab.
-   */
-  memberships: {
-    subscription: Subscription;
-    product: MembershipProduct;
-  }[];
-
-  selectedSubscriptionId: string;
-
-  availableMemberships: MembershipProduct[];
+  onPreviewTab?: (tab: ExperienceTabKey) => void;
 };
 
 export default function CustomerExperiencePreview() {
@@ -88,32 +71,33 @@ export default function CustomerExperiencePreview() {
 
   const [status, setStatus] = useState<LoadStatus>("loading");
 
-  /**
-   * The current published Customer Experience record, if one exists.
-   *
-   * IMPORTANT:
-   * This is NOT used as the source of the Current customer UI.
-   *
-   * Current customer UI comes from getBusinessContent(), because that is
-   * what the existing customer experience currently uses.
-   */
   const [currentExperience, setCurrentExperience] =
     useState<CustomerExperience | null>(null);
 
-  /**
-   * Draft Customer Experience configuration.
-   */
   const [proposedExperience, setProposedExperience] =
     useState<CustomerExperience | null>(null);
 
-  /**
-   * Real/mock domain data used by BusinessExperience.
-   *
-   * This is deliberately independent of CustomerExperienceDefinition.
-   */
   const [previewData, setPreviewData] = useState<PreviewDomainData | null>(
     null,
   );
+
+  /*
+   * Membership currently selected in the admin preview.
+   *
+   * This is preview state only. It is not a real customer subscription.
+   * The first active configured membership is the initial selection.
+   */
+  const [selectedPreviewMembershipId, setSelectedPreviewMembershipId] =
+    useState("");
+
+  /**
+   * Current and Proposed intentionally have independent tab state.
+   */
+  const [currentPreviewTab, setCurrentPreviewTab] =
+    useState<ExperienceTabKey>("card");
+
+  const [proposedPreviewTab, setProposedPreviewTab] =
+    useState<ExperienceTabKey>("card");
 
   const [publishing, setPublishing] = useState(false);
 
@@ -121,9 +105,9 @@ export default function CustomerExperiencePreview() {
     "idle" | "sending" | "success" | "error"
   >("idle");
 
-  /* ------------------------------------------------------------------------ */
-  /* LOAD                                                                     */
-  /* ------------------------------------------------------------------------ */
+  /* ---------------------------------------------------------------------- */
+  /* LOAD                                                                   */
+  /* ---------------------------------------------------------------------- */
 
   const load = useCallback(async () => {
     setStatus("loading");
@@ -135,13 +119,11 @@ export default function CustomerExperiencePreview() {
       );
 
       /*
-       * ----------------------------------------------------------------------
-       * 1. Draft / proposed Customer Experience
-       * ----------------------------------------------------------------------
-       *
-       * getCustomerExperience() initializes a draft from the platform
-       * template when one does not already exist.
+       * --------------------------------------------------------------
+       * 1. Draft Customer Experience
+       * --------------------------------------------------------------
        */
+
       const draft = await services.customerExperience.getCustomerExperience(
         organization.id,
       );
@@ -153,32 +135,46 @@ export default function CustomerExperiencePreview() {
       }
 
       /*
-       * ----------------------------------------------------------------------
-       * 2. Currently published Customer Experience
-       * ----------------------------------------------------------------------
+       * --------------------------------------------------------------
+       * 2. Published Customer Experience
+       * --------------------------------------------------------------
        *
-       * This is useful for lifecycle information only.
+       * Lifecycle information only.
        *
-       * It is NOT the source of the Current preview.
+       * It is NOT the source of the Current customer UI.
        */
+
       const published =
         await services.customerExperience.getPublishedCustomerExperience(
           organization.id,
         );
 
       /*
-       * ----------------------------------------------------------------------
-       * 3. Load representative customer/domain data.
-       * ----------------------------------------------------------------------
-       *
-       * This is the same kind of data used by the actual
-       * BusinessExperience renderer.
+       * --------------------------------------------------------------
+       * 3. Independent organization preview data
+       * --------------------------------------------------------------
        */
+
       const domainData = await loadPreviewData(organization.id);
 
       setProposedExperience(draft);
+
       setCurrentExperience(published);
+
       setPreviewData(domainData);
+
+      setSelectedPreviewMembershipId((current) => {
+        if (
+          current &&
+          domainData.memberships.some(
+            (membership) => membership.product.id === current,
+          )
+        ) {
+          return current;
+        }
+
+        return domainData.memberships[0]?.product.id ?? "";
+      });
 
       setStatus("ready");
     } catch (error) {
@@ -192,9 +188,9 @@ export default function CustomerExperiencePreview() {
     void load();
   }, [load]);
 
-  /* ------------------------------------------------------------------------ */
-  /* PUBLISH                                                                  */
-  /* ------------------------------------------------------------------------ */
+  /* ---------------------------------------------------------------------- */
+  /* PUBLISH                                                                */
+  /* ---------------------------------------------------------------------- */
 
   const publish = useCallback(async () => {
     if (!proposedExperience) {
@@ -204,25 +200,14 @@ export default function CustomerExperiencePreview() {
     setPublishing(true);
 
     try {
-      console.log(
-        "[CustomerExperiencePreview] publishing draft:",
-        proposedExperience.id,
-      );
-
       const published =
         await services.customerExperience.publishCustomerExperience(
           organization.id,
           organization.updatedBy,
         );
 
-      console.log("[CustomerExperiencePreview] published:", published);
-
       setCurrentExperience(published);
 
-      /*
-       * Reload the draft after publication so the page reflects the
-       * lifecycle state maintained by the service.
-       */
       const draft = await services.customerExperience.getCustomerExperience(
         organization.id,
       );
@@ -230,12 +215,26 @@ export default function CustomerExperiencePreview() {
       setProposedExperience(draft);
 
       /*
-       * Reload domain data as well. The publish operation may update the
-       * organization-owned content used by BusinessExperience.
+       * Re-read organization configuration/products.
+       *
+       * Still completely independent of customer data.
        */
       const refreshedDomainData = await loadPreviewData(organization.id);
 
       setPreviewData(refreshedDomainData);
+
+      setSelectedPreviewMembershipId((current) => {
+        if (
+          current &&
+          refreshedDomainData.memberships.some(
+            (membership) => membership.product.id === current,
+          )
+        ) {
+          return current;
+        }
+
+        return refreshedDomainData.memberships[0]?.product.id ?? "";
+      });
     } catch (error) {
       console.error("[CustomerExperiencePreview] publish failed:", error);
     } finally {
@@ -243,9 +242,9 @@ export default function CustomerExperiencePreview() {
     }
   }, [organization.id, organization.updatedBy, proposedExperience]);
 
-  /* ------------------------------------------------------------------------ */
-  /* NOTIFICATION                                                             */
-  /* ------------------------------------------------------------------------ */
+  /* ---------------------------------------------------------------------- */
+  /* NOTIFICATION                                                           */
+  /* ---------------------------------------------------------------------- */
 
   const notifyCustomers = useCallback(async () => {
     setNotificationStatus("sending");
@@ -264,9 +263,9 @@ export default function CustomerExperiencePreview() {
     }
   }, [organization.id]);
 
-  /* ------------------------------------------------------------------------ */
-  /* LOADING                                                                  */
-  /* ------------------------------------------------------------------------ */
+  /* ---------------------------------------------------------------------- */
+  /* LOADING                                                                */
+  /* ---------------------------------------------------------------------- */
 
   if (status === "loading") {
     return (
@@ -276,9 +275,9 @@ export default function CustomerExperiencePreview() {
     );
   }
 
-  /* ------------------------------------------------------------------------ */
-  /* ERROR                                                                    */
-  /* ------------------------------------------------------------------------ */
+  /* ---------------------------------------------------------------------- */
+  /* ERROR                                                                  */
+  /* ---------------------------------------------------------------------- */
 
   if (status === "error" || !proposedExperience || !previewData) {
     return (
@@ -296,22 +295,8 @@ export default function CustomerExperiencePreview() {
     );
   }
 
-  /* ------------------------------------------------------------------------ */
-  /* CURRENT CUSTOMER CONTENT                                                 */
-  /* ------------------------------------------------------------------------ */
-
-  /**
-   * THIS is the important distinction.
-   *
-   * Current = the existing customer experience.
-   *
-   * It does not depend on whether a CustomerExperience has been published.
-   */
   const currentContent = getBusinessContent(organization.id);
 
-  /**
-   * Proposed = the Customer Experience draft.
-   */
   const proposedContent = proposedExperience.experienceDefinition.content;
 
   return (
@@ -326,7 +311,7 @@ export default function CustomerExperiencePreview() {
         showsVerticalScrollIndicator={false}
       >
         {/* ================================================================== */}
-        {/* FINAL REVIEW / PUBLISH                                             */}
+        {/* FINAL REVIEW                                                       */}
         {/* ================================================================== */}
 
         <Card padding="md">
@@ -381,10 +366,6 @@ export default function CustomerExperiencePreview() {
         </View>
 
         <View style={styles.compareContainer}>
-          {/* ================================================================ */}
-          {/* CURRENT                                                          */}
-          {/* ================================================================ */}
-
           <PreviewPanel
             title="Current"
             subtitle={
@@ -396,11 +377,22 @@ export default function CustomerExperiencePreview() {
             mode="current"
             domainData={previewData}
             content={currentContent}
+            selectedMembershipId={selectedPreviewMembershipId}
+            onSelectMembership={setSelectedPreviewMembershipId}
+            activeTab={currentPreviewTab}
+            onTabChange={setCurrentPreviewTab}
+            onPreviewTab={(tab) =>
+              router.push(
+                APP_ROUTES.orgAdmin.customerExperienceSection(
+                  tab === "history"
+                    ? "activity"
+                    : tab === "profile"
+                      ? "business-information"
+                      : tab,
+                ) as never,
+              )
+            }
           />
-
-          {/* ================================================================ */}
-          {/* PROPOSED                                                         */}
-          {/* ================================================================ */}
 
           <PreviewPanel
             title="Proposed"
@@ -409,11 +401,77 @@ export default function CustomerExperiencePreview() {
             mode="proposed"
             domainData={previewData}
             content={proposedContent}
+            selectedMembershipId={selectedPreviewMembershipId}
+            onSelectMembership={setSelectedPreviewMembershipId}
+            activeTab={proposedPreviewTab}
+            onTabChange={setProposedPreviewTab}
+            onPreviewTab={(tab) =>
+              router.push(
+                APP_ROUTES.orgAdmin.customerExperienceSection(
+                  tab === "history"
+                    ? "activity"
+                    : tab === "profile"
+                      ? "business-information"
+                      : tab,
+                ) as never,
+              )
+            }
           />
         </View>
 
         {/* ================================================================== */}
-        {/* CUSTOMER NOTIFICATION                                               */}
+        {/* INDIVIDUAL PREVIEWS                                                */}
+        {/* ================================================================== */}
+
+        <Card padding="md">
+          <Section title="Individual Preview">
+            <Text variant="bodySmall" color="textMuted">
+              Open a specific customer-facing section using the same production
+              renderer.
+            </Text>
+
+            <View style={styles.individualPreviewGrid}>
+              <IndividualPreviewLink
+                label="Membership / Card"
+                section="membership"
+                router={router}
+              />
+
+              <IndividualPreviewLink
+                label="Benefits"
+                section="benefits"
+                router={router}
+              />
+
+              <IndividualPreviewLink
+                label="Offers"
+                section="offers"
+                router={router}
+              />
+
+              <IndividualPreviewLink
+                label="Stores"
+                section="stores"
+                router={router}
+              />
+
+              <IndividualPreviewLink
+                label="Activity / History"
+                section="activity"
+                router={router}
+              />
+
+              <IndividualPreviewLink
+                label="Business Information"
+                section="business-information"
+                router={router}
+              />
+            </View>
+          </Section>
+        </Card>
+
+        {/* ================================================================== */}
+        {/* CUSTOMER NOTIFICATION                                              */}
         {/* ================================================================== */}
 
         <Card padding="md">
@@ -486,6 +544,53 @@ export default function CustomerExperiencePreview() {
 }
 
 /* ========================================================================== */
+/* INDIVIDUAL PREVIEW LINK                                                    */
+/* ========================================================================== */
+
+function IndividualPreviewLink({
+  label,
+  section,
+  router,
+}: {
+  label: string;
+
+  section:
+    | "membership"
+    | "benefits"
+    | "offers"
+    | "stores"
+    | "activity"
+    | "business-information";
+
+  router: ReturnType<typeof useRouter>;
+}) {
+  return (
+    <Pressable
+      onPress={() =>
+        router.push(
+          APP_ROUTES.orgAdmin.customerExperienceSection(section) as never,
+        )
+      }
+      accessibilityRole="link"
+      style={{
+        paddingVertical: 4,
+      }}
+    >
+      <Text
+        variant="bodySmall"
+        color="primary"
+        style={{
+          textDecorationLine: "underline",
+          fontWeight: "600",
+        }}
+      >
+        Preview · {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/* ========================================================================== */
 /* PREVIEW PANEL                                                              */
 /* ========================================================================== */
 
@@ -496,15 +601,18 @@ function PreviewPanel({
   mode,
   domainData,
   content,
-}: PreviewPanelProps & {
-  content: TemplateDefaultContent;
-}) {
+  selectedMembershipId,
+  onSelectMembership,
+  activeTab,
+  onTabChange,
+}: PreviewPanelProps) {
+  const selectedMembership =
+    domainData.memberships.find(
+      (membership) => membership.product.id === selectedMembershipId,
+    ) ?? domainData.memberships[0];
+
   return (
     <View style={styles.comparePanel}>
-      {/* -------------------------------------------------------------------- */}
-      {/* Panel heading                                                        */}
-      {/* -------------------------------------------------------------------- */}
-
       <View style={styles.panelHeader}>
         <View style={styles.panelHeaderText}>
           <Text variant="title" color="text">
@@ -519,67 +627,49 @@ function PreviewPanel({
         <Badge label={mode === "current" ? "LIVE" : "PROPOSED"} tone="brand" />
       </View>
 
-      {/* -------------------------------------------------------------------- */}
-      {/* Actual customer renderer                                             */}
-      {/* -------------------------------------------------------------------- */}
-
       <View style={styles.customerPreviewFrame}>
         <BusinessExperience
-          /*
-           * Current:
-           *   getBusinessContent()
-           *
-           * Proposed:
-           *   draft.experienceDefinition.content
-           *
-           * Both therefore go through the SAME customer renderer.
-           */
           content={content}
-          /*
-           * Use the same representative membership/domain data for
-           * both sides.
-           */
-          subscription={domainData.subscription}
-          subscriptionStatus={domainData.subscriptionStatus}
-          product={domainData.product}
-          benefits={domainData.benefits}
+          subscription={selectedMembership?.subscription}
+          subscriptionStatus={selectedMembership?.subscriptionStatus}
+          product={selectedMembership?.product}
+          benefits={selectedMembership?.benefits ?? []}
           offers={domainData.offers}
           stores={domainData.stores}
-          redemptions={domainData.redemptions}
-          memberships={domainData.memberships}
-          selectedSubscriptionId={domainData.selectedSubscriptionId}
-          onSelectSubscription={() => {
-            /*
-             * Final review is read-only.
-             *
-             * Membership switching is intentionally disabled
-             * in the admin preview.
-             */
+          redemptions={selectedMembership?.redemptions ?? []}
+          memberships={domainData.memberships
+            .filter((membership) => membership.subscription)
+            .map((membership) => ({
+              subscription: membership.subscription as Subscription,
+              product: membership.product,
+            }))}
+          selectedSubscriptionId={selectedMembership?.subscription?.id ?? ""}
+          onSelectSubscription={(subscriptionId) => {
+            const membership = domainData.memberships.find(
+              (candidate) => candidate.subscription?.id === subscriptionId,
+            );
+
+            if (membership) {
+              onSelectMembership(membership.product.id);
+            }
           }}
           availableMemberships={domainData.availableMemberships}
           onJoin={() => {
             /*
-             * Joining a membership must never be initiated from
-             * the admin preview.
+             * Read-only admin preview.
              */
           }}
           onExit={() => {
             /*
-             * The customer renderer owns its customer-facing
-             * navigation. The admin preview itself remains read-only.
+             * Read-only admin preview.
              */
           }}
-          /*
-           * These props allow the renderer to apply the proposed
-           * Customer Experience definition where supported.
-           *
-           * For the Current panel we deliberately do not pass
-           * the draft definition.
-           */
           previewDefinition={
             mode === "proposed" ? experience?.experienceDefinition : undefined
           }
           initialTab="card"
+          activeTab={activeTab}
+          onTabChange={onTabChange}
           previewMode
         />
       </View>
@@ -606,166 +696,30 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 }
 
 /* ========================================================================== */
-/* DOMAIN DATA LOADER                                                         */
+/* PREVIEW DATA LOADER                                                        */
 /* ========================================================================== */
 
 /**
- * Loads representative customer/domain data for the preview.
- *
  * IMPORTANT:
  *
- * CustomerExperienceDefinition controls presentation.
+ * This loader deliberately does NOT load:
  *
- * Actual:
- *   - memberships
- *   - subscriptions
- *   - benefits
- *   - offers
- *   - stores
- *   - redemptions
+ *   organization users
+ *   customer subscriptions
+ *   customer redemption history
  *
- * remain domain data.
+ * The admin preview is a business/configuration preview, not a
+ * customer-account preview.
  *
- * The preview simply feeds those records into the same
- * BusinessExperience renderer used by customers.
+ * Sources:
+ *
+ *   Membership products -> organization
+ *   Benefits            -> membership products / organization
+ *   Offers              -> organization
+ *   Stores              -> organization
+ *
+ * Customer-specific state is represented by deterministic preview data.
  */
-async function loadPreviewData(
-  organizationId: string,
-): Promise<PreviewDomainData> {
-  /*
-   * ------------------------------------------------------------------------
-   * 1. Find organization users
-   * ------------------------------------------------------------------------
-   */
-
-  const organizationUsers =
-    await services.organization.listOrganizationUsers(organizationId);
-
-  const organizationMemberships: MembershipBundle[] = [];
-
-  /*
-   * ------------------------------------------------------------------------
-   * 2. Resolve memberships/subscriptions
-   * ------------------------------------------------------------------------
-   */
-
-  for (const organizationUser of organizationUsers) {
-    const subscriptions = await services.subscription.listByOrganizationUser(
-      organizationUser.id,
-    );
-
-    for (const subscription of subscriptions) {
-      const plan = await services.subscriptionPlan.getPlan(
-        subscription.subscriptionPlanId,
-      );
-
-      if (!plan) {
-        continue;
-      }
-
-      const product = await services.membershipProduct.getProduct(
-        plan.membershipProductId,
-      );
-
-      if (!product) {
-        continue;
-      }
-
-      const benefits = await services.benefit.listByProduct(
-        plan.membershipProductId,
-      );
-
-      const redemptions = await services.redemption.listBySubscription(
-        subscription.id,
-      );
-
-      /*
-       * Resolve canonical subscription status.
-       */
-      const entityStatus = await services.status.getEntityStatus(
-        subscription.subscriptionStatusId,
-      );
-
-      const subscriptionStatus = entityStatus
-        ? ((await services.status.getStatus(entityStatus.statusId)) ??
-          undefined)
-        : undefined;
-
-      organizationMemberships.push({
-        subscription,
-        subscriptionStatus,
-        product,
-        benefits,
-        redemptions,
-      });
-    }
-  }
-
-  /*
-   * ------------------------------------------------------------------------
-   * 3. Organization-level data
-   * ------------------------------------------------------------------------
-   */
-
-  const [offers, stores, products] = await Promise.all([
-    services.offer.listByOrganization(organizationId),
-
-    services.organization.listStores(organizationId),
-
-    services.membershipProduct.listProducts(organizationId),
-  ]);
-
-  /*
-   * ------------------------------------------------------------------------
-   * 4. Available memberships
-   * ------------------------------------------------------------------------
-   */
-
-  const ownedProductIds = new Set(
-    organizationMemberships.map((membership) => membership.product.id),
-  );
-
-  const availableMemberships = products.filter(
-    (product) =>
-      product.productStatusId === "product-status-active" &&
-      !ownedProductIds.has(product.id),
-  );
-
-  const memberships = organizationMemberships.map((membership) => ({
-    subscription: membership.subscription,
-    product: membership.product,
-  }));
-
-  /*
-   * ------------------------------------------------------------------------
-   * 5. Select representative membership
-   * ------------------------------------------------------------------------
-   *
-   * This is intentionally mock/representative data.
-   *
-   * The preview is not tied to a particular real customer.
-   */
-
-  const selected = organizationMemberships[0];
-  return {
-    subscription: selected?.subscription,
-    subscriptionStatus: selected?.subscriptionStatus,
-    product: selected?.product,
-
-    benefits: selected?.benefits ?? [],
-    redemptions: selected?.redemptions ?? [],
-
-    offers,
-    stores,
-
-    memberships,
-
-    selectedSubscriptionId: selected?.subscription.id ?? "",
-
-    availableMemberships,
-  };
-}
-
 /* ========================================================================== */
 /* STYLES                                                                     */
 /* ========================================================================== */
@@ -831,6 +785,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E1E5EA",
     backgroundColor: "#FFFFFF",
+  },
+
+  individualPreviewGrid: {
+    gap: 8,
+    marginTop: 14,
   },
 
   notificationButton: {

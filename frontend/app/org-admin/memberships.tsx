@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useRouter } from "expo-router";
 
 import type {
   Benefit,
@@ -10,12 +11,14 @@ import type {
 
 import { services } from "@/src/core";
 
+import { APP_ROUTES } from "@/src/constants/navigation";
 import { useBusiness } from "@/src/providers";
 import { DataTable, type DataTableColumn, Modal, Text } from "@/src/ui";
 
 import { MembershipForm } from "@/src/ui/admin/MembershipForm";
 
 export default function MembershipsAdmin() {
+  const router = useRouter();
   const { organization } = useBusiness();
 
   const [products, setProducts] = useState<MembershipProduct[]>([]);
@@ -151,6 +154,7 @@ export default function MembershipsAdmin() {
         title: "Product Code",
         width: 180,
       },
+
       {
         key: "membershipProductName",
         title: "Membership",
@@ -169,6 +173,7 @@ export default function MembershipsAdmin() {
           </View>
         ),
       },
+
       {
         key: "productCategoryId",
         title: "Category",
@@ -179,6 +184,7 @@ export default function MembershipsAdmin() {
           </Text>
         ),
       },
+
       {
         key: "productTypeId",
         title: "Type",
@@ -189,6 +195,7 @@ export default function MembershipsAdmin() {
           </Text>
         ),
       },
+
       {
         key: "benefitIds",
         title: "Benefits",
@@ -199,6 +206,7 @@ export default function MembershipsAdmin() {
           </Text>
         ),
       },
+
       {
         key: "plans",
         title: "Plans",
@@ -209,6 +217,7 @@ export default function MembershipsAdmin() {
           </Text>
         ),
       },
+
       {
         key: "productStatusId",
         title: "Status",
@@ -281,6 +290,21 @@ export default function MembershipsAdmin() {
   const handleEdit = (product: MembershipProduct) => {
     setEditingProduct(product);
     setFormVisible(true);
+  };
+
+  /**
+   * Opens the existing Customer Experience membership preview.
+   *
+   * For the MVP all membership products use the same presentation.
+   * The actual membership/product data remains domain data.
+   *
+   * We deliberately do not pass the product ID yet because the preview
+   * currently represents the common Membership customer experience.
+   */
+  const handlePreview = (_product: MembershipProduct) => {
+    router.push(
+      APP_ROUTES.orgAdmin.customerExperienceSection("membership") as never,
+    );
   };
 
   const handleSave = async (updatedProduct: MembershipProduct) => {
@@ -390,22 +414,44 @@ export default function MembershipsAdmin() {
           </Text>
         </View>
       ) : (
-        <DataTable
-          columns={columns}
-          data={products.filter((item) => !item.isDeleted)}
-          keyExtractor={(item) => item.id}
-          emptyMessage="No memberships configured."
-          actions={[
-            {
-              label: "Edit",
-              onPress: handleEdit,
-            },
-            {
-              label: "Delete",
-              onPress: handleDelete,
-            },
-          ]}
-        />
+        <>
+          <DataTable
+            columns={columns}
+            data={products.filter((item) => !item.isDeleted)}
+            keyExtractor={(item) => item.id}
+            emptyMessage="No memberships configured."
+            actions={[
+              {
+                label: "Edit",
+                onPress: handleEdit,
+              },
+              {
+                label: "Delete",
+                onPress: handleDelete,
+              },
+            ]}
+          />
+
+          <Pressable
+            onPress={() =>
+              router.push(
+                APP_ROUTES.orgAdmin.customerExperienceSection(
+                  "membership",
+                ) as never,
+              )
+            }
+            style={({ pressed }) => [
+              styles.previewLink,
+              {
+                opacity: pressed ? 0.6 : 1,
+              },
+            ]}
+          >
+            <Text variant="body" color="primary">
+              Preview
+            </Text>
+          </Pressable>
+        </>
       )}
 
       <Modal
@@ -464,6 +510,12 @@ const styles = StyleSheet.create({
   headerText: {
     flex: 1,
     gap: 4,
+  },
+
+  previewLink: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 4,
   },
 
   addButton: {
