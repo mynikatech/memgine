@@ -81,12 +81,28 @@ export interface OnboardOrganizationInput {
 
   /**
    * Organization Type reference-data ID.
-   *
-   * Example:
-   * org-type-food-beverage
-   * org-type-beauty-wellness
    */
   organizationTypeId: ID;
+
+  /**
+   * Primary organization email.
+   *
+   * Mandatory because Organization.primaryEmail is
+   * mandatory in the domain model.
+   */
+  primaryEmail: string;
+
+  /**
+   * Primary organization phone.
+   *
+   * Mandatory because Organization.primaryPhone is
+   * mandatory in the domain model.
+   */
+  primaryPhone: {
+    countryId: ID;
+    callingCode: string;
+    number: string;
+  };
 }
 
 export interface OnboardOrganizationResult {

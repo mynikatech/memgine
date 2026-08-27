@@ -1,29 +1,36 @@
 import { useState } from "react";
+
 import { TextInput, View } from "react-native";
 
 import { useTheme } from "@/src/providers";
 
+import { FieldLabel } from "./FieldLabel";
 import { Text } from "./Text";
 
 type TextAreaProps = {
   label?: string;
+  required?: boolean;
   value: string;
   onChangeText: (text: string) => void;
   placeholder?: string;
   error?: string;
   testID?: string;
+  maxLength?: number;
 };
 
 export function TextArea({
   label,
+  required = false,
   value,
   onChangeText,
   placeholder,
   error,
   testID,
+  maxLength,
 }: TextAreaProps) {
   const theme = useTheme();
   const [focused, setFocused] = useState(false);
+
   const borderColor = error
     ? theme.colors.danger
     : focused
@@ -32,11 +39,8 @@ export function TextArea({
 
   return (
     <View style={{ gap: theme.spacing.xs }}>
-      {label ? (
-        <Text variant="label" color="textSecondary">
-          {label}
-        </Text>
-      ) : null}
+      {label ? <FieldLabel label={label} required={required} /> : null}
+
       <TextInput
         testID={testID}
         value={value}
@@ -45,6 +49,7 @@ export function TextArea({
         placeholderTextColor={theme.colors.textMuted}
         multiline
         textAlignVertical="top"
+        maxLength={maxLength}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={{
@@ -60,6 +65,7 @@ export function TextArea({
           minHeight: 104,
         }}
       />
+
       {error ? (
         <Text variant="caption" color="danger">
           {error}

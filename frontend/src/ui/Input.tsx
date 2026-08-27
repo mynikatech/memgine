@@ -1,12 +1,20 @@
 import { useState } from "react";
-import { KeyboardTypeOptions, TextInput, View } from "react-native";
+
+import {
+  KeyboardTypeOptions,
+  TextInput,
+  TextInputProps,
+  View,
+} from "react-native";
 
 import { useTheme } from "@/src/providers";
 
+import { FieldLabel } from "./FieldLabel";
 import { Text } from "./Text";
 
-type InputProps = {
+export type InputProps = {
   label?: string;
+  required?: boolean;
   value: string;
   onChangeText: (text: string) => void;
   placeholder?: string;
@@ -15,10 +23,17 @@ type InputProps = {
   error?: string;
   testID?: string;
   maxLength?: number;
+  editable?: boolean;
+  autoCapitalize?: TextInputProps["autoCapitalize"];
+  autoCorrect?: boolean;
+  returnKeyType?: TextInputProps["returnKeyType"];
+  onFocus?: () => void;
+  onBlur?: () => void;
 };
 
 export function Input({
   label,
+  required = false,
   value,
   onChangeText,
   placeholder,
@@ -26,9 +41,17 @@ export function Input({
   keyboardType,
   error,
   testID,
+  maxLength,
+  editable = true,
+  autoCapitalize,
+  autoCorrect,
+  returnKeyType,
+  onFocus,
+  onBlur,
 }: InputProps) {
   const theme = useTheme();
   const [focused, setFocused] = useState(false);
+
   const borderColor = error
     ? theme.colors.danger
     : focused
@@ -37,11 +60,8 @@ export function Input({
 
   return (
     <View style={{ gap: theme.spacing.xs }}>
-      {label ? (
-        <Text variant="label" color="textSecondary">
-          {label}
-        </Text>
-      ) : null}
+      {label ? <FieldLabel label={label} required={required} /> : null}
+
       <TextInput
         testID={testID}
         value={value}
@@ -50,8 +70,19 @@ export function Input({
         placeholderTextColor={theme.colors.textMuted}
         secureTextEntry={secureTextEntry}
         keyboardType={keyboardType}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        maxLength={maxLength}
+        editable={editable}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={autoCorrect}
+        returnKeyType={returnKeyType}
+        onFocus={() => {
+          setFocused(true);
+          onFocus?.();
+        }}
+        onBlur={() => {
+          setFocused(false);
+          onBlur?.();
+        }}
         style={{
           borderWidth: 1,
           borderColor,
@@ -64,6 +95,7 @@ export function Input({
           minHeight: 48,
         }}
       />
+
       {error ? (
         <Text variant="caption" color="danger">
           {error}

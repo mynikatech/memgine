@@ -4,6 +4,7 @@ import { Pressable, View } from "react-native";
 
 import { useTheme } from "@/src/providers";
 
+import { FieldLabel } from "./FieldLabel";
 import { Modal } from "./Modal";
 import { Text } from "./Text";
 
@@ -15,12 +16,14 @@ export type ReferenceSelectItem = {
 
 type ReferenceSelectProps<T> = {
   label?: string;
+  required?: boolean;
   value: string;
   items: T[];
   onChange: (id: string) => void;
   placeholder?: string;
   disabled?: boolean;
   allowClear?: boolean;
+  error?: string;
   testID?: string;
 
   /**
@@ -34,11 +37,11 @@ type ReferenceSelectProps<T> = {
    * Returns the text displayed for an item.
    *
    * Defaults to:
-   *   - item.name
-   *   - item.statusName
-   *   - item.code
-   *   - item.statusCode
-   *   - String(item.id)
+   * - item.name
+   * - item.statusName
+   * - item.code
+   * - item.statusCode
+   * - String(item.id)
    *
    * Prefer supplying this explicitly for domain-specific types.
    */
@@ -86,12 +89,14 @@ function defaultItemLabel<T>(item: T): string {
 
 export function ReferenceSelect<T>({
   label,
+  required = false,
   value,
   items,
   onChange,
   placeholder = "Select",
   allowClear = false,
   disabled,
+  error,
   testID,
   getItemId = defaultItemId,
   renderItemLabel = defaultItemLabel,
@@ -106,11 +111,7 @@ export function ReferenceSelect<T>({
 
   return (
     <View style={{ gap: theme.spacing.xs }}>
-      {label ? (
-        <Text variant="label" color="textSecondary">
-          {label}
-        </Text>
-      ) : null}
+      {label ? <FieldLabel label={label} required={required} /> : null}
 
       <Pressable
         testID={testID}
@@ -119,7 +120,7 @@ export function ReferenceSelect<T>({
         style={({ pressed }) => ({
           minHeight: 48,
           borderWidth: 1,
-          borderColor: theme.colors.border,
+          borderColor: error ? theme.colors.danger : theme.colors.border,
           borderRadius: theme.radius.md,
           paddingHorizontal: theme.spacing.md,
           backgroundColor: theme.colors.background,
@@ -141,6 +142,12 @@ export function ReferenceSelect<T>({
           ▾
         </Text>
       </Pressable>
+
+      {error ? (
+        <Text variant="caption" color="danger">
+          {error}
+        </Text>
+      ) : null}
 
       <Modal
         visible={open}

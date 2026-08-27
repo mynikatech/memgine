@@ -1,12 +1,6 @@
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import {
   onboardOrganization,
@@ -15,7 +9,10 @@ import {
 } from "@/src/core";
 
 import { useBusiness, useTheme } from "@/src/providers";
-import { Text } from "@/src/ui";
+
+import { Input, PhoneField, ReferenceSelect, Text } from "@/src/ui";
+
+import type { PhoneValue } from "@/src/ui/PhoneField";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 
@@ -28,50 +25,91 @@ export default function OrganizationNew() {
     ReferenceDataItem[]
   >([]);
 
+  const [countries, setCountries] = useState<
+    Awaited<ReturnType<typeof services.referenceData.listCountries>>
+  >([]);
+
   const [loadingTypes, setLoadingTypes] = useState(true);
+  const [loadingCountries, setLoadingCountries] = useState(true);
 
   const [businessName, setBusinessName] = useState("");
-
   const [organizationTypeId, setOrganizationTypeId] = useState("");
 
-  const [typeOpen, setTypeOpen] = useState(false);
+  const [primaryEmail, setPrimaryEmail] = useState("");
+
+  const [primaryPhone, setPrimaryPhone] = useState<PhoneValue>({
+    countryId: "country-ca",
+    callingCode: "+1",
+    number: "",
+  });
 
   const [busy, setBusy] = useState(false);
-
   const [error, setError] = useState("");
 
   const [nameTouched, setNameTouched] = useState(false);
+  const [typeTouched, setTypeTouched] = useState(false);
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [phoneTouched, setPhoneTouched] = useState(false);
 
   useEffect(() => {
     let mounted = true;
 
-    const loadOrganizationTypes = async () => {
+    const loadReferenceData = async () => {
       try {
         setLoadingTypes(true);
+        setLoadingCountries(true);
 
-        const types = await services.referenceData.listOrganizationTypes();
+        const [types, countryList] = await Promise.all([
+          services.referenceData.listOrganizationTypes(),
+          services.referenceData.listCountries(),
+        ]);
 
         if (!mounted) {
           return;
         }
 
         setOrganizationTypes(types.filter((item) => item.active));
+
+        setCountries(countryList);
+
+        /*
+         * Canada is the agreed MVP default.
+         *
+         * If the reference data contains Canada, use its
+         * actual ID and calling code rather than relying
+         * solely on hard-coded values.
+         */
+        const canada = countryList.find(
+          (country) =>
+            country.countryCode === "CA" || country.id === "country-ca",
+        );
+
+        if (canada) {
+          setPrimaryPhone((current) => ({
+            ...current,
+            countryId: canada.id,
+            callingCode: canada.callingCode ?? "+1",
+          }));
+        }
       } catch (err) {
         if (!mounted) {
           return;
         }
 
         setError(
-          err instanceof Error ? err.message : "Unable to load business types.",
+          err instanceof Error
+            ? err.message
+            : "Unable to load organization reference data.",
         );
       } finally {
         if (mounted) {
           setLoadingTypes(false);
+          setLoadingCountries(false);
         }
       }
     };
 
-    void loadOrganizationTypes();
+    void loadReferenceData();
 
     return () => {
       mounted = false;
@@ -84,27 +122,63 @@ export default function OrganizationNew() {
   );
 
   const nameError =
-    nameTouched &&
-    businessName.trim().length > 0 &&
-    businessName.trim().length < 2
-      ? "Business name must contain at least 2 characters."
-      : nameTouched && businessName.trim().length > 150
-        ? "Business name must not exceed 150 characters."
-        : "";
+    nameTouched && businessName.trim().length === 0
+      ? "Business name is required."
+      : nameTouched && businessName.trim().length < 2
+        ? "Business name must contain at least 2 characters."
+        : nameTouched && businessName.trim().length > 150
+          ? "Business name must not exceed 150 characters."
+          : undefined;
+
+  const typeError =
+    typeTouched && !organizationTypeId
+      ? "Business type is required."
+      : undefined;
+
+  const emailError =
+    emailTouched && !primaryEmail.trim()
+      ? "Primary email is required."
+      : emailTouched && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(primaryEmail.trim())
+        ? "Please enter a valid email address."
+        : primaryEmail.trim().length > 254
+          ? "Primary email must not exceed 254 characters."
+          : undefined;
+
+  const phoneError =
+    phoneTouched && !primaryPhone.number.trim()
+      ? "Primary phone number is required."
+      : primaryPhone.number.length > 0 && primaryPhone.number.length !== 10
+        ? "Primary phone number must contain exactly 10 digits."
+        : undefined;
 
   const canCreate =
     businessName.trim().length >= 2 &&
     businessName.trim().length <= 150 &&
     !!organizationTypeId &&
+    !!primaryEmail.trim() &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(primaryEmail.trim()) &&
+    primaryEmail.trim().length <= 254 &&
+    primaryPhone.number.length === 10 &&
+    !!primaryPhone.countryId &&
+    !!primaryPhone.callingCode &&
     !busy &&
-    !loadingTypes;
+    !loadingTypes &&
+    !loadingCountries;
 
   const handleCreate = async () => {
     setNameTouched(true);
+    setTypeTouched(true);
+    setEmailTouched(true);
+    setPhoneTouched(true);
     setError("");
 
+    if (!businessName.trim()) {
+      setError("Business name is required.");
+      return;
+    }
+
     if (businessName.trim().length < 2) {
-      setError("Please enter a valid business name.");
+      setError("Business name must contain at least 2 characters.");
       return;
     }
 
@@ -114,7 +188,37 @@ export default function OrganizationNew() {
     }
 
     if (!organizationTypeId) {
-      setError("Please select a business type.");
+      setError("Business type is required.");
+      return;
+    }
+
+    if (!primaryEmail.trim()) {
+      setError("Primary email is required.");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(primaryEmail.trim())) {
+      setError("Please enter a valid primary email address.");
+      return;
+    }
+
+    if (primaryEmail.trim().length > 254) {
+      setError("Primary email must not exceed 254 characters.");
+      return;
+    }
+
+    if (!primaryPhone.countryId) {
+      setError("Primary phone country is required.");
+      return;
+    }
+
+    if (!primaryPhone.number.trim()) {
+      setError("Primary phone number is required.");
+      return;
+    }
+
+    if (primaryPhone.number.length !== 10) {
+      setError("Primary phone number must contain exactly 10 digits.");
       return;
     }
 
@@ -123,31 +227,28 @@ export default function OrganizationNew() {
 
       console.log("PLATFORM ORGANIZATION ONBOARDING START", {
         businessName: businessName.trim(),
-
         organizationTypeId,
+        primaryEmail: primaryEmail.trim(),
       });
 
       const result = await onboardOrganization({
         name: businessName.trim(),
-
         organizationTypeId,
+        primaryEmail: primaryEmail.trim(),
+        primaryPhone: {
+          countryId: primaryPhone.countryId,
+          callingCode: primaryPhone.callingCode,
+          number: primaryPhone.number,
+        },
       });
 
       console.log("PLATFORM ORGANIZATION ONBOARDING COMPLETE", {
         organizationId: result.organization.id,
-
         organizationName: result.organization.name,
-
         organizationTypeId: result.organization.organizationTypeId,
-
         templateId: result.context.template.id,
       });
 
-      /*
-       * The newly created organization becomes
-       * the active organization only after successful
-       * onboarding.
-       */
       setActiveBusiness(result.organization.id);
 
       router.replace(APP_ROUTES.orgAdmin.root);
@@ -205,117 +306,84 @@ export default function OrganizationNew() {
           </Text>
         </View>
 
-        <View style={styles.field}>
-          <Text variant="bodySmall" color="textMuted">
-            Business Name
-          </Text>
+        <Input
+          label="Business Name"
+          required
+          value={businessName}
+          onChangeText={(value) => {
+            setBusinessName(value);
 
-          <TextInput
-            value={businessName}
-            onChangeText={(value) => {
-              setBusinessName(value);
+            if (error) {
+              setError("");
+            }
+          }}
+          onBlur={() => setNameTouched(true)}
+          placeholder="Enter business name"
+          maxLength={150}
+          error={nameError}
+          testID="organization-business-name"
+        />
 
-              if (error) {
-                setError("");
-              }
-            }}
-            onBlur={() => setNameTouched(true)}
-            placeholder="Enter business name"
-            placeholderTextColor={theme.colors.textMuted}
-            editable={!busy}
-            autoCapitalize="words"
-            autoCorrect={false}
-            returnKeyType="done"
-            maxLength={150}
-            style={[
-              styles.input,
-              {
-                color: theme.colors.text,
-                borderColor: nameError
-                  ? theme.colors.primary
-                  : theme.colors.border,
-                backgroundColor: theme.colors.card,
-              },
-            ]}
-          />
+        <ReferenceSelect
+          label="Business Type"
+          required
+          value={organizationTypeId}
+          items={organizationTypes}
+          onChange={(value) => {
+            setOrganizationTypeId(value);
+            setTypeTouched(true);
 
-          {nameError ? (
-            <Text variant="caption" color="textMuted">
-              {nameError}
-            </Text>
-          ) : null}
-        </View>
+            if (error) {
+              setError("");
+            }
+          }}
+          placeholder={
+            loadingTypes ? "Loading business types..." : "Select business type"
+          }
+          disabled={busy || loadingTypes}
+          error={typeError}
+          testID="organization-business-type"
+        />
 
-        <View style={styles.field}>
-          <Text variant="bodySmall" color="textMuted">
-            Business Type
-          </Text>
+        <Input
+          label="Primary Email"
+          required
+          value={primaryEmail}
+          onChangeText={(value) => {
+            setPrimaryEmail(value);
 
-          <Pressable
-            disabled={busy || loadingTypes}
-            onPress={() => setTypeOpen((value) => !value)}
-            style={[
-              styles.select,
-              {
-                borderColor: theme.colors.border,
-                backgroundColor: theme.colors.card,
-                opacity: busy || loadingTypes ? 0.6 : 1,
-              },
-            ]}
-          >
-            <Text variant="body" color={selectedType ? "text" : "textMuted"}>
-              {loadingTypes
-                ? "Loading business types..."
-                : (selectedType?.name ?? "Select business type")}
-            </Text>
+            if (error) {
+              setError("");
+            }
+          }}
+          onBlur={() => setEmailTouched(true)}
+          placeholder="Enter primary email"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          maxLength={254}
+          error={emailError}
+          testID="organization-primary-email"
+        />
 
-            <Text variant="body" color="textMuted">
-              {typeOpen ? "▲" : "▼"}
-            </Text>
-          </Pressable>
+        <PhoneField
+          label="Primary Phone"
+          required
+          value={primaryPhone}
+          countries={countries}
+          onChange={(phone) => {
+            setPrimaryPhone(phone);
+            setPhoneTouched(true);
 
-          {typeOpen && !loadingTypes ? (
-            <View
-              style={[
-                styles.options,
-                {
-                  backgroundColor: theme.colors.card,
-                  borderColor: theme.colors.border,
-                },
-              ]}
-            >
-              {organizationTypes.map((item, index) => (
-                <Pressable
-                  key={item.id}
-                  disabled={busy}
-                  onPress={() => {
-                    setOrganizationTypeId(item.id);
-                    setTypeOpen(false);
-                    setError("");
-                  }}
-                  style={[
-                    styles.option,
-                    {
-                      borderBottomColor: theme.colors.border,
-                      borderBottomWidth:
-                        index === organizationTypes.length - 1 ? 0 : 1,
-                    },
-                  ]}
-                >
-                  <Text variant="body" color="text">
-                    {item.name}
-                  </Text>
-
-                  {item.id === organizationTypeId ? (
-                    <Text variant="body" color="textMuted">
-                      ✓
-                    </Text>
-                  ) : null}
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-        </View>
+            if (error) {
+              setError("");
+            }
+          }}
+          error={phoneTouched ? phoneError : undefined}
+          maxDigits={10}
+          disabled={busy || loadingCountries}
+          testID="organization-primary-phone"
+        />
 
         {selectedType ? (
           <View
@@ -345,11 +413,12 @@ export default function OrganizationNew() {
             style={[
               styles.error,
               {
-                borderColor: theme.colors.border,
+                borderColor: theme.colors.danger,
+                backgroundColor: theme.colors.background,
               },
             ]}
           >
-            <Text variant="bodySmall" color="text">
+            <Text variant="bodySmall" color="danger">
               {error}
             </Text>
           </View>
@@ -362,7 +431,6 @@ export default function OrganizationNew() {
             styles.createButton,
             {
               backgroundColor: theme.colors.primary,
-
               opacity: !canCreate
                 ? 0.5
                 : pressed
@@ -420,43 +488,6 @@ const styles = StyleSheet.create({
 
   section: {
     gap: 6,
-  },
-
-  field: {
-    gap: 8,
-  },
-
-  input: {
-    minHeight: 48,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-
-  select: {
-    minHeight: 48,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  options: {
-    borderWidth: 1,
-    borderRadius: 8,
-    overflow: "hidden",
-  },
-
-  option: {
-    minHeight: 44,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
   },
 
   templateCard: {

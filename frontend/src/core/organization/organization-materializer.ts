@@ -32,6 +32,12 @@ export function materializeOrganization(
   input: {
     name: string;
     organizationTypeId: ID;
+    primaryEmail: string;
+    primaryPhone: {
+      countryId: ID;
+      callingCode: string;
+      number: string;
+    };
   },
   template: DefaultBusinessTemplate,
 ): MaterializedOrganization {
@@ -58,12 +64,12 @@ export function materializeOrganization(
 
     category: template.template.category,
 
-    primaryEmail: businessInformation?.supportEmail ?? "support@example.com",
+    primaryEmail: input.primaryEmail,
 
     primaryPhone: {
-      countryId: "country-ca",
-      callingCode: "+1",
-      number: "0000000000",
+      countryId: input.primaryPhone.countryId,
+      callingCode: input.primaryPhone.callingCode,
+      number: input.primaryPhone.number,
     },
 
     website: businessInformation?.website,
@@ -95,15 +101,13 @@ export function materializeOrganization(
 
     gstNumber: "",
 
-    supportEmail:
-      businessInformation?.supportEmail ?? organization.primaryEmail,
+    supportEmail: businessInformation?.supportEmail ?? "",
 
     supportPhone: {
-      countryId: "country-ca",
-      callingCode: "+1",
-      number: "0000000000",
+      countryId: input.primaryPhone.countryId,
+      callingCode: input.primaryPhone.callingCode,
+      number: "",
     },
-
     aboutOrganization: businessInformation?.about ?? "",
 
     address: {
