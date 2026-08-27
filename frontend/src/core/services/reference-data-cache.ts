@@ -19,6 +19,28 @@ type CacheEnvelope<T> = {
   data: T;
 };
 
+export class ReferenceDataCache {
+  private snapshot: ReferenceDataService | null = null;
+
+  set(service: ReferenceDataService): void {
+    this.snapshot = service;
+  }
+
+  get(): ReferenceDataService {
+    if (!this.snapshot) {
+      throw new Error("Reference data cache has not been initialized.");
+    }
+
+    return this.snapshot;
+  }
+
+  clear(): void {
+    this.snapshot = null;
+  }
+}
+
+export const referenceDataCache = new ReferenceDataCache();
+
 export class CachedReferenceDataService implements ReferenceDataService {
   constructor(
     private readonly source: ReferenceDataService,

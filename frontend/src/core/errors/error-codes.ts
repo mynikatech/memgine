@@ -1,0 +1,10 @@
+export type AppErrorCode =
+  | "VALIDATION_ERROR"
+  | "NOT_FOUND"
+  | "CONFLICT"
+  | "UNAUTHORIZED"
+  | "FORBIDDEN"
+  | "PERSISTENCE_ERROR"
+  | "API_ERROR"
+  | "NETWORK_ERROR"
+  | "INTERNAL_ERROR";

@@ -6,13 +6,23 @@ export {
   type ApiSuccess,
 } from "./api/result";
 
+export { data, apis } from "./data-registry";
+
 export type { ApiClient } from "./api/client";
 
 export { BrandingApi } from "./api/branding-api";
+export { OrganizationApi } from "./api/organization-api";
 
 export type { BrandingRepository } from "./repositories/branding/branding-repository";
 
 export { LocalBrandingRepository } from "./repositories/branding/branding-repository.local";
+
+export type {
+  OrganizationRepository,
+  CreateOrganizationRepositoryInput,
+} from "./repositories/organization/organization-repository";
+
+export { LocalOrganizationRepository } from "./repositories/organization/organization-repository.local";
 
 export { asyncStorageStore } from "./persistence/local/async-storage-store";
 

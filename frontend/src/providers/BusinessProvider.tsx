@@ -1,25 +1,34 @@
-import { createContext, ReactNode, useContext, useMemo, useState } from "react";
+import {
+  createContext,
+  ReactNode,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import {
   BusinessConfiguration,
   BUSINESS_CONTEXTS,
-  Capability,
   DEFAULT_ACTIVE_ORG_ID,
   DEFAULT_ROLE_CAPABILITIES,
+  Capability,
   hasCapability,
   ID,
   LocaleProfile,
   LocalizationContext,
   ManagementModel,
-  Organization,
   OrganizationAccount,
   PlanTier,
   Principal,
-  services,
   StaffRole,
   TemplateDefinition,
   toFormattingContext,
 } from "@/src/core";
+
+import { activeOrganizationStore } from "@/src/data/persistence/session/active-organization-store";
+
+import { resolveOrganizationContext } from "@/src/core/organization/organization-context-resolver";
 
 import { buildTheme, Theme } from "@/src/theme/theme";
 
@@ -29,7 +38,9 @@ type Entitlements = {
 };
 
 type BusinessContextValue = {
-  organization: Organization;
+  organization: ReturnType<
+    typeof getBusinessContextFromRegistry
+  >["organization"];
   account: OrganizationAccount;
   configuration: BusinessConfiguration;
   template: TemplateDefinition;
@@ -46,26 +57,23 @@ const BusinessCtx = createContext<BusinessContextValue | null>(null);
 
 const ThemeOverrideCtx = createContext<Theme | null>(null);
 
-/**
- * Optional overrides used by the Customer Experience preview.
- *
- * Normal application usage continues to resolve the organization from
- * BUSINESS_CONTEXTS.
- *
- * Preview usage can provide:
- *
- *   organizationId
- *   configuration
- *   template
- *
- * so that two independent BusinessExperience instances can be rendered
- * simultaneously.
- */
 export type BusinessProviderOverrides = {
   organizationId?: ID;
   configuration?: BusinessConfiguration;
   template?: TemplateDefinition;
 };
+
+function getBusinessContextFromRegistry(organizationId: ID) {
+  const context = BUSINESS_CONTEXTS[organizationId];
+
+  if (!context) {
+    throw new Error(
+      `Legacy business context '${organizationId}' could not be resolved.`,
+    );
+  }
+
+  return context;
+}
 
 export function BusinessThemeScope({
   theme,
@@ -93,22 +101,123 @@ export function BusinessProvider({
     organizationId ?? DEFAULT_ACTIVE_ORG_ID,
   );
 
-  /**
-   * When an organizationId is explicitly supplied, the provider is being
-   * used as an isolated business context, typically by the Customer
-   * Experience preview.
+  const [resolvedContext, setResolvedContext] = useState<ReturnType<
+    typeof getBusinessContextFromRegistry
+  > | null>(() => {
+    const initialId = organizationId ?? DEFAULT_ACTIVE_ORG_ID;
+
+    return BUSINESS_CONTEXTS[initialId] ?? null;
+  });
+
+  const [resolving, setResolving] = useState(
+    !BUSINESS_CONTEXTS[organizationId ?? DEFAULT_ACTIVE_ORG_ID],
+  );
+
+  /*
+   * Restore the last active organization from
+   * session persistence.
    *
-   * In that case setActiveBusiness is intentionally scoped to this provider.
+   * Explicit preview providers never participate
+   * in application active-organization state.
    */
+  useEffect(() => {
+    if (organizationId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void activeOrganizationStore
+      .get()
+      .then((storedId) => {
+        if (cancelled || !storedId || storedId === activeOrgId) {
+          return;
+        }
+
+        setActiveOrgId(storedId);
+      })
+      .catch((error) => {
+        console.error(
+          "[BusinessProvider] active organization restore failed:",
+          error,
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId]);
+
+  /*
+   * Resolve the current organization.
+   *
+   * Existing legacy organizations may still be served by
+   * BUSINESS_CONTEXTS during this migration.
+   *
+   * Newly-created organizations MUST resolve through the
+   * new persisted organization/API path.
+   */
+  useEffect(() => {
+    if (organizationId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const legacy = BUSINESS_CONTEXTS[activeOrgId];
+
+    if (legacy) {
+      setResolvedContext(legacy);
+      setResolving(false);
+      return;
+    }
+
+    setResolving(true);
+
+    void resolveOrganizationContext(activeOrgId)
+      .then((context) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (!context) {
+          throw new Error(
+            `Active organization '${activeOrgId}' could not be resolved.`,
+          );
+        }
+
+        setResolvedContext(context);
+        setResolving(false);
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+
+        console.error(
+          "[BusinessProvider] organization resolution failed:",
+          error,
+        );
+
+        setResolvedContext(null);
+        setResolving(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeOrgId, organizationId]);
+
   const resolvedOrgId = organizationId ?? activeOrgId;
 
-  const value = useMemo<BusinessContextValue>(() => {
-    const ctx = BUSINESS_CONTEXTS[resolvedOrgId];
-
-    if (!ctx) {
-      throw new Error(
-        `Active organization '${resolvedOrgId}' could not be resolved.`,
-      );
+  /*
+   * Preview providers continue to use their explicitly
+   * supplied context. Normal providers use the resolved
+   * persisted/legacy context.
+   */
+  const value = useMemo<BusinessContextValue | null>(() => {
+    if (!resolvedContext) {
+      return null;
     }
 
     const {
@@ -116,37 +225,29 @@ export function BusinessProvider({
       account,
       configuration: baseConfiguration,
       template: baseTemplate,
-    } = ctx;
+    } = resolvedContext;
 
-    /**
-     * Configuration override is used by the Proposed Customer Experience
-     * preview.
-     *
-     * Normal runtime usage continues to use the persisted/mock business
-     * configuration unchanged.
-     */
     const configuration = configurationOverride ?? baseConfiguration;
 
-    /**
-     * Template remains Memgine-controlled.
-     *
-     * A business/customer experience can configure within a template but
-     * cannot replace the template itself.
-     */
     const template = templateOverride ?? baseTemplate;
 
     const theme = buildTheme(configuration.branding);
 
     const active: LocaleProfile = {
       language: configuration.localization.defaultLanguage,
+
       currency: configuration.localization.defaultCurrency,
+
       timezone: configuration.localization.timezone,
     };
 
     const localization: LocalizationContext = {
       active,
+
       formatting: toFormattingContext(active),
+
       isRTL: false,
+
       availableLanguages: ["en"],
     };
 
@@ -163,45 +264,61 @@ export function BusinessProvider({
     return {
       organization,
       account,
-
       configuration,
-
       template,
 
       entitlements: {
         planTier: account.planTier,
+
         managementModel: account.managementModel,
       },
 
       theme,
-
       localization,
-
       principal,
-
       capabilities,
 
       can: (capability: Capability) => hasCapability(principal, capability),
 
-      /**
-       * For a normal provider this changes the active business.
-       *
-       * For an isolated preview provider, the component should simply
-       * remain scoped to its supplied organization.
-       */
-      setActiveBusiness: organizationId ? () => undefined : setActiveOrgId,
+      setActiveBusiness: organizationId
+        ? () => undefined
+        : (nextOrganizationId) => {
+            setActiveOrgId(nextOrganizationId);
+
+            void activeOrganizationStore
+              .set(nextOrganizationId)
+              .catch((error) => {
+                console.error(
+                  "[BusinessProvider] active organization persistence failed:",
+                  error,
+                );
+              });
+          },
     };
-  }, [resolvedOrgId, configurationOverride, templateOverride]);
+  }, [
+    resolvedContext,
+    configurationOverride,
+    templateOverride,
+    organizationId,
+  ]);
+
+  /*
+   * We deliberately don't throw just because a newly-created
+   * organization isn't present in the legacy registry.
+   */
+  if (!value) {
+    if (resolving) {
+      return null;
+    }
+
+    throw new Error(
+      `Active organization '${resolvedOrgId}' could not be resolved.`,
+    );
+  }
 
   return <BusinessCtx.Provider value={value}>{children}</BusinessCtx.Provider>;
 }
 
-/**
- * Convenience wrapper for isolated Customer Experience previews.
- *
- * This is intentionally separate from normal application navigation so the
- * preview cannot accidentally change the application's active business.
- */
 export function BusinessPreviewScope({
   organizationId,
   configuration,
@@ -236,6 +353,7 @@ export function useBusiness(): BusinessContextValue {
 
 export function useTheme(): Theme {
   const override = useContext(ThemeOverrideCtx);
+
   const business = useBusiness();
 
   return override ?? business.theme;

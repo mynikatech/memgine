@@ -1,13 +1,13 @@
-import { ID } from "../domain/common";
-
-import { TemplateDefaultContent } from "../template/template-content";
+import type { ID } from "../domain/common";
 
 import {
   F_AND_B_BAKERY_V1,
-  TemplateDefinition,
+  type TemplateDefinition,
 } from "../template/template-definition";
 
 import { SALON_V1 } from "../template/salon-template-definition";
+
+import type { TemplateDefaultContent } from "../template/template-content";
 
 import { F_AND_B_DEFAULT_CONTENT } from "./f-and-b-default-content";
 import { SALON_DEFAULT_CONTENT } from "./salon-default-content";
@@ -16,17 +16,20 @@ export type DefaultBusinessTemplate = {
   id: ID;
 
   /**
-   * Organization Type reference-data ID.
+   * Reference-data organization type ID.
    */
   organizationTypeId: ID;
 
   /**
-   * Template definition controlled by Memgine.
+   * Frozen platform template definition.
    */
   template: TemplateDefinition;
 
   /**
-   * Starter content copied into a newly created organization.
+   * Platform-owned starter content.
+   *
+   * This is used only during organization onboarding.
+   * It is never the runtime organization configuration.
    */
   content: TemplateDefaultContent;
 };
@@ -34,40 +37,19 @@ export type DefaultBusinessTemplate = {
 /**
  * Platform-owned default templates.
  *
- * These are NOT organizations.
+ * MVP:
  *
- * Current MVP:
+ * BAKERY → F_AND_B_BAKERY_V1
+ * SALON  → SALON_V1
  *
- * COFFEE     → F&B Bakery template
- * BAKERY     → F&B Bakery template
- * RESTAURANT → F&B Bakery template
- * SALON      → Salon template
- *
- * The F&B template is currently shared by Coffee, Bakery and
- * Restaurant organizations. These can be split into separate
- * templates later without changing the onboarding architecture.
- *
- * Other organization types do not currently have a Memgine
- * default template configured.
+ * Other organization types may exist in reference data, but are not
+ * currently onboardable because they do not have an active starter
+ * template assigned.
  */
 export const DEFAULT_BUSINESS_TEMPLATES: Record<ID, DefaultBusinessTemplate> = {
-  "organization-type-coffee": {
-    id: F_AND_B_BAKERY_V1.id,
-    organizationTypeId: "organization-type-coffee",
-    template: F_AND_B_BAKERY_V1,
-    content: F_AND_B_DEFAULT_CONTENT,
-  },
-
   "organization-type-bakery": {
     id: F_AND_B_BAKERY_V1.id,
     organizationTypeId: "organization-type-bakery",
-    template: F_AND_B_BAKERY_V1,
-    content: F_AND_B_DEFAULT_CONTENT,
-  },
-
-  "organization-type-restaurant": {
-    id: F_AND_B_BAKERY_V1.id,
-    organizationTypeId: "organization-type-restaurant",
     template: F_AND_B_BAKERY_V1,
     content: F_AND_B_DEFAULT_CONTENT,
   },
@@ -80,19 +62,14 @@ export const DEFAULT_BUSINESS_TEMPLATES: Record<ID, DefaultBusinessTemplate> = {
   },
 };
 
-/**
- * Resolve the platform template for an organization type.
- *
- * There is deliberately NO fallback to another organization type.
- *
- * If an organization type does not yet have a Memgine default
- * template, onboarding fails explicitly rather than assigning
- * an inappropriate template.
- */
 export function getDefaultBusinessTemplate(
   organizationTypeId: ID,
 ): DefaultBusinessTemplate {
   const normalizedId = organizationTypeId.trim();
+
+  if (!normalizedId) {
+    throw new Error("Organization type is required.");
+  }
 
   const template = DEFAULT_BUSINESS_TEMPLATES[normalizedId];
 
