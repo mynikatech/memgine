@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
+
 import { Alert, View } from "react-native";
 
 import { Organization, OrganizationDetails, services } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
+
 import { StateView } from "@/src/ui";
+
 import { BusinessForm } from "@/src/ui/admin/BusinessForm";
 
 export default function OrgAdminBusiness() {
@@ -24,9 +27,6 @@ export default function OrgAdminBusiness() {
     Awaited<ReturnType<typeof services.referenceData.listCountries>>
   >([]);
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   const [regions, setRegions] = useState<
     Awaited<ReturnType<typeof services.referenceData.listRegions>>
   >([]);
@@ -34,6 +34,10 @@ export default function OrgAdminBusiness() {
   const [cities, setCities] = useState<
     Awaited<ReturnType<typeof services.referenceData.listCities>>
   >([]);
+
+  const [loading, setLoading] = useState(true);
+
+  const [error, setError] = useState<string | null>(null);
 
   const handleCountryChange = async (countryCode: string) => {
     try {

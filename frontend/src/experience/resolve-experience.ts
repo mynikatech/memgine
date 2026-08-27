@@ -8,6 +8,7 @@ import type {
   MembershipProduct,
   Offer,
   Organization,
+  OrganizationDetails,
   Redemption,
   Status,
   Store,
@@ -23,13 +24,24 @@ import { TemplateSectionKey } from "@/src/core";
  * Experience renderer.
  *
  * Production:
- *   Domain data comes from the real customer.
+ *   Domain data comes from the real customer/business.
  *
  * Admin preview:
  *   Domain data may come from preview/mock data supplied by the admin
  *   preview layer.
  *
  * The renderer itself does not know or care where the data originated.
+ *
+ * Progressive migration rule:
+ *
+ *   Real Organization / OrganizationDetails data takes precedence when
+ *   supplied.
+ *
+ *   TemplateDefaultContent remains the fallback for experience areas that
+ *   have not yet been migrated to real configuration/domain data.
+ *
+ * This allows the customer experience to be migrated incrementally without
+ * breaking the existing template-driven experience.
  */
 
 export type ExperienceTabKey = "card" | "offers" | "history" | "profile";
@@ -121,6 +133,10 @@ export interface ResolveExperienceInput {
 
   template: TemplateDefinition;
 
+  /**
+   * Existing template starter content remains available as the fallback
+   * for experience areas that have not yet been migrated.
+   */
   content: TemplateDefaultContent;
 
   /**
@@ -147,9 +163,104 @@ export interface ResolveExperienceInput {
    * subscription/product combination above.
    */
   previewMembership?: PreviewMembershipOverride;
+
+  /**
+   * Optional organization-details override.
+   *
+   * Used by Org Admin preview so the same customer renderer can render
+   * the proposed business information before it is saved.
+   *
+   * When supplied, this takes precedence over template starter content
+   * for business information.
+   */
+  detailsOverride?: OrganizationDetails | null;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Convert a PhoneNumber into the human-readable form appropriate for
+ * the customer-facing business information section.
+ *
+ * PhoneNumber is intentionally handled here rather than in React so the
+ * customer renderer receives already-resolved presentation data.
+ */
+function formatPhoneNumber(
+  phone?: Organization["primaryPhone"] | OrganizationDetails["supportPhone"],
+): string {
+  if (!phone?.number) {
+    return "";
+  }
+
+  const callingCode = phone.callingCode?.trim();
+
+  return callingCode
+    ? `${callingCode} ${phone.number.trim()}`
+    : phone.number.trim();
+}
+
+/**
+ * Resolve business information progressively.
+ *
+ * Current migration state:
+ *
+ *   1. OrganizationDetails supplied by Org Admin preview
+ *      -> use actual configured values.
+ *
+ *   2. TemplateDefaultContent
+ *      -> fallback for fields not yet migrated.
+ *
+ * This is deliberately kept here rather than inside BusinessExperience so
+ * both production and preview use exactly the same resolution rules.
+ */
+function resolveBusinessInformation(
+  detailsOverride: OrganizationDetails | null | undefined,
+  organization: Organization,
+  content: TemplateDefaultContent,
+): DefaultBusinessInformationContent | undefined {
+  const templateInformation = content.businessInformation;
+
+  /*
+   * No configured details and no template section means there is nothing
+   * customer-facing to render.
+   */
+  if (!templateInformation && !detailsOverride) {
+    return undefined;
+  }
+
+  /*
+   * No OrganizationDetails override means we are rendering the normal
+   * production/template experience. Preserve the existing template content.
+   */
+  if (!detailsOverride) {
+    return templateInformation;
+  }
+
+  /*
+   * An override is authoritative. This is important for Org Admin draft
+   * preview: if the administrator clears a value, the preview must show it
+   * as cleared rather than silently restoring the template value.
+   *
+   * Primary email/phone belong to Organization and are the customer-facing
+   * business contact details. Support contact values remain a fallback for
+   * compatibility with organizations whose primary contact is not populated.
+   */
+  return {
+    about: detailsOverride.aboutOrganization?.trim() ?? "",
+
+    supportEmail:
+      organization.primaryEmail?.trim() ||
+      detailsOverride.supportEmail?.trim() ||
+      "",
+
+    supportPhone:
+      formatPhoneNumber(organization.primaryPhone) ||
+      formatPhoneNumber(detailsOverride.supportPhone) ||
+      "",
+
+    website: organization.website?.trim() ?? "",
+  };
+}
 
 export function resolveExperience(
   input: ResolveExperienceInput,
@@ -163,6 +274,7 @@ export function resolveExperience(
     subscriptionStatus,
     product,
     previewMembership,
+    detailsOverride,
   } = input;
 
   const cx = configuration.customerExperience;
@@ -219,7 +331,7 @@ export function resolveExperience(
     /*
      * PRODUCTION CUSTOMER EXPERIENCE
      *
-     * This remains exactly subscription/domain driven.
+     * This remains subscription/domain driven.
      */
     const active = subscriptionStatus?.statusCode.toUpperCase() === "ACTIVE";
 
@@ -328,8 +440,26 @@ export function resolveExperience(
   /* Identity                                                               */
   /* ---------------------------------------------------------------------- */
 
-  const displayName = configuration.identity.displayName;
+  /*
+   * Organization is the source of truth for the business identity.
+   *
+   * configuration.identity.displayName remains the fallback because
+   * existing configurations may still contain the value there.
+   */
+  const displayName =
+    organization.displayName?.trim() ||
+    configuration.identity.displayName?.trim() ||
+    content.businessIdentity.displayName;
 
+  /* ---------------------------------------------------------------------- */
+  /* Business information                                                   */
+  /* ---------------------------------------------------------------------- */
+
+  const resolvedBusinessInformation = resolveBusinessInformation(
+    detailsOverride,
+    organization,
+    content,
+  );
   /* ---------------------------------------------------------------------- */
   /* Tabs                                                                   */
   /* ---------------------------------------------------------------------- */
@@ -406,7 +536,7 @@ export function resolveExperience(
     mostVisited,
 
     businessInformation: templateHas(TemplateSectionKey.BUSINESS_INFORMATION)
-      ? content.businessInformation
+      ? resolvedBusinessInformation
       : undefined,
 
     businessPreferences: templateHas(TemplateSectionKey.BUSINESS_PREFERENCES)

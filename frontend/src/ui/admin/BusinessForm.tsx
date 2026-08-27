@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+
 import {
   ScrollView,
   StyleSheet,
@@ -31,6 +32,8 @@ import {
   TextArea,
 } from "@/src/ui";
 
+import { BusinessPreview } from "./BusinessPreview";
+
 type BusinessFormProps = {
   organization: Organization;
   details: OrganizationDetails | null;
@@ -40,8 +43,10 @@ type BusinessFormProps = {
   cities: CityReference[];
   organizationTypes: ReferenceDataItem[];
   organizationStatuses: Status[];
+
   onCountryChange?: (countryCode: string) => void;
   onRegionChange?: (countryCode: string, regionCode: string) => void;
+
   onSave: (
     organization: Organization,
     details: OrganizationDetails,
@@ -75,16 +80,21 @@ function createEmptyDetails(
   return {
     id: `details-${organizationId}`,
     organizationId,
+
     registrationNumber: "",
     gstNumber: "",
     supportEmail: "",
     supportPhone: EMPTY_PHONE(),
+
     aboutOrganization: "",
     address: EMPTY_ADDRESS,
+
     createdAt: now,
     createdBy,
+
     updatedAt: now,
     updatedBy: createdBy,
+
     isDeleted: false,
     versionNo: 1,
   };
@@ -94,6 +104,23 @@ function countryFlag(countryCode: string): string {
   return countryCode
     .toUpperCase()
     .replace(/./g, (char) => String.fromCodePoint(char.charCodeAt(0) + 127397));
+}
+
+type ValidationErrors = {
+  name?: string;
+  organizationTypeId?: string;
+  primaryEmail?: string;
+  primaryPhone?: string;
+};
+
+function validateEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function validatePhone(value: string): boolean {
+  const digits = value.replace(/\D/g, "");
+
+  return digits.length === 10;
 }
 
 export function BusinessForm({
@@ -122,12 +149,26 @@ export function BusinessForm({
 
   const [saving, setSaving] = useState(false);
 
+  const [touched, setTouched] = useState({
+    name: false,
+    organizationTypeId: false,
+    primaryEmail: false,
+    primaryPhone: false,
+  });
+
   useEffect(() => {
     setForm(organization);
 
     setDetailForm(
       details ?? createEmptyDetails(organization.id, organization.updatedBy),
     );
+
+    setTouched({
+      name: false,
+      organizationTypeId: false,
+      primaryEmail: false,
+      primaryPhone: false,
+    });
   }, [organization, details]);
 
   const updateOrganization = <K extends keyof Organization>(
@@ -167,32 +208,114 @@ export function BusinessForm({
     }
   };
 
+  const errors: ValidationErrors = {
+    name:
+      touched.name && !form.name.trim()
+        ? "Business name is required."
+        : touched.name && form.name.trim().length < 2
+          ? "Business name must contain at least 2 characters."
+          : touched.name && form.name.trim().length > 200
+            ? "Business name must not exceed 200 characters."
+            : undefined,
+
+    organizationTypeId:
+      touched.organizationTypeId && !form.organizationTypeId
+        ? "Business type is required."
+        : undefined,
+
+    primaryEmail:
+      touched.primaryEmail && !form.primaryEmail.trim()
+        ? "Primary email is required."
+        : touched.primaryEmail && !validateEmail(form.primaryEmail)
+          ? "Enter a valid email address."
+          : undefined,
+
+    primaryPhone:
+      touched.primaryPhone && !form.primaryPhone.number.trim()
+        ? "Primary phone number is required."
+        : touched.primaryPhone && !validatePhone(form.primaryPhone.number)
+          ? "Enter a 10-digit phone number."
+          : undefined,
+  };
+
+  const validateBeforeSave = (): boolean => {
+    const nextTouched = {
+      name: true,
+      organizationTypeId: true,
+      primaryEmail: true,
+      primaryPhone: true,
+    };
+
+    setTouched(nextTouched);
+
+    return !(
+      !form.name.trim() ||
+      form.name.trim().length < 2 ||
+      form.name.trim().length > 200 ||
+      !form.organizationTypeId ||
+      !form.primaryEmail.trim() ||
+      !validateEmail(form.primaryEmail) ||
+      !form.primaryPhone.number.trim() ||
+      !validatePhone(form.primaryPhone.number)
+    );
+  };
+
   const save = async () => {
+    if (!validateBeforeSave()) {
+      return;
+    }
+
     setSaving(true);
 
     try {
       await onSave(
         {
           ...form,
+
           name: form.name.trim(),
-          displayName: form.displayName.trim(),
+
+          displayName: form.displayName.trim() || form.name.trim(),
+
           legalName: form.legalName?.trim() || undefined,
+
           primaryEmail: form.primaryEmail.trim(),
+
           website: form.website?.trim() || undefined,
+
+          primaryPhone: {
+            ...form.primaryPhone,
+            number: form.primaryPhone.number.trim(),
+          },
         },
+
         {
           ...detailForm,
+
           registrationNumber: detailForm.registrationNumber.trim(),
+
           gstNumber: detailForm.gstNumber.trim(),
+
           supportEmail: detailForm.supportEmail.trim(),
+
           aboutOrganization: detailForm.aboutOrganization.trim(),
+
           address: {
             ...detailForm.address,
+
             line1: detailForm.address.line1.trim(),
+
             line2: detailForm.address.line2?.trim() || undefined,
+
             city: detailForm.address.city.trim(),
+
             region: detailForm.address.region?.trim() || undefined,
+
             postalCode: detailForm.address.postalCode?.trim() || undefined,
+          },
+
+          supportPhone: {
+            ...detailForm.supportPhone,
+            number: detailForm.supportPhone.number.trim(),
           },
         },
       );
@@ -206,6 +329,8 @@ export function BusinessForm({
     phone: PhoneNumber,
     onChange: (phone: PhoneNumber) => void,
     testID: string,
+    required = false,
+    error?: string,
   ) => {
     const selectedCountry = countries.find(
       (country) => country.id === phone.countryId,
@@ -216,6 +341,7 @@ export function BusinessForm({
         <View style={compact ? styles.fullWidth : styles.phoneCountry}>
           <ReferenceSelect
             label={`${label} — Country / ISD`}
+            required={required}
             value={phone.countryId}
             items={countries}
             onChange={(countryId) => {
@@ -246,11 +372,12 @@ export function BusinessForm({
         <View style={compact ? styles.fullWidth : styles.phoneNumber}>
           <Input
             label={`${label} Number`}
+            required={required}
             value={phone.number}
             onChangeText={(number) =>
               onChange({
                 ...phone,
-                number,
+                number: number.replace(/\D/g, "").slice(0, 10),
               })
             }
             keyboardType="phone-pad"
@@ -259,6 +386,8 @@ export function BusinessForm({
                 ? `${selectedCountry.callingCode} phone number`
                 : "Phone number"
             }
+            maxLength={10}
+            error={error}
             testID={`${testID}-number`}
           />
         </View>
@@ -283,23 +412,29 @@ export function BusinessForm({
         </Text>
 
         <Text variant="bodySmall" color="textSecondary">
-          {
-            "Manage your organization's business information and contact details."
-          }
+          Manage your organization&apos;s business information and contact
           details.
         </Text>
       </View>
 
-      {/* Business Information */}
       <Card padding={narrow ? "md" : "lg"} elevation="sm">
         <Section title="Business Information">
           <View style={styles.grid}>
             <View style={compact ? styles.fullWidth : styles.halfWidth}>
               <Input
                 label="Business Name"
+                required
                 value={form.name}
                 onChangeText={(value) => updateOrganization("name", value)}
+                onBlur={() =>
+                  setTouched((current) => ({
+                    ...current,
+                    name: true,
+                  }))
+                }
                 placeholder="Enter business name"
+                maxLength={200}
+                error={errors.name}
               />
             </View>
 
@@ -311,6 +446,7 @@ export function BusinessForm({
                   updateOrganization("displayName", value)
                 }
                 placeholder="Customer-facing business name"
+                maxLength={100}
               />
             </View>
 
@@ -320,30 +456,41 @@ export function BusinessForm({
                 value={form.legalName ?? ""}
                 onChangeText={(value) => updateOrganization("legalName", value)}
                 placeholder="Legal business name"
+                maxLength={250}
               />
             </View>
 
             <View style={compact ? styles.fullWidth : styles.halfWidth}>
               <ReferenceSelect
                 label="Business Type"
+                required
                 value={form.organizationTypeId}
                 items={organizationTypes}
-                onChange={(value) =>
-                  updateOrganization("organizationTypeId", value)
-                }
+                onChange={() => undefined}
                 placeholder="Select business type"
+                disabled
+                error={errors.organizationTypeId}
               />
             </View>
 
             <View style={compact ? styles.fullWidth : styles.halfWidth}>
               <Input
                 label="Primary Email"
+                required
                 value={form.primaryEmail}
                 onChangeText={(value) =>
                   updateOrganization("primaryEmail", value)
                 }
+                onBlur={() =>
+                  setTouched((current) => ({
+                    ...current,
+                    primaryEmail: true,
+                  }))
+                }
                 keyboardType="email-address"
                 placeholder="business@example.com"
+                maxLength={254}
+                error={errors.primaryEmail}
               />
             </View>
 
@@ -352,10 +499,9 @@ export function BusinessForm({
                 label="Status"
                 value={form.organizationStatusId}
                 items={organizationStatuses}
-                onChange={(value) =>
-                  updateOrganization("organizationStatusId", value)
-                }
+                onChange={() => undefined}
                 placeholder="Select status"
+                disabled
               />
             </View>
 
@@ -365,6 +511,8 @@ export function BusinessForm({
                 form.primaryPhone,
                 (phone) => updatePhone("primaryPhone", phone),
                 "business-primary-phone",
+                true,
+                errors.primaryPhone,
               )}
             </View>
 
@@ -375,13 +523,13 @@ export function BusinessForm({
                 onChangeText={(value) => updateOrganization("website", value)}
                 keyboardType="url"
                 placeholder="https://example.com"
+                maxLength={300}
               />
             </View>
           </View>
         </Section>
       </Card>
 
-      {/* Business Details */}
       <Card padding={narrow ? "md" : "lg"} elevation="sm">
         <Section title="Business Details">
           <View style={styles.grid}>
@@ -393,6 +541,7 @@ export function BusinessForm({
                   updateDetails("registrationNumber", value)
                 }
                 placeholder="Registration number"
+                maxLength={50}
               />
             </View>
 
@@ -402,6 +551,7 @@ export function BusinessForm({
                 value={detailForm.gstNumber}
                 onChangeText={(value) => updateDetails("gstNumber", value)}
                 placeholder="GST / tax number"
+                maxLength={20}
               />
             </View>
 
@@ -412,6 +562,7 @@ export function BusinessForm({
                 onChangeText={(value) => updateDetails("supportEmail", value)}
                 keyboardType="email-address"
                 placeholder="support@example.com"
+                maxLength={150}
               />
             </View>
 
@@ -425,7 +576,6 @@ export function BusinessForm({
             </View>
           </View>
 
-          {/* Common Address Form */}
           <AddressForm
             value={detailForm.address}
             countries={countries}
@@ -446,11 +596,21 @@ export function BusinessForm({
             value={detailForm.aboutOrganization}
             onChangeText={(value) => updateDetails("aboutOrganization", value)}
             placeholder="Tell customers about your business"
+            maxLength={1000}
           />
         </Section>
       </Card>
 
-      {/* Actions */}
+      <BusinessPreview
+        currentOrganization={organization}
+        currentDetails={details}
+        proposedOrganization={form}
+        proposedDetails={detailForm}
+        organizationTypes={organizationTypes}
+        organizationStatuses={organizationStatuses}
+        countries={countries}
+      />
+
       <View
         style={[
           styles.actions,
@@ -466,10 +626,18 @@ export function BusinessForm({
           disabled={saving}
           onPress={() => {
             setForm(organization);
+
             setDetailForm(
               details ??
                 createEmptyDetails(organization.id, organization.updatedBy),
             );
+
+            setTouched({
+              name: false,
+              organizationTypeId: false,
+              primaryEmail: false,
+              primaryPhone: false,
+            });
           }}
           fullWidth={compact}
         />
@@ -492,7 +660,7 @@ const styles = StyleSheet.create({
 
   content: {
     width: "100%",
-    maxWidth: 1000,
+    maxWidth: 1100,
     alignSelf: "center",
     gap: 16,
   },

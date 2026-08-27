@@ -30,6 +30,7 @@ export const TYPOGRAPHY = {
   display: { fontSize: 34, lineHeight: 40, fontWeight: "700" },
   h1: { fontSize: 28, lineHeight: 34, fontWeight: "700" },
   h2: { fontSize: 22, lineHeight: 28, fontWeight: "700" },
+  h3: { fontSize: 20, lineHeight: 26, fontWeight: "700" },
   title: { fontSize: 18, lineHeight: 24, fontWeight: "600" },
   body: { fontSize: 16, lineHeight: 22, fontWeight: "400" },
   bodyStrong: { fontSize: 16, lineHeight: 22, fontWeight: "600" },
@@ -65,9 +66,16 @@ export const STATES = {
   pressedOverlay: "rgba(0,0,0,0.06)",
 } as const;
 
-const elevate = (offsetY: number, radius: number, opacity: number, elevation: number) =>
+const elevate = (
+  offsetY: number,
+  radius: number,
+  opacity: number,
+  elevation: number,
+) =>
   Platform.select({
-    web: { boxShadow: `0px ${offsetY}px ${radius}px rgba(17,24,39,${opacity})` } as object,
+    web: {
+      boxShadow: `0px ${offsetY}px ${radius}px rgba(17,24,39,${opacity})`,
+    } as object,
     default: {
       shadowColor: "#111827",
       shadowOffset: { width: 0, height: offsetY },

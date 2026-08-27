@@ -4,13 +4,18 @@ import { Image, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
-import type { CardStyle } from "@/src/core/template/template-definition";
+import type {
+  CardStyle,
+  TemplateDefinition,
+} from "@/src/core/template/template-definition";
 
 import type {
   Benefit,
   CustomerExperienceDefinition,
   MembershipProduct,
   Offer,
+  Organization,
+  OrganizationDetails,
   Redemption,
   Store,
   Status,
@@ -18,7 +23,7 @@ import type {
   TemplateDefaultContent,
 } from "@/src/core";
 
-import { getBusinessContent, services } from "@/src/core";
+import { services } from "@/src/core";
 import { useBusiness, useTranslation } from "@/src/providers";
 import { Badge, Button, Card, Modal, Section, Text } from "@/src/ui";
 
@@ -34,18 +39,8 @@ import {
 import { ExperienceTabKey, resolveExperience } from "./resolve-experience";
 
 /**
- * BusinessExperience
- *
- * This is the SINGLE customer-facing renderer used by:
- *
- * 1. Actual customer experience
- * 2. Customer Experience overall preview
- * 3. Individual Customer Experience section previews
- *
- * Preview mode does not create a second customer UI. It uses this same
- * renderer and optionally locks it to a particular tab.
+ * Customer-facing sections which can be independently previewed by Org Admin.
  */
-
 export type CustomerExperiencePreviewSection =
   | "membership"
   | "benefits"
@@ -83,52 +78,38 @@ type Props = {
   onExit: () => void;
 
   /**
-   * Optional Customer Experience configuration.
+   * Customer Experience definition used for preview.
    *
-   * When supplied, preview uses this definition instead of the currently
-   * active BusinessConfiguration customer-experience settings.
+   * When omitted, the actual active BusinessConfiguration is used.
    */
   previewDefinition?: CustomerExperienceDefinition;
 
   /**
-   * When supplied, the renderer opens directly on that customer tab.
+   * Optional organization override.
    *
-   * The tab bar remains visible in normal overall preview mode.
+   * Used by admin Current/Proposed preview so the same customer renderer
+   * can render either the persisted organization or the proposed draft.
    */
-  initialTab?: ExperienceTabKey;
+  organizationOverride?: Organization;
 
   /**
-   * Optional controlled tab state.
-   *
-   * Used by the admin Current/Proposed comparison so each preview panel
-   * owns its own tab selection. When omitted, the renderer remains
-   * self-contained and behaves as before.
+   * Optional organization-details override.
    */
+  detailsOverride?: OrganizationDetails | null;
+
+  initialTab?: ExperienceTabKey;
+
   activeTab?: ExperienceTabKey;
   onTabChange?: (tab: ExperienceTabKey) => void;
 
-  /**
-   * Preview mode removes actions which should not be available while an
-   * administrator is reviewing the customer experience.
-   */
   previewMode?: boolean;
 
-  /**
-   * In individual section preview, only the selected customer tab is shown.
-   * The tab bar is still available unless hideTabBar is explicitly true.
-   */
   hideTabBar?: boolean;
 
-  /**
-   * Admin-only callback used by the overall preview to open the matching
-   * individual preview from inside the customer tab itself.
-   */
   onPreviewTab?: (tab: ExperienceTabKey) => void;
 
   /**
-   * When supplied, preview only this individual customer-facing section.
-   * This deliberately bypasses the customer tab as a whole so an individual
-   * preview never renders unrelated sections from the same tab.
+   * When specified, only this customer-facing section is rendered.
    */
   previewSection?: CustomerExperiencePreviewSection;
 };
@@ -149,6 +130,8 @@ export function BusinessExperience({
   onJoin,
   onExit,
   previewDefinition,
+  organizationOverride,
+  detailsOverride,
   initialTab = "card",
   activeTab,
   onTabChange,
@@ -157,17 +140,28 @@ export function BusinessExperience({
   onPreviewTab,
   previewSection,
 }: Props) {
-  const { organization, configuration, template, theme } = useBusiness();
+  const {
+    organization: contextOrganization,
+    configuration,
+    template,
+    theme,
+  } = useBusiness();
+
   const { t, formatDate, formatMoney } = useTranslation();
   const insets = useSafeAreaInsets();
 
   /**
-   * Build the configuration used by resolveExperience.
+   * The actual customer renderer can receive a proposed organization/details
+   * while leaving the rest of the application context untouched.
+   */
+  const organization = organizationOverride ?? contextOrganization;
+
+  /**
+   * BusinessExperience's customer-facing business information is ultimately
+   * resolved by resolveExperience().
    *
-   * Actual customer experience continues to use BusinessConfiguration.
-   *
-   * Preview uses the CustomerExperienceDefinition so the proposed draft
-   * immediately affects the rendered experience.
+   * The details override is therefore supplied through the configuration
+   * object used by the resolver where the resolver supports it.
    */
   const resolvedConfiguration = useMemo(() => {
     if (!previewDefinition) {
@@ -215,11 +209,6 @@ export function BusinessExperience({
     };
   }, [configuration, previewDefinition]);
 
-  /**
-   * Content used by the resolver.
-   *
-   * Draft preview uses the content stored inside CustomerExperienceDefinition.
-   */
   const resolvedContent = previewDefinition?.content ?? content;
 
   const [tab, setTab] = useState<ExperienceTabKey>(initialTab);
@@ -255,6 +244,7 @@ export function BusinessExperience({
         stores,
         redemptions,
         formatDate,
+        detailsOverride,
       }),
     [
       organization,
@@ -269,12 +259,14 @@ export function BusinessExperience({
       stores,
       redemptions,
       formatDate,
+      detailsOverride,
     ],
   );
 
   const cardStyle: CardStyle =
     previewDefinition?.membership.cardStyle ??
     configuration.customerExperience.cardStyle;
+
   /* ------------------------------------------------------------------ */
   /* Redemption                                                         */
   /* ------------------------------------------------------------------ */
@@ -340,10 +332,8 @@ export function BusinessExperience({
       token: `RDM-${subscription.id
         .toUpperCase()
         .replace(/[^A-Z0-9]/g, "")}-${Date.now().toString(36).toUpperCase()}`,
-
       customerId: organizationUser.userId,
       organizationId: organizationUser.organizationId,
-
       subscriptionId: subscription.id,
       benefitIds: ids,
       createdAt: new Date().toISOString(),
@@ -485,15 +475,6 @@ export function BusinessExperience({
           />
         </Section>
       ) : previewMode ? (
-        /**
-         * Configuration preview fallback.
-         *
-         * Actual customer mode uses exp.membership above because that is
-         * domain-derived from Subscription + MembershipProduct.
-         *
-         * Preview mode can still show the configured membership card even
-         * when there is no selected customer subscription.
-         */
         <Section title={t("experience.yourMemberships")}>
           <MembershipCard
             testID="experience-preview-membership-card"
@@ -766,9 +747,7 @@ export function BusinessExperience({
     const calendarMonth = calendarBaseDate.getMonth();
 
     const firstDayOfMonth = new Date(calendarYear, calendarMonth, 1);
-
     const firstWeekday = (firstDayOfMonth.getDay() + 6) % 7;
-
     const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
 
     const calendarCells: Array<{
@@ -1383,6 +1362,57 @@ export function BusinessExperience({
   })();
 
   /* ------------------------------------------------------------------ */
+  /* Business information                                               */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * The customer-facing Business Information section is rendered in one
+   * place and reused by both the real Profile tab and the Org Admin
+   * individual-section preview. This prevents the admin preview from
+   * drifting away from the actual customer experience.
+   */
+  const BusinessInformationSection = exp.businessInformation ? (
+    <Section title={t("experience.about")}>
+      <Card padding="lg">
+        <View style={{ gap: theme.spacing.md }}>
+          {exp.businessInformation.about ? (
+            <Text variant="body" color="textSecondary">
+              {exp.businessInformation.about}
+            </Text>
+          ) : null}
+
+          {exp.businessInformation.supportEmail ? (
+            <InfoRow
+              icon="mail-outline"
+              label={t("experience.email")}
+              value={exp.businessInformation.supportEmail}
+              theme={theme}
+            />
+          ) : null}
+
+          {exp.businessInformation.supportPhone ? (
+            <InfoRow
+              icon="call-outline"
+              label={t("experience.phone")}
+              value={exp.businessInformation.supportPhone}
+              theme={theme}
+            />
+          ) : null}
+
+          {exp.businessInformation.website ? (
+            <InfoRow
+              icon="globe-outline"
+              label={t("experience.website")}
+              value={exp.businessInformation.website}
+              theme={theme}
+            />
+          ) : null}
+        </View>
+      </Card>
+    </Section>
+  ) : null;
+
+  /* ------------------------------------------------------------------ */
   /* Profile                                                            */
   /* ------------------------------------------------------------------ */
 
@@ -1426,38 +1456,7 @@ export function BusinessExperience({
         </Section>
       ) : null}
 
-      {exp.businessInformation ? (
-        <Section title={t("experience.about")}>
-          <Card padding="lg">
-            <View style={{ gap: theme.spacing.md }}>
-              <Text variant="body" color="textSecondary">
-                {exp.businessInformation.about}
-              </Text>
-
-              <InfoRow
-                icon="mail-outline"
-                label={t("experience.email")}
-                value={exp.businessInformation.supportEmail}
-                theme={theme}
-              />
-
-              <InfoRow
-                icon="call-outline"
-                label={t("experience.phone")}
-                value={exp.businessInformation.supportPhone}
-                theme={theme}
-              />
-
-              <InfoRow
-                icon="globe-outline"
-                label={t("experience.website")}
-                value={exp.businessInformation.website}
-                theme={theme}
-              />
-            </View>
-          </Card>
-        </Section>
-      ) : null}
+      {BusinessInformationSection}
 
       {exp.businessPreferences ? (
         <Section title={t("experience.preferences")}>
@@ -1641,44 +1640,13 @@ export function BusinessExperience({
             style={{ gap: theme.spacing.lg }}
             testID="experience-preview-section-business-information"
           >
-            <Section title={t("experience.about")}>
-              {exp.businessInformation ? (
-                <Card padding="lg">
-                  <View style={{ gap: theme.spacing.md }}>
-                    <Text variant="body" color="textSecondary">
-                      {exp.businessInformation.about}
-                    </Text>
-
-                    <InfoRow
-                      icon="mail-outline"
-                      label={t("experience.email")}
-                      value={exp.businessInformation.supportEmail}
-                      theme={theme}
-                    />
-
-                    <InfoRow
-                      icon="call-outline"
-                      label={t("experience.phone")}
-                      value={exp.businessInformation.supportPhone}
-                      theme={theme}
-                    />
-
-                    <InfoRow
-                      icon="globe-outline"
-                      label={t("experience.website")}
-                      value={exp.businessInformation.website}
-                      theme={theme}
-                    />
-                  </View>
-                </Card>
-              ) : (
-                <Card padding="lg">
-                  <Text variant="bodySmall" color="textMuted">
-                    Business information is not configured for this template.
-                  </Text>
-                </Card>
-              )}
-            </Section>
+            {BusinessInformationSection ?? (
+              <Card padding="lg">
+                <Text variant="bodySmall" color="textMuted">
+                  Business information is not configured for this template.
+                </Text>
+              </Card>
+            )}
           </View>
         );
 
@@ -1768,10 +1736,6 @@ export function BusinessExperience({
     ? individualSectionContent
     : tabContent;
 
-  /* ------------------------------------------------------------------ */
-  /* Layout                                                             */
-  /* ------------------------------------------------------------------ */
-
   return (
     <View
       style={{
@@ -1780,7 +1744,6 @@ export function BusinessExperience({
         paddingTop: insets.top,
       }}
     >
-      {/* Only show the platform return action outside the customer app. */}
       {previewMode ? (
         <View
           style={{
@@ -1813,7 +1776,6 @@ export function BusinessExperience({
         </View>
       ) : null}
 
-      {/* Branded customer header */}
       <View
         style={{
           flexDirection: "row",
@@ -1918,7 +1880,6 @@ export function BusinessExperience({
         {renderedContent}
       </ScrollView>
 
-      {/* Customer navigation */}
       {!hideTabBar ? (
         <View
           style={{
