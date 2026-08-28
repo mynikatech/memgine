@@ -4,6 +4,7 @@ import type {
   OnboardOrganizationInput,
   OnboardOrganizationResult,
 } from "../services/service-contracts";
+import { services } from "../services/service-registry";
 
 import { getDefaultBusinessTemplate } from "../defaults/default-business-template";
 
@@ -104,6 +105,7 @@ export async function onboardOrganization(
         callingCode: primaryPhoneCallingCode,
         number: primaryPhoneNumber,
       },
+      useDefaultBusinessContent: input.useDefaultBusinessContent,
     },
     template,
   );

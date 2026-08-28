@@ -1,5 +1,6 @@
 import { asyncStorageStore } from "@/src/data/persistence/local/async-storage-store";
 import { LOCAL_DATA_KEYS } from "@/src/data/persistence/local/keys";
+
 import type {
   ID,
   Organization,
@@ -34,11 +35,9 @@ export class LocalOrganizationRepository implements OrganizationRepository {
       asyncStorageStore.get<OrganizationAccount>(
         LOCAL_DATA_KEYS.organizationAccount(organizationId),
       ),
-
       asyncStorageStore.get<OrganizationDetails>(
         LOCAL_DATA_KEYS.organizationDetails(organizationId),
       ),
-
       asyncStorageStore.get<OrganizationBranding>(
         LOCAL_DATA_KEYS.organizationBranding(organizationId),
       ),
@@ -77,35 +76,28 @@ export class LocalOrganizationRepository implements OrganizationRepository {
       );
     }
 
-    const organizations = await this.list();
+    const organizations =
+      (await asyncStorageStore.get<Organization[]>(
+        LOCAL_DATA_KEYS.organizationList(),
+      )) ?? [];
 
-    /*
-     * Persist the organization-owned aggregate.
-     *
-     * These are independent entity records, not a copy of
-     * the platform template.
-     */
     await Promise.all([
       asyncStorageStore.set(
         LOCAL_DATA_KEYS.organization(input.organization.id),
         input.organization,
       ),
-
       asyncStorageStore.set(
         LOCAL_DATA_KEYS.organizationAccount(input.organization.id),
         input.account,
       ),
-
       asyncStorageStore.set(
         LOCAL_DATA_KEYS.organizationDetails(input.organization.id),
         input.details,
       ),
-
       asyncStorageStore.set(
         LOCAL_DATA_KEYS.organizationBranding(input.organization.id),
         input.branding,
       ),
-
       asyncStorageStore.set(LOCAL_DATA_KEYS.organizationList(), [
         ...organizations,
         input.organization,
@@ -113,5 +105,72 @@ export class LocalOrganizationRepository implements OrganizationRepository {
     ]);
 
     return input.organization;
+  }
+
+  async update(
+    organizationId: ID,
+    organization: Organization,
+  ): Promise<Organization> {
+    const existing = await this.get(organizationId);
+
+    if (!existing) {
+      throw new Error(`Organization '${organizationId}' was not found.`);
+    }
+
+    if (organization.id !== organizationId) {
+      throw new Error(
+        `Organization ID mismatch. Expected '${organizationId}', received '${organization.id}'.`,
+      );
+    }
+
+    const organizations =
+      (await asyncStorageStore.get<Organization[]>(
+        LOCAL_DATA_KEYS.organizationList(),
+      )) ?? [];
+
+    const updatedOrganizations = organizations.some(
+      (item) => item.id === organizationId,
+    )
+      ? organizations.map((item) =>
+          item.id === organizationId ? organization : item,
+        )
+      : [...organizations, organization];
+
+    await Promise.all([
+      asyncStorageStore.set(
+        LOCAL_DATA_KEYS.organization(organizationId),
+        organization,
+      ),
+      asyncStorageStore.set(
+        LOCAL_DATA_KEYS.organizationList(),
+        updatedOrganizations,
+      ),
+    ]);
+
+    return organization;
+  }
+
+  async updateDetails(
+    organizationId: ID,
+    details: OrganizationDetails,
+  ): Promise<OrganizationDetails> {
+    const existing = await this.get(organizationId);
+
+    if (!existing) {
+      throw new Error(`Organization '${organizationId}' was not found.`);
+    }
+
+    if (details.organizationId !== organizationId) {
+      throw new Error(
+        `Organization Details ID mismatch. Expected organization '${organizationId}', received '${details.organizationId}'.`,
+      );
+    }
+
+    await asyncStorageStore.set(
+      LOCAL_DATA_KEYS.organizationDetails(organizationId),
+      details,
+    );
+
+    return details;
   }
 }

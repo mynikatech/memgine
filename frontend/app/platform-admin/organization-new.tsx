@@ -10,7 +10,7 @@ import {
 
 import { useBusiness, useTheme } from "@/src/providers";
 
-import { Input, PhoneField, ReferenceSelect, Text } from "@/src/ui";
+import { Input, PhoneField, ReferenceSelect, Text, Checkbox } from "@/src/ui";
 
 import type { PhoneValue } from "@/src/ui/PhoneField";
 
@@ -33,6 +33,8 @@ export default function OrganizationNew() {
   const [loadingCountries, setLoadingCountries] = useState(true);
 
   const [businessName, setBusinessName] = useState("");
+  const [useDefaultBusinessContent, setUseDefaultBusinessContent] =
+    useState(false);
   const [organizationTypeId, setOrganizationTypeId] = useState("");
 
   const [primaryEmail, setPrimaryEmail] = useState("");
@@ -240,6 +242,7 @@ export default function OrganizationNew() {
           callingCode: primaryPhone.callingCode,
           number: primaryPhone.number,
         },
+        useDefaultBusinessContent,
       });
 
       console.log("PLATFORM ORGANIZATION ONBOARDING COMPLETE", {
@@ -343,6 +346,15 @@ export default function OrganizationNew() {
           disabled={busy || loadingTypes}
           error={typeError}
           testID="organization-business-type"
+        />
+
+        <Checkbox
+          value={useDefaultBusinessContent}
+          onValueChange={setUseDefaultBusinessContent}
+          label="Use default business content"
+          description="Start this business with the standard content for its selected business type. You can customize it after onboarding."
+          disabled={busy || loadingTypes}
+          testID="organization-use-default-business-content"
         />
 
         <Input

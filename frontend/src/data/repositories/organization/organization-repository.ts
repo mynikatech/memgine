@@ -23,4 +23,11 @@ export interface OrganizationRepository {
   list(): Promise<Organization[]>;
 
   create(input: CreateOrganizationRepositoryInput): Promise<Organization>;
+
+  update(organizationId: ID, organization: Organization): Promise<Organization>;
+
+  updateDetails(
+    organizationId: ID,
+    details: OrganizationDetails,
+  ): Promise<OrganizationDetails>;
 }

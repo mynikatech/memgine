@@ -1,4 +1,5 @@
 import { StyleSheet, View } from "react-native";
+import { useEffect, useState } from "react";
 
 import type {
   Address,
@@ -9,7 +10,7 @@ import type {
   Status,
 } from "@/src/core";
 
-import { getBusinessContent } from "@/src/core";
+import { services } from "@/src/core";
 import { useTheme } from "@/src/providers";
 
 import { Badge, Card, Section, Text } from "@/src/ui";
@@ -206,6 +207,13 @@ function buildDiffs({
   return diffs;
 }
 
+async function getCustomerExperienceContent(organizationId: string) {
+  const experience =
+    await services.customerExperience.getCustomerExperience(organizationId);
+
+  return experience?.experienceDefinition.content ?? null;
+}
+
 function CustomerBusinessPreview({
   organization,
   details,
@@ -213,7 +221,86 @@ function CustomerBusinessPreview({
   organization: Organization;
   details: OrganizationDetails | null;
 }) {
-  const content = getBusinessContent(organization.id);
+  const [content, setContent] =
+    useState<Awaited<ReturnType<typeof getCustomerExperienceContent>>>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function load() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const result = await getCustomerExperienceContent(organization.id);
+
+        if (!mounted) {
+          return;
+        }
+
+        setContent(result);
+      } catch (loadError) {
+        if (!mounted) {
+          return;
+        }
+
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Unable to load customer experience.",
+        );
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void load();
+
+    return () => {
+      mounted = false;
+    };
+  }, [organization.id]);
+
+  if (loading) {
+    return (
+      <View style={styles.customerFrame}>
+        <View style={styles.previewState}>
+          <Text variant="bodySmall" color="textSecondary">
+            Loading customer preview...
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.customerFrame}>
+        <View style={styles.previewState}>
+          <Text variant="bodySmall" color="textSecondary">
+            {error}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (!content) {
+    return (
+      <View style={styles.customerFrame}>
+        <View style={styles.previewState}>
+          <Text variant="bodySmall" color="textSecondary">
+            Customer experience is not available yet.
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.customerFrame} testID="business-customer-preview">
@@ -260,6 +347,7 @@ export function BusinessPreview(props: BusinessPreviewProps) {
             <Text variant="title" color="text">
               Current
             </Text>
+
             <Badge label="LIVE" tone="brand" />
           </View>
 
@@ -267,6 +355,7 @@ export function BusinessPreview(props: BusinessPreviewProps) {
             <Text variant="title" color="text">
               Proposed
             </Text>
+
             <Badge label="PROPOSED" tone="brand" />
           </View>
         </View>
@@ -288,10 +377,15 @@ export function BusinessPreview(props: BusinessPreviewProps) {
         </View>
 
         <View
-          style={[styles.diffSection, { borderTopColor: theme.colors.border }]}
+          style={[
+            styles.diffSection,
+            {
+              borderTopColor: theme.colors.border,
+            },
+          ]}
         >
           <View style={styles.diffHeader}>
-            <View style={{ flex: 1, gap: 2 }}>
+            <View style={styles.diffHeaderText}>
               <Text variant="title" color="text">
                 Changes in this update
               </Text>
@@ -299,7 +393,9 @@ export function BusinessPreview(props: BusinessPreviewProps) {
               <Text variant="bodySmall" color="textSecondary">
                 {diffs.length === 0
                   ? "There are no unsaved changes."
-                  : `${diffs.length} ${diffs.length === 1 ? "change" : "changes"} will be saved.`}
+                  : `${diffs.length} ${
+                      diffs.length === 1 ? "change" : "changes"
+                    } will be saved.`}
               </Text>
             </View>
           </View>
@@ -308,7 +404,9 @@ export function BusinessPreview(props: BusinessPreviewProps) {
             <View
               style={[
                 styles.noChanges,
-                { backgroundColor: theme.colors.surfaceAlt },
+                {
+                  backgroundColor: theme.colors.surfaceAlt,
+                },
               ]}
             >
               <Text variant="body" color="textSecondary">
@@ -320,7 +418,12 @@ export function BusinessPreview(props: BusinessPreviewProps) {
               {diffs.map((diff) => (
                 <View
                   key={diff.label}
-                  style={[styles.diffRow, { borderColor: theme.colors.border }]}
+                  style={[
+                    styles.diffRow,
+                    {
+                      borderColor: theme.colors.border,
+                    },
+                  ]}
                 >
                   <Text variant="label" color="text">
                     {diff.label}
@@ -331,6 +434,7 @@ export function BusinessPreview(props: BusinessPreviewProps) {
                       <Text variant="caption" color="textMuted">
                         Current
                       </Text>
+
                       <Text variant="bodySmall" color="textSecondary">
                         {diff.current}
                       </Text>
@@ -344,6 +448,7 @@ export function BusinessPreview(props: BusinessPreviewProps) {
                       <Text variant="caption" color="textMuted">
                         Proposed
                       </Text>
+
                       <Text variant="bodySmall" color="text">
                         {diff.proposed}
                       </Text>
@@ -391,6 +496,13 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
 
+  previewState: {
+    minHeight: 520,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+
   diffSection: {
     marginTop: 20,
     paddingTop: 20,
@@ -401,6 +513,11 @@ const styles = StyleSheet.create({
   diffHeader: {
     flexDirection: "row",
     alignItems: "center",
+  },
+
+  diffHeaderText: {
+    flex: 1,
+    gap: 2,
   },
 
   noChanges: {

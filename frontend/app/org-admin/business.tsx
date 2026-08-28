@@ -12,6 +12,8 @@ import { BusinessForm } from "@/src/ui/admin/BusinessForm";
 
 export default function OrgAdminBusiness() {
   const { organization } = useBusiness();
+  const [currentOrganization, setCurrentOrganization] =
+    useState<Organization>(organization);
 
   const [details, setDetails] = useState<OrganizationDetails | null>(null);
 
@@ -172,7 +174,7 @@ export default function OrgAdminBusiness() {
 
   return (
     <BusinessForm
-      organization={organization}
+      organization={currentOrganization}
       details={details}
       countries={countries}
       regions={regions}
@@ -186,17 +188,20 @@ export default function OrgAdminBusiness() {
         updatedDetails: OrganizationDetails,
       ) => {
         try {
-          await services.organization.updateOrganization(
-            organization.id,
-            updatedOrganization,
-          );
+          const savedOrganization =
+            await services.organization.updateOrganization(
+              organization.id,
+              updatedOrganization,
+            );
 
-          await services.organization.updateOrganizationDetails(
-            organization.id,
-            updatedDetails,
-          );
+          const savedDetails =
+            await services.organization.updateOrganizationDetails(
+              organization.id,
+              updatedDetails,
+            );
 
-          setDetails(updatedDetails);
+          setCurrentOrganization(savedOrganization);
+          setDetails(savedDetails);
 
           Alert.alert(
             "Business updated",

@@ -6,7 +6,7 @@ import type {
   OrganizationRepository,
 } from "@/src/data/repositories/organization/organization-repository";
 
-import type { Organization } from "@/src/core";
+import type { Organization, OrganizationDetails } from "@/src/core";
 
 import { apiFailure, apiSuccess, type ApiResult } from "./result";
 
@@ -63,6 +63,59 @@ export class OrganizationApi {
         error instanceof Error
           ? error.message
           : "Unable to create organization.",
+      );
+    }
+  }
+
+  async update(
+    organizationId: ID,
+    organization: Organization,
+  ): Promise<ApiResult<Organization>> {
+    try {
+      return apiSuccess(
+        await this.repository.update(organizationId, organization),
+      );
+    } catch (error) {
+      return apiFailure(
+        "ORGANIZATION_UPDATE_FAILED",
+        error instanceof Error
+          ? error.message
+          : "Unable to update organization.",
+      );
+    }
+  }
+
+  async updateDetails(
+    organizationId: ID,
+    details: OrganizationDetails,
+  ): Promise<ApiResult<OrganizationDetails>> {
+    try {
+      return apiSuccess(
+        await this.repository.updateDetails(organizationId, details),
+      );
+    } catch (error) {
+      return apiFailure(
+        "ORGANIZATION_DETAILS_UPDATE_FAILED",
+        error instanceof Error
+          ? error.message
+          : "Unable to update organization details.",
+      );
+    }
+  }
+
+  async getDetails(
+    organizationId: ID,
+  ): Promise<ApiResult<OrganizationDetails | null>> {
+    try {
+      const aggregate = await this.repository.getAggregate(organizationId);
+
+      return apiSuccess(aggregate?.details ?? null);
+    } catch (error) {
+      return apiFailure(
+        "ORGANIZATION_DETAILS_LOAD_FAILED",
+        error instanceof Error
+          ? error.message
+          : "Unable to load organization details.",
       );
     }
   }

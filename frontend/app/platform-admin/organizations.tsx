@@ -1,10 +1,14 @@
 import { router } from "expo-router";
+
 import { useCallback, useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+
+import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 
-import { services, type Organization } from "@/src/core";
+import { DEFAULT_ACTIVE_ORG_ID, services, type Organization } from "@/src/core";
+
+import { resetLocalOrganizations } from "@/src/data/persistence/local/reset";
 
 import { useBusiness, useTheme } from "@/src/providers";
 
@@ -17,9 +21,7 @@ export default function PlatformOrganizations() {
     useBusiness();
 
   const [organizations, setOrganizations] = useState<Organization[]>([]);
-
   const [loading, setLoading] = useState(true);
-
   const [error, setError] = useState("");
 
   const loadOrganizations = useCallback(async () => {
@@ -39,6 +41,54 @@ export default function PlatformOrganizations() {
     }
   }, []);
 
+  /**
+   * Development-only reset.
+   *
+   * Removes locally persisted organizations and then restores
+   * the application to the default active organization.
+   *
+   * The reset helper clears persistent local organization data
+   * and the persisted active-organization value. We also update
+   * the BusinessProvider state here because AsyncStorage changes
+   * do not automatically update React state in the running app.
+   */
+  const handleResetLocalOrganizations = useCallback(async () => {
+    console.log("[PlatformOrganizations] RESET BUTTON PRESSED");
+
+    try {
+      console.log("[PlatformOrganizations] calling reset...");
+
+      await resetLocalOrganizations();
+
+      console.log("[PlatformOrganizations] RESET COMPLETE");
+
+      /*
+       * Reset the in-memory active organization as well.
+       *
+       * This is necessary because clearing AsyncStorage does not
+       * automatically change activeOrgId inside BusinessProvider.
+       */
+      setActiveBusiness(DEFAULT_ACTIVE_ORG_ID);
+
+      console.log(
+        "[PlatformOrganizations] ACTIVE ORGANIZATION RESET TO DEFAULT",
+      );
+
+      await loadOrganizations();
+
+      console.log("[PlatformOrganizations] ORGANIZATIONS RELOADED");
+    } catch (err) {
+      console.error("[PlatformOrganizations] RESET FAILED", err);
+
+      Alert.alert(
+        "Reset failed",
+        err instanceof Error
+          ? err.message
+          : "Unable to reset local organization data.",
+      );
+    }
+  }, [loadOrganizations, setActiveBusiness]);
+
   useEffect(() => {
     void loadOrganizations();
   }, [loadOrganizations]);
@@ -57,7 +107,6 @@ export default function PlatformOrganizations() {
 
   const openOrganization = (organizationId: string) => {
     setActiveBusiness(organizationId);
-
     router.replace(APP_ROUTES.orgAdmin.root);
   };
 
@@ -83,23 +132,44 @@ export default function PlatformOrganizations() {
           </Text>
         </View>
 
-        <Pressable
-          onPress={() =>
-            router.push(APP_ROUTES.platformAdmin.organizationNew as never)
-          }
-          style={({ pressed }) => [
-            styles.primaryButton,
-            {
-              backgroundColor: theme.colors.primary,
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() =>
+              router.push(APP_ROUTES.platformAdmin.organizationNew as never)
+            }
+            style={({ pressed }) => [
+              styles.primaryButton,
+              {
+                backgroundColor: theme.colors.primary,
+                opacity: pressed ? theme.states.pressedOpacity : 1,
+              },
+            ]}
+          >
+            <Text variant="bodyStrong" color="text">
+              + Onboard New Business
+            </Text>
+          </Pressable>
 
-              opacity: pressed ? theme.states.pressedOpacity : 1,
-            },
-          ]}
-        >
-          <Text variant="bodyStrong" color="text">
-            + Onboard New Business
-          </Text>
-        </Pressable>
+          {__DEV__ ? (
+            <Pressable
+              onPress={handleResetLocalOrganizations}
+              style={({ pressed }) => [
+                styles.resetButton,
+                {
+                  borderColor: theme.colors.border,
+                  backgroundColor: pressed
+                    ? theme.colors.surfaceAlt
+                    : theme.colors.card,
+                  opacity: pressed ? theme.states.pressedOpacity : 1,
+                },
+              ]}
+            >
+              <Text variant="bodyStrong" color="text">
+                Reset Local Data
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
       {loading ? (
@@ -199,7 +269,6 @@ function OrganizationCard({
         styles.organizationCard,
         {
           backgroundColor: theme.colors.card,
-
           borderColor: isCurrent ? theme.colors.primary : theme.colors.border,
         },
       ]}
@@ -241,7 +310,6 @@ function OrganizationCard({
           styles.openButton,
           {
             borderColor: theme.colors.border,
-
             backgroundColor: pressed
               ? theme.colors.surfaceAlt
               : theme.colors.card,
@@ -278,10 +346,25 @@ const styles = StyleSheet.create({
     gap: 5,
   },
 
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
   primaryButton: {
     minHeight: 46,
     paddingHorizontal: 18,
     borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  resetButton: {
+    minHeight: 46,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },

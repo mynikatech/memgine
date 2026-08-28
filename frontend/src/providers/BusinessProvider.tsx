@@ -164,32 +164,73 @@ export function BusinessProvider({
 
     let cancelled = false;
 
-    const legacy = BUSINESS_CONTEXTS[activeOrgId];
+    const resolve = async () => {
+      /*
+       * Existing legacy organizations can still be resolved directly
+       * from the legacy business-context registry.
+       */
+      const legacy = BUSINESS_CONTEXTS[activeOrgId];
 
-    if (legacy) {
-      setResolvedContext(legacy);
-      setResolving(false);
-      return;
-    }
-
-    setResolving(true);
-
-    void resolveOrganizationContext(activeOrgId)
-      .then((context) => {
+      if (legacy) {
         if (cancelled) {
           return;
         }
 
-        if (!context) {
-          throw new Error(
-            `Active organization '${activeOrgId}' could not be resolved.`,
-          );
+        setResolvedContext(legacy);
+        setResolving(false);
+        return;
+      }
+
+      setResolving(true);
+
+      try {
+        const context = await resolveOrganizationContext(activeOrgId);
+
+        if (cancelled) {
+          return;
         }
 
-        setResolvedContext(context);
-        setResolving(false);
-      })
-      .catch((error) => {
+        if (context) {
+          setResolvedContext(context);
+          setResolving(false);
+          return;
+        }
+
+        /*
+         * The persisted active organization may no longer exist.
+         *
+         * This can happen during development when local organization
+         * data is reset, and in production if an organization is
+         * deactivated/deleted while a user still has it as their
+         * active organization.
+         *
+         * Fall back to the default valid organization instead of
+         * crashing the entire application.
+         */
+        if (activeOrgId !== DEFAULT_ACTIVE_ORG_ID) {
+          console.warn(
+            `[BusinessProvider] active organization '${activeOrgId}' could not be resolved. ` +
+              `Falling back to '${DEFAULT_ACTIVE_ORG_ID}'.`,
+          );
+
+          setActiveOrgId(DEFAULT_ACTIVE_ORG_ID);
+
+          void activeOrganizationStore
+            .set(DEFAULT_ACTIVE_ORG_ID)
+            .catch((error) => {
+              console.error(
+                "[BusinessProvider] fallback organization persistence failed:",
+                error,
+              );
+            });
+
+          return;
+        }
+
+        throw new Error(
+          `Default active organization '${DEFAULT_ACTIVE_ORG_ID}' could not be resolved.`,
+        );
+      } catch (error) {
         if (cancelled) {
           return;
         }
@@ -199,9 +240,37 @@ export function BusinessProvider({
           error,
         );
 
+        /*
+         * If the stored organization became invalid, recover by using
+         * the default organization rather than leaving the application
+         * permanently stuck on an invalid tenant.
+         */
+        if (activeOrgId !== DEFAULT_ACTIVE_ORG_ID) {
+          console.warn(
+            `[BusinessProvider] recovering from invalid active organization '${activeOrgId}'. ` +
+              `Using '${DEFAULT_ACTIVE_ORG_ID}'.`,
+          );
+
+          setActiveOrgId(DEFAULT_ACTIVE_ORG_ID);
+
+          void activeOrganizationStore
+            .set(DEFAULT_ACTIVE_ORG_ID)
+            .catch((persistError) => {
+              console.error(
+                "[BusinessProvider] fallback organization persistence failed:",
+                persistError,
+              );
+            });
+
+          return;
+        }
+
         setResolvedContext(null);
         setResolving(false);
-      });
+      }
+    };
+
+    void resolve();
 
     return () => {
       cancelled = true;

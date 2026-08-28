@@ -38,6 +38,7 @@ export function materializeOrganization(
       callingCode: string;
       number: string;
     };
+    useDefaultBusinessContent: boolean;
   },
   template: DefaultBusinessTemplate,
 ): MaterializedOrganization {
@@ -60,7 +61,7 @@ export function materializeOrganization(
 
     organizationTypeId: input.organizationTypeId,
 
-    organizationStatusId: "entity-status-organization-active",
+    organizationStatusId: "status-active",
 
     category: template.template.category,
 
@@ -108,7 +109,9 @@ export function materializeOrganization(
       callingCode: input.primaryPhone.callingCode,
       number: "",
     },
-    aboutOrganization: businessInformation?.about ?? "",
+    aboutOrganization: input.useDefaultBusinessContent
+      ? (businessInformation?.about ?? "")
+      : "",
 
     address: {
       line1: "",

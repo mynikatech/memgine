@@ -103,6 +103,8 @@ export interface OnboardOrganizationInput {
     callingCode: string;
     number: string;
   };
+
+  useDefaultBusinessContent: boolean;
 }
 
 export interface OnboardOrganizationResult {
