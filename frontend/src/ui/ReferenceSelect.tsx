@@ -123,7 +123,9 @@ export function ReferenceSelect<T>({
           borderColor: error ? theme.colors.danger : theme.colors.border,
           borderRadius: theme.radius.md,
           paddingHorizontal: theme.spacing.md,
-          backgroundColor: theme.colors.background,
+          backgroundColor: disabled
+            ? theme.colors.surfaceAlt
+            : theme.colors.background,
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
@@ -138,9 +140,15 @@ export function ReferenceSelect<T>({
           {selected ? renderItemLabel(selected) : placeholder}
         </Text>
 
-        <Text variant="bodySmall" color="textMuted">
-          ▾
-        </Text>
+        {disabled ? (
+          <Text variant="caption" color="textMuted">
+            Read only
+          </Text>
+        ) : (
+          <Text variant="bodySmall" color="textMuted">
+            ▾
+          </Text>
+        )}
       </Pressable>
 
       {error ? (

@@ -84,14 +84,16 @@ export function Input({
           onBlur?.();
         }}
         style={{
-          borderWidth: 1,
+          borderWidth: focused || error ? 1.5 : 1,
           borderColor,
           borderRadius: theme.radius.md,
           paddingHorizontal: theme.spacing.md,
           paddingVertical: 12,
           fontSize: theme.typography.body.fontSize,
-          color: theme.colors.text,
-          backgroundColor: theme.colors.background,
+          color: editable ? theme.colors.text : theme.colors.textSecondary,
+          backgroundColor: editable
+            ? theme.colors.background
+            : theme.colors.surfaceAlt,
           minHeight: 48,
         }}
       />

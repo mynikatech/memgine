@@ -324,6 +324,21 @@ export function BusinessForm({
     }
   };
 
+  const resetForm = () => {
+    setForm(organization);
+
+    setDetailForm(
+      details ?? createEmptyDetails(organization.id, organization.updatedBy),
+    );
+
+    setTouched({
+      name: false,
+      organizationTypeId: false,
+      primaryEmail: false,
+      primaryPhone: false,
+    });
+  };
+
   const phoneField = (
     label: string,
     phone: PhoneNumber,
@@ -337,59 +352,61 @@ export function BusinessForm({
     );
 
     return (
-      <View style={[styles.phoneRow, compact && styles.phoneRowCompact]}>
-        <View style={compact ? styles.fullWidth : styles.phoneCountry}>
-          <ReferenceSelect
-            label={`${label} — Country / ISD`}
-            required={required}
-            value={phone.countryId}
-            items={countries}
-            onChange={(countryId) => {
-              const country = countries.find((item) => item.id === countryId);
+      <View style={styles.phoneFieldGroup}>
+        <View style={[styles.phoneRow, compact && styles.phoneRowCompact]}>
+          <View style={compact ? styles.fullWidth : styles.phoneCountry}>
+            <ReferenceSelect
+              label={`${label} — Country / ISD`}
+              required={required}
+              value={phone.countryId}
+              items={countries}
+              onChange={(countryId) => {
+                const country = countries.find((item) => item.id === countryId);
 
-              if (!country) {
-                return;
+                if (!country) {
+                  return;
+                }
+
+                onChange({
+                  ...phone,
+                  countryId: country.id,
+                  callingCode: country.callingCode,
+                });
+              }}
+              placeholder="Select country"
+              testID={`${testID}-country`}
+              renderItemLabel={(item) => {
+                const country = item as CountryReference;
+
+                return `${countryFlag(country.countryCode)} ${
+                  country.name
+                } (${country.callingCode})`;
+              }}
+            />
+          </View>
+
+          <View style={compact ? styles.fullWidth : styles.phoneNumber}>
+            <Input
+              label={`${label} Number`}
+              required={required}
+              value={phone.number}
+              onChangeText={(number) =>
+                onChange({
+                  ...phone,
+                  number: number.replace(/\D/g, "").slice(0, 10),
+                })
               }
-
-              onChange({
-                ...phone,
-                countryId: country.id,
-                callingCode: country.callingCode,
-              });
-            }}
-            placeholder="Select country"
-            testID={`${testID}-country`}
-            renderItemLabel={(item) => {
-              const country = item as CountryReference;
-
-              return `${countryFlag(
-                country.countryCode,
-              )} ${country.name} (${country.callingCode})`;
-            }}
-          />
-        </View>
-
-        <View style={compact ? styles.fullWidth : styles.phoneNumber}>
-          <Input
-            label={`${label} Number`}
-            required={required}
-            value={phone.number}
-            onChangeText={(number) =>
-              onChange({
-                ...phone,
-                number: number.replace(/\D/g, "").slice(0, 10),
-              })
-            }
-            keyboardType="phone-pad"
-            placeholder={
-              selectedCountry
-                ? `${selectedCountry.callingCode} phone number`
-                : "Phone number"
-            }
-            maxLength={10}
-            error={error}
-            testID={`${testID}-number`}
-          />
+              keyboardType="phone-pad"
+              placeholder={
+                selectedCountry
+                  ? `${selectedCountry.callingCode} phone number`
+                  : "Phone number"
+              }
+              maxLength={10}
+              error={error}
+              testID={`${testID}-number`}
+            />
+          </View>
         </View>
       </View>
     );
@@ -397,7 +414,12 @@ export function BusinessForm({
 
   return (
     <ScrollView
-      style={styles.screen}
+      style={[
+        styles.screen,
+        {
+          backgroundColor: theme.colors.background,
+        },
+      ]}
       contentContainerStyle={[
         styles.content,
         {
@@ -405,249 +427,376 @@ export function BusinessForm({
         },
       ]}
       keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
     >
-      <View style={{ gap: theme.spacing.xs }}>
-        <Text variant="h1" color="text">
-          Business
-        </Text>
-
-        <Text variant="bodySmall" color="textSecondary">
-          Manage your organization&apos;s business information and contact
-          details.
-        </Text>
-      </View>
-
-      <Card padding={narrow ? "md" : "lg"} elevation="sm">
-        <Section title="Business Information">
-          <View style={styles.grid}>
-            <View style={compact ? styles.fullWidth : styles.halfWidth}>
-              <Input
-                label="Business Name"
-                required
-                value={form.name}
-                onChangeText={(value) => updateOrganization("name", value)}
-                onBlur={() =>
-                  setTouched((current) => ({
-                    ...current,
-                    name: true,
-                  }))
-                }
-                placeholder="Enter business name"
-                maxLength={200}
-                error={errors.name}
-              />
-            </View>
-
-            <View style={compact ? styles.fullWidth : styles.halfWidth}>
-              <Input
-                label="Display Name"
-                value={form.displayName}
-                onChangeText={(value) =>
-                  updateOrganization("displayName", value)
-                }
-                placeholder="Customer-facing business name"
-                maxLength={100}
-              />
-            </View>
-
-            <View style={compact ? styles.fullWidth : styles.halfWidth}>
-              <Input
-                label="Legal Name"
-                value={form.legalName ?? ""}
-                onChangeText={(value) => updateOrganization("legalName", value)}
-                placeholder="Legal business name"
-                maxLength={250}
-              />
-            </View>
-
-            <View style={compact ? styles.fullWidth : styles.halfWidth}>
-              <ReferenceSelect
-                label="Business Type"
-                required
-                value={form.organizationTypeId}
-                items={organizationTypes}
-                onChange={() => undefined}
-                placeholder="Select business type"
-                disabled
-                error={errors.organizationTypeId}
-              />
-            </View>
-
-            <View style={compact ? styles.fullWidth : styles.halfWidth}>
-              <Input
-                label="Primary Email"
-                required
-                value={form.primaryEmail}
-                onChangeText={(value) =>
-                  updateOrganization("primaryEmail", value)
-                }
-                onBlur={() =>
-                  setTouched((current) => ({
-                    ...current,
-                    primaryEmail: true,
-                  }))
-                }
-                keyboardType="email-address"
-                placeholder="business@example.com"
-                maxLength={254}
-                error={errors.primaryEmail}
-              />
-            </View>
-
-            <View style={compact ? styles.fullWidth : styles.halfWidth}>
-              <ReferenceSelect
-                label="Status"
-                value={form.organizationStatusId}
-                items={organizationStatuses}
-                onChange={() => undefined}
-                placeholder="Select status"
-                disabled
-              />
-            </View>
-
-            <View style={styles.fullWidth}>
-              {phoneField(
-                "Primary Phone",
-                form.primaryPhone,
-                (phone) => updatePhone("primaryPhone", phone),
-                "business-primary-phone",
-                true,
-                errors.primaryPhone,
-              )}
-            </View>
-
-            <View style={styles.fullWidth}>
-              <Input
-                label="Website"
-                value={form.website ?? ""}
-                onChangeText={(value) => updateOrganization("website", value)}
-                keyboardType="url"
-                placeholder="https://example.com"
-                maxLength={300}
-              />
-            </View>
-          </View>
-        </Section>
-      </Card>
-
-      <Card padding={narrow ? "md" : "lg"} elevation="sm">
-        <Section title="Business Details">
-          <View style={styles.grid}>
-            <View style={compact ? styles.fullWidth : styles.halfWidth}>
-              <Input
-                label="Registration Number"
-                value={detailForm.registrationNumber}
-                onChangeText={(value) =>
-                  updateDetails("registrationNumber", value)
-                }
-                placeholder="Registration number"
-                maxLength={50}
-              />
-            </View>
-
-            <View style={compact ? styles.fullWidth : styles.halfWidth}>
-              <Input
-                label="GST / Tax Number"
-                value={detailForm.gstNumber}
-                onChangeText={(value) => updateDetails("gstNumber", value)}
-                placeholder="GST / tax number"
-                maxLength={20}
-              />
-            </View>
-
-            <View style={compact ? styles.fullWidth : styles.halfWidth}>
-              <Input
-                label="Support Email"
-                value={detailForm.supportEmail}
-                onChangeText={(value) => updateDetails("supportEmail", value)}
-                keyboardType="email-address"
-                placeholder="support@example.com"
-                maxLength={150}
-              />
-            </View>
-
-            <View style={styles.fullWidth}>
-              {phoneField(
-                "Support Phone",
-                detailForm.supportPhone,
-                (phone) => updatePhone("supportPhone", phone),
-                "business-support-phone",
-              )}
-            </View>
-          </View>
-
-          <AddressForm
-            value={detailForm.address}
-            countries={countries}
-            regions={regions}
-            cities={cities}
-            onChange={(address) =>
-              setDetailForm((current) => ({
-                ...current,
-                address,
-              }))
-            }
-            onCountryChange={onCountryChange}
-            onRegionChange={onRegionChange}
-          />
-
-          <TextArea
-            label="About Organization"
-            value={detailForm.aboutOrganization}
-            onChangeText={(value) => updateDetails("aboutOrganization", value)}
-            placeholder="Tell customers about your business"
-            maxLength={1000}
-          />
-        </Section>
-      </Card>
-
-      <BusinessPreview
-        currentOrganization={organization}
-        currentDetails={details}
-        proposedOrganization={form}
-        proposedDetails={detailForm}
-        organizationTypes={organizationTypes}
-        organizationStatuses={organizationStatuses}
-        countries={countries}
-      />
+      {/* ------------------------------------------------------------------ */}
+      {/* Page header                                                        */}
+      {/* ------------------------------------------------------------------ */}
 
       <View
         style={[
-          styles.actions,
-          compact && styles.actionsCompact,
+          styles.pageHeader,
           {
-            borderTopColor: theme.colors.border,
+            borderBottomColor: theme.colors.border,
           },
         ]}
       >
-        <Button
-          label="Cancel"
-          variant="outline"
-          disabled={saving}
-          onPress={() => {
-            setForm(organization);
+        <View style={styles.pageHeaderText}>
+          <Text variant="h1" color="text">
+            Business
+          </Text>
 
-            setDetailForm(
-              details ??
-                createEmptyDetails(organization.id, organization.updatedBy),
-            );
+          <Text variant="body" color="textSecondary">
+            Manage your organization&apos;s identity, contact details and
+            business information.
+          </Text>
+        </View>
 
-            setTouched({
-              name: false,
-              organizationTypeId: false,
-              primaryEmail: false,
-              primaryPhone: false,
-            });
-          }}
-          fullWidth={compact}
+        <View
+          style={[
+            styles.headerBadge,
+            {
+              backgroundColor: theme.colors.surfaceAlt,
+              borderColor: theme.colors.border,
+            },
+          ]}
+        >
+          <Text variant="caption" color="textMuted">
+            ORGANIZATION
+          </Text>
+        </View>
+      </View>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Business information                                               */}
+      {/* ------------------------------------------------------------------ */}
+
+      <Card
+        padding={narrow ? "md" : "lg"}
+        elevation="sm"
+        style={[
+          styles.sectionCard,
+          {
+            borderColor: theme.colors.border,
+          },
+        ]}
+      >
+        <Section
+          title="Business Information"
+          description="Core information used throughout the Memgine platform and customer experience."
+        >
+          <View style={styles.formBlock}>
+            <View style={styles.grid}>
+              <View style={compact ? styles.fullWidth : styles.halfWidth}>
+                <Input
+                  label="Business Name"
+                  required
+                  value={form.name}
+                  onChangeText={(value) => updateOrganization("name", value)}
+                  onBlur={() =>
+                    setTouched((current) => ({
+                      ...current,
+                      name: true,
+                    }))
+                  }
+                  placeholder="Enter business name"
+                  maxLength={200}
+                  error={errors.name}
+                />
+              </View>
+
+              <View style={compact ? styles.fullWidth : styles.halfWidth}>
+                <Input
+                  label="Display Name"
+                  value={form.displayName}
+                  onChangeText={(value) =>
+                    updateOrganization("displayName", value)
+                  }
+                  placeholder="Customer-facing business name"
+                  maxLength={100}
+                />
+              </View>
+
+              <View style={compact ? styles.fullWidth : styles.halfWidth}>
+                <Input
+                  label="Legal Name"
+                  value={form.legalName ?? ""}
+                  onChangeText={(value) =>
+                    updateOrganization("legalName", value)
+                  }
+                  placeholder="Legal business name"
+                  maxLength={250}
+                />
+              </View>
+
+              <View style={compact ? styles.fullWidth : styles.halfWidth}>
+                <ReferenceSelect
+                  label="Business Type"
+                  required
+                  value={form.organizationTypeId}
+                  items={organizationTypes}
+                  onChange={() => undefined}
+                  placeholder="Select business type"
+                  disabled
+                  error={errors.organizationTypeId}
+                />
+              </View>
+
+              <View style={compact ? styles.fullWidth : styles.halfWidth}>
+                <Input
+                  label="Primary Email"
+                  required
+                  value={form.primaryEmail}
+                  onChangeText={(value) =>
+                    updateOrganization("primaryEmail", value)
+                  }
+                  onBlur={() =>
+                    setTouched((current) => ({
+                      ...current,
+                      primaryEmail: true,
+                    }))
+                  }
+                  keyboardType="email-address"
+                  placeholder="business@example.com"
+                  maxLength={254}
+                  error={errors.primaryEmail}
+                />
+              </View>
+
+              <View style={compact ? styles.fullWidth : styles.halfWidth}>
+                <ReferenceSelect
+                  label="Status"
+                  value={form.organizationStatusId}
+                  items={organizationStatuses}
+                  onChange={() => undefined}
+                  placeholder="Select status"
+                  disabled
+                />
+              </View>
+
+              <View style={styles.fullWidth}>
+                {phoneField(
+                  "Primary Phone",
+                  form.primaryPhone,
+                  (phone) => updatePhone("primaryPhone", phone),
+                  "business-primary-phone",
+                  true,
+                  errors.primaryPhone,
+                )}
+              </View>
+
+              <View style={styles.fullWidth}>
+                <Input
+                  label="Website"
+                  value={form.website ?? ""}
+                  onChangeText={(value) => updateOrganization("website", value)}
+                  keyboardType="url"
+                  placeholder="https://example.com"
+                  maxLength={300}
+                />
+              </View>
+            </View>
+          </View>
+        </Section>
+      </Card>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Business details                                                   */}
+      {/* ------------------------------------------------------------------ */}
+
+      <Card
+        padding={narrow ? "md" : "lg"}
+        elevation="sm"
+        style={[
+          styles.sectionCard,
+          {
+            borderColor: theme.colors.border,
+          },
+        ]}
+      >
+        <Section
+          title="Business Details"
+          description="Additional business, support and location information."
+        >
+          <View style={styles.formBlock}>
+            <View style={styles.grid}>
+              <View style={compact ? styles.fullWidth : styles.halfWidth}>
+                <Input
+                  label="Registration Number"
+                  value={detailForm.registrationNumber}
+                  onChangeText={(value) =>
+                    updateDetails("registrationNumber", value)
+                  }
+                  placeholder="Registration number"
+                  maxLength={50}
+                />
+              </View>
+
+              <View style={compact ? styles.fullWidth : styles.halfWidth}>
+                <Input
+                  label="GST / Tax Number"
+                  value={detailForm.gstNumber}
+                  onChangeText={(value) => updateDetails("gstNumber", value)}
+                  placeholder="GST / tax number"
+                  maxLength={20}
+                />
+              </View>
+
+              <View style={compact ? styles.fullWidth : styles.halfWidth}>
+                <Input
+                  label="Support Email"
+                  value={detailForm.supportEmail}
+                  onChangeText={(value) => updateDetails("supportEmail", value)}
+                  keyboardType="email-address"
+                  placeholder="support@example.com"
+                  maxLength={150}
+                />
+              </View>
+
+              <View style={styles.fullWidth}>
+                {phoneField(
+                  "Support Phone",
+                  detailForm.supportPhone,
+                  (phone) => updatePhone("supportPhone", phone),
+                  "business-support-phone",
+                )}
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.subSection}>
+            <View
+              style={[
+                styles.subSectionHeader,
+                {
+                  borderBottomColor: theme.colors.border,
+                },
+              ]}
+            >
+              <Text variant="h2" color="text">
+                Business Address
+              </Text>
+
+              <Text variant="bodySmall" color="textSecondary">
+                Primary location for this organization.
+              </Text>
+            </View>
+
+            <AddressForm
+              value={detailForm.address}
+              countries={countries}
+              regions={regions}
+              cities={cities}
+              onChange={(address) =>
+                setDetailForm((current) => ({
+                  ...current,
+                  address,
+                }))
+              }
+              onCountryChange={onCountryChange}
+              onRegionChange={onRegionChange}
+            />
+          </View>
+
+          <View style={styles.subSection}>
+            <View
+              style={[
+                styles.subSectionHeader,
+                {
+                  borderBottomColor: theme.colors.border,
+                },
+              ]}
+            >
+              <Text variant="h2" color="text">
+                About the Organization
+              </Text>
+
+              <Text variant="bodySmall" color="textSecondary">
+                Customer-facing description of the business.
+              </Text>
+            </View>
+
+            <TextArea
+              label="About Organization"
+              value={detailForm.aboutOrganization}
+              onChangeText={(value) =>
+                updateDetails("aboutOrganization", value)
+              }
+              placeholder="Tell customers about your business"
+              maxLength={1000}
+            />
+          </View>
+        </Section>
+      </Card>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Customer experience preview                                        */}
+      {/* ------------------------------------------------------------------ */}
+
+      <View style={styles.previewSection}>
+        <View style={styles.previewHeader}>
+          <View style={styles.previewHeaderText}>
+            <Text variant="h2" color="text">
+              Customer Experience Preview
+            </Text>
+
+            <Text variant="bodySmall" color="textSecondary">
+              See how the current organization information appears in the
+              customer-facing experience.
+            </Text>
+          </View>
+        </View>
+
+        <BusinessPreview
+          currentOrganization={organization}
+          currentDetails={details}
+          proposedOrganization={form}
+          proposedDetails={detailForm}
+          organizationTypes={organizationTypes}
+          organizationStatuses={organizationStatuses}
+          countries={countries}
         />
+      </View>
 
-        <Button
-          label={saving ? "Saving..." : "Save Changes"}
-          onPress={save}
-          disabled={saving}
-          fullWidth={compact}
-        />
+      {/* ------------------------------------------------------------------ */}
+      {/* Actions                                                            */}
+      {/* ------------------------------------------------------------------ */}
+
+      <View
+        style={[
+          styles.actionsContainer,
+          {
+            backgroundColor: theme.colors.card,
+            borderColor: theme.colors.border,
+          },
+        ]}
+      >
+        <View style={styles.actionText}>
+          <Text variant="bodyStrong" color="text">
+            Ready to save?
+          </Text>
+
+          <Text variant="caption" color="textSecondary">
+            Your changes will be applied to this organization.
+          </Text>
+        </View>
+
+        <View style={[styles.actions, compact && styles.actionsCompact]}>
+          <Button
+            label="Cancel"
+            variant="outline"
+            disabled={saving}
+            onPress={resetForm}
+            fullWidth={compact}
+          />
+
+          <Button
+            label={saving ? "Saving..." : "Save Changes"}
+            onPress={save}
+            disabled={saving}
+            fullWidth={compact}
+          />
+        </View>
       </View>
     </ScrollView>
   );
@@ -660,9 +809,39 @@ const styles = StyleSheet.create({
 
   content: {
     width: "100%",
-    maxWidth: 1100,
+    maxWidth: 1120,
     alignSelf: "center",
-    gap: 16,
+    gap: 20,
+    paddingBottom: 40,
+  },
+
+  pageHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 20,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+  },
+
+  pageHeaderText: {
+    flex: 1,
+    gap: 6,
+  },
+
+  headerBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+
+  sectionCard: {
+    borderWidth: 1,
+  },
+
+  formBlock: {
+    gap: 20,
   },
 
   grid: {
@@ -677,6 +856,10 @@ const styles = StyleSheet.create({
   },
 
   fullWidth: {
+    width: "100%",
+  },
+
+  phoneFieldGroup: {
     width: "100%",
   },
 
@@ -697,15 +880,52 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+  subSection: {
+    gap: 16,
+    marginTop: 8,
+  },
+
+  subSectionHeader: {
+    gap: 4,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+  },
+
+  previewSection: {
+    gap: 14,
+  },
+
+  previewHeader: {
+    paddingHorizontal: 2,
+  },
+
+  previewHeaderText: {
+    gap: 4,
+  },
+
+  actionsContainer: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 20,
+  },
+
+  actionText: {
+    flex: 1,
+    gap: 3,
+  },
+
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    gap: 8,
-    paddingTop: 16,
-    borderTopWidth: 1,
+    gap: 10,
   },
 
   actionsCompact: {
     flexDirection: "column-reverse",
+    width: "100%",
   },
 });

@@ -1,5 +1,7 @@
 import { View } from "react-native";
 
+import { useTheme } from "@/src/providers";
+
 import { Text } from "./Text";
 
 type FieldLabelProps = {
@@ -8,20 +10,31 @@ type FieldLabelProps = {
 };
 
 export function FieldLabel({ label, required = false }: FieldLabelProps) {
+  const theme = useTheme();
+
   return (
     <View
       style={{
         flexDirection: "row",
         alignItems: "center",
-        gap: 2,
+        gap: 5,
+        minHeight: 22,
       }}
     >
-      <Text variant="label" color="textSecondary">
+      <Text variant="bodySmall" color="text">
         {label}
       </Text>
 
       {required ? (
-        <Text variant="label" color="danger" accessibilityLabel="required">
+        <Text
+          variant="bodyStrong"
+          color="danger"
+          style={{
+            fontSize: 17,
+            lineHeight: 20,
+            fontWeight: "700",
+          }}
+        >
           *
         </Text>
       ) : null}

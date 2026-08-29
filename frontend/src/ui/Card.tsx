@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+
 import { StyleProp, ViewStyle } from "react-native";
 
 import type { Theme } from "@/src/theme/theme";
@@ -14,7 +15,12 @@ type CardProps = {
   testID?: string;
 };
 
-/** Elevated content card. */
+/**
+ * Reusable elevated content surface.
+ *
+ * Cards intentionally remain neutral so they can be used throughout
+ * platform-admin, organization-admin and customer-facing UI.
+ */
 export function Card({
   children,
   padding = "lg",
