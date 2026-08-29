@@ -4,18 +4,14 @@ import type {
 } from "@/src/core";
 
 import { CardStyle } from "../template/template-definition";
+
 /**
- * Converts the organization-owned Customer Experience definition into
- * the existing BusinessConfiguration shape used by BusinessExperience.
+ * Converts an organization-owned Customer Experience definition into the
+ * BusinessConfiguration consumed by the customer renderer.
  *
- * This is a preview adapter only.
+ * This is a preview/derived configuration adapter.
  *
- * Important:
- * - BusinessConfiguration remains the application's existing configuration
- *   model.
- * - CustomerExperienceDefinition remains the draft/proposed experience model.
- * - Domain data such as Offers, Benefits, Stores, Subscriptions and
- *   Redemptions is NOT copied into BusinessConfiguration.
+ * OrganizationBranding remains the source-of-truth persistence entity.
  */
 export function buildPreviewBusinessConfiguration(
   base: BusinessConfiguration,
@@ -23,12 +19,6 @@ export function buildPreviewBusinessConfiguration(
 ): BusinessConfiguration {
   const configuredCardStyle = definition.membership.cardStyle;
 
-  /**
-   * CustomerExperienceDefinition currently stores cardStyle as string,
-   * while BusinessConfiguration correctly uses the frozen CardStyle enum.
-   *
-   * Only accept a value supported by the existing CardStyle enum.
-   */
   const cardStyle: CardStyle =
     configuredCardStyle === CardStyle.MODERN ||
     configuredCardStyle === CardStyle.CLASSIC ||
@@ -50,29 +40,47 @@ export function buildPreviewBusinessConfiguration(
     branding: {
       ...base.branding,
 
+      /*
+       * Primary customer-facing logo.
+       */
       logoUrl: definition.businessIdentity.logoUrl ?? base.branding.logoUrl,
 
+      /*
+       * Secondary branding assets.
+       */
+      darkThemeLogoUrl:
+        definition.businessIdentity.darkThemeLogoUrl ??
+        base.branding.darkThemeLogoUrl,
+
+      faviconUrl:
+        definition.businessIdentity.faviconUrl ?? base.branding.faviconUrl,
+
+      splashScreenImageUrl:
+        definition.businessIdentity.splashScreenImageUrl ??
+        base.branding.splashScreenImageUrl,
+
+      /*
+       * Brand colours.
+       */
       primaryColor: definition.theme.primaryColor ?? base.branding.primaryColor,
 
       secondaryColor:
         definition.theme.secondaryColor ?? base.branding.secondaryColor,
+
+      accentColor: definition.theme.accentColor ?? base.branding.accentColor,
     },
 
     customerExperience: {
       ...base.customerExperience,
 
-      /**
-       * The real BusinessExperience renderer already consumes these
-       * configuration switches.
-       */
+      cardStyle,
+
       showOffers:
         definition.sections.offers && definition.offersPresentation.enabled,
 
       showStores: definition.sections.stores,
 
       showActivity: definition.sections.activity,
-
-      cardStyle,
     },
   };
 }

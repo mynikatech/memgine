@@ -1,6 +1,6 @@
 import { BenefitType } from "../domain/entities";
 import { TemplateDefaultContent } from "../template/template-content";
-import { F_AND_B_BAKERY_V1 } from "../template/template-definition";
+import { BAKERY_V1 } from "../template/bakery-template-definition";
 
 /**
  * SUNRISE_BAKERY_CONTENT — the Sunrise Bakery business's OWN resolved content on
@@ -18,7 +18,7 @@ import { F_AND_B_BAKERY_V1 } from "../template/template-definition";
  * assets, and every field is replaceable per business.
  */
 export const SUNRISE_BAKERY_CONTENT: TemplateDefaultContent = {
-  templateId: F_AND_B_BAKERY_V1.id,
+  templateId: BAKERY_V1.id,
 
   // ---- Mandatory ----
   businessIdentity: {
@@ -31,7 +31,8 @@ export const SUNRISE_BAKERY_CONTENT: TemplateDefaultContent = {
   membership: {
     tierName: "Gold Member",
     productName: "Sunrise Club",
-    description: "Your membership for daily fresh-baked rewards and member-only pricing.",
+    description:
+      "Your membership for daily fresh-baked rewards and member-only pricing.",
     priceLabel: "$49 / year",
   },
   activeBenefits: [
@@ -42,7 +43,8 @@ export const SUNRISE_BAKERY_CONTENT: TemplateDefaultContent = {
     },
     {
       title: "Free birthday cupcake",
-      description: "A little something to celebrate you during your birthday month.",
+      description:
+        "A little something to celebrate you during your birthday month.",
       type: BenefitType.FREEBIE,
     },
   ],
@@ -50,7 +52,8 @@ export const SUNRISE_BAKERY_CONTENT: TemplateDefaultContent = {
   // ---- Optional ----
   heroPromotion: {
     title: "Today's treat is waiting",
-    description: "Your daily fresh-baked reward is ready to redeem at any Sunrise Bakery.",
+    description:
+      "Your daily fresh-baked reward is ready to redeem at any Sunrise Bakery.",
     badge: "MEMBER PERK",
     imageUrl:
       "https://images.unsplash.com/photo-1568254183919-78a4f43a2877?auto=format&fit=crop&w=1200&q=60",

@@ -2,6 +2,7 @@ import { BusinessContext } from "../context/business-context";
 import { ID } from "../domain/common";
 
 import { getDefaultBusinessTemplate } from "../defaults/default-business-template";
+import { BAKERY_V1 } from "../template/bakery-template-definition";
 
 import { registerBusinessContext } from "../defaults/business-registry";
 import { mockStatusService } from "./mock-status";
@@ -150,7 +151,7 @@ const ORGANIZATION_BRANDING: OrganizationBranding[] = [
     organizationId: "org-sunrise",
 
     brandingName: "Sunrise Bakery",
-    themeTemplateId: "f-and-b-bakery-v1",
+    themeTemplateId: BAKERY_V1.id,
 
     logoUrl: undefined,
     darkThemeLogoUrl: undefined,

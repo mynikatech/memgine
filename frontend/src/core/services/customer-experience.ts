@@ -14,6 +14,9 @@ export interface CustomerExperienceDefinition {
     tagline: string;
     logoUrl?: string;
     heroImageUrl?: string;
+    darkThemeLogoUrl?: string;
+    faviconUrl?: string;
+    splashScreenImageUrl?: string;
   };
 
   theme: {

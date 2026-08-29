@@ -20,18 +20,49 @@ export type BrandColourSelectProps = {
 };
 
 export const MEMGINE_COLOUR_PALETTE: BrandColourItem[] = [
-  { name: "Teal", value: "#0F766E" },
-  { name: "Blue", value: "#2563EB" },
-  { name: "Indigo", value: "#4F46E5" },
-  { name: "Purple", value: "#7C3AED" },
-  { name: "Rose", value: "#E11D48" },
+  // Reds / Pinks
   { name: "Red", value: "#DC2626" },
+  { name: "Crimson", value: "#B91C1C" },
+  { name: "Rose", value: "#E11D48" },
+  { name: "Pink", value: "#DB2777" },
+  { name: "Fuchsia", value: "#C026D3" },
+
+  // Orange / Warm
   { name: "Orange", value: "#EA580C" },
+  { name: "Tangerine", value: "#F97316" },
   { name: "Terracotta", value: "#C2410C" },
   { name: "Amber", value: "#D97706" },
+  { name: "Gold", value: "#CA8A04" },
+  { name: "Mustard", value: "#A16207" },
+
+  // Greens
+  { name: "Lime", value: "#65A30D" },
   { name: "Green", value: "#16A34A" },
   { name: "Emerald", value: "#059669" },
+  { name: "Forest", value: "#166534" },
+
+  // Teal / Cyan
+  { name: "Teal", value: "#0F766E" },
+  { name: "Sea Green", value: "#0D9488" },
+  { name: "Turquoise", value: "#0891B2" },
+  { name: "Cyan", value: "#06B6D4" },
+
+  // Blues
+  { name: "Sky Blue", value: "#0284C7" },
+  { name: "Blue", value: "#2563EB" },
+  { name: "Royal Blue", value: "#1D4ED8" },
+  { name: "Indigo", value: "#4F46E5" },
+  { name: "Navy", value: "#1E3A8A" },
+
+  // Purples
+  { name: "Violet", value: "#7C3AED" },
+  { name: "Purple", value: "#9333EA" },
+  { name: "Plum", value: "#7E22CE" },
+
+  // Neutrals
   { name: "Slate", value: "#475569" },
+  { name: "Charcoal", value: "#374151" },
+  { name: "Brown", value: "#92400E" },
 ];
 
 export function BrandColourSelect({
@@ -125,8 +156,8 @@ export function BrandColourSelect({
                   setOpen(false);
                 }}
                 style={({ pressed }) => ({
-                  width: 96,
-                  minHeight: 88,
+                  width: 88,
+                  minHeight: 82,
                   borderRadius: theme.radius.md,
                   borderWidth: isSelected ? 2 : 1,
                   borderColor: isSelected

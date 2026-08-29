@@ -7,7 +7,8 @@ import {
   OrganizationAccount,
   PlanTier,
 } from "../domain/entities";
-import { CardStyle, F_AND_B_BAKERY_V1 } from "../template/template-definition";
+import { CardStyle } from "../template/template-definition";
+import { BAKERY_V1 } from "../template/bakery-template-definition";
 
 /**
  * Default Café/Bakery example — "Sunrise Bakery". Demonstrates the frozen
@@ -51,7 +52,7 @@ export const SUNRISE_BAKERY_ACCOUNT: OrganizationAccount = {
 };
 
 export const SUNRISE_BAKERY_CONFIGURATION: BusinessConfiguration = {
-  templateId: F_AND_B_BAKERY_V1.id,
+  templateId: BAKERY_V1.id,
   identity: {
     displayName: "Sunrise Bakery",
     category: TemplateCategory.FOOD_AND_BEVERAGE,
@@ -80,5 +81,5 @@ export const SUNRISE_BAKERY_CONTEXT: BusinessContext = {
   organization: SUNRISE_BAKERY_ORGANIZATION,
   account: SUNRISE_BAKERY_ACCOUNT,
   configuration: SUNRISE_BAKERY_CONFIGURATION,
-  template: F_AND_B_BAKERY_V1,
+  template: BAKERY_V1,
 };

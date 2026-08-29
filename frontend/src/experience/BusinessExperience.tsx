@@ -25,7 +25,7 @@ import type {
 
 import { services } from "@/src/core";
 import { useBusiness, useTranslation } from "@/src/providers";
-import { Badge, Button, Card, Modal, Section, Text } from "@/src/ui";
+import { Badge, BrandLogo, Button, Card, Modal, Section, Text } from "@/src/ui";
 
 import {
   ActivityItem,
@@ -185,6 +185,18 @@ export function BusinessExperience({
           previewDefinition.businessIdentity.logoUrl ??
           configuration.branding.logoUrl,
 
+        darkThemeLogoUrl:
+          previewDefinition.businessIdentity.darkThemeLogoUrl ??
+          configuration.branding.darkThemeLogoUrl,
+
+        faviconUrl:
+          previewDefinition.businessIdentity.faviconUrl ??
+          configuration.branding.faviconUrl,
+
+        splashScreenImageUrl:
+          previewDefinition.businessIdentity.splashScreenImageUrl ??
+          configuration.branding.splashScreenImageUrl,
+
         primaryColor:
           previewDefinition.theme.primaryColor ??
           configuration.branding.primaryColor,
@@ -192,6 +204,10 @@ export function BusinessExperience({
         secondaryColor:
           previewDefinition.theme.secondaryColor ??
           configuration.branding.secondaryColor,
+
+        accentColor:
+          previewDefinition.theme.accentColor ??
+          configuration.branding.accentColor,
       },
 
       customerExperience: {
@@ -1785,20 +1801,12 @@ export function BusinessExperience({
           paddingVertical: theme.spacing.sm,
         }}
       >
-        <View
-          style={{
-            width: 46,
-            height: 46,
-            borderRadius: theme.radius.md,
-            backgroundColor: theme.colors.primary,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Text variant="title" color="onPrimary">
-            {exp.monogram}
-          </Text>
-        </View>
+        <BrandLogo
+          logoUrl={resolvedConfiguration.branding.logoUrl}
+          monogram={exp.monogram}
+          size={46}
+          testID="experience-brand-logo"
+        />
 
         <View style={{ flex: 1 }}>
           <Text variant="h2" color="text">

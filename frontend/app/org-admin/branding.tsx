@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
+
 import { Alert, View } from "react-native";
 
 import { OrganizationBranding, services } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
+
 import { StateView } from "@/src/ui";
+
 import { BrandingForm } from "@/src/ui/admin/BrandingForm";
 
 export default function OrgAdminBranding() {
@@ -21,6 +24,7 @@ export default function OrgAdminBranding() {
   >([]);
 
   const [loading, setLoading] = useState(true);
+
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,18 +35,19 @@ export default function OrgAdminBranding() {
       setError(null);
 
       try {
-        const [organizationBranding, templates, statuses] = await Promise.all([
-          services.organization.getOrganizationBranding(organization.id),
-          services.template.listTemplates(),
-          services.status.listOrganizationBrandingStatuses(),
-        ]);
+        const [organizationBranding, availableTemplates, statuses] =
+          await Promise.all([
+            services.organization.getOrganizationBranding(organization.id),
+            services.template.listTemplates(),
+            services.status.listOrganizationBrandingStatuses(),
+          ]);
 
         if (!mounted) {
           return;
         }
 
         setBranding(organizationBranding);
-        setTemplates(templates);
+        setTemplates(availableTemplates);
         setBrandingStatuses(statuses);
       } catch (loadError) {
         if (!mounted) {
@@ -98,13 +103,14 @@ export default function OrgAdminBranding() {
       branding={branding}
       templates={templates}
       brandingStatuses={brandingStatuses}
-      onSave={async (updatedBranding: OrganizationBranding) => {
-        await services.organization.updateOrganizationBranding(
-          organization.id,
-          updatedBranding,
-        );
+      onSave={async (updatedBranding) => {
+        const savedBranding =
+          await services.organization.updateOrganizationBranding(
+            organization.id,
+            updatedBranding,
+          );
 
-        setBranding(updatedBranding);
+        setBranding(savedBranding);
 
         Alert.alert(
           "Branding updated",

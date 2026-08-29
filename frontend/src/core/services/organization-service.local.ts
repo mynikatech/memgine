@@ -3,9 +3,14 @@ import type { ID, Organization, OrganizationDetails } from "@/src/core";
 import { apis } from "@/src/data";
 
 import type { OrganizationService } from "./service-contracts";
+import { LocalBrandingRepository } from "@/src/data/repositories/branding/branding-repository.local";
 
 export class LocalOrganizationService implements OrganizationService {
-  constructor(private readonly fallback: OrganizationService) {}
+  private readonly brandingRepository: LocalBrandingRepository;
+
+  constructor(private readonly fallback: OrganizationService) {
+    this.brandingRepository = new LocalBrandingRepository();
+  }
 
   /**
    * Organization
@@ -187,8 +192,13 @@ export class LocalOrganizationService implements OrganizationService {
       organizationUser,
     );
   }
-
   async getOrganizationBranding(organizationId: ID) {
+    const local = await this.brandingRepository.getCurrent(organizationId);
+
+    if (local) {
+      return local;
+    }
+
     return this.fallback.getOrganizationBranding(organizationId);
   }
 
@@ -196,15 +206,15 @@ export class LocalOrganizationService implements OrganizationService {
     return this.fallback.getNotificationConfiguration(organizationId);
   }
 
-  async listIntegrationConfigurations(organizationId: ID) {
-    return this.fallback.listIntegrationConfigurations(organizationId);
-  }
-
   async updateOrganizationBranding(
     organizationId: ID,
     branding: Parameters<OrganizationService["updateOrganizationBranding"]>[1],
   ) {
-    return this.fallback.updateOrganizationBranding(organizationId, branding);
+    return this.brandingRepository.save(organizationId, branding);
+  }
+
+  async listIntegrationConfigurations(organizationId: ID) {
+    return this.fallback.listIntegrationConfigurations(organizationId);
   }
 
   async updateNotificationConfiguration(

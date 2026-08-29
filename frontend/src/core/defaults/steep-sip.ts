@@ -7,7 +7,8 @@ import {
   OrganizationAccount,
   PlanTier,
 } from "../domain/entities";
-import { CardStyle, F_AND_B_BAKERY_V1 } from "../template/template-definition";
+import { CardStyle } from "../template/template-definition";
+import { COFFEE_CHAIN_V1 } from "../template/coffee-chain-template-definition";
 
 /**
  * Default Café/Bakery example — "STEEP & SIP".
@@ -28,7 +29,7 @@ export const STEEP_SIP_ORGANIZATION: Organization = {
   legalName: "STEEP & SIP",
   displayName: "STEEP & SIP",
 
-  organizationTypeId: "organization-type-bakery",
+  organizationTypeId: "organization-type-coffee",
   organizationStatusId: "org-status-active",
 
   category: TemplateCategory.FOOD_AND_BEVERAGE,
@@ -62,7 +63,7 @@ export const STEEP_SIP_CONFIGURATION: BusinessConfiguration = {
    * Coffee/Bakery template. No custom template is being
    * created for this organization.
    */
-  templateId: F_AND_B_BAKERY_V1.id,
+  templateId: COFFEE_CHAIN_V1.id,
 
   identity: {
     displayName: "STEEP & SIP",
@@ -107,5 +108,5 @@ export const STEEP_SIP_CONTEXT: BusinessContext = {
   organization: STEEP_SIP_ORGANIZATION,
   account: STEEP_SIP_ACCOUNT,
   configuration: STEEP_SIP_CONFIGURATION,
-  template: F_AND_B_BAKERY_V1,
+  template: COFFEE_CHAIN_V1,
 };

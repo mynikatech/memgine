@@ -1,5 +1,9 @@
 import { TemplateCategory } from "../domain/common";
-import { CurrencyCode, LanguageCode, TimezoneId } from "../localization/localization";
+import {
+  CurrencyCode,
+  LanguageCode,
+  TimezoneId,
+} from "../localization/localization";
 import { CardStyle } from "../template/template-definition";
 
 /**
@@ -15,9 +19,23 @@ export interface BusinessIdentity {
 }
 
 export interface BusinessBranding {
+  /**
+   * Customer-facing brand assets.
+   *
+   * These are resolved from OrganizationBranding with the
+   * platform/template defaults used as fallback.
+   */
   logoUrl: string;
+  darkThemeLogoUrl?: string;
+  faviconUrl?: string;
+  splashScreenImageUrl?: string;
+
+  /**
+   * Resolved brand colours.
+   */
   primaryColor: string;
   secondaryColor?: string;
+  accentColor?: string;
 }
 
 export interface CustomerExperienceConfig {

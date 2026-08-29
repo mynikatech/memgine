@@ -17,6 +17,7 @@ export { TextArea } from "./TextArea";
 export { AddressForm } from "./AddressForm";
 export { FieldLabel } from "./FieldLabel";
 export { Checkbox } from "./Checkbox";
+export { BrandLogo } from "./BrandLogo";
 export { BrandColourSelect, MEMGINE_COLOUR_PALETTE } from "./BrandColourSelect";
 
 export { PhoneField } from "./PhoneField";
