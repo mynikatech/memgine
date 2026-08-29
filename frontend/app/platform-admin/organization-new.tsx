@@ -231,8 +231,12 @@ export default function OrganizationNew() {
         businessName: businessName.trim(),
         organizationTypeId,
         primaryEmail: primaryEmail.trim(),
+        useDefaultBusinessContent,
       });
-
+      console.log(
+        "[OrganizationNew] useDefaultBusinessContent =",
+        useDefaultBusinessContent,
+      );
       const result = await onboardOrganization({
         name: businessName.trim(),
         organizationTypeId,
@@ -251,6 +255,7 @@ export default function OrganizationNew() {
         organizationTypeId: result.organization.organizationTypeId,
         templateId: result.context.template.id,
       });
+      console.log("[OrganizationNew] organizationTypeId =", organizationTypeId);
 
       setActiveBusiness(result.organization.id);
 
@@ -356,6 +361,9 @@ export default function OrganizationNew() {
           disabled={busy || loadingTypes}
           testID="organization-use-default-business-content"
         />
+        <Text variant="caption" color="textMuted">
+          Debug: {useDefaultBusinessContent ? "TRUE" : "FALSE"}
+        </Text>
 
         <Input
           label="Primary Email"

@@ -42,6 +42,16 @@ export function materializeOrganization(
   },
   template: DefaultBusinessTemplate,
 ): MaterializedOrganization {
+  console.log(
+    "[materializeOrganization] useDefaultBusinessContent =",
+    input.useDefaultBusinessContent,
+  );
+
+  console.log(
+    "[materializeOrganization] template businessInformation.about =",
+    template.content.businessInformation?.about,
+  );
+
   const now = new Date().toISOString();
 
   const organizationId = createId("org");
@@ -131,6 +141,11 @@ export function materializeOrganization(
     isDeleted: false,
     versionNo: 1,
   };
+
+  console.log(
+    "[materializeOrganization] details.aboutOrganization =",
+    details.aboutOrganization,
+  );
 
   const branding: OrganizationBranding = {
     id: createId("organization-branding"),

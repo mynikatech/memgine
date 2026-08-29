@@ -1,15 +1,17 @@
 import type { ID } from "../domain/common";
 
-import {
-  F_AND_B_BAKERY_V1,
-  type TemplateDefinition,
-} from "../template/template-definition";
+import type { TemplateDefinition } from "../template/template-definition";
+import type { TemplateDefaultContent } from "../template/template-content";
+
+import { BAKERY_V1 } from "../template/bakery-template-definition";
+import { COFFEE_CHAIN_V1 } from "../template/coffee-chain-template-definition";
+import { RESTAURANT_V1 } from "../template/restaurant-template-definition";
 
 import { SALON_V1 } from "../template/salon-template-definition";
 
-import type { TemplateDefaultContent } from "../template/template-content";
-
-import { F_AND_B_DEFAULT_CONTENT } from "./f-and-b-default-content";
+import { BAKERY_DEFAULT_CONTENT } from "./bakery-default-content";
+import { COFFEE_CHAIN_DEFAULT_CONTENT } from "./coffee-chain-default-content";
+import { RESTAURANT_DEFAULT_CONTENT } from "./restaurant-default-content";
 import { SALON_DEFAULT_CONTENT } from "./salon-default-content";
 
 export type DefaultBusinessTemplate = {
@@ -48,10 +50,24 @@ export type DefaultBusinessTemplate = {
  */
 export const DEFAULT_BUSINESS_TEMPLATES: Record<ID, DefaultBusinessTemplate> = {
   "organization-type-bakery": {
-    id: F_AND_B_BAKERY_V1.id,
+    id: BAKERY_V1.id,
     organizationTypeId: "organization-type-bakery",
-    template: F_AND_B_BAKERY_V1,
-    content: F_AND_B_DEFAULT_CONTENT,
+    template: BAKERY_V1,
+    content: BAKERY_DEFAULT_CONTENT,
+  },
+
+  "organization-type-coffee": {
+    id: COFFEE_CHAIN_V1.id,
+    organizationTypeId: "organization-type-coffee",
+    template: COFFEE_CHAIN_V1,
+    content: COFFEE_CHAIN_DEFAULT_CONTENT,
+  },
+
+  "organization-type-restaurant": {
+    id: RESTAURANT_V1.id,
+    organizationTypeId: "organization-type-restaurant",
+    template: RESTAURANT_V1,
+    content: RESTAURANT_DEFAULT_CONTENT,
   },
 
   "organization-type-salon": {
