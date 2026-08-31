@@ -4,6 +4,7 @@ import { Image, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
+import { resolveCustomerBranding } from "@/src/core/customer/resolve-customer-branding";
 import type {
   CardStyle,
   TemplateDefinition,
@@ -163,67 +164,66 @@ export function BusinessExperience({
    * The details override is therefore supplied through the configuration
    * object used by the resolver where the resolver supports it.
    */
-  const resolvedConfiguration = useMemo(() => {
-    if (!previewDefinition) {
-      return configuration;
-    }
+  const resolvedBranding = useMemo(
+    () =>
+      resolveCustomerBranding({
+        organization,
+        configuration,
+        previewDefinition,
+      }),
+    [organization, configuration, previewDefinition],
+  );
 
-    return {
+  const resolvedConfiguration = useMemo(
+    () => ({
       ...configuration,
 
       identity: {
         ...configuration.identity,
-        displayName:
-          previewDefinition.businessIdentity.displayName ||
-          configuration.identity.displayName,
+        displayName: resolvedBranding.displayName,
       },
-
       branding: {
         ...configuration.branding,
-
         logoUrl:
-          previewDefinition.businessIdentity.logoUrl ??
-          configuration.branding.logoUrl,
-
+          resolvedBranding.logoUrl ?? configuration.branding.logoUrl ?? "",
         darkThemeLogoUrl:
-          previewDefinition.businessIdentity.darkThemeLogoUrl ??
+          resolvedBranding.darkThemeLogoUrl ??
           configuration.branding.darkThemeLogoUrl,
-
         faviconUrl:
-          previewDefinition.businessIdentity.faviconUrl ??
-          configuration.branding.faviconUrl,
-
+          resolvedBranding.faviconUrl ?? configuration.branding.faviconUrl,
         splashScreenImageUrl:
-          previewDefinition.businessIdentity.splashScreenImageUrl ??
+          resolvedBranding.splashScreenImageUrl ??
           configuration.branding.splashScreenImageUrl,
-
         primaryColor:
-          previewDefinition.theme.primaryColor ??
-          configuration.branding.primaryColor,
-
+          resolvedBranding.primaryColor ?? configuration.branding.primaryColor,
         secondaryColor:
-          previewDefinition.theme.secondaryColor ??
+          resolvedBranding.secondaryColor ??
           configuration.branding.secondaryColor,
-
         accentColor:
-          previewDefinition.theme.accentColor ??
-          configuration.branding.accentColor,
+          resolvedBranding.accentColor ?? configuration.branding.accentColor,
       },
-
       customerExperience: {
         ...configuration.customerExperience,
 
         cardStyle:
-          (previewDefinition.membership
-            .cardStyle as typeof configuration.customerExperience.cardStyle) ??
+          previewDefinition?.membership.cardStyle ??
           configuration.customerExperience.cardStyle,
 
-        showOffers: previewDefinition.sections.offers,
-        showStores: previewDefinition.sections.stores,
-        showActivity: previewDefinition.sections.activity,
+        showOffers:
+          previewDefinition?.sections.offers ??
+          configuration.customerExperience.showOffers,
+
+        showStores:
+          previewDefinition?.sections.stores ??
+          configuration.customerExperience.showStores,
+
+        showActivity:
+          previewDefinition?.sections.activity ??
+          configuration.customerExperience.showActivity,
       },
-    };
-  }, [configuration, previewDefinition]);
+    }),
+    [configuration, resolvedBranding, previewDefinition],
+  );
 
   const resolvedContent = previewDefinition?.content ?? content;
 

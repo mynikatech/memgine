@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "frontend",
+    "name": "memgine",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -43,6 +43,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "dc8ea0cd-8020-48d0-b998-1858412a880e"
+      }
     }
   }
 }

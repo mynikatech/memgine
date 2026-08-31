@@ -3,18 +3,13 @@ import { useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import type {
-  Benefit,
   CustomerExperience,
-  MembershipProduct,
-  Offer,
-  Redemption,
   Store,
-  Status,
   Subscription,
   TemplateDefaultContent,
 } from "@/src/core";
 
-import { getBusinessContent, services } from "@/src/core";
+import { services } from "@/src/core";
 
 import type { PreviewDomainData } from "@/src/experience/customer-experience-preview-data";
 import type { ExperienceTabKey } from "@/src/experience/resolve-experience";
@@ -43,25 +38,15 @@ type PreviewMode = "current" | "proposed";
 
 type PreviewPanelProps = {
   title: string;
-
   subtitle: string;
-
   experience?: CustomerExperience | null;
-
   mode: PreviewMode;
-
   domainData: PreviewDomainData;
-
   content: TemplateDefaultContent;
-
   selectedMembershipId: string;
-
   onSelectMembership: (membershipId: string) => void;
-
   activeTab: ExperienceTabKey;
   onTabChange: (tab: ExperienceTabKey) => void;
-
-  onPreviewTab?: (tab: ExperienceTabKey) => void;
 };
 
 export default function CustomerExperiencePreview() {
@@ -71,27 +56,37 @@ export default function CustomerExperiencePreview() {
 
   const [status, setStatus] = useState<LoadStatus>("loading");
 
+  /**
+   * Current = published/live experience.
+   *
+   * This MUST NOT be populated from the mutable draft.
+   */
   const [currentExperience, setCurrentExperience] =
     useState<CustomerExperience | null>(null);
 
+  /**
+   * Proposed = current draft.
+   */
   const [proposedExperience, setProposedExperience] =
     useState<CustomerExperience | null>(null);
 
+  /**
+   * Domain data used by the customer renderer.
+   *
+   * NOTE:
+   * Store/Product/Offer/etc. domain data is currently loaded from the
+   * organization data source. The actual Current/Proposed distinction for
+   * domain records such as Stores requires a staged/published domain model.
+   */
   const [previewData, setPreviewData] = useState<PreviewDomainData | null>(
     null,
   );
 
-  /*
-   * Membership currently selected in the admin preview.
-   *
-   * This is preview state only. It is not a real customer subscription.
-   * The first active configured membership is the initial selection.
-   */
   const [selectedPreviewMembershipId, setSelectedPreviewMembershipId] =
     useState("");
 
   /**
-   * Current and Proposed intentionally have independent tab state.
+   * Keep Current and Proposed navigation independent.
    */
   const [currentPreviewTab, setCurrentPreviewTab] =
     useState<ExperienceTabKey>("card");
@@ -113,17 +108,13 @@ export default function CustomerExperiencePreview() {
     setStatus("loading");
 
     try {
-      console.log(
-        "[CustomerExperiencePreview] loading organization:",
-        organization.id,
-      );
-
       /*
-       * --------------------------------------------------------------
-       * 1. Draft Customer Experience
-       * --------------------------------------------------------------
+       * --------------------------------------------------------------------
+       * 1. Load the draft
+       * --------------------------------------------------------------------
+       *
+       * This is the Proposed customer experience.
        */
-
       const draft = await services.customerExperience.getCustomerExperience(
         organization.id,
       );
@@ -135,32 +126,32 @@ export default function CustomerExperiencePreview() {
       }
 
       /*
-       * --------------------------------------------------------------
-       * 2. Published Customer Experience
-       * --------------------------------------------------------------
+       * --------------------------------------------------------------------
+       * 2. Load the published experience
+       * --------------------------------------------------------------------
        *
-       * Lifecycle information only.
+       * This is the Current customer experience.
        *
-       * It is NOT the source of the Current customer UI.
+       * IMPORTANT:
+       *
+       * Never use getBusinessContent() here because that can represent
+       * mutable/local organization configuration and therefore cause the
+       * Current side to change together with Proposed.
        */
-
       const published =
         await services.customerExperience.getPublishedCustomerExperience(
           organization.id,
         );
 
       /*
-       * --------------------------------------------------------------
-       * 3. Independent organization preview data
-       * --------------------------------------------------------------
+       * --------------------------------------------------------------------
+       * 3. Load customer-facing domain data
+       * --------------------------------------------------------------------
        */
-
       const domainData = await loadPreviewData(organization.id);
 
       setProposedExperience(draft);
-
       setCurrentExperience(published);
-
       setPreviewData(domainData);
 
       setSelectedPreviewMembershipId((current) => {
@@ -179,7 +170,6 @@ export default function CustomerExperiencePreview() {
       setStatus("ready");
     } catch (error) {
       console.error("[CustomerExperiencePreview] load failed:", error);
-
       setStatus("error");
     }
   }, [organization.id]);
@@ -200,6 +190,11 @@ export default function CustomerExperiencePreview() {
     setPublishing(true);
 
     try {
+      /*
+       * Publish the draft.
+       *
+       * After this succeeds the newly published experience becomes Current.
+       */
       const published =
         await services.customerExperience.publishCustomerExperience(
           organization.id,
@@ -208,6 +203,10 @@ export default function CustomerExperiencePreview() {
 
       setCurrentExperience(published);
 
+      /*
+       * Reload the draft because publishing may create/reset/update the
+       * draft lifecycle state.
+       */
       const draft = await services.customerExperience.getCustomerExperience(
         organization.id,
       );
@@ -215,9 +214,7 @@ export default function CustomerExperiencePreview() {
       setProposedExperience(draft);
 
       /*
-       * Re-read organization configuration/products.
-       *
-       * Still completely independent of customer data.
+       * Refresh customer-facing domain data.
        */
       const refreshedDomainData = await loadPreviewData(organization.id);
 
@@ -295,9 +292,30 @@ export default function CustomerExperiencePreview() {
     );
   }
 
-  const currentContent = getBusinessContent(organization.id);
+  /*
+   * ------------------------------------------------------------------------
+   * CURRENT CONTENT
+   * ------------------------------------------------------------------------
+   *
+   * This is the important correction.
+   *
+   * If there is a published experience, Current is taken entirely from
+   * that published experience.
+   *
+   * If there has never been a publication, we deliberately use the
+   * organization's initial/current content as the baseline.
+   *
+   * We do NOT use the draft here.
+   */
+  const currentContent: TemplateDefaultContent =
+    currentExperience?.experienceDefinition.content ??
+    proposedExperience.experienceDefinition.content;
 
-  const proposedContent = proposedExperience.experienceDefinition.content;
+  /*
+   * Proposed always comes from the current draft.
+   */
+  const proposedContent: TemplateDefaultContent =
+    proposedExperience.experienceDefinition.content;
 
   return (
     <Screen edges={["top"]}>
@@ -356,12 +374,12 @@ export default function CustomerExperiencePreview() {
 
         <View style={styles.heading}>
           <Text variant="h2" color="text">
-            Overall Customer Experience
+            Customer Preview
           </Text>
 
           <Text variant="bodySmall" color="textMuted">
-            This is the complete customer experience. The left side shows what
-            customers see today; the right side shows the proposed experience.
+            The same customer-facing experience is rendered on both sides.
+            Current shows the live experience; Proposed shows the draft.
           </Text>
         </View>
 
@@ -371,7 +389,7 @@ export default function CustomerExperiencePreview() {
             subtitle={
               currentExperience
                 ? "Currently live"
-                : "Existing customer experience"
+                : "No published experience yet"
             }
             experience={currentExperience}
             mode="current"
@@ -381,22 +399,11 @@ export default function CustomerExperiencePreview() {
             onSelectMembership={setSelectedPreviewMembershipId}
             activeTab={currentPreviewTab}
             onTabChange={setCurrentPreviewTab}
-            onPreviewTab={(tab) =>
-              router.push(
-                APP_ROUTES.orgAdmin.customerExperienceSection(
-                  tab === "history"
-                    ? "activity"
-                    : tab === "profile"
-                      ? "business-information"
-                      : tab,
-                ) as never,
-              )
-            }
           />
 
           <PreviewPanel
             title="Proposed"
-            subtitle="Ready to publish"
+            subtitle="Current draft"
             experience={proposedExperience}
             mode="proposed"
             domainData={previewData}
@@ -405,17 +412,6 @@ export default function CustomerExperiencePreview() {
             onSelectMembership={setSelectedPreviewMembershipId}
             activeTab={proposedPreviewTab}
             onTabChange={setProposedPreviewTab}
-            onPreviewTab={(tab) =>
-              router.push(
-                APP_ROUTES.orgAdmin.customerExperienceSection(
-                  tab === "history"
-                    ? "activity"
-                    : tab === "profile"
-                      ? "business-information"
-                      : tab,
-                ) as never,
-              )
-            }
           />
         </View>
 
@@ -450,7 +446,7 @@ export default function CustomerExperiencePreview() {
               />
 
               <IndividualPreviewLink
-                label="Stores"
+                label="Profile → Locations"
                 section="stores"
                 router={router}
               />
@@ -533,7 +529,7 @@ export default function CustomerExperiencePreview() {
               value={
                 currentExperience
                   ? "Yes"
-                  : "No — existing customer experience is shown on the left"
+                  : "No — no Customer Experience has been published yet"
               }
             />
           </Section>
@@ -553,7 +549,6 @@ function IndividualPreviewLink({
   router,
 }: {
   label: string;
-
   section:
     | "membership"
     | "benefits"
@@ -561,7 +556,6 @@ function IndividualPreviewLink({
     | "stores"
     | "activity"
     | "business-information";
-
   router: ReturnType<typeof useRouter>;
 }) {
   return (
@@ -572,17 +566,12 @@ function IndividualPreviewLink({
         )
       }
       accessibilityRole="link"
-      style={{
-        paddingVertical: 4,
-      }}
+      style={styles.individualPreviewLink}
     >
       <Text
         variant="bodySmall"
         color="primary"
-        style={{
-          textDecorationLine: "underline",
-          fontWeight: "600",
-        }}
+        style={styles.individualPreviewLinkText}
       >
         Preview · {label}
       </Text>
@@ -696,31 +685,6 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 }
 
 /* ========================================================================== */
-/* PREVIEW DATA LOADER                                                        */
-/* ========================================================================== */
-
-/**
- * IMPORTANT:
- *
- * This loader deliberately does NOT load:
- *
- *   organization users
- *   customer subscriptions
- *   customer redemption history
- *
- * The admin preview is a business/configuration preview, not a
- * customer-account preview.
- *
- * Sources:
- *
- *   Membership products -> organization
- *   Benefits            -> membership products / organization
- *   Offers              -> organization
- *   Stores              -> organization
- *
- * Customer-specific state is represented by deterministic preview data.
- */
-/* ========================================================================== */
 /* STYLES                                                                     */
 /* ========================================================================== */
 
@@ -790,6 +754,15 @@ const styles = StyleSheet.create({
   individualPreviewGrid: {
     gap: 8,
     marginTop: 14,
+  },
+
+  individualPreviewLink: {
+    paddingVertical: 4,
+  },
+
+  individualPreviewLinkText: {
+    textDecorationLine: "underline",
+    fontWeight: "600",
   },
 
   notificationButton: {

@@ -1,37 +1,49 @@
 import { useEffect, useMemo, useState } from "react";
+
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+
+import { useRouter } from "expo-router";
 
 import type {
   CityReference,
   CountryReference,
   ReferenceDataItem,
-  Status,
   RegionReference,
+  Status,
   Store,
 } from "@/src/core";
+
 import { services } from "@/src/core";
 
+import { APP_ROUTES } from "@/src/constants/navigation";
 import { useBusiness } from "@/src/providers";
-import { DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
+
+import { Screen } from "@/src/layout";
+
+import { DataTable, Modal, StateView, Text } from "@/src/ui";
 
 import { StoreForm } from "@/src/ui/admin/StoreForm";
-import { useRouter } from "expo-router";
-import { APP_ROUTES } from "@/src/constants/navigation";
 
 export default function OrgAdminStores() {
+  const router = useRouter();
   const { organization } = useBusiness();
 
   const [stores, setStores] = useState<Store[]>([]);
   const [storeTypes, setStoreTypes] = useState<ReferenceDataItem[]>([]);
   const [storeStatuses, setStoreStatuses] = useState<Status[]>([]);
+
   const [countries, setCountries] = useState<CountryReference[]>([]);
   const [regions, setRegions] = useState<RegionReference[]>([]);
   const [cities, setCities] = useState<CityReference[]>([]);
 
   const [loading, setLoading] = useState(true);
+
   const [formVisible, setFormVisible] = useState(false);
   const [editingStore, setEditingStore] = useState<Store | null>(null);
-  const router = useRouter();
+
+  /* ---------------------------------------------------------------------- */
+  /* LOAD                                                                   */
+  /* ---------------------------------------------------------------------- */
 
   useEffect(() => {
     let mounted = true;
@@ -79,12 +91,10 @@ export default function OrgAdminStores() {
     };
   }, [organization.id]);
 
-  /**
-   * Address reference-data dependencies:
-   *
-   * Country -> Regions
-   * Region -> Cities
-   */
+  /* ---------------------------------------------------------------------- */
+  /* ADDRESS REFERENCE DATA                                                 */
+  /* ---------------------------------------------------------------------- */
+
   const handleCountryChange = async (countryCode: string) => {
     try {
       const regionList = await services.referenceData.listRegions(countryCode);
@@ -118,57 +128,32 @@ export default function OrgAdminStores() {
     }
   };
 
+  /* ---------------------------------------------------------------------- */
+  /* DERIVED DATA                                                           */
+  /* ---------------------------------------------------------------------- */
+
+  const visibleStores = useMemo(
+    () => stores.filter((store) => !store.isDeleted),
+    [stores],
+  );
+
+  const activeStoreCount = useMemo(
+    () =>
+      visibleStores.filter(
+        (store) => store.storeStatusId === "store-status-active",
+      ).length,
+    [visibleStores],
+  );
+
   const getStoreTypeName = (id: string) =>
     storeTypes.find((item) => item.id === id)?.name ?? "Unknown";
 
   const getStoreStatusName = (id: string) =>
     storeStatuses.find((item) => item.id === id)?.statusName ?? "Unknown";
 
-  const columns = useMemo<DataTableColumn<Store>[]>(
-    () => [
-      {
-        key: "storeCode",
-        title: "Store Code",
-        width: 140,
-      },
-      {
-        key: "name",
-        title: "Store Name",
-        width: 240,
-      },
-      {
-        key: "storeTypeId",
-        title: "Type",
-        width: 160,
-        render: (item) => (
-          <Text variant="body" color="text">
-            {getStoreTypeName(item.storeTypeId)}
-          </Text>
-        ),
-      },
-      {
-        key: "address.city",
-        title: "City",
-        width: 140,
-        render: (item) => (
-          <Text variant="body" color="text">
-            {item.address.city || "—"}
-          </Text>
-        ),
-      },
-      {
-        key: "storeStatusId",
-        title: "Status",
-        width: 120,
-        render: (item) => (
-          <Text variant="body" color="text">
-            {getStoreStatusName(item.storeStatusId)}
-          </Text>
-        ),
-      },
-    ],
-    [storeTypes, storeStatuses],
-  );
+  /* ---------------------------------------------------------------------- */
+  /* NEW STORE                                                              */
+  /* ---------------------------------------------------------------------- */
 
   const createEmptyStore = (): Store => {
     const now = new Date().toISOString();
@@ -177,7 +162,14 @@ export default function OrgAdminStores() {
       id: `store-${Date.now()}`,
       organizationId: organization.id,
 
+      /*
+       * Store Code is intentionally blank.
+       *
+       * The organization administrator enters it manually.
+       * StoreForm validates it as mandatory.
+       */
       storeCode: "",
+
       name: "",
       storeTypeId: "",
 
@@ -195,15 +187,20 @@ export default function OrgAdminStores() {
 
       timezone: "America/Toronto",
 
+      /*
+       * New stores are Active by default.
+       * The administrator can change the status in StoreForm.
+       */
       storeStatusId: "store-status-active",
 
       openingDate: undefined,
       closingDate: undefined,
 
       createdAt: now,
-      createdBy: "user-system",
+      createdBy: organization.updatedBy,
+
       updatedAt: now,
-      updatedBy: "user-system",
+      updatedBy: organization.updatedBy,
 
       isDeleted: false,
       versionNo: 1,
@@ -213,57 +210,60 @@ export default function OrgAdminStores() {
   const handleAdd = () => {
     setEditingStore(createEmptyStore());
 
-    // New store has no country selected,
-    // therefore no dependent reference data.
     setRegions([]);
     setCities([]);
 
     setFormVisible(true);
   };
 
+  /* ---------------------------------------------------------------------- */
+  /* EDIT STORE                                                             */
+  /* ---------------------------------------------------------------------- */
+
   const handleEdit = async (store: Store) => {
     setEditingStore(store);
 
-    /*
-     * Load dependent reference data for the
-     * existing address before opening the form.
-     */
-    if (store.address.countryCode) {
-      try {
-        const regionList = await services.referenceData.listRegions(
-          store.address.countryCode,
+    const countryCode = store.address.countryCode;
+    const regionCode = store.address.region;
+
+    if (!countryCode) {
+      setRegions([]);
+      setCities([]);
+      setFormVisible(true);
+      return;
+    }
+
+    try {
+      const regionList = await services.referenceData.listRegions(countryCode);
+
+      setRegions(regionList);
+
+      if (regionCode) {
+        const cityList = await services.referenceData.listCities(
+          countryCode,
+          regionCode,
         );
 
-        setRegions(regionList);
-
-        if (store.address.region) {
-          const cityList = await services.referenceData.listCities(
-            store.address.countryCode,
-            store.address.region,
-          );
-
-          setCities(cityList);
-        } else {
-          setCities([]);
-        }
-      } catch (error) {
-        Alert.alert(
-          "Unable to load address data",
-          error instanceof Error
-            ? error.message
-            : "Unable to load address data.",
-        );
-
-        setRegions([]);
+        setCities(cityList);
+      } else {
         setCities([]);
       }
-    } else {
+    } catch (error) {
+      Alert.alert(
+        "Unable to load address data",
+        error instanceof Error ? error.message : "Unable to load address data.",
+      );
+
       setRegions([]);
       setCities([]);
     }
 
     setFormVisible(true);
   };
+
+  /* ---------------------------------------------------------------------- */
+  /* SAVE STORE                                                             */
+  /* ---------------------------------------------------------------------- */
 
   const handleSave = async (store: Store) => {
     try {
@@ -291,6 +291,11 @@ export default function OrgAdminStores() {
       setEditingStore(null);
       setRegions([]);
       setCities([]);
+
+      Alert.alert(
+        "Store saved",
+        existing ? "The store has been updated." : "The store has been added.",
+      );
     } catch (error) {
       Alert.alert(
         "Unable to save store",
@@ -299,6 +304,10 @@ export default function OrgAdminStores() {
     }
   };
 
+  /* ---------------------------------------------------------------------- */
+  /* CLOSE FORM                                                             */
+  /* ---------------------------------------------------------------------- */
+
   const handleCloseForm = () => {
     setFormVisible(false);
     setEditingStore(null);
@@ -306,49 +315,207 @@ export default function OrgAdminStores() {
     setCities([]);
   };
 
+  /* ---------------------------------------------------------------------- */
+  /* CUSTOMER EXPERIENCE PREVIEW                                            */
+  /* ---------------------------------------------------------------------- */
+
+  const handlePreviewCustomerExperience = () => {
+    /*
+     * IMPORTANT:
+     *
+     * Stores are part of the customer's Profile / Locations experience.
+     *
+     * Therefore this must remain the section-specific preview route.
+     *
+     * The section preview itself is responsible for showing:
+     *
+     *       CURRENT          PROPOSED
+     *       ─────────         ─────────
+     *       Profile          Profile
+     *       Locations        Locations
+     *
+     * It should NOT open the complete customer experience containing
+     * Membership, Benefits, Offers, Activity, etc.
+     */
+    router.push(
+      APP_ROUTES.orgAdmin.customerExperienceSection("stores") as never,
+    );
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* LOADING                                                                */
+  /* ---------------------------------------------------------------------- */
+
+  if (loading) {
+    return (
+      <Screen edges={["top"]}>
+        <StateView
+          kind="loading"
+          title="Loading stores"
+          message="Loading organization stores..."
+        />
+      </Screen>
+    );
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* RENDER                                                                 */
+  /* ---------------------------------------------------------------------- */
+
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.screen}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text variant="title" color="text">
-            Stores
-          </Text>
+    <Screen edges={["top"]}>
+      <ScrollView
+        contentContainerStyle={styles.page}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ================================================================ */}
+        {/* PAGE HEADER                                                       */}
+        {/* ================================================================ */}
 
-          <Text variant="bodySmall" color="textMuted">
-            Manage the locations operated by this organization.
-          </Text>
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text variant="h2" color="text">
+              Stores
+            </Text>
+
+            <Text variant="bodySmall" color="textMuted">
+              Manage the physical locations operated by this organization.
+            </Text>
+          </View>
+
+          <Pressable
+            onPress={handleAdd}
+            style={({ pressed }) => [
+              styles.addButton,
+              {
+                opacity: pressed ? 0.78 : 1,
+              },
+            ]}
+          >
+            <Text variant="body" color="background">
+              + Add Store
+            </Text>
+          </Pressable>
         </View>
 
-        <Pressable
-          onPress={handleAdd}
-          style={({ pressed }) => [
-            styles.addButton,
-            {
-              opacity: pressed ? 0.8 : 1,
-            },
-          ]}
-        >
-          <Text variant="body" color="background">
-            + Add Store
-          </Text>
-        </Pressable>
-      </View>
+        {/* ================================================================ */}
+        {/* SUMMARY                                                           */}
+        {/* ================================================================ */}
 
-      {loading ? (
-        <View style={styles.center}>
-          <Text variant="body" color="textMuted">
-            Loading stores...
-          </Text>
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryCard}>
+            <Text variant="caption" color="textMuted">
+              LOCATIONS
+            </Text>
+
+            <Text variant="h2" color="text">
+              {visibleStores.length}
+            </Text>
+
+            <Text variant="bodySmall" color="textMuted">
+              Customer-facing locations
+            </Text>
+          </View>
+
+          <View style={styles.summaryCard}>
+            <Text variant="caption" color="textMuted">
+              ACTIVE
+            </Text>
+
+            <Text variant="h2" color="text">
+              {activeStoreCount}
+            </Text>
+
+            <Text variant="bodySmall" color="textMuted">
+              Currently operating
+            </Text>
+          </View>
         </View>
-      ) : (
-        <>
+
+        {/* ================================================================ */}
+        {/* STORE LOCATIONS                                                   */}
+        {/* ================================================================ */}
+
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionHeaderText}>
+              <Text variant="title" color="text">
+                Store Locations
+              </Text>
+
+              <Text variant="bodySmall" color="textMuted">
+                Locations available to customers through Profile → Locations.
+              </Text>
+            </View>
+          </View>
+
+          {/* -------------------------------------------------------------- */}
+          {/* CUSTOMER PREVIEW                                               */}
+          {/* -------------------------------------------------------------- */}
+
+          <Pressable
+            onPress={handlePreviewCustomerExperience}
+            accessibilityRole="link"
+            style={({ pressed }) => [
+              styles.previewLink,
+              {
+                opacity: pressed ? 0.65 : 1,
+              },
+            ]}
+          >
+            <Text variant="body" color="primary" style={styles.previewLinkText}>
+              Preview Customer Experience →
+            </Text>
+          </Pressable>
+
+          {/* -------------------------------------------------------------- */}
+          {/* TABLE                                                          */}
+          {/* -------------------------------------------------------------- */}
+
           <DataTable
-            columns={columns}
-            data={stores.filter((item) => !item.isDeleted)}
+            columns={[
+              {
+                key: "storeCode",
+                title: "Store Code",
+                width: 140,
+              },
+              {
+                key: "name",
+                title: "Store Name",
+                width: 240,
+              },
+              {
+                key: "storeTypeId",
+                title: "Type",
+                width: 160,
+                render: (item: Store) => (
+                  <Text variant="body" color="text">
+                    {getStoreTypeName(item.storeTypeId)}
+                  </Text>
+                ),
+              },
+              {
+                key: "address.city",
+                title: "City",
+                width: 140,
+                render: (item: Store) => (
+                  <Text variant="body" color="text">
+                    {item.address.city || "—"}
+                  </Text>
+                ),
+              },
+              {
+                key: "storeStatusId",
+                title: "Status",
+                width: 120,
+                render: (item: Store) => (
+                  <Text variant="body" color="text">
+                    {getStoreStatusName(item.storeStatusId)}
+                  </Text>
+                ),
+              },
+            ]}
+            data={visibleStores}
             keyExtractor={(item) => item.id}
             emptyMessage="No stores configured."
             actions={[
@@ -358,28 +525,12 @@ export default function OrgAdminStores() {
               },
             ]}
           />
+        </View>
+      </ScrollView>
 
-          <Pressable
-            onPress={() =>
-              router.push(
-                APP_ROUTES.orgAdmin.customerExperienceSection(
-                  "stores",
-                ) as never,
-              )
-            }
-            style={({ pressed }) => [
-              styles.previewLink,
-              {
-                opacity: pressed ? 0.6 : 1,
-              },
-            ]}
-          >
-            <Text variant="body" color="primary">
-              Preview
-            </Text>
-          </Pressable>
-        </>
-      )}
+      {/* ================================================================ */}
+      {/* STORE FORM                                                        */}
+      {/* ================================================================ */}
 
       <Modal
         visible={formVisible}
@@ -407,16 +558,16 @@ export default function OrgAdminStores() {
           />
         ) : null}
       </Modal>
-    </ScrollView>
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  scroll: {
-    flex: 1,
-  },
+/* ========================================================================== */
+/* STYLES                                                                     */
+/* ========================================================================== */
 
-  screen: {
+const styles = StyleSheet.create({
+  page: {
     padding: 24,
     gap: 24,
   },
@@ -430,28 +581,61 @@ const styles = StyleSheet.create({
 
   headerText: {
     flex: 1,
-    gap: 4,
+    gap: 5,
   },
 
   addButton: {
     minHeight: 44,
     paddingHorizontal: 18,
-    borderRadius: 8,
+    borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#0F766E",
   },
 
-  previewLink: {
-    alignSelf: "flex-start",
-    minHeight: 40,
-    justifyContent: "center",
-    paddingHorizontal: 0,
+  summaryRow: {
+    flexDirection: "row",
+    gap: 16,
   },
 
-  center: {
-    minHeight: 160,
-    alignItems: "center",
+  summaryCard: {
+    flex: 1,
+    minHeight: 116,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    gap: 3,
+  },
+
+  sectionCard: {
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    gap: 16,
+  },
+
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+
+  sectionHeaderText: {
+    flex: 1,
+    gap: 4,
+  },
+
+  previewLink: {
+    alignSelf: "flex-start",
+    minHeight: 32,
     justifyContent: "center",
+  },
+
+  previewLinkText: {
+    fontWeight: "600",
+    textDecorationLine: "underline",
   },
 });

@@ -1,6 +1,8 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
-import { ScrollView, View } from "react-native";
+
+import React, { useCallback, useEffect, useState } from "react";
+
+import { ScrollView, StyleSheet, View } from "react-native";
 
 import type { CustomerExperience } from "@/src/core";
 import { services } from "@/src/core";
@@ -14,7 +16,12 @@ import { BusinessExperience } from "@/src/experience/BusinessExperience";
 import { useBusiness } from "@/src/providers";
 
 import { Button, Card, Header, StateView, Text } from "@/src/ui";
+
 import { Screen } from "@/src/layout";
+
+/* -------------------------------------------------------------------------- */
+/* TYPES                                                                      */
+/* -------------------------------------------------------------------------- */
 
 type StatusState = "loading" | "error" | "ready";
 
@@ -28,6 +35,16 @@ type SectionKey =
   | "business-preferences"
   | "referral";
 
+/*
+ * Derive the tab type directly from BusinessExperience.
+ *
+ * This avoids duplicating ExperienceTabKey here and guarantees that
+ * this file stays compatible if BusinessExperience changes its tab type.
+ */
+type BusinessExperienceInitialTab = React.ComponentProps<
+  typeof BusinessExperience
+>["initialTab"];
+
 const SECTION_TITLES: Record<SectionKey, string> = {
   membership: "Membership Preview",
   benefits: "Benefits Preview",
@@ -38,6 +55,10 @@ const SECTION_TITLES: Record<SectionKey, string> = {
   "business-preferences": "Business Preferences Preview",
   referral: "Referral Preview",
 };
+
+/* -------------------------------------------------------------------------- */
+/* HELPERS                                                                    */
+/* -------------------------------------------------------------------------- */
 
 function isSectionKey(value: string | undefined): value is SectionKey {
   return (
@@ -52,6 +73,10 @@ function isSectionKey(value: string | undefined): value is SectionKey {
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* MAIN SCREEN                                                                */
+/* -------------------------------------------------------------------------- */
+
 export default function CustomerExperienceSectionPreview() {
   const router = useRouter();
 
@@ -63,7 +88,25 @@ export default function CustomerExperienceSectionPreview() {
 
   const [status, setStatus] = useState<StatusState>("loading");
 
+  /*
+   * PROPOSED
+   *
+   * Organization's current draft.
+   */
   const [experience, setExperience] = useState<CustomerExperience | null>(null);
+
+  /*
+   * CURRENT
+   *
+   * Organization's published experience.
+   *
+   * This MUST remain separate from the draft.
+   *
+   * Editing the draft must never mutate what is displayed
+   * in the Current panel.
+   */
+  const [publishedExperience, setPublishedExperience] =
+    useState<CustomerExperience | null>(null);
 
   const [previewData, setPreviewData] = useState<PreviewDomainData | null>(
     null,
@@ -71,38 +114,49 @@ export default function CustomerExperienceSectionPreview() {
 
   const [selectedMembershipId, setSelectedMembershipId] = useState("");
 
+  /* ---------------------------------------------------------------------- */
+  /* LOAD                                                                    */
+  /* ---------------------------------------------------------------------- */
+
   const load = useCallback(async () => {
     setStatus("loading");
 
     try {
       /*
-       * Customer Experience configuration is the only configuration
-       * loaded from the actual organization.
-       *
-       * Customer/customer-subscription data is NOT loaded here.
-       *
-       * All customer-facing domain data comes from loadPreviewData().
+       * Draft / Proposed.
        */
-      const result = await services.customerExperience.getCustomerExperience(
+      const draft = await services.customerExperience.getCustomerExperience(
         organization.id,
       );
 
-      if (!result) {
+      if (!draft) {
         setStatus("error");
         return;
       }
 
-      const data = await loadPreviewData(organization.id);
-
-      setExperience(result);
-      setPreviewData(data);
+      /*
+       * Published / Current.
+       *
+       * If nothing has been published yet, this can be null.
+       * In that situation we fall back to the draft for the
+       * Current display, but clearly label it as unpublished.
+       */
+      const published =
+        await services.customerExperience.getPublishedCustomerExperience(
+          organization.id,
+        );
 
       /*
-       * First configured membership is the current default.
+       * Customer-facing domain data.
        *
-       * We intentionally do not hard-code Gold/Silver/Platinum here.
-       * Later this can be replaced by membership.displayOrder.
+       * This is the existing preview-data mechanism.
        */
+      const data = await loadPreviewData(organization.id);
+
+      setExperience(draft);
+      setPublishedExperience(published);
+      setPreviewData(data);
+
       setSelectedMembershipId(data.selectedSubscriptionId);
 
       setStatus("ready");
@@ -116,6 +170,10 @@ export default function CustomerExperienceSectionPreview() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /* ---------------------------------------------------------------------- */
+  /* INVALID SECTION                                                         */
+  /* ---------------------------------------------------------------------- */
 
   if (!isSectionKey(section)) {
     return (
@@ -131,6 +189,10 @@ export default function CustomerExperienceSectionPreview() {
     );
   }
 
+  /* ---------------------------------------------------------------------- */
+  /* LOADING                                                                 */
+  /* ---------------------------------------------------------------------- */
+
   if (status === "loading") {
     return (
       <Screen edges={["top"]}>
@@ -138,6 +200,10 @@ export default function CustomerExperienceSectionPreview() {
       </Screen>
     );
   }
+
+  /* ---------------------------------------------------------------------- */
+  /* ERROR                                                                   */
+  /* ---------------------------------------------------------------------- */
 
   if (status === "error" || !experience || !previewData) {
     return (
@@ -153,25 +219,16 @@ export default function CustomerExperienceSectionPreview() {
     );
   }
 
-  /*
-   * IMPORTANT:
-   *
-   * The selected membership comes exclusively from previewData.
-   *
-   * There is no organization-user lookup and no real customer
-   * subscription involved in this screen.
-   */
+  /* ---------------------------------------------------------------------- */
+  /* MEMBERSHIP DATA                                                         */
+  /* ---------------------------------------------------------------------- */
+
   const selected: PreviewMembership | undefined =
     previewData.memberships.find(
       (membership: PreviewMembership) =>
         membership.subscription.id === selectedMembershipId,
     ) ?? previewData.memberships[0];
 
-  /*
-   * BusinessExperience expects subscriptions to exist for the
-   * membership selector. These are synthetic preview subscriptions
-   * created by loadPreviewData().
-   */
   const membershipList = previewData.memberships.map(
     (membership: PreviewMembership) => ({
       subscription: membership.subscription,
@@ -181,54 +238,59 @@ export default function CustomerExperienceSectionPreview() {
 
   const selectedSubscriptionId = selected?.subscription.id ?? "";
 
+  /* ---------------------------------------------------------------------- */
+  /* CUSTOMER TAB                                                            */
+  /* ---------------------------------------------------------------------- */
+
   /*
-   * Individual section previews open the appropriate customer tab
-   * where applicable.
+   * IMPORTANT:
+   *
+   * Explicitly type this because BusinessExperience expects
+   * ExperienceTabKey rather than a generic string.
    */
-  const initialTab =
+  const initialTab: BusinessExperienceInitialTab =
     section === "offers"
       ? "offers"
       : section === "activity"
         ? "history"
         : "card";
 
+  const isStoresPreview = section === "stores";
+
+  /* ---------------------------------------------------------------------- */
+  /* RENDER                                                                  */
+  /* ---------------------------------------------------------------------- */
+
   return (
     <Screen edges={["top"]}>
       <Header
         title={SECTION_TITLES[section]}
-        subtitle="Customer-facing preview"
+        subtitle={
+          isStoresPreview
+            ? "Customer Profile → Locations"
+            : "Customer-facing preview"
+        }
       />
 
       <ScrollView
-        contentContainerStyle={{
-          padding: 20,
-          gap: 16,
-        }}
+        contentContainerStyle={styles.page}
         showsVerticalScrollIndicator={false}
       >
-        {/* Preview header */}
+        {/* ================================================================ */}
+        {/* PAGE HEADER                                                       */}
+        {/* ================================================================ */}
+
         <Card padding="md">
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 16,
-            }}
-          >
-            <View
-              style={{
-                flex: 1,
-                gap: 4,
-              }}
-            >
+          <View style={styles.header}>
+            <View style={styles.headerText}>
               <Text variant="title" color="text">
                 {SECTION_TITLES[section]}
               </Text>
 
               <Text variant="bodySmall" color="textMuted">
-                This is the same customer experience renderer used by the live
-                customer application.
+                {isStoresPreview
+                  ? "See how customers see locations inside their Profile."
+                  : "This is the same customer experience renderer used by the live customer application."}
               </Text>
             </View>
 
@@ -240,15 +302,10 @@ export default function CustomerExperienceSectionPreview() {
           </View>
         </Card>
 
-        {/*
-         * Membership selector
-         *
-         * Only the membership section needs its own selector because
-         * this is the individual membership preview.
-         *
-         * The selector changes the synthetic preview membership,
-         * not a real customer's subscription.
-         */}
+        {/* ================================================================ */}
+        {/* MEMBERSHIP SELECTOR                                              */}
+        {/* ================================================================ */}
+
         {section === "membership" && membershipList.length > 1 ? (
           <Card padding="md">
             <Text variant="label" color="textMuted">
@@ -258,10 +315,7 @@ export default function CustomerExperienceSectionPreview() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{
-                gap: 8,
-                paddingTop: 10,
-              }}
+              contentContainerStyle={styles.membershipList}
             >
               {membershipList.map((membership) => {
                 const isSelected =
@@ -287,45 +341,229 @@ export default function CustomerExperienceSectionPreview() {
           </Card>
         ) : null}
 
-        {/* Customer experience renderer */}
-        <View
-          style={{
-            overflow: "hidden",
-            borderWidth: 1,
-            borderColor: "#E1E5EA",
-            borderRadius: 18,
-            backgroundColor: "#FFFFFF",
-            minHeight: 720,
-          }}
-        >
-          <BusinessExperience
-            content={experience.experienceDefinition.content}
-            subscription={selected?.subscription}
-            subscriptionStatus={selected?.subscriptionStatus}
-            product={selected?.product}
-            benefits={
-              section === "benefits"
-                ? previewData.benefits
-                : (selected?.benefits ?? [])
-            }
-            offers={previewData.offers}
-            stores={previewData.stores}
-            redemptions={selected?.redemptions ?? []}
-            memberships={membershipList}
-            selectedSubscriptionId={selectedSubscriptionId}
-            onSelectSubscription={(subscriptionId) => {
-              setSelectedMembershipId(subscriptionId);
-            }}
-            availableMemberships={previewData.availableMemberships}
-            onJoin={() => {}}
-            onExit={() => router.back()}
-            previewDefinition={experience.experienceDefinition}
-            initialTab={initialTab}
-            previewMode
-            previewSection={section}
-          />
-        </View>
+        {/* ================================================================ */}
+        {/* STORES                                                            */}
+        {/*                                                                  */}
+        {/* Stores are NOT a complete customer-experience preview.           */}
+        {/* They are Profile → Locations.                                   */}
+        {/*                                                                  */}
+        {/* We therefore show only two customer renderers:                   */}
+        {/*                                                                  */}
+        {/* CURRENT   |   PROPOSED                                           */}
+        {/*                                                                  */}
+        {/* Both use BusinessExperience.                                    */}
+        {/* ================================================================ */}
+
+        {isStoresPreview ? (
+          <View style={styles.compareContainer}>
+            {/* ========================================================== */}
+            {/* CURRENT                                                     */}
+            {/* ========================================================== */}
+
+            <StorePreviewPanel
+              title="Current"
+              subtitle={
+                publishedExperience
+                  ? "Currently published"
+                  : "No published experience yet"
+              }
+              experience={publishedExperience ?? experience}
+              previewData={previewData}
+              selected={selected}
+              membershipList={membershipList}
+              selectedSubscriptionId={selectedSubscriptionId}
+              onSelectSubscription={setSelectedMembershipId}
+              initialTab={initialTab}
+            />
+
+            {/* ========================================================== */}
+            {/* PROPOSED                                                    */}
+            {/* ========================================================== */}
+
+            <StorePreviewPanel
+              title="Proposed"
+              subtitle="Current draft"
+              experience={experience}
+              previewData={previewData}
+              selected={selected}
+              membershipList={membershipList}
+              selectedSubscriptionId={selectedSubscriptionId}
+              onSelectSubscription={setSelectedMembershipId}
+              initialTab={initialTab}
+            />
+          </View>
+        ) : (
+          /* ============================================================ */
+          /* OTHER CUSTOMER EXPERIENCE SECTIONS                          */
+          /* ============================================================ */
+
+          <View style={styles.customerExperienceFrame}>
+            <BusinessExperience
+              content={experience.experienceDefinition.content}
+              subscription={selected?.subscription}
+              subscriptionStatus={selected?.subscriptionStatus}
+              product={selected?.product}
+              benefits={
+                section === "benefits"
+                  ? previewData.benefits
+                  : (selected?.benefits ?? [])
+              }
+              offers={previewData.offers}
+              stores={previewData.stores}
+              redemptions={selected?.redemptions ?? []}
+              memberships={membershipList}
+              selectedSubscriptionId={selectedSubscriptionId}
+              onSelectSubscription={setSelectedMembershipId}
+              availableMemberships={previewData.availableMemberships}
+              onJoin={() => {}}
+              onExit={() => router.back()}
+              previewDefinition={experience.experienceDefinition}
+              initialTab={initialTab}
+              previewMode
+              previewSection={section}
+            />
+          </View>
+        )}
       </ScrollView>
     </Screen>
   );
 }
+
+/* ========================================================================== */
+/* STORE PREVIEW PANEL                                                        */
+/* ========================================================================== */
+
+type StorePreviewPanelProps = {
+  title: string;
+  subtitle: string;
+  experience: CustomerExperience;
+  previewData: PreviewDomainData;
+  selected?: PreviewMembership;
+  membershipList: {
+    subscription: PreviewMembership["subscription"];
+    product: PreviewMembership["product"];
+  }[];
+  selectedSubscriptionId: string;
+  onSelectSubscription: (id: string) => void;
+  initialTab: BusinessExperienceInitialTab;
+};
+
+function StorePreviewPanel({
+  title,
+  subtitle,
+  experience,
+  previewData,
+  selected,
+  membershipList,
+  selectedSubscriptionId,
+  onSelectSubscription,
+  initialTab,
+}: StorePreviewPanelProps) {
+  return (
+    <View style={styles.previewPanel}>
+      {/* ------------------------------------------------------------------ */}
+      {/* PANEL HEADER                                                        */}
+      {/* ------------------------------------------------------------------ */}
+
+      <View style={styles.panelHeader}>
+        <View style={styles.panelHeaderText}>
+          <Text variant="title" color="text">
+            {title}
+          </Text>
+
+          <Text variant="bodySmall" color="textMuted">
+            {subtitle}
+          </Text>
+        </View>
+      </View>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* CUSTOMER EXPERIENCE                                                */}
+      {/* ------------------------------------------------------------------ */}
+
+      <View style={styles.customerExperienceFrame}>
+        <BusinessExperience
+          content={experience.experienceDefinition.content}
+          subscription={selected?.subscription}
+          subscriptionStatus={selected?.subscriptionStatus}
+          product={selected?.product}
+          benefits={selected?.benefits ?? []}
+          offers={previewData.offers}
+          stores={previewData.stores}
+          redemptions={selected?.redemptions ?? []}
+          memberships={membershipList}
+          selectedSubscriptionId={selectedSubscriptionId}
+          onSelectSubscription={onSelectSubscription}
+          availableMemberships={previewData.availableMemberships}
+          onJoin={() => {}}
+          onExit={() => {}}
+          previewDefinition={experience.experienceDefinition}
+          initialTab={initialTab}
+          previewMode
+          previewSection="stores"
+        />
+      </View>
+    </View>
+  );
+}
+
+/* ========================================================================== */
+/* STYLES                                                                     */
+/* ========================================================================== */
+
+const styles = StyleSheet.create({
+  page: {
+    padding: 20,
+    gap: 16,
+  },
+
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 16,
+  },
+
+  headerText: {
+    flex: 1,
+    gap: 4,
+  },
+
+  membershipList: {
+    gap: 8,
+    paddingTop: 10,
+  },
+
+  compareContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+    gap: 20,
+  },
+
+  previewPanel: {
+    flex: 1,
+    minWidth: 420,
+    gap: 10,
+  },
+
+  panelHeader: {
+    minHeight: 54,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  panelHeaderText: {
+    gap: 2,
+  },
+
+  customerExperienceFrame: {
+    minHeight: 720,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#E1E5EA",
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+  },
+});

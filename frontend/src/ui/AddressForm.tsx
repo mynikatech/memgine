@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+
 import { View } from "react-native";
 
 import type {
@@ -27,6 +28,24 @@ export type AddressFormProps = {
   onRegionChange?: (countryCode: string, regionCode: string) => void;
 
   compact?: boolean;
+
+  /**
+   * Required fields are controlled by the consuming domain form.
+   *
+   * This keeps AddressForm reusable while allowing StoreForm,
+   * OrganizationForm, etc. to express their own mandatory rules.
+   */
+  requiredLine1?: boolean;
+  requiredCountry?: boolean;
+  requiredRegion?: boolean;
+  requiredCity?: boolean;
+
+  errors?: {
+    line1?: string;
+    countryCode?: string;
+    region?: string;
+    city?: string;
+  };
 };
 
 export function AddressForm({
@@ -38,12 +57,14 @@ export function AddressForm({
   onCountryChange,
   onRegionChange,
   compact = false,
+  requiredLine1 = false,
+  requiredCountry = false,
+  requiredRegion = false,
+  requiredCity = false,
+  errors,
 }: AddressFormProps) {
   const theme = useTheme();
 
-  /*
-   * Regions belonging to the selected country.
-   */
   const availableRegions = useMemo(
     () =>
       value.countryCode
@@ -52,10 +73,6 @@ export function AddressForm({
     [regions, value.countryCode],
   );
 
-  /*
-   * Cities belonging to the selected country
-   * and selected region.
-   */
   const availableCities = useMemo(
     () =>
       value.countryCode && value.region
@@ -78,12 +95,6 @@ export function AddressForm({
     });
   };
 
-  /*
-   * Country selection
-   *
-   * ReferenceSelect returns the country reference ID.
-   * Address stores countryCode, so convert ID -> countryCode.
-   */
   const handleCountryChange = (countryId: string) => {
     const country = countries.find((item) => item.id === countryId);
 
@@ -91,27 +102,16 @@ export function AddressForm({
       return;
     }
 
-    const address: Address = {
+    onChange({
       ...value,
       countryCode: country.countryCode,
       region: "",
       city: "",
-    };
+    });
 
-    onChange(address);
-
-    /*
-     * Let the parent load regions for this country.
-     */
     onCountryChange?.(country.countryCode);
   };
 
-  /*
-   * Region selection
-   *
-   * ReferenceSelect returns the region reference ID.
-   * Address stores region code.
-   */
   const handleRegionChange = (regionId: string) => {
     const region = regions.find((item) => item.id === regionId);
 
@@ -119,25 +119,15 @@ export function AddressForm({
       return;
     }
 
-    const address: Address = {
+    onChange({
       ...value,
       region: region.code,
       city: "",
-    };
+    });
 
-    onChange(address);
-
-    /*
-     * Let the parent load cities for this region.
-     */
     onRegionChange?.(region.countryCode, region.code);
   };
 
-  /*
-   * City selection
-   *
-   * Address stores the city name.
-   */
   const handleCityChange = (cityId: string) => {
     const city = cities.find((item) => item.id === cityId);
 
@@ -152,11 +142,7 @@ export function AddressForm({
   };
 
   return (
-    <View
-      style={{
-        gap: theme.spacing.md,
-      }}
-    >
+    <View style={{ gap: theme.spacing.md }}>
       <Text variant="label" color="textSecondary">
         Address
       </Text>
@@ -172,8 +158,10 @@ export function AddressForm({
         <View style={{ width: "100%" }}>
           <Input
             label="Address Line 1"
+            required={requiredLine1}
             value={value.line1}
             placeholder="Street address"
+            error={errors?.line1}
             onChangeText={(text) => updateAddress("line1", text)}
           />
         </View>
@@ -196,6 +184,7 @@ export function AddressForm({
         >
           <ReferenceSelect
             label="Country"
+            required={requiredCountry}
             value={
               countries.find(
                 (country) => country.countryCode === value.countryCode,
@@ -203,11 +192,12 @@ export function AddressForm({
             }
             items={countries}
             placeholder="Select country"
+            error={errors?.countryCode}
             onChange={handleCountryChange}
           />
         </View>
 
-        {/* Region */}
+        {/* State / Province */}
         <View
           style={{
             width: compact ? "100%" : "48%",
@@ -215,6 +205,7 @@ export function AddressForm({
         >
           <ReferenceSelect
             label="State / Province"
+            required={requiredRegion}
             value={
               availableRegions.find((region) => region.code === value.region)
                 ?.id ?? ""
@@ -226,6 +217,7 @@ export function AddressForm({
                 : "Select country first"
             }
             disabled={!value.countryCode}
+            error={errors?.region}
             onChange={handleRegionChange}
           />
         </View>
@@ -238,6 +230,7 @@ export function AddressForm({
         >
           <ReferenceSelect
             label="City"
+            required={requiredCity}
             value={
               availableCities.find((city) => city.name === value.city)?.id ?? ""
             }
@@ -246,6 +239,7 @@ export function AddressForm({
               value.region ? "Select city" : "Select state / province first"
             }
             disabled={!value.region}
+            error={errors?.city}
             onChange={handleCityChange}
           />
         </View>
