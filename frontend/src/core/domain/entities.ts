@@ -141,6 +141,27 @@ export interface OrganizationBranding {
   versionNo: number;
 }
 
+export interface StaffStoreAssignment {
+  id: ID;
+  organizationId: ID;
+
+  staffId: ID;
+  storeId: ID;
+
+  assignmentStatusId: ID;
+
+  effectiveDate: ISODateString;
+  endDate?: ISODateString;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt: ISODateString;
+  updatedBy: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
+}
+
 /** The business notification configuration */
 export interface NotificationConfiguration {
   id: ID;
@@ -351,6 +372,9 @@ export interface MembershipProduct {
   productCategoryId: ID;
   productTypeId: ID;
 
+  tier?: string;
+  tierSequence?: number;
+
   description?: string;
 
   productStatusId: ID;
@@ -409,6 +433,10 @@ export interface Benefit {
   description?: string;
 
   benefitStatusId: ID;
+
+  product?: string;
+  retailPrice?: number;
+  cost?: number;
 
   effectiveDate: string;
   expiryDate?: string;
