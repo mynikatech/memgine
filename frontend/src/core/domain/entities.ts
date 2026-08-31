@@ -401,6 +401,27 @@ export interface MembershipProduct {
   versionNo: number;
 }
 
+/** Product Entity */
+
+export interface Product {
+  id: ID;
+  organizationId: ID;
+
+  productCode: string;
+  productName: string;
+  description?: string;
+
+  statusId: ID;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt: ISODateString;
+  updatedBy: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
+}
+
 /* ------------------------------------------------------------------ *
  * Benefit
  * ------------------------------------------------------------------ */
@@ -434,9 +455,9 @@ export interface Benefit {
 
   benefitStatusId: ID;
 
-  product?: string;
-  retailPrice?: number;
-  cost?: number;
+  productId?: ID;
+  retailPrice?: Money;
+  cost?: Money;
 
   effectiveDate: string;
   expiryDate?: string;
