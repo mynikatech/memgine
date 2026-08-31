@@ -4,7 +4,15 @@ import React, { useCallback, useEffect, useState } from "react";
 
 import { ScrollView, StyleSheet, View } from "react-native";
 
-import type { CustomerExperience } from "@/src/core";
+import type {
+  CityReference,
+  CountryReference,
+  CustomerExperience,
+  ReferenceDataItem,
+  RegionReference,
+  Status,
+  Store,
+} from "@/src/core";
 import { services } from "@/src/core";
 
 import type { PreviewDomainData, PreviewMembership } from "@/src/experience";
@@ -12,7 +20,7 @@ import type { PreviewDomainData, PreviewMembership } from "@/src/experience";
 import { loadPreviewData } from "@/src/experience";
 
 import { BusinessExperience } from "@/src/experience/BusinessExperience";
-
+import { StorePreview } from "@/src/ui/admin/StorePreview";
 import { useBusiness } from "@/src/providers";
 
 import { Button, Card, Header, StateView, Text } from "@/src/ui";
@@ -80,8 +88,14 @@ function isSectionKey(value: string | undefined): value is SectionKey {
 export default function CustomerExperienceSectionPreview() {
   const router = useRouter();
 
-  const { section } = useLocalSearchParams<{
+  const {
+    section,
+    currentStores: currentStoresParam,
+    proposedStores: proposedStoresParam,
+  } = useLocalSearchParams<{
     section?: string;
+    currentStores?: string;
+    proposedStores?: string;
   }>();
 
   const { organization } = useBusiness();
@@ -111,6 +125,13 @@ export default function CustomerExperienceSectionPreview() {
   const [previewData, setPreviewData] = useState<PreviewDomainData | null>(
     null,
   );
+
+  const [storeTypes, setStoreTypes] = useState<ReferenceDataItem[]>([]);
+  const [storeStatuses, setStoreStatuses] = useState<Status[]>([]);
+  const [countries, setCountries] = useState<CountryReference[]>([]);
+
+  const [currentStores, setCurrentStores] = useState<Store[]>([]);
+  const [proposedStores, setProposedStores] = useState<Store[]>([]);
 
   const [selectedMembershipId, setSelectedMembershipId] = useState("");
 
@@ -151,11 +172,57 @@ export default function CustomerExperienceSectionPreview() {
        *
        * This is the existing preview-data mechanism.
        */
-      const data = await loadPreviewData(organization.id);
+      const [data, typeList, statusList, countryList] = await Promise.all([
+        loadPreviewData(organization.id),
+        services.referenceData.listStoreTypes(),
+        services.status.listStoreStatuses(),
+        services.referenceData.listCountries(),
+      ]);
+
+      /*
+       * Stores are previewed from the explicit working-session snapshot
+       * passed by stores.tsx.
+       *
+       * Current is the committed baseline.
+       * Proposed is the accumulated working state.
+       *
+       * If this route is opened directly, fall back to the persisted store
+       * list for both sides.
+       */
+      let parsedCurrentStores: Store[] = data.stores;
+      let parsedProposedStores: Store[] = data.stores;
+
+      try {
+        if (currentStoresParam) {
+          const parsed = JSON.parse(currentStoresParam);
+          if (Array.isArray(parsed)) {
+            parsedCurrentStores = parsed;
+          }
+        }
+
+        if (proposedStoresParam) {
+          const parsed = JSON.parse(proposedStoresParam);
+          if (Array.isArray(parsed)) {
+            parsedProposedStores = parsed;
+          }
+        }
+      } catch (error) {
+        console.warn(
+          "[CustomerExperienceSectionPreview] Unable to parse Store preview state:",
+          error,
+        );
+      }
 
       setExperience(draft);
       setPublishedExperience(published);
       setPreviewData(data);
+
+      setStoreTypes(typeList);
+      setStoreStatuses(statusList);
+      setCountries(countryList);
+
+      setCurrentStores(parsedCurrentStores);
+      setProposedStores(parsedProposedStores);
 
       setSelectedMembershipId(data.selectedSubscriptionId);
 
@@ -165,7 +232,7 @@ export default function CustomerExperienceSectionPreview() {
 
       setStatus("error");
     }
-  }, [organization.id]);
+  }, [organization.id, currentStoresParam, proposedStoresParam]);
 
   useEffect(() => {
     void load();
@@ -342,61 +409,22 @@ export default function CustomerExperienceSectionPreview() {
         ) : null}
 
         {/* ================================================================ */}
-        {/* STORES                                                            */}
+        {/* CUSTOMER EXPERIENCE                                              */}
         {/*                                                                  */}
-        {/* Stores are NOT a complete customer-experience preview.           */}
-        {/* They are Profile → Locations.                                   */}
-        {/*                                                                  */}
-        {/* We therefore show only two customer renderers:                   */}
-        {/*                                                                  */}
-        {/* CURRENT   |   PROPOSED                                           */}
-        {/*                                                                  */}
-        {/* Both use BusinessExperience.                                    */}
+        {/* Stores use their own dedicated preview component.               */}
+        {/* All other sections continue using the existing                  */}
+        {/* BusinessExperience customer renderer.                            */}
         {/* ================================================================ */}
 
         {isStoresPreview ? (
-          <View style={styles.compareContainer}>
-            {/* ========================================================== */}
-            {/* CURRENT                                                     */}
-            {/* ========================================================== */}
-
-            <StorePreviewPanel
-              title="Current"
-              subtitle={
-                publishedExperience
-                  ? "Currently published"
-                  : "No published experience yet"
-              }
-              experience={publishedExperience ?? experience}
-              previewData={previewData}
-              selected={selected}
-              membershipList={membershipList}
-              selectedSubscriptionId={selectedSubscriptionId}
-              onSelectSubscription={setSelectedMembershipId}
-              initialTab={initialTab}
-            />
-
-            {/* ========================================================== */}
-            {/* PROPOSED                                                    */}
-            {/* ========================================================== */}
-
-            <StorePreviewPanel
-              title="Proposed"
-              subtitle="Current draft"
-              experience={experience}
-              previewData={previewData}
-              selected={selected}
-              membershipList={membershipList}
-              selectedSubscriptionId={selectedSubscriptionId}
-              onSelectSubscription={setSelectedMembershipId}
-              initialTab={initialTab}
-            />
-          </View>
+          <StorePreview
+            currentStores={currentStores}
+            proposedStores={proposedStores}
+            storeTypes={storeTypes}
+            storeStatuses={storeStatuses}
+            countries={countries}
+          />
         ) : (
-          /* ============================================================ */
-          /* OTHER CUSTOMER EXPERIENCE SECTIONS                          */
-          /* ============================================================ */
-
           <View style={styles.customerExperienceFrame}>
             <BusinessExperience
               content={experience.experienceDefinition.content}
@@ -409,7 +437,7 @@ export default function CustomerExperienceSectionPreview() {
                   : (selected?.benefits ?? [])
               }
               offers={previewData.offers}
-              stores={previewData.stores}
+              stores={proposedStores}
               redemptions={selected?.redemptions ?? []}
               memberships={membershipList}
               selectedSubscriptionId={selectedSubscriptionId}
@@ -426,84 +454,6 @@ export default function CustomerExperienceSectionPreview() {
         )}
       </ScrollView>
     </Screen>
-  );
-}
-
-/* ========================================================================== */
-/* STORE PREVIEW PANEL                                                        */
-/* ========================================================================== */
-
-type StorePreviewPanelProps = {
-  title: string;
-  subtitle: string;
-  experience: CustomerExperience;
-  previewData: PreviewDomainData;
-  selected?: PreviewMembership;
-  membershipList: {
-    subscription: PreviewMembership["subscription"];
-    product: PreviewMembership["product"];
-  }[];
-  selectedSubscriptionId: string;
-  onSelectSubscription: (id: string) => void;
-  initialTab: BusinessExperienceInitialTab;
-};
-
-function StorePreviewPanel({
-  title,
-  subtitle,
-  experience,
-  previewData,
-  selected,
-  membershipList,
-  selectedSubscriptionId,
-  onSelectSubscription,
-  initialTab,
-}: StorePreviewPanelProps) {
-  return (
-    <View style={styles.previewPanel}>
-      {/* ------------------------------------------------------------------ */}
-      {/* PANEL HEADER                                                        */}
-      {/* ------------------------------------------------------------------ */}
-
-      <View style={styles.panelHeader}>
-        <View style={styles.panelHeaderText}>
-          <Text variant="title" color="text">
-            {title}
-          </Text>
-
-          <Text variant="bodySmall" color="textMuted">
-            {subtitle}
-          </Text>
-        </View>
-      </View>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* CUSTOMER EXPERIENCE                                                */}
-      {/* ------------------------------------------------------------------ */}
-
-      <View style={styles.customerExperienceFrame}>
-        <BusinessExperience
-          content={experience.experienceDefinition.content}
-          subscription={selected?.subscription}
-          subscriptionStatus={selected?.subscriptionStatus}
-          product={selected?.product}
-          benefits={selected?.benefits ?? []}
-          offers={previewData.offers}
-          stores={previewData.stores}
-          redemptions={selected?.redemptions ?? []}
-          memberships={membershipList}
-          selectedSubscriptionId={selectedSubscriptionId}
-          onSelectSubscription={onSelectSubscription}
-          availableMemberships={previewData.availableMemberships}
-          onJoin={() => {}}
-          onExit={() => {}}
-          previewDefinition={experience.experienceDefinition}
-          initialTab={initialTab}
-          previewMode
-          previewSection="stores"
-        />
-      </View>
-    </View>
   );
 }
 
@@ -532,30 +482,6 @@ const styles = StyleSheet.create({
   membershipList: {
     gap: 8,
     paddingTop: 10,
-  },
-
-  compareContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "flex-start",
-    gap: 20,
-  },
-
-  previewPanel: {
-    flex: 1,
-    minWidth: 420,
-    gap: 10,
-  },
-
-  panelHeader: {
-    minHeight: 54,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  panelHeaderText: {
-    gap: 2,
   },
 
   customerExperienceFrame: {

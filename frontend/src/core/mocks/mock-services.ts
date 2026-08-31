@@ -835,7 +835,11 @@ const stores: Store[] = [
     name: "Sunrise Bakery — Main St",
     storeTypeId: "store-type-retail",
 
-    phoneNumber: "+1 416 555 0100",
+    phoneNumber: {
+      countryId: "country-ca",
+      callingCode: "+1",
+      number: "4165550100",
+    },
     emailAddress: "main@sunrisebakery.ca",
 
     address: {
@@ -867,7 +871,11 @@ const stores: Store[] = [
     storeCode: "GLOW-001",
     name: "Glow Studio — Uptown",
     storeTypeId: "store-type-beauty",
-    phoneNumber: "+1 416 555 0120",
+    phoneNumber: {
+      countryId: "country-ca",
+      callingCode: "+1",
+      number: "4165550120",
+    },
     emailAddress: "main@glowstores.us",
     address: {
       line1: "88 Bloom Avenue",

@@ -243,7 +243,7 @@ export interface Store {
   name: string;
   storeTypeId: ID;
 
-  phoneNumber?: string;
+  phoneNumber?: PhoneNumber;
   emailAddress?: string;
 
   address: Address;

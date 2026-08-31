@@ -59,7 +59,11 @@ export const STEEP_SIP_STORES: Store[] = [
     name: "STEEP & SIP — Main Store",
     storeTypeId: "store-type-cafe",
 
-    phoneNumber: "+91 90000 10001",
+    phoneNumber: {
+      countryId: "country-in",
+      callingCode: "+91",
+      number: "9000010001",
+    },
     emailAddress: "main@steepandsip.demo",
 
     address: {

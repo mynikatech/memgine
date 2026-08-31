@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import type {
   CityReference,
   CountryReference,
+  PhoneNumber,
   ReferenceDataItem,
   RegionReference,
   Status,
@@ -24,6 +25,16 @@ import {
 
 type StoreFormProps = {
   store: Store;
+
+  /**
+   * True only for the Add Store flow.
+   *
+   * New stores:
+   * - are Active by default
+   * - cannot change Status while being created
+   * - cannot have a Closing Date
+   */
+  isNew?: boolean;
 
   storeTypes: ReferenceDataItem[];
   storeStatuses: Status[];
@@ -50,6 +61,7 @@ type ValidationErrors = {
   region?: string;
   city?: string;
 
+  phoneNumber?: string;
   emailAddress?: string;
 };
 
@@ -57,8 +69,31 @@ function validateEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
+function validatePhone(value: string): boolean {
+  return value.replace(/\D/g, "").length === 10;
+}
+
+function createDefaultPhone(
+  countries: CountryReference[],
+): PhoneNumber | undefined {
+  if (countries.length === 0) {
+    return undefined;
+  }
+
+  const canada =
+    countries.find((country) => country.countryCode?.toUpperCase() === "CA") ??
+    countries[0];
+
+  return {
+    countryId: canada.id,
+    callingCode: canada.callingCode,
+    number: "",
+  };
+}
+
 export function StoreForm({
   store,
+  isNew = false,
   storeTypes,
   storeStatuses,
   countries,
@@ -76,9 +111,41 @@ export function StoreForm({
   const [errors, setErrors] = useState<ValidationErrors>({});
 
   useEffect(() => {
-    setForm(store);
+    setForm({
+      ...store,
+      phoneNumber:
+        store.phoneNumber ??
+        (isNew ? createDefaultPhone(countries) : undefined),
+    });
+
     setErrors({});
-  }, [store]);
+  }, [store, isNew, countries]);
+
+  /*
+   * A newly-created Store is always Active.
+   *
+   * stores.tsx also supplies the Active status, but we protect the rule here
+   * so the form cannot accidentally save a blank status.
+   */
+  useEffect(() => {
+    if (!isNew) {
+      return;
+    }
+
+    const activeStatus =
+      storeStatuses.find(
+        (status) => status.statusName?.trim().toLowerCase() === "active",
+      ) ?? storeStatuses.find((status) => status.id === "store-status-active");
+
+    if (!activeStatus) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      storeStatusId: activeStatus.id,
+    }));
+  }, [isNew, storeStatuses]);
 
   const update = <K extends keyof Store>(field: K, value: Store[K]) => {
     setForm((current) => ({
@@ -89,6 +156,18 @@ export function StoreForm({
     setErrors((current) => ({
       ...current,
       [field]: undefined,
+    }));
+  };
+
+  const updatePhone = (phone: PhoneNumber | undefined) => {
+    setForm((current) => ({
+      ...current,
+      phoneNumber: phone,
+    }));
+
+    setErrors((current) => ({
+      ...current,
+      phoneNumber: undefined,
     }));
   };
 
@@ -142,6 +221,12 @@ export function StoreForm({
       nextErrors.city = "City is required.";
     }
 
+    if (form.phoneNumber?.number?.trim()) {
+      if (!validatePhone(form.phoneNumber.number)) {
+        nextErrors.phoneNumber = "Phone number must contain exactly 10 digits.";
+      }
+    }
+
     if (form.emailAddress?.trim() && !validateEmail(form.emailAddress)) {
       nextErrors.emailAddress = "Please enter a valid email address.";
     }
@@ -166,36 +251,43 @@ export function StoreForm({
 
         timezone: form.timezone.trim(),
 
-        phoneNumber: form.phoneNumber?.trim() || undefined,
+        phoneNumber: form.phoneNumber
+          ? {
+              ...form.phoneNumber,
+              number: form.phoneNumber.number.replace(/\D/g, "").slice(0, 10),
+            }
+          : undefined,
 
         emailAddress: form.emailAddress?.trim() || undefined,
 
         address: {
           ...form.address,
-
           line1: form.address.line1.trim(),
-
           line2: form.address.line2?.trim() || undefined,
-
           city: form.address.city.trim(),
-
           region: form.address.region?.trim() || "",
-
           postalCode: form.address.postalCode?.trim() || undefined,
         },
 
         openingDate: form.openingDate?.trim() || undefined,
 
-        closingDate: form.closingDate?.trim() || undefined,
+        /*
+         * A new Store cannot have a Closing Date.
+         */
+        closingDate: isNew ? undefined : form.closingDate?.trim() || undefined,
       });
     } finally {
       setSaving(false);
     }
   };
 
+  const phone = form.phoneNumber ?? createDefaultPhone(countries);
+
   return (
     <View style={styles.container}>
-      {/* Store Information */}
+      {/* ================================================================ */}
+      {/* STORE INFORMATION                                                */}
+      {/* ================================================================ */}
 
       <Card padding="lg">
         <Section
@@ -252,14 +344,32 @@ export function StoreForm({
                 items={storeStatuses}
                 placeholder="Please select"
                 error={errors.storeStatusId}
-                onChange={(value) => update("storeStatusId", value)}
+                disabled={isNew}
+                onChange={(value) => {
+                  if (!isNew) {
+                    update("storeStatusId", value);
+                  }
+                }}
               />
+
+              {isNew ? (
+                <Text
+                  variant="caption"
+                  color="textMuted"
+                  style={styles.helperText}
+                >
+                  New stores are Active by default. Status can be changed after
+                  the store is created.
+                </Text>
+              ) : null}
             </View>
           </View>
         </Section>
       </Card>
 
-      {/* Contact */}
+      {/* ================================================================ */}
+      {/* CONTACT                                                          */}
+      {/* ================================================================ */}
 
       <Card padding="lg">
         <Section
@@ -268,15 +378,59 @@ export function StoreForm({
         >
           <View style={styles.grid}>
             <View style={styles.field}>
-              <Input
-                label="Phone Number"
-                value={form.phoneNumber ?? ""}
-                placeholder="+1 416 555 0100"
-                keyboardType="phone-pad"
-                onChangeText={(value) =>
-                  update("phoneNumber", value || undefined)
-                }
-              />
+              <View style={styles.phoneRow}>
+                <View style={styles.phoneCountry}>
+                  <ReferenceSelect
+                    label="Country / ISD"
+                    value={phone?.countryId ?? ""}
+                    items={countries}
+                    placeholder="Select country"
+                    onChange={(countryId) => {
+                      const country = countries.find(
+                        (item) => item.id === countryId,
+                      );
+
+                      if (!country) {
+                        return;
+                      }
+
+                      updatePhone({
+                        countryId: country.id,
+                        callingCode: country.callingCode,
+                        number: phone?.number ?? "",
+                      });
+
+                      /*
+                       * Address country is deliberately independent
+                       * from phone country.
+                       */
+                    }}
+                  />
+                </View>
+
+                <View style={styles.phoneNumber}>
+                  <Input
+                    label="Phone Number"
+                    value={phone?.number ?? ""}
+                    placeholder="10 digit number"
+                    keyboardType="phone-pad"
+                    maxLength={10}
+                    error={errors.phoneNumber}
+                    onChangeText={(value) => {
+                      const number = value.replace(/\D/g, "").slice(0, 10);
+
+                      updatePhone(
+                        phone
+                          ? {
+                              ...phone,
+                              number,
+                            }
+                          : undefined,
+                      );
+                    }}
+                  />
+                </View>
+              </View>
             </View>
 
             <View style={styles.field}>
@@ -297,7 +451,9 @@ export function StoreForm({
         </Section>
       </Card>
 
-      {/* Address */}
+      {/* ================================================================ */}
+      {/* ADDRESS                                                          */}
+      {/* ================================================================ */}
 
       <Card padding="lg">
         <Section
@@ -326,7 +482,9 @@ export function StoreForm({
         </Section>
       </Card>
 
-      {/* Operations */}
+      {/* ================================================================ */}
+      {/* OPERATIONS                                                       */}
+      {/* ================================================================ */}
 
       <Card padding="lg">
         <Section
@@ -360,17 +518,34 @@ export function StoreForm({
               <Input
                 label="Closing Date"
                 value={form.closingDate ?? ""}
-                placeholder="YYYY-MM-DD"
-                onChangeText={(value) =>
-                  update("closingDate", value || undefined)
+                placeholder={
+                  isNew ? "Available after store creation" : "YYYY-MM-DD"
                 }
+                editable={!isNew}
+                onChangeText={(value) => {
+                  if (!isNew) {
+                    update("closingDate", value || undefined);
+                  }
+                }}
               />
+
+              {isNew ? (
+                <Text
+                  variant="caption"
+                  color="textMuted"
+                  style={styles.helperText}
+                >
+                  Closing Date is only applicable to an existing store.
+                </Text>
+              ) : null}
             </View>
           </View>
         </Section>
       </Card>
 
-      {/* Actions */}
+      {/* ================================================================ */}
+      {/* ACTIONS                                                          */}
+      {/* ================================================================ */}
 
       <View style={styles.actions}>
         <Pressable
@@ -435,6 +610,21 @@ const styles = StyleSheet.create({
 
   helperText: {
     marginTop: 6,
+  },
+
+  phoneRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+
+  phoneCountry: {
+    flex: 1,
+    minWidth: 190,
+  },
+
+  phoneNumber: {
+    flex: 1,
+    minWidth: 170,
   },
 
   actions: {
