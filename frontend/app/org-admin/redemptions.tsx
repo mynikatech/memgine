@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+
 import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import type {
@@ -10,6 +11,7 @@ import type {
   Status,
   Store,
   Subscription,
+  User,
 } from "@/src/core";
 
 import { services } from "@/src/core";
@@ -36,12 +38,75 @@ type RedemptionRow = {
   status?: Status;
 };
 
+/* ------------------------------------------------------------------
+ * Staff display name
+ *
+ * Staff does not own User identity fields.
+ *
+ * Staff
+ *   -> organizationUserId
+ *   -> OrganizationUser.userId
+ *   -> User
+ * ------------------------------------------------------------------ */
+
+function getStaffName(
+  staff: Staff | undefined,
+  organizationUsers: OrganizationUser[],
+  users: User[],
+): string {
+  if (!staff) {
+    return "—";
+  }
+
+  const organizationUser = organizationUsers.find(
+    (item) => item.id === staff.organizationUserId && !item.isDeleted,
+  );
+
+  if (!organizationUser) {
+    return "—";
+  }
+
+  const user = users.find(
+    (item) => item.id === organizationUser.userId && !item.isDeleted,
+  );
+
+  if (!user) {
+    return "—";
+  }
+
+  return (
+    user.displayName?.trim() ||
+    `${user.firstName} ${user.lastName}`.trim() ||
+    user.userCode ||
+    "—"
+  );
+}
+
 export default function OrgAdminRedemptions() {
   const { organization } = useBusiness();
 
   const [rows, setRows] = useState<RedemptionRow[]>([]);
+
   const [loading, setLoading] = useState(true);
+
   const [search, setSearch] = useState("");
+
+  /*
+   * Global Users.
+   *
+   * Staff identity is resolved through:
+   *
+   * Staff.organizationUserId
+   *      ↓
+   * OrganizationUser.userId
+   *      ↓
+   * User
+   */
+  const [users, setUsers] = useState<User[]>([]);
+
+  const [organizationUsers, setOrganizationUsers] = useState<
+    OrganizationUser[]
+  >([]);
 
   const [selectedRedemption, setSelectedRedemption] =
     useState<RedemptionRow | null>(null);
@@ -60,33 +125,43 @@ export default function OrgAdminRedemptions() {
         /*
          * Load organization-level data required to resolve
          * Redemption relationship IDs into display values.
-         *
-         * UI consumes only provider-neutral application services.
          */
 
-        const [subscriptions, organizationUsers, benefits, stores, staff] =
-          await Promise.all([
-            services.subscription.listByOrganization(organization.id),
+        const [
+          subscriptions,
+          organizationUserList,
+          benefits,
+          stores,
+          staff,
+          userList,
+        ] = await Promise.all([
+          services.subscription.listByOrganization(organization.id),
 
-            services.organization.listOrganizationUsers(organization.id),
+          services.organization.listOrganizationUsers(organization.id),
 
-            services.benefit.listByOrganization(organization.id),
+          services.benefit.listByOrganization(organization.id),
 
-            services.organization.listStores(organization.id),
+          services.organization.listStores(organization.id),
 
-            services.organization.listStaff(organization.id),
-          ]);
+          services.organization.listStaff(organization.id),
+
+          services.organization.listUsers(),
+        ]);
 
         if (!mounted) {
           return;
         }
+
+        setOrganizationUsers(organizationUserList);
+
+        setUsers(userList);
 
         /* ------------------------------------------------------------
          * Lookup maps
          * ------------------------------------------------------------ */
 
         const organizationUserMap = new Map<string, OrganizationUser>(
-          organizationUsers
+          organizationUserList
             .filter((item) => !item.isDeleted)
             .map((item) => [item.id, item]),
         );
@@ -113,6 +188,9 @@ export default function OrgAdminRedemptions() {
          * Customer cache.
          *
          * OrganizationUser.userId -> Customer.id
+         *
+         * Customer remains the existing application-level
+         * compatibility representation for this screen.
          */
 
         const customerMap = new Map<string, Customer>();
@@ -126,6 +204,7 @@ export default function OrgAdminRedemptions() {
             .filter((subscription) => !subscription.isDeleted)
             .map(async (subscription) => ({
               subscription,
+
               redemptions: await services.redemption.listBySubscription(
                 subscription.id,
               ),
@@ -146,7 +225,7 @@ export default function OrgAdminRedemptions() {
            *      ↓
            * OrganizationUser
            *      ↓
-           * Customer
+           * Customer/User
            */
 
           const organizationUser = organizationUserMap.get(
@@ -271,7 +350,9 @@ export default function OrgAdminRedemptions() {
           customer?.phone?.toLowerCase().includes(query) ||
           store?.name.toLowerCase().includes(query) ||
           store?.storeCode.toLowerCase().includes(query) ||
-          staff?.fullName.toLowerCase().includes(query) ||
+          getStaffName(staff, organizationUsers, users)
+            .toLowerCase()
+            .includes(query) ||
           staff?.staffCode.toLowerCase().includes(query) ||
           redemption.method.toLowerCase().includes(query) ||
           status?.statusCode.toLowerCase().includes(query) ||
@@ -279,7 +360,7 @@ export default function OrgAdminRedemptions() {
         );
       },
     );
-  }, [rows, search]);
+  }, [rows, search, organizationUsers, users]);
 
   /* ================================================================
      SUMMARY
@@ -303,6 +384,7 @@ export default function OrgAdminRedemptions() {
         key: "redemption",
         title: "Redemption",
         width: 155,
+
         render: (item) => (
           <Text variant="bodyStrong" color="text" numberOfLines={1}>
             {item.redemption.redemptionNumber}
@@ -314,6 +396,7 @@ export default function OrgAdminRedemptions() {
         key: "customer",
         title: "Customer",
         width: 140,
+
         render: (item) => (
           <Text variant="body" color="text" numberOfLines={1}>
             {item.customer?.fullName ?? "Unknown Customer"}
@@ -325,6 +408,7 @@ export default function OrgAdminRedemptions() {
         key: "subscription",
         title: "Subscription",
         width: 150,
+
         render: (item) => (
           <Text variant="body" color="text" numberOfLines={1}>
             {item.subscription.subscriptionNumber}
@@ -337,6 +421,7 @@ export default function OrgAdminRedemptions() {
         title: "Benefit",
         width: 190,
         numberOfLines: 2,
+
         render: (item) => (
           <Text variant="body" color="text" numberOfLines={2}>
             {item.benefit?.displayName ??
@@ -351,6 +436,7 @@ export default function OrgAdminRedemptions() {
         title: "Store",
         width: 175,
         numberOfLines: 2,
+
         render: (item) => (
           <Text variant="body" color="text" numberOfLines={2}>
             {item.store?.name ?? "Unknown Store"}
@@ -363,9 +449,10 @@ export default function OrgAdminRedemptions() {
         title: "Staff",
         width: 175,
         numberOfLines: 2,
+
         render: (item) => (
           <Text variant="body" color="text" numberOfLines={2}>
-            {item.staff?.fullName ?? "—"}
+            {getStaffName(item.staff, organizationUsers, users)}
           </Text>
         ),
       },
@@ -375,6 +462,7 @@ export default function OrgAdminRedemptions() {
         title: "Date",
         width: 150,
         numberOfLines: 2,
+
         render: (item) => (
           <Text variant="body" color="text" numberOfLines={2}>
             {formatDateTime(item.redemption.redemptionDateTime)}
@@ -386,6 +474,7 @@ export default function OrgAdminRedemptions() {
         key: "status",
         title: "Status",
         width: 110,
+
         render: (item) => (
           <Text variant="body" color="text" numberOfLines={1}>
             {item.status?.statusName ?? item.status?.statusCode ?? "Unknown"}
@@ -393,7 +482,7 @@ export default function OrgAdminRedemptions() {
         ),
       },
     ],
-    [],
+    [organizationUsers, users],
   );
 
   /* ================================================================
@@ -606,7 +695,11 @@ export default function OrgAdminRedemptions() {
 
                   <DetailItem
                     label="Staff"
-                    value={selectedRedemption.staff?.fullName ?? "—"}
+                    value={getStaffName(
+                      selectedRedemption.staff,
+                      organizationUsers,
+                      users,
+                    )}
                   />
 
                   <DetailItem

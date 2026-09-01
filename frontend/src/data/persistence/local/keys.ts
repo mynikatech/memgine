@@ -15,4 +15,18 @@ export const LOCAL_DATA_KEYS = {
 
   organizationCustomerExperience: (organizationId: string) =>
     `memgine.organization.${organizationId}.customer-experience`,
+
+  organizationStores: (organizationId: string) =>
+    `memgine:organization:${organizationId}:stores`,
+
+  users: () => `memgine:users`,
+
+  organizationUsers: (organizationId: string) =>
+    `memgine:organization:${organizationId}:users`,
+
+  staff: (organizationId: string) =>
+    `memgine:organization:${organizationId}:staff`,
+
+  staffStoreAssignments: (organizationId: string) =>
+    `memgine:organization:${organizationId}:staff-store-assignments`,
 } as const;

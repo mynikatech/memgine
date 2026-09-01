@@ -24,6 +24,8 @@ export type {
 
 export { LocalOrganizationRepository } from "./repositories/organization/organization-repository.local";
 
+export { LocalOrganizationMembersRepository } from "./repositories/organization/organization-members.repository.local";
+
 export { asyncStorageStore } from "./persistence/local/async-storage-store";
 
 export type { LocalStore } from "./persistence/local/local-store";

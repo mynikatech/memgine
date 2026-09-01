@@ -34,8 +34,10 @@ import {
   Subscription,
   Status,
   SubscriptionPlan,
+  StaffStoreAssignment,
   Staff,
   OrganizationUser,
+  User,
   UserAcquisition,
 } from "../domain/entities";
 import {
@@ -63,6 +65,8 @@ import {
   VerifyOtpResult,
   OnboardOrganizationInput,
   OnboardOrganizationResult,
+  UserLookupQuery,
+  CreateUserInput,
 } from "../services/service-contracts";
 import {
   SUNRISE_BAKERY_ACCOUNT,
@@ -732,6 +736,155 @@ const userAcquisitions: UserAcquisition[] = [
   ...STEEP_SIP_USER_ACQUISITIONS,
 ];
 
+const users: User[] = [
+  {
+    id: "user-sunrise-owner",
+    userCode: "USR-0001",
+    firstName: "Sunrise",
+    middleName: undefined,
+    lastName: "Bakery Owner",
+    displayName: "Sunrise Bakery Owner",
+    primaryEmail: "owner@sunrisebakery.ca",
+    primaryPhone: {
+      countryId: "country-ca",
+      callingCode: "+1",
+      number: "4165550101",
+    },
+    preferredLanguageId: undefined,
+    userStatusId: "status-active",
+
+    createdAt: "2026-01-01T09:00:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-01-01T09:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+
+  {
+    id: "user-sunrise-manager",
+    userCode: "USR-0002",
+    firstName: "Sarah",
+    middleName: undefined,
+    lastName: "Manager",
+    displayName: "Sarah Manager",
+    primaryEmail: "sarah@sunrisebakery.ca",
+    primaryPhone: {
+      countryId: "country-ca",
+      callingCode: "+1",
+      number: "4165550102",
+    },
+    preferredLanguageId: undefined,
+    userStatusId: "status-active",
+
+    createdAt: "2026-01-02T09:00:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-01-02T09:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+
+  {
+    id: "user-sunrise-staff",
+    userCode: "USR-0003",
+    firstName: "Alex",
+    middleName: undefined,
+    lastName: "Counter Staff",
+    displayName: "Alex Counter Staff",
+    primaryEmail: "alex@sunrisebakery.ca",
+    primaryPhone: {
+      countryId: "country-ca",
+      callingCode: "+1",
+      number: "4165550103",
+    },
+    preferredLanguageId: undefined,
+    userStatusId: "status-active",
+
+    createdAt: "2026-01-03T09:00:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-01-03T09:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+
+  {
+    id: "cust-1",
+    userCode: "USR-0100",
+    firstName: "Ada",
+    lastName: "Baker",
+    displayName: "Ada Baker",
+    primaryEmail: "ada@example.com",
+    primaryPhone: {
+      countryId: "country-ca",
+      callingCode: "+1",
+      number: "4165550100",
+    },
+    preferredLanguageId: undefined,
+    userStatusId: "status-active",
+
+    createdAt: "2026-02-01T00:00:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-02-01T00:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+
+  {
+    id: "cust-new-demo",
+    userCode: "USR-0101",
+    firstName: "New",
+    lastName: "Customer Demo",
+    displayName: "New Customer Demo",
+    primaryEmail: "newcustomer@example.com",
+    primaryPhone: {
+      countryId: "country-ca",
+      callingCode: "+1",
+      number: "5550102002",
+    },
+    preferredLanguageId: undefined,
+    userStatusId: "status-active",
+
+    createdAt: "2026-06-01T00:00:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-06-01T00:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+
+  {
+    id: "cust-prospect-1",
+    userCode: "USR-0102",
+    firstName: "Maya",
+    lastName: "Thompson",
+    displayName: "Maya Thompson",
+    primaryEmail: "maya@example.com",
+    primaryPhone: {
+      countryId: "country-ca",
+      callingCode: "+1",
+      number: "4165550222",
+    },
+    preferredLanguageId: undefined,
+    userStatusId: "status-active",
+
+    createdAt: "2026-08-10T14:00:00.000Z",
+    createdBy: "user-system",
+    updatedAt: "2026-08-10T14:00:00.000Z",
+    updatedBy: "user-system",
+
+    isDeleted: false,
+    versionNo: 1,
+  },
+];
+
 const staff: Staff[] = [
   {
     id: "staff-dev-owner",
@@ -739,7 +892,6 @@ const staff: Staff[] = [
     organizationUserId: "org-user-sunrise-owner",
 
     staffCode: "ST-001",
-    fullName: "Sunrise Bakery Owner",
     designation: "Owner",
 
     storeId: "store-1",
@@ -766,7 +918,6 @@ const staff: Staff[] = [
     organizationUserId: "org-user-sunrise-manager",
 
     staffCode: "ST-002",
-    fullName: "Sarah Manager",
     designation: "Store Manager",
 
     storeId: "store-1",
@@ -793,7 +944,6 @@ const staff: Staff[] = [
     organizationUserId: "org-user-sunrise-staff",
 
     staffCode: "ST-003",
-    fullName: "Alex Counter Staff",
     designation: "Counter Staff",
 
     storeId: "store-1",
@@ -1643,6 +1793,7 @@ const offers: Offer[] = [
 ];
 
 export class InMemoryOrganizationService implements OrganizationService {
+  staffStoreAssignments: StaffStoreAssignment[] = [];
   async getOrganization(id: ID): Promise<Organization | null> {
     return ORGANIZATIONS.find((o) => o.id === id) ?? null;
   }
@@ -1801,6 +1952,89 @@ export class InMemoryOrganizationService implements OrganizationService {
       isDeleted: true,
       updatedAt: new Date().toISOString(),
       versionNo: staff[index].versionNo + 1,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Staff ↔ Store assignments
+  // ---------------------------------------------------------------------------
+
+  async listStaffStoreAssignments(
+    organizationId: ID,
+  ): Promise<StaffStoreAssignment[]> {
+    return this.staffStoreAssignments.filter(
+      (item) => item.organizationId === organizationId && !item.isDeleted,
+    );
+  }
+
+  async createStaffStoreAssignment(
+    organizationId: ID,
+    assignment: StaffStoreAssignment,
+  ): Promise<StaffStoreAssignment> {
+    const now = new Date().toISOString();
+
+    const created: StaffStoreAssignment = {
+      ...assignment,
+      organizationId,
+      createdAt: assignment.createdAt || now,
+      createdBy: assignment.createdBy || "user-system",
+      updatedAt: now,
+      updatedBy: "user-system",
+      isDeleted: false,
+      versionNo: assignment.versionNo || 1,
+    };
+
+    this.staffStoreAssignments.push(created);
+
+    return created;
+  }
+
+  async updateStaffStoreAssignment(
+    organizationId: ID,
+    assignment: StaffStoreAssignment,
+  ): Promise<StaffStoreAssignment> {
+    const index = this.staffStoreAssignments.findIndex(
+      (item) =>
+        item.id === assignment.id && item.organizationId === organizationId,
+    );
+
+    if (index === -1) {
+      throw new Error(`Staff store assignment not found: ${assignment.id}`);
+    }
+
+    const updated: StaffStoreAssignment = {
+      ...this.staffStoreAssignments[index],
+      ...assignment,
+      organizationId,
+      updatedAt: new Date().toISOString(),
+      updatedBy: "user-system",
+      versionNo: (this.staffStoreAssignments[index].versionNo || 0) + 1,
+    };
+
+    this.staffStoreAssignments[index] = updated;
+
+    return updated;
+  }
+
+  async deleteStaffStoreAssignment(
+    organizationId: ID,
+    assignmentId: ID,
+  ): Promise<void> {
+    const index = this.staffStoreAssignments.findIndex(
+      (item) =>
+        item.id === assignmentId && item.organizationId === organizationId,
+    );
+
+    if (index === -1) {
+      return;
+    }
+
+    this.staffStoreAssignments[index] = {
+      ...this.staffStoreAssignments[index],
+      isDeleted: true,
+      updatedAt: new Date().toISOString(),
+      updatedBy: "user-system",
+      versionNo: (this.staffStoreAssignments[index].versionNo || 0) + 1,
     };
   }
 
@@ -1969,6 +2203,173 @@ export class InMemoryOrganizationService implements OrganizationService {
     );
   }
 
+  async listUsers(): Promise<User[]> {
+    return users.filter((user) => !user.isDeleted);
+  }
+
+  async getUser(id: ID): Promise<User | null> {
+    return users.find((user) => user.id === id && !user.isDeleted) ?? null;
+  }
+
+  async findUsers(query: UserLookupQuery): Promise<User[]> {
+    return users.filter((user) => {
+      if (user.isDeleted) {
+        return false;
+      }
+
+      const matchesUserCode =
+        !query.userCode ||
+        user.userCode
+          .toLowerCase()
+          .includes(query.userCode.trim().toLowerCase());
+
+      const matchesFirstName =
+        !query.firstName ||
+        user.firstName
+          .toLowerCase()
+          .includes(query.firstName.trim().toLowerCase());
+
+      const matchesLastName =
+        !query.lastName ||
+        user.lastName
+          .toLowerCase()
+          .includes(query.lastName.trim().toLowerCase());
+
+      const matchesEmail =
+        !query.email ||
+        user.primaryEmail
+          ?.toLowerCase()
+          .includes(query.email.trim().toLowerCase());
+
+      const matchesPhone =
+        !query.phone ||
+        user.primaryPhone.number
+          .toLowerCase()
+          .includes(query.phone.trim().toLowerCase());
+
+      const fullName =
+        `${user.firstName} ${user.middleName ?? ""} ${user.lastName}`
+          .replace(/\s+/g, " ")
+          .trim();
+
+      const matchesName =
+        !query.nameContains ||
+        fullName
+          .toLowerCase()
+          .includes(query.nameContains.trim().toLowerCase());
+
+      return (
+        matchesUserCode &&
+        matchesFirstName &&
+        matchesLastName &&
+        matchesEmail &&
+        matchesPhone &&
+        matchesName
+      );
+    });
+  }
+
+  async createUser(input: CreateUserInput): Promise<User> {
+    const now = new Date().toISOString();
+
+    const duplicate = users.find(
+      (user) =>
+        !user.isDeleted &&
+        (user.primaryEmail?.trim().toLowerCase() ===
+          input.primaryEmail?.trim().toLowerCase() ||
+          (user.primaryPhone.countryId === input.primaryPhone.countryId &&
+            user.primaryPhone.callingCode === input.primaryPhone.callingCode &&
+            user.primaryPhone.number === input.primaryPhone.number)),
+    );
+
+    if (duplicate) {
+      throw new Error(
+        "A user with this email address or phone number already exists.",
+      );
+    }
+
+    const nextNumber =
+      users.reduce((max, user) => {
+        const match = user.userCode.match(/(\d+)$/);
+        return match ? Math.max(max, Number(match[1])) : max;
+      }, 0) + 1;
+
+    const userCode = `USR-${String(nextNumber).padStart(4, "0")}`;
+
+    const created: User = {
+      id: genId("user"),
+      userCode,
+
+      firstName: input.firstName.trim(),
+      middleName: input.middleName?.trim() || undefined,
+      lastName: input.lastName.trim(),
+
+      displayName:
+        input.displayName?.trim() ||
+        `${input.firstName} ${input.lastName}`.trim(),
+
+      primaryEmail: input.primaryEmail?.trim() || undefined,
+
+      primaryPhone: {
+        countryId: input.primaryPhone.countryId,
+        callingCode: input.primaryPhone.callingCode,
+        number: input.primaryPhone.number.trim(),
+      },
+
+      preferredLanguageId: input.preferredLanguageId,
+      userStatusId: input.userStatusId,
+
+      createdAt: now,
+      createdBy: input.createdBy,
+
+      updatedAt: now,
+      updatedBy: input.createdBy,
+
+      isDeleted: false,
+      versionNo: 1,
+    };
+
+    users.push(created);
+
+    return created;
+  }
+
+  async updateUser(user: User): Promise<User> {
+    const index = users.findIndex(
+      (item) => item.id === user.id && !item.isDeleted,
+    );
+
+    if (index === -1) {
+      throw new Error("User not found.");
+    }
+
+    const duplicate = users.find(
+      (item) =>
+        item.id !== user.id &&
+        !item.isDeleted &&
+        (item.primaryEmail?.trim().toLowerCase() ===
+          user.primaryEmail?.trim().toLowerCase() ||
+          (item.primaryPhone.countryId === user.primaryPhone.countryId &&
+            item.primaryPhone.callingCode === user.primaryPhone.callingCode &&
+            item.primaryPhone.number === user.primaryPhone.number)),
+    );
+
+    if (duplicate) {
+      throw new Error(
+        "Another user with this email address or phone number already exists.",
+      );
+    }
+
+    const updated: User = {
+      ...user,
+      updatedAt: new Date().toISOString(),
+      versionNo: users[index].versionNo + 1,
+    };
+
+    users[index] = updated;
+
+    return updated;
+  }
   async onboardOrganization(
     input: OnboardOrganizationInput,
   ): Promise<OnboardOrganizationResult> {

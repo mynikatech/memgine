@@ -1,9 +1,10 @@
 import { BusinessContext } from "../context/business-context";
-import { ID, Money } from "../domain/common";
+import { ID, Money, PhoneNumber } from "../domain/common";
 import { CurrencyCode } from "../localization/localization";
 import {
   Benefit,
   Customer,
+  User,
   MembershipProduct,
   PaymentMethod,
   PurchaseSource,
@@ -12,6 +13,7 @@ import {
   Status,
   Offer,
   Staff,
+  StaffStoreAssignment,
   Organization,
   OrganizationDetails,
   OrganizationBranding,
@@ -111,6 +113,27 @@ export interface OnboardOrganizationResult {
   organization: Organization;
   account: OrganizationAccount;
   context: BusinessContext;
+}
+
+export interface UserLookupQuery {
+  userCode?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  nameContains?: string;
+}
+
+export interface CreateUserInput {
+  firstName: string;
+  middleName?: string;
+  lastName: string;
+  displayName?: string;
+  primaryEmail?: string;
+  primaryPhone: PhoneNumber;
+  preferredLanguageId?: ID;
+  userStatusId: ID;
+  createdBy: ID;
 }
 
 export interface OrganizationService {
@@ -225,6 +248,48 @@ export interface OrganizationService {
   updateStaff(organizationId: ID, staff: Staff): Promise<Staff>;
 
   deleteStaff(organizationId: ID, staffId: ID): Promise<void>;
+
+  /**
+   * Staff ↔ Store assignments
+   *
+   * Staff.storeId is the primary store.
+   * StaffStoreAssignment represents the complete set of
+   * stores to which the staff member is associated.
+   */
+  listStaffStoreAssignments(
+    organizationId: ID,
+  ): Promise<StaffStoreAssignment[]>;
+
+  createStaffStoreAssignment(
+    organizationId: ID,
+    assignment: StaffStoreAssignment,
+  ): Promise<StaffStoreAssignment>;
+
+  updateStaffStoreAssignment(
+    organizationId: ID,
+    assignment: StaffStoreAssignment,
+  ): Promise<StaffStoreAssignment>;
+
+  deleteStaffStoreAssignment(
+    organizationId: ID,
+    assignmentId: ID,
+  ): Promise<void>;
+
+  /**
+   * Global User operations.
+   *
+   * User is the canonical identity record.
+   * OrganizationUser only establishes the organization relationship.
+   */
+  listUsers(): Promise<User[]>;
+
+  getUser(id: ID): Promise<User | null>;
+
+  findUsers(query: UserLookupQuery): Promise<User[]>;
+
+  createUser(input: CreateUserInput): Promise<User>;
+
+  updateUser(user: User): Promise<User>;
 }
 
 export interface CustomerService {

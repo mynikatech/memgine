@@ -4,13 +4,16 @@ import { mockServices } from "@/src/core/mocks/mock-services";
 
 import { LocalBrandingRepository } from "./repositories/branding/branding-repository.local";
 import { LocalOrganizationRepository } from "./repositories/organization/organization-repository.local";
-
+import { LocalOrganizationMembersRepository } from "./repositories/organization/organization-members.repository.local";
 const organizationRepository = new LocalOrganizationRepository();
 
 const brandingRepository = new LocalBrandingRepository();
 
+const organizationMembersRepository = new LocalOrganizationMembersRepository();
+
 export const data = {
   organizationRepository,
+  organizationMembersRepository,
   brandingRepository,
 } as const;
 

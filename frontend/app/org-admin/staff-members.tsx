@@ -1,29 +1,94 @@
 import { useEffect, useMemo, useState } from "react";
+
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import type {
+  CountryReference,
+  CreateUserInput,
   OrganizationUser,
-  ReferenceDataItem,
+  StaffStoreAssignment,
   Status,
   Staff,
   Store,
+  User,
 } from "@/src/core";
+
 import { StaffRole, services } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
-import { DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
+
+import { DataTable, Modal, Text } from "@/src/ui";
+
+import type { DataTableColumn } from "@/src/ui";
 
 import { StaffForm } from "@/src/ui/admin/StaffForm";
+
+function getStaffName(
+  staff: Staff,
+  organizationUsers: OrganizationUser[],
+  users: User[],
+): string {
+  const organizationUser = organizationUsers.find(
+    (item) => item.id === staff.organizationUserId && !item.isDeleted,
+  );
+
+  if (!organizationUser) {
+    return "—";
+  }
+
+  const user = users.find(
+    (item) => item.id === organizationUser.userId && !item.isDeleted,
+  );
+
+  if (!user) {
+    return "—";
+  }
+
+  return (
+    user.displayName?.trim() ||
+    `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() ||
+    user.userCode ||
+    "—"
+  );
+}
+
+function generateStaffCode(staff: Staff[]): string {
+  const numbers = staff
+    .map((item) => item.staffCode?.match(/(\d+)$/)?.[1])
+    .filter(Boolean)
+    .map(Number);
+
+  const next = Math.max(0, ...numbers) + 1;
+
+  return `STF-${String(next).padStart(4, "0")}`;
+}
 
 export default function OrgAdminStaff() {
   const { organization } = useBusiness();
 
+  const [users, setUsers] = useState<User[]>([]);
+  const [userStatuses, setUserStatuses] = useState<Status[]>([]);
+
   const [staff, setStaff] = useState<Staff[]>([]);
+
   const [organizationUsers, setOrganizationUsers] = useState<
     OrganizationUser[]
   >([]);
+
   const [stores, setStores] = useState<Store[]>([]);
   const [staffStatuses, setStaffStatuses] = useState<Status[]>([]);
+  const [countries, setCountries] = useState<CountryReference[]>([]);
+
+  /*
+   * Store assignments are persisted independently from Staff.
+   *
+   * Staff.storeId = Primary Store
+   *
+   * StaffStoreAssignment[] = all associated stores
+   */
+  const [staffAssignments, setStaffAssignments] = useState<
+    StaffStoreAssignment[]
+  >([]);
 
   const [loading, setLoading] = useState(true);
   const [formVisible, setFormVisible] = useState(false);
@@ -36,11 +101,35 @@ export default function OrgAdminStaff() {
       setLoading(true);
 
       try {
-        const [staffList, userList, storeList, statusList] = await Promise.all([
+        const [
+          staffList,
+          organizationUserList,
+          storeList,
+          staffStatusList,
+          countryList,
+          userList,
+          userStatusList,
+          assignmentList,
+        ] = await Promise.all([
           services.organization.listStaff(organization.id),
+
           services.organization.listOrganizationUsers(organization.id),
+
+          /*
+           * IMPORTANT:
+           * Stores now come from the local production data path.
+           */
           services.organization.listStores(organization.id),
+
           services.status.listStaffStatuses(),
+
+          services.referenceData.listCountries(),
+
+          services.organization.listUsers(),
+
+          services.status.listUserStatuses(),
+
+          services.organization.listStaffStoreAssignments(organization.id),
         ]);
 
         if (!mounted) {
@@ -48,9 +137,19 @@ export default function OrgAdminStaff() {
         }
 
         setStaff(staffList);
-        setOrganizationUsers(userList);
-        setStores(storeList);
-        setStaffStatuses(statusList);
+        setOrganizationUsers(organizationUserList);
+
+        /*
+         * Only active/non-deleted stores should be presented.
+         */
+        setStores(storeList.filter((store) => !store.isDeleted));
+
+        setStaffStatuses(staffStatusList);
+        setCountries(countryList);
+        setUsers(userList);
+        setUserStatuses(userStatusList);
+
+        setStaffAssignments(assignmentList.filter((item) => !item.isDeleted));
       } catch (error) {
         if (!mounted) {
           return;
@@ -78,10 +177,13 @@ export default function OrgAdminStaff() {
     switch (role) {
       case StaffRole.OWNER:
         return "Owner";
+
       case StaffRole.MANAGER:
         return "Manager";
+
       case StaffRole.STAFF:
         return "Staff";
+
       default:
         return role;
     }
@@ -89,7 +191,7 @@ export default function OrgAdminStaff() {
 
   const getStoreName = (storeId?: string) => {
     if (!storeId) {
-      return "All stores";
+      return "—";
     }
 
     return stores.find((store) => store.id === storeId)?.name ?? "Unknown";
@@ -98,16 +200,26 @@ export default function OrgAdminStaff() {
   const getStatusName = (statusId: string) =>
     staffStatuses.find((item) => item.id === statusId)?.statusName ?? "Unknown";
 
-  const getUserName = (organizationUserId: string, staffName: string) => {
-    /*
-     * The global User entity is not yet part of the mock layer,
-     * so Staff.fullName remains the display name for now.
-     */
-    const user = organizationUsers.find(
-      (item) => item.id === organizationUserId,
-    );
+  /*
+   * Returns all stores associated with a Staff record.
+   *
+   * Primary Store is also included for backward compatibility
+   * with records created before StaffStoreAssignment existed.
+   */
+  const getAssociatedStoreIds = (staffId: string): string[] => {
+    const assignmentIds = staffAssignments
+      .filter(
+        (assignment) => assignment.staffId === staffId && !assignment.isDeleted,
+      )
+      .map((assignment) => assignment.storeId);
 
-    return user ? staffName : staffName;
+    const staffRecord = staff.find((item) => item.id === staffId);
+
+    if (staffRecord?.storeId && !assignmentIds.includes(staffRecord.storeId)) {
+      assignmentIds.unshift(staffRecord.storeId);
+    }
+
+    return Array.from(new Set(assignmentIds));
   };
 
   const columns = useMemo<DataTableColumn<Staff>[]>(
@@ -117,50 +229,60 @@ export default function OrgAdminStaff() {
         title: "Staff Code",
         width: 120,
       },
+
       {
         key: "fullName",
         title: "Staff Name",
         width: 220,
+
         render: (item) => (
           <Text variant="body" color="text">
-            {getUserName(item.organizationUserId, item.fullName)}
+            {getStaffName(item, organizationUsers, users)}
           </Text>
         ),
       },
+
       {
         key: "designation",
         title: "Designation",
         width: 180,
+
         render: (item) => (
           <Text variant="body" color="text">
             {item.designation || "—"}
           </Text>
         ),
       },
+
       {
         key: "storeId",
         title: "Primary Store",
         width: 220,
+
         render: (item) => (
           <Text variant="body" color="text">
             {getStoreName(item.storeId)}
           </Text>
         ),
       },
+
       {
         key: "role",
         title: "Role",
         width: 120,
+
         render: (item) => (
           <Text variant="body" color="text">
             {getRoleName(item.role)}
           </Text>
         ),
       },
+
       {
         key: "staffStatusId",
         title: "Status",
         width: 120,
+
         render: (item) => (
           <Text variant="body" color="text">
             {getStatusName(item.staffStatusId)}
@@ -168,11 +290,16 @@ export default function OrgAdminStaff() {
         ),
       },
     ],
-    [stores, staffStatuses, organizationUsers],
+    [stores, staffStatuses, organizationUsers, users],
   );
 
   const createEmptyStaff = (): Staff => {
     const now = new Date().toISOString();
+
+    const activeStatusId =
+      staffStatuses.find(
+        (status) => status.statusName.trim().toLowerCase() === "active",
+      )?.id ?? "staff-status-active";
 
     return {
       id: `staff-${Date.now()}`,
@@ -181,16 +308,23 @@ export default function OrgAdminStaff() {
 
       organizationUserId: "",
 
-      staffCode: "",
-      fullName: "",
+      staffCode: generateStaffCode(staff),
+
       designation: undefined,
 
-      storeId: stores.length > 0 ? stores[0].id : undefined,
+      /*
+       * Do not assume the first store is the
+       * primary store.
+       *
+       * The user must explicitly select it.
+       */
+      storeId: undefined,
 
       joiningDate: now.substring(0, 10),
+
       relievingDate: undefined,
 
-      staffStatusId: "staff-status-active",
+      staffStatusId: activeStatusId,
 
       role: StaffRole.STAFF,
 
@@ -205,41 +339,166 @@ export default function OrgAdminStaff() {
       updatedBy: "user-system",
 
       isDeleted: false,
+
       versionNo: 1,
     };
   };
 
-  const handleAdd = () => {
-    setEditingStaff(createEmptyStaff());
-    setFormVisible(true);
+  const handleCreateUser = async (input: CreateUserInput): Promise<User> => {
+    const created = await services.organization.createUser(input);
+
+    setUsers((current) => [...current, created]);
+
+    return created;
   };
 
-  const handleEdit = (item: Staff) => {
-    setEditingStaff(item);
-    setFormVisible(true);
+  const handleCreateOrganizationUser = async (
+    organizationUser: OrganizationUser,
+  ): Promise<OrganizationUser> => {
+    const created = await services.organization.createOrganizationUser(
+      organization.id,
+      organizationUser,
+    );
+
+    setOrganizationUsers((current) => [...current, created]);
+
+    return created;
   };
 
-  const handleSave = async (updatedStaff: Staff) => {
+  /*
+   * Save the complete StaffStoreAssignment
+   * collection for the Staff record.
+   */
+  const saveStaffStoreAssignments = async (
+    staffRecord: Staff,
+    selectedStoreIds: string[],
+  ) => {
+    /*
+     * Remove duplicates and ignore empty values.
+     */
+    const uniqueStoreIds = Array.from(
+      new Set(selectedStoreIds.filter(Boolean)),
+    );
+
+    /*
+     * The Primary Store must always
+     * belong to the associated-store set.
+     */
+    if (staffRecord.storeId && !uniqueStoreIds.includes(staffRecord.storeId)) {
+      uniqueStoreIds.unshift(staffRecord.storeId);
+    }
+
+    const allAssignments =
+      await services.organization.listStaffStoreAssignments(organization.id);
+
+    const currentAssignments = allAssignments.filter(
+      (item) => item.staffId === staffRecord.id && !item.isDeleted,
+    );
+
+    const currentIds = new Set(currentAssignments.map((item) => item.storeId));
+
+    const desiredIds = new Set(uniqueStoreIds);
+
+    /*
+     * CREATE missing associations.
+     */
+    for (const storeId of desiredIds) {
+      if (currentIds.has(storeId)) {
+        continue;
+      }
+
+      const now = new Date().toISOString();
+
+      const assignment: StaffStoreAssignment = {
+        id: `staff-store-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}`,
+
+        organizationId: organization.id,
+
+        staffId: staffRecord.id,
+
+        storeId,
+
+        assignmentStatusId: "status-active",
+
+        effectiveDate: staffRecord.joiningDate,
+
+        endDate: undefined,
+
+        createdAt: now,
+        createdBy: "user-system",
+
+        updatedAt: now,
+        updatedBy: "user-system",
+
+        isDeleted: false,
+
+        versionNo: 1,
+      };
+
+      await services.organization.createStaffStoreAssignment(
+        organization.id,
+        assignment,
+      );
+    }
+
+    /*
+     * SOFT DELETE associations which
+     * are no longer selected.
+     */
+    for (const assignment of currentAssignments) {
+      if (desiredIds.has(assignment.storeId)) {
+        continue;
+      }
+
+      await services.organization.deleteStaffStoreAssignment(
+        organization.id,
+        assignment.id,
+      );
+    }
+
+    /*
+     * Reload from persistence so React state
+     * exactly matches the persisted source.
+     */
+    const refreshed = await services.organization.listStaffStoreAssignments(
+      organization.id,
+    );
+
+    setStaffAssignments(refreshed.filter((item) => !item.isDeleted));
+  };
+
+  const handleSave = async (
+    updatedStaff: Staff,
+    selectedStoreIds: string[],
+  ) => {
     try {
       const existing = staff.some((item) => item.id === updatedStaff.id);
 
+      let savedStaff: Staff;
+
       if (existing) {
-        const updated = await services.organization.updateStaff(
+        savedStaff = await services.organization.updateStaff(
           organization.id,
           updatedStaff,
         );
 
         setStaff((current) =>
-          current.map((item) => (item.id === updated.id ? updated : item)),
+          current.map((item) =>
+            item.id === savedStaff.id ? savedStaff : item,
+          ),
         );
       } else {
-        const created = await services.organization.createStaff(
+        savedStaff = await services.organization.createStaff(
           organization.id,
           updatedStaff,
         );
 
-        setStaff((current) => [...current, created]);
+        setStaff((current) => [...current, savedStaff]);
       }
+
+      await saveStaffStoreAssignments(savedStaff, selectedStoreIds);
 
       setFormVisible(false);
       setEditingStaff(null);
@@ -251,24 +510,21 @@ export default function OrgAdminStaff() {
     }
   };
 
-  const handleCreateOrganizationUser = async (user: OrganizationUser) => {
-    try {
-      const created = await services.organization.createOrganizationUser(
-        organization.id,
-        user,
-      );
+  const handleAdd = () => {
+    const newStaff = createEmptyStaff();
 
-      setOrganizationUsers((current) => [...current, created]);
+    setEditingStaff(newStaff);
+    setFormVisible(true);
+  };
 
-      return created;
-    } catch (error) {
-      Alert.alert(
-        "Unable to add user",
-        error instanceof Error ? error.message : "Unable to add user.",
-      );
+  const handleEdit = (item: Staff) => {
+    setEditingStaff(item);
+    setFormVisible(true);
+  };
 
-      throw error;
-    }
+  const closeForm = () => {
+    setFormVisible(false);
+    setEditingStaff(null);
   };
 
   return (
@@ -288,15 +544,7 @@ export default function OrgAdminStaff() {
           </Text>
         </View>
 
-        <Pressable
-          onPress={handleAdd}
-          style={({ pressed }) => [
-            styles.addButton,
-            {
-              opacity: pressed ? 0.8 : 1,
-            },
-          ]}
-        >
+        <Pressable onPress={handleAdd} style={styles.addButton}>
           <Text variant="body" color="background">
             + Add Staff
           </Text>
@@ -326,10 +574,7 @@ export default function OrgAdminStaff() {
 
       <Modal
         visible={formVisible}
-        onClose={() => {
-          setFormVisible(false);
-          setEditingStaff(null);
-        }}
+        onClose={closeForm}
         title={
           editingStaff && staff.some((item) => item.id === editingStaff.id)
             ? "Edit Staff"
@@ -341,16 +586,18 @@ export default function OrgAdminStaff() {
         {editingStaff ? (
           <StaffForm
             staff={editingStaff}
+            users={users}
+            userStatuses={userStatuses}
             organizationUsers={organizationUsers}
             existingStaff={staff}
             stores={stores}
             staffStatuses={staffStatuses}
+            countries={countries}
+            associatedStoreIds={getAssociatedStoreIds(editingStaff.id)}
+            onCreateUser={handleCreateUser}
             onCreateOrganizationUser={handleCreateOrganizationUser}
             onSave={handleSave}
-            onCancel={() => {
-              setFormVisible(false);
-              setEditingStaff(null);
-            }}
+            onCancel={closeForm}
           />
         ) : null}
       </Modal>

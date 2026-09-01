@@ -277,22 +277,33 @@ export interface Customer {
 }
 
 /* ------------------------------------------------------------------ *
- * Staff — access is capability-based (see permissions module).
+ * Staff — organization-level staff configuration.
+ *
+ * Personal identity belongs to User.
+ * OrganizationUser connects User to Organization.
+ * Staff contains only staff-specific information.
  * ------------------------------------------------------------------ */
 
 export interface Staff {
   id: ID;
   organizationId: ID;
+
+  /** OrganizationUser relationship for this staff member. */
   organizationUserId: ID;
 
+  /** System-generated business identifier. */
   staffCode: string;
-  fullName: string;
+
+  /** Staff-specific job designation. */
   designation?: string;
 
+  /** Primary/default Store. */
   storeId?: ID;
 
   joiningDate: ISODateString;
   relievingDate?: ISODateString;
+
+  /** Staff lifecycle status. */
   staffStatusId: ID;
 
   role: StaffRole;
@@ -301,6 +312,50 @@ export interface Staff {
 
   createdAt: ISODateString;
   createdBy: ID;
+
+  updatedAt: ISODateString;
+  updatedBy: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
+}
+/** User Entity Global */
+export interface User {
+  id: ID;
+
+  /** Business-friendly user identifier. */
+  userCode: string;
+
+  /** User's given name. */
+  firstName: string;
+
+  /** Optional middle name. */
+  middleName?: string;
+
+  /** User's surname. */
+  lastName: string;
+
+  /**
+   * Friendly display value.
+   * Can be supplied by the user or derived by the application.
+   */
+  displayName?: string;
+
+  /** Primary email address. */
+  primaryEmail?: string;
+
+  /** Primary phone number. */
+  primaryPhone: PhoneNumber;
+
+  /** Preferred language reference. */
+  preferredLanguageId?: ID;
+
+  /** Global User status. */
+  userStatusId: ID;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+
   updatedAt: ISODateString;
   updatedBy: ID;
 

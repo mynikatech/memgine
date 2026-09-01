@@ -168,7 +168,7 @@ export const STEEP_SIP_STAFF: Staff[] = [
     organizationUserId: OWNER_ORG_USER_ID,
 
     staffCode: "STEEP-001",
-    fullName: "Riya Mehta",
+
     designation: "Owner",
 
     storeId: STORE_ID,
@@ -197,7 +197,6 @@ export const STEEP_SIP_STAFF: Staff[] = [
     organizationUserId: MANAGER_ORG_USER_ID,
 
     staffCode: "STEEP-002",
-    fullName: "Kabir Shah",
     designation: "Store Manager",
 
     storeId: STORE_ID,
@@ -226,7 +225,6 @@ export const STEEP_SIP_STAFF: Staff[] = [
     organizationUserId: COUNTER_ORG_USER_ID,
 
     staffCode: "STEEP-003",
-    fullName: "Aarav Kapoor",
     designation: "Counter Staff",
 
     storeId: STORE_ID,
