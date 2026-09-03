@@ -18,23 +18,29 @@ import { TextArea } from "../TextArea";
 
 type MembershipFormProps = {
   product: MembershipProduct;
-
+  isNewProduct?: boolean;
   benefits: Benefit[];
-
   productCategories: ReferenceDataItem[];
   productTypes: ReferenceDataItem[];
   productStatuses: Status[];
   subscriptionPlanStatuses: Status[];
   currencies: ReferenceDataItem[];
-
   onSave: (product: MembershipProduct) => Promise<void>;
   onCancel: () => void;
 };
 
 type PlanDraft = SubscriptionPlan;
 
+function isActiveStatus(status: Status | undefined): boolean {
+  return (
+    status?.statusCode?.trim().toUpperCase() === "ACTIVE" ||
+    status?.statusName?.trim().toLowerCase() === "active"
+  );
+}
+
 export function MembershipForm({
   product,
+  isNewProduct = false,
   benefits,
   productCategories,
   productTypes,
@@ -52,16 +58,21 @@ export function MembershipForm({
 
   useEffect(() => {
     setDraft(product);
+    setPriceInputs(
+      Object.fromEntries(
+        product.plans.map((plan) => [
+          plan.id,
+          (plan.price.amountMinor / 100).toFixed(2),
+        ]),
+      ),
+    );
   }, [product]);
 
   const update = <K extends keyof MembershipProduct>(
     field: K,
     value: MembershipProduct[K],
   ) => {
-    setDraft((current) => ({
-      ...current,
-      [field]: value,
-    }));
+    setDraft((current) => ({ ...current, [field]: value }));
   };
 
   const activeBenefits = useMemo(
@@ -70,57 +81,41 @@ export function MembershipForm({
   );
 
   const toggleBenefit = (benefitId: string) => {
-    setDraft((current) => {
-      const exists = current.benefitIds.includes(benefitId);
-
-      return {
-        ...current,
-        benefitIds: exists
-          ? current.benefitIds.filter((id) => id !== benefitId)
-          : [...current.benefitIds, benefitId],
-      };
-    });
+    setDraft((current) => ({
+      ...current,
+      benefitIds: current.benefitIds.includes(benefitId)
+        ? current.benefitIds.filter((id) => id !== benefitId)
+        : [...current.benefitIds, benefitId],
+    }));
   };
 
   const createPlan = (): PlanDraft => {
     const now = new Date().toISOString();
+    const activePlanStatus = subscriptionPlanStatuses.find(isActiveStatus);
+    const defaultCurrency =
+      currencies.find((item) => item.code?.toUpperCase() === "INR") ??
+      currencies[0];
 
     return {
       id: `plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       membershipProductId: draft.id,
-
       subscriptionPlanCode: "",
       subscriptionPlanName: "",
       description: "",
-
       subscriptionPeriod: 1,
       subscriptionPeriodUnit: "MONTH",
-
       price: {
         amountMinor: 0,
-        currency: "INR",
+        currency: defaultCurrency?.code ?? "INR",
       },
-
-      currencyId:
-        currencies.find((item) => item.code === "INR")?.id ??
-        currencies[0]?.id ??
-        "",
-
-      subscriptionPlanStatusId:
-        subscriptionPlanStatuses.find((item) => item.statusCode === "ACTIVE")
-          ?.id ??
-        subscriptionPlanStatuses[0]?.id ??
-        "",
-
+      currencyId: defaultCurrency?.id ?? "",
+      subscriptionPlanStatusId: activePlanStatus?.id ?? "",
       effectiveDate: draft.effectiveDate,
-
       expiryDate: undefined,
-
       createdAt: now,
       createdBy: "user-system",
       updatedAt: now,
       updatedBy: "user-system",
-
       isDeleted: false,
       versionNo: 1,
     };
@@ -141,12 +136,7 @@ export function MembershipForm({
     setDraft((current) => ({
       ...current,
       plans: current.plans.map((plan) =>
-        plan.id === planId
-          ? {
-              ...plan,
-              [field]: value,
-            }
-          : plan,
+        plan.id === planId ? { ...plan, [field]: value } : plan,
       ),
     }));
   };
@@ -164,20 +154,6 @@ export function MembershipForm({
       ...current,
       plans: current.plans.filter((plan) => plan.id !== planId),
     }));
-  };
-
-  const parsePriceToMinor = (value: string) => {
-    const numeric = Number(value.replace(/[^0-9.]/g, ""));
-
-    if (!Number.isFinite(numeric)) {
-      return 0;
-    }
-
-    return Math.round(numeric * 100);
-  };
-
-  const formatPrice = (amountMinor: number) => {
-    return (amountMinor / 100).toFixed(2);
   };
 
   const validate = (): string | null => {
@@ -209,11 +185,17 @@ export function MembershipForm({
       return "Expiry Date cannot be before Effective Date.";
     }
 
-    if (draft.plans.length === 0) {
+    if (draft.benefitIds.length === 0) {
+      return "At least one active benefit is required.";
+    }
+
+    const activePlans = draft.plans.filter((plan) => !plan.isDeleted);
+
+    if (activePlans.length === 0) {
       return "At least one subscription plan is required.";
     }
 
-    for (const plan of draft.plans) {
+    for (const plan of activePlans) {
       if (!plan.subscriptionPlanCode.trim()) {
         return "Every subscription plan must have a Plan Code.";
       }
@@ -222,8 +204,11 @@ export function MembershipForm({
         return "Every subscription plan must have a Plan Name.";
       }
 
-      if (!plan.subscriptionPeriod || plan.subscriptionPeriod <= 0) {
-        return "Subscription Period must be greater than zero.";
+      if (
+        !Number.isInteger(plan.subscriptionPeriod) ||
+        plan.subscriptionPeriod <= 0
+      ) {
+        return "Subscription Period must be a whole number greater than zero.";
       }
 
       if (!plan.subscriptionPeriodUnit.trim()) {
@@ -245,6 +230,13 @@ export function MembershipForm({
       if (plan.expiryDate && plan.expiryDate < plan.effectiveDate) {
         return "A plan's Expiry Date cannot be before its Effective Date.";
       }
+
+      const priceText = priceInputs[plan.id] ?? "0";
+      const amount = Number(priceText);
+
+      if (!Number.isFinite(amount) || amount < 0) {
+        return "Price must be zero or greater for every subscription plan.";
+      }
     }
 
     return null;
@@ -265,35 +257,27 @@ export function MembershipForm({
 
       const normalized: MembershipProduct = {
         ...draft,
-
         membershipProductCode: draft.membershipProductCode.trim(),
         membershipProductName: draft.membershipProductName.trim(),
         displayName: draft.displayName?.trim() || undefined,
         description: draft.description?.trim() || undefined,
-
         updatedAt: now,
         updatedBy: "user-system",
-
+        benefitIds: Array.from(new Set(draft.benefitIds)),
         plans: draft.plans.map((plan) => {
-          const priceText =
-            priceInputs[plan.id] ?? (plan.price.amountMinor / 100).toString();
-
+          const priceText = priceInputs[plan.id] ?? "0";
           const amountMinor = Math.round(Number(priceText) * 100);
 
           return {
             ...plan,
-
             membershipProductId: draft.id,
-
             subscriptionPlanCode: plan.subscriptionPlanCode.trim(),
             subscriptionPlanName: plan.subscriptionPlanName.trim(),
             description: plan.description?.trim() || undefined,
-
             price: {
               ...plan.price,
               amountMinor,
             },
-
             updatedAt: now,
             updatedBy: "user-system",
           };
@@ -303,8 +287,10 @@ export function MembershipForm({
       await onSave(normalized);
     } catch (error) {
       Alert.alert(
-        "Unable to save membership",
-        error instanceof Error ? error.message : "Unable to save membership.",
+        "Unable to save membership draft",
+        error instanceof Error
+          ? error.message
+          : "Unable to save membership draft.",
       );
     } finally {
       setSaving(false);
@@ -325,10 +311,6 @@ export function MembershipForm({
         offered by this business.
       </Text>
 
-      {/* --------------------------------------------------------- */}
-      {/* PRODUCT IDENTITY                                         */}
-      {/* --------------------------------------------------------- */}
-
       <View style={styles.section}>
         <Text variant="body" color="text">
           Product Information
@@ -336,13 +318,15 @@ export function MembershipForm({
 
         <Input
           label="Membership Product Code"
+          required
           value={draft.membershipProductCode}
-          onChangeText={(value) => update("membershipProductCode", value)}
-          placeholder="e.g. SUNRISE-GOLD"
+          onChangeText={() => undefined}
+          editable={false}
         />
 
         <Input
           label="Membership Product Name"
+          required
           value={draft.membershipProductName}
           onChangeText={(value) => update("membershipProductName", value)}
           placeholder="e.g. Sunrise Gold Membership"
@@ -359,6 +343,7 @@ export function MembershipForm({
 
         <ReferenceSelect
           label="Product Category"
+          required
           items={productCategories}
           value={draft.productCategoryId}
           onChange={(value) => update("productCategoryId", value)}
@@ -366,6 +351,7 @@ export function MembershipForm({
 
         <ReferenceSelect
           label="Product Type"
+          required
           items={productTypes}
           value={draft.productTypeId}
           onChange={(value) => update("productTypeId", value)}
@@ -382,13 +368,16 @@ export function MembershipForm({
 
         <ReferenceSelect
           label="Product Status"
+          required
           items={productStatuses}
           value={draft.productStatusId}
           onChange={(value) => update("productStatusId", value)}
+          disabled={isNewProduct}
         />
 
         <Input
           label="Effective Date"
+          required
           value={draft.effectiveDate}
           onChangeText={(value) => update("effectiveDate", value)}
           placeholder="YYYY-MM-DD"
@@ -404,31 +393,31 @@ export function MembershipForm({
         />
       </View>
 
-      {/* --------------------------------------------------------- */}
-      {/* BENEFITS                                                  */}
-      {/* --------------------------------------------------------- */}
-
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionHeaderText}>
             <Text variant="body" color="text">
-              Benefits
+              Benefits *
             </Text>
-
             <Text variant="bodySmall" color="textMuted">
-              Select the benefits included with this membership.
+              Select the active benefits included with this membership.
             </Text>
           </View>
 
           <Text variant="bodySmall" color="textMuted">
-            {draft.benefitIds.length} selected
+            {
+              draft.benefitIds.filter((id) =>
+                activeBenefits.some((benefit) => benefit.id === id),
+              ).length
+            }{" "}
+            selected
           </Text>
         </View>
 
         {activeBenefits.length === 0 ? (
           <View style={styles.emptyBox}>
             <Text variant="bodySmall" color="textMuted">
-              No benefits are configured for this business yet.
+              No active benefits are configured for this business yet.
             </Text>
           </View>
         ) : (
@@ -440,6 +429,7 @@ export function MembershipForm({
                 <Pressable
                   key={benefit.id}
                   onPress={() => toggleBenefit(benefit.id)}
+                  disabled={saving}
                   style={[
                     styles.benefitItem,
                     {
@@ -476,7 +466,6 @@ export function MembershipForm({
                     <Text variant="body" color="text">
                       {benefit.displayName ?? benefit.benefitName}
                     </Text>
-
                     <Text variant="bodySmall" color="textMuted">
                       {benefit.description ?? benefit.benefitCode}
                     </Text>
@@ -488,19 +477,14 @@ export function MembershipForm({
         )}
       </View>
 
-      {/* --------------------------------------------------------- */}
-      {/* SUBSCRIPTION PLANS                                       */}
-      {/* --------------------------------------------------------- */}
-
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionHeaderText}>
             <Text variant="body" color="text">
-              Subscription Plans
+              Subscription Plans *
             </Text>
-
             <Text variant="bodySmall" color="textMuted">
-              Configure the plans customers can purchase for this membership.
+              At least one subscription plan is required.
             </Text>
           </View>
 
@@ -509,9 +493,7 @@ export function MembershipForm({
             disabled={saving}
             style={({ pressed }) => [
               styles.addPlanButton,
-              {
-                opacity: pressed || saving ? 0.7 : 1,
-              },
+              { opacity: pressed || saving ? 0.7 : 1 },
             ]}
           >
             <Text variant="body" color="background">
@@ -536,7 +518,6 @@ export function MembershipForm({
                 <Text variant="body" color="text">
                   Plan {index + 1}
                 </Text>
-
                 <Text variant="bodySmall" color="textMuted">
                   {plan.subscriptionPlanName || "New subscription plan"}
                 </Text>
@@ -556,6 +537,7 @@ export function MembershipForm({
 
             <Input
               label="Subscription Plan Code"
+              required
               value={plan.subscriptionPlanCode}
               onChangeText={(value) =>
                 updatePlan(plan.id, "subscriptionPlanCode", value)
@@ -565,6 +547,7 @@ export function MembershipForm({
 
             <Input
               label="Subscription Plan Name"
+              required
               value={plan.subscriptionPlanName}
               onChangeText={(value) =>
                 updatePlan(plan.id, "subscriptionPlanName", value)
@@ -589,14 +572,14 @@ export function MembershipForm({
               <View style={styles.half}>
                 <Input
                   label="Subscription Period"
+                  required
                   value={String(plan.subscriptionPeriod)}
                   onChangeText={(value) => {
                     const parsed = Number(value.replace(/[^0-9]/g, ""));
-
                     updatePlan(
                       plan.id,
                       "subscriptionPeriod",
-                      Number.isFinite(parsed) && parsed > 0 ? parsed : 0,
+                      Number.isFinite(parsed) ? parsed : 0,
                     );
                   }}
                   keyboardType="numeric"
@@ -606,19 +589,11 @@ export function MembershipForm({
               <View style={styles.half}>
                 <ReferenceSelect
                   label="Period Unit"
+                  required
                   items={[
-                    {
-                      id: "DAY",
-                      name: "Day",
-                    },
-                    {
-                      id: "MONTH",
-                      name: "Month",
-                    },
-                    {
-                      id: "YEAR",
-                      name: "Year",
-                    },
+                    { id: "DAY", name: "Day" },
+                    { id: "MONTH", name: "Month" },
+                    { id: "YEAR", name: "Year" },
                   ]}
                   value={plan.subscriptionPeriodUnit}
                   onChange={(value) =>
@@ -629,39 +604,40 @@ export function MembershipForm({
             </View>
 
             <View style={styles.row}>
-              <Input
-                label="Price"
-                value={
-                  priceInputs[plan.id] ??
-                  (plan.price.amountMinor / 100).toFixed(2)
-                }
-                onChangeText={(value) => {
-                  const cleaned = value.replace(/[^0-9.]/g, "");
+              <View style={styles.half}>
+                <Input
+                  label="Price"
+                  required
+                  value={
+                    priceInputs[plan.id] ??
+                    (plan.price.amountMinor / 100).toFixed(2)
+                  }
+                  onChangeText={(value) => {
+                    const cleaned = value.replace(/[^0-9.]/g, "");
+                    const parts = cleaned.split(".");
+                    const normalized =
+                      parts.length > 2
+                        ? `${parts[0]}.${parts.slice(1).join("")}`
+                        : cleaned;
+                    const finalValue = normalized.includes(".")
+                      ? `${normalized.split(".")[0]}.${normalized
+                          .split(".")[1]
+                          .slice(0, 2)}`
+                      : normalized;
 
-                  const parts = cleaned.split(".");
-
-                  const normalized =
-                    parts.length > 2
-                      ? `${parts[0]}.${parts.slice(1).join("")}`
-                      : cleaned;
-
-                  const finalValue = normalized.includes(".")
-                    ? `${normalized.split(".")[0]}.${normalized
-                        .split(".")[1]
-                        .slice(0, 2)}`
-                    : normalized;
-
-                  setPriceInputs((current) => ({
-                    ...current,
-                    [plan.id]: finalValue,
-                  }));
-                }}
-                keyboardType="decimal-pad"
-              />
+                    setPriceInputs((current) => ({
+                      ...current,
+                      [plan.id]: finalValue,
+                    }));
+                  }}
+                  keyboardType="decimal-pad"
+                />
+              </View>
 
               <View style={styles.half}>
                 <ReferenceSelect
                   label="Currency"
+                  required
                   items={currencies}
                   value={plan.currencyId}
                   onChange={(value) => {
@@ -670,7 +646,6 @@ export function MembershipForm({
                     );
 
                     updatePlan(plan.id, "currencyId", value);
-
                     updatePlan(plan.id, "price", {
                       ...plan.price,
                       currency: currency?.code ?? plan.price.currency,
@@ -682,15 +657,18 @@ export function MembershipForm({
 
             <ReferenceSelect
               label="Plan Status"
+              required
               items={subscriptionPlanStatuses}
               value={plan.subscriptionPlanStatusId}
               onChange={(value) =>
                 updatePlan(plan.id, "subscriptionPlanStatusId", value)
               }
+              disabled
             />
 
             <Input
               label="Effective Date"
+              required
               value={plan.effectiveDate}
               onChangeText={(value) =>
                 updatePlan(plan.id, "effectiveDate", value)
@@ -714,19 +692,13 @@ export function MembershipForm({
         ))}
       </View>
 
-      {/* --------------------------------------------------------- */}
-      {/* ACTIONS                                                   */}
-      {/* --------------------------------------------------------- */}
-
       <View style={styles.actions}>
         <Pressable
           onPress={onCancel}
           disabled={saving}
           style={({ pressed }) => [
             styles.cancelButton,
-            {
-              opacity: pressed || saving ? 0.7 : 1,
-            },
+            { opacity: pressed || saving ? 0.7 : 1 },
           ]}
         >
           <Text variant="body" color="text">
@@ -739,13 +711,11 @@ export function MembershipForm({
           disabled={saving}
           style={({ pressed }) => [
             styles.saveButton,
-            {
-              opacity: pressed || saving ? 0.7 : 1,
-            },
+            { opacity: pressed || saving ? 0.7 : 1 },
           ]}
         >
           <Text variant="body" color="background">
-            {saving ? "Saving..." : "Save Membership"}
+            {saving ? "Saving..." : "Save Draft"}
           </Text>
         </Pressable>
       </View>
@@ -754,40 +724,18 @@ export function MembershipForm({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    gap: 20,
-    paddingBottom: 24,
-  },
-
-  section: {
-    gap: 14,
-  },
-
+  container: { gap: 20, paddingBottom: 24 },
+  section: { gap: 14 },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
   },
-
-  sectionHeaderText: {
-    flex: 1,
-    gap: 4,
-  },
-
-  row: {
-    flexDirection: "row",
-    gap: 12,
-  },
-
-  half: {
-    flex: 1,
-  },
-
-  benefitList: {
-    gap: 10,
-  },
-
+  sectionHeaderText: { flex: 1, gap: 4 },
+  row: { flexDirection: "row", gap: 12 },
+  half: { flex: 1 },
+  benefitList: { gap: 10 },
   benefitItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -796,7 +744,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 14,
   },
-
   checkbox: {
     width: 22,
     height: 22,
@@ -805,18 +752,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
-  benefitText: {
-    flex: 1,
-    gap: 3,
-  },
-
-  emptyBox: {
-    padding: 16,
-    borderWidth: 1,
-    borderRadius: 10,
-  },
-
+  benefitText: { flex: 1, gap: 3 },
+  emptyBox: { padding: 16, borderWidth: 1, borderRadius: 10 },
   addPlanButton: {
     minHeight: 40,
     paddingHorizontal: 14,
@@ -825,33 +762,25 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#0F766E",
   },
-
   planCard: {
     borderWidth: 1,
     borderRadius: 12,
     padding: 16,
     gap: 14,
   },
-
   planHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
   },
-
-  planHeaderText: {
-    flex: 1,
-    gap: 3,
-  },
-
+  planHeaderText: { flex: 1, gap: 3 },
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end",
     gap: 12,
     marginTop: 4,
   },
-
   cancelButton: {
     minHeight: 44,
     paddingHorizontal: 18,
@@ -861,7 +790,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#D1D5DB",
   },
-
   saveButton: {
     minHeight: 44,
     paddingHorizontal: 20,

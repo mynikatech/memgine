@@ -8,8 +8,10 @@ import { mockNotificationService } from "../mocks/mock-notification";
 import { LocalOrganizationService } from "./organization-service.local";
 import { LocalCustomerExperienceService } from "./customer-experience.local";
 import { LocalProductService } from "./product-service.local";
+import { LocalMembershipProductService } from "./membership-product-service.local";
+import { LocalBenefitService } from "./benefit-service.local";
 
-import {
+import type {
   OrganizationService,
   CustomerService,
   MembershipProductService,
@@ -30,27 +32,26 @@ import type { TemplateService } from "./template";
 import type { CustomerExperienceService } from "./customer-experience";
 import type { NotificationService } from "./notification";
 
-/**
- * Organization service is migrated progressively.
- *
- * Methods already migrated to repository/API persistence use
- * LocalOrganizationService -> OrganizationApi -> LocalOrganizationRepository.
- *
- * Methods not migrated yet continue to use the existing mock service
- * through the fallback.
- */
-const organizationService = new LocalOrganizationService(
+const organizationService: OrganizationService = new LocalOrganizationService(
   mockServices.organization,
 );
-const productService = new LocalProductService();
+
+const productService: ProductService = new LocalProductService();
+
+const membershipProductService: MembershipProductService =
+  new LocalMembershipProductService(mockServices.membershipProduct);
+
+const benefitService: BenefitService = new LocalBenefitService(
+  mockServices.benefit,
+);
 
 const mockCustomerExperienceService = new InMemoryCustomerExperienceService(
   organizationService,
   mockTemplateService,
 );
-const customerExperienceService = new LocalCustomerExperienceService(
-  mockCustomerExperienceService,
-);
+
+const customerExperienceService: CustomerExperienceService =
+  new LocalCustomerExperienceService(mockCustomerExperienceService);
 
 export type MemgineServices = {
   organization: OrganizationService;
@@ -75,20 +76,27 @@ export type MemgineServices = {
 export const services: MemgineServices = {
   organization: organizationService,
   customer: mockServices.customer,
-  membershipProduct: mockServices.membershipProduct,
+
+  membershipProduct: membershipProductService,
+
   subscription: mockServices.subscription,
   subscriptionPlan: mockServices.subscriptionPlan,
-  benefit: mockServices.benefit,
+
+  benefit: benefitService,
+
   offer: mockServices.offer,
   userAcquisition: mockServices.userAcquisition,
   redemption: mockServices.redemption,
-  product: productService,
 
   status: mockStatusService,
   auth: mockServices.auth,
   payment: mockServices.payment,
+
   referenceData: mockReferenceDataService,
   template: mockTemplateService,
+
   customerExperience: customerExperienceService,
   notification: mockNotificationService,
+
+  product: productService,
 };

@@ -35,3 +35,15 @@ export { LOCAL_DATA_KEYS } from "./persistence/local/keys";
 export { memorySessionStore } from "./persistence/session/session-store";
 
 export type { SessionStore } from "./persistence/session/session-store";
+
+export { BenefitApi } from "./api/benefit-api";
+
+export { MembershipProductApi } from "./api/membership-product-api";
+
+export type { BenefitRepository } from "./repositories/benefit/benefit-repository";
+
+export { LocalBenefitRepository } from "./repositories/benefit/benefit-repository.local";
+
+export type { MembershipProductRepository } from "./repositories/membership/membership-product-repository";
+
+export { LocalMembershipProductRepository } from "./repositories/membership/membership-product-repository.local";

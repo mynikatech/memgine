@@ -333,6 +333,17 @@ export interface MembershipProductService {
   deleteProduct(organizationId: ID, productId: ID): Promise<void>;
 }
 
+export interface BenefitService {
+  listByOrganization(organizationId: ID): Promise<Benefit[]>;
+  listByProduct(membershipProductId: ID): Promise<Benefit[]>;
+
+  createBenefit(organizationId: ID, benefit: Benefit): Promise<Benefit>;
+
+  updateBenefit(organizationId: ID, benefit: Benefit): Promise<Benefit>;
+
+  deleteBenefit(organizationId: ID, benefitId: ID): Promise<void>;
+}
+
 export interface SubscriptionService {
   /**
    * Returns all subscriptions owned by a global user/customer.
@@ -356,14 +367,6 @@ export interface SubscriptionPlanService {
   getPlan(id: ID): Promise<SubscriptionPlan | null>;
 
   listByProduct(membershipProductId: ID): Promise<SubscriptionPlan[]>;
-}
-
-export interface BenefitService {
-  listByOrganization(organizationId: ID): Promise<Benefit[]>;
-  listByProduct(membershipProductId: ID): Promise<Benefit[]>;
-  createBenefit(organizationId: ID, benefit: Benefit): Promise<Benefit>;
-  updateBenefit(organizationId: ID, benefit: Benefit): Promise<Benefit>;
-  deleteBenefit(organizationId: ID, benefitId: ID): Promise<void>;
 }
 
 export interface RedemptionService {
