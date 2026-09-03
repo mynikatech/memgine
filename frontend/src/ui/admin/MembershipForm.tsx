@@ -68,6 +68,11 @@ export function MembershipForm({
     );
   }, [product]);
 
+  const existingPlanIds = useMemo(
+    () => new Set(product.plans.map((plan) => plan.id)),
+    [product.plans],
+  );
+
   const update = <K extends keyof MembershipProduct>(
     field: K,
     value: MembershipProduct[K],
@@ -663,9 +668,8 @@ export function MembershipForm({
               onChange={(value) =>
                 updatePlan(plan.id, "subscriptionPlanStatusId", value)
               }
-              disabled
+              disabled={isNewProduct || !existingPlanIds.has(plan.id)}
             />
-
             <Input
               label="Effective Date"
               required

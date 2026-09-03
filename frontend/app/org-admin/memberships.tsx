@@ -14,18 +14,17 @@ import { services } from "@/src/core";
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { membershipDraftStore } from "@/src/core/services/membership-draft-store";
 import { useBusiness } from "@/src/providers";
-import { DataTable, type DataTableColumn, Modal, Text } from "@/src/ui";
+import { Button, DataTable, type DataTableColumn, Modal, Text } from "@/src/ui";
 
 import { MembershipForm } from "@/src/ui/admin/MembershipForm";
 
 function cloneProducts(products: MembershipProduct[]): MembershipProduct[] {
   return products.map((product) => ({
     ...product,
-    benefitIds: [...product.benefitIds],
     plans: product.plans.map((plan) => ({
       ...plan,
-      price: { ...plan.price },
     })),
+    benefitIds: [...product.benefitIds],
   }));
 }
 
@@ -36,22 +35,18 @@ function productsEqual(
   return JSON.stringify(first) === JSON.stringify(second);
 }
 
-function isActiveStatus(status: Status | undefined): boolean {
-  return (
-    status?.statusCode?.trim().toUpperCase() === "ACTIVE" ||
-    status?.statusName?.trim().toLowerCase() === "active"
-  );
-}
-
-export default function MembershipsAdmin() {
-  const router = useRouter();
+export default function OrgAdminMemberships() {
   const { organization } = useBusiness();
+  const router = useRouter();
 
   const [committedProducts, setCommittedProducts] = useState<
     MembershipProduct[]
   >([]);
+
   const [products, setProducts] = useState<MembershipProduct[]>([]);
+
   const [benefits, setBenefits] = useState<Benefit[]>([]);
+
   const [benefitStatuses, setBenefitStatuses] = useState<Status[]>([]);
   const [productCategories, setProductCategories] = useState<
     ReferenceDataItem[]
@@ -62,11 +57,17 @@ export default function MembershipsAdmin() {
     Status[]
   >([]);
   const [currencies, setCurrencies] = useState<ReferenceDataItem[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
   const [formVisible, setFormVisible] = useState(false);
   const [editingProduct, setEditingProduct] =
     useState<MembershipProduct | null>(null);
+
+  /* ---------------------------------------------------------------------- */
+  /* LOAD                                                                   */
+  /* ---------------------------------------------------------------------- */
 
   useEffect(() => {
     let mounted = true;
@@ -76,12 +77,12 @@ export default function MembershipsAdmin() {
 
       try {
         const [
-          productList,
+          persistedProducts,
           benefitList,
           benefitStatusList,
           categoryList,
           typeList,
-          statusList,
+          productStatusList,
           planStatusList,
           currencyList,
         ] = await Promise.all([
@@ -99,19 +100,22 @@ export default function MembershipsAdmin() {
           return;
         }
 
-        const committed = cloneProducts(productList);
-        const existingDraft = membershipDraftStore.get(organization.id);
-        const working = existingDraft
-          ? cloneProducts(existingDraft)
-          : cloneProducts(committed);
+        const committedSnapshot = cloneProducts(persistedProducts);
 
-        setCommittedProducts(committed);
-        setProducts(working);
+        const existingDraft = membershipDraftStore.get(organization.id);
+
+        const workingSnapshot = existingDraft
+          ? cloneProducts(existingDraft)
+          : cloneProducts(committedSnapshot);
+
+        setCommittedProducts(committedSnapshot);
+        setProducts(workingSnapshot);
+
         setBenefits(benefitList);
         setBenefitStatuses(benefitStatusList);
         setProductCategories(categoryList);
         setProductTypes(typeList);
-        setProductStatuses(statusList);
+        setProductStatuses(productStatusList);
         setSubscriptionPlanStatuses(planStatusList);
         setCurrencies(currencyList);
       } catch (error) {
@@ -139,133 +143,66 @@ export default function MembershipsAdmin() {
     };
   }, [organization.id]);
 
+  /* ---------------------------------------------------------------------- */
+  /* DERIVED                                                                */
+  /* ---------------------------------------------------------------------- */
+
   const hasChanges = useMemo(
     () => !productsEqual(committedProducts, products),
     [committedProducts, products],
   );
 
-  const activeBenefits = useMemo(() => {
-    const activeIds = new Set(
-      benefitStatuses.filter(isActiveStatus).map((status) => status.id),
-    );
+  const activeBenefits = useMemo(
+    () =>
+      benefits.filter((benefit) => {
+        if (benefit.isDeleted) {
+          return false;
+        }
 
-    return benefits.filter(
-      (benefit) => !benefit.isDeleted && activeIds.has(benefit.benefitStatusId),
-    );
-  }, [benefits, benefitStatuses]);
+        const status = benefitStatuses.find(
+          (item) => item.id === benefit.benefitStatusId,
+        );
 
-  type ReferenceLookupItem = ReferenceDataItem | Status;
-
-  function getReferenceName(items: ReferenceLookupItem[], id: string): string {
-    const item = items.find((candidate) => candidate.id === id);
-
-    if (!item) {
-      return "Unknown";
-    }
-
-    return "statusName" in item ? item.statusName : item.name;
-  }
-
-  const formatPlanPrice = (amountMinor: number, currency: string) =>
-    `${currency} ${(amountMinor / 100).toFixed(2)}`;
-
-  const getPlanSummary = (product: MembershipProduct) => {
-    const activePlans = product.plans.filter((plan) => !plan.isDeleted);
-
-    if (activePlans.length === 0) {
-      return "No plans";
-    }
-
-    return activePlans
-      .map(
-        (plan) =>
-          `${plan.subscriptionPlanName} · ${formatPlanPrice(
-            plan.price.amountMinor,
-            plan.price.currency,
-          )}`,
-      )
-      .join(", ");
-  };
-
-  const columns = useMemo<DataTableColumn<MembershipProduct>[]>(
-    () => [
-      {
-        key: "membershipProductCode",
-        title: "Product Code",
-        width: 180,
-      },
-      {
-        key: "membershipProductName",
-        title: "Membership",
-        width: 220,
-        render: (item) => (
-          <View style={styles.nameCell}>
-            <Text variant="body" color="text">
-              {item.displayName ?? item.membershipProductName}
-            </Text>
-            {item.displayName ? (
-              <Text variant="bodySmall" color="textMuted">
-                {item.membershipProductName}
-              </Text>
-            ) : null}
-          </View>
-        ),
-      },
-      {
-        key: "productCategoryId",
-        title: "Category",
-        width: 150,
-        render: (item) => (
-          <Text variant="body" color="text">
-            {getReferenceName(productCategories, item.productCategoryId)}
-          </Text>
-        ),
-      },
-      {
-        key: "productTypeId",
-        title: "Type",
-        width: 140,
-        render: (item) => (
-          <Text variant="body" color="text">
-            {getReferenceName(productTypes, item.productTypeId)}
-          </Text>
-        ),
-      },
-      {
-        key: "benefitIds",
-        title: "Benefits",
-        width: 100,
-        render: (item) => (
-          <Text variant="body" color="text">
-            {item.benefitIds.length}
-          </Text>
-        ),
-      },
-      {
-        key: "plans",
-        title: "Plans",
-        width: 300,
-        render: (item) => (
-          <Text variant="body" color="text">
-            {getPlanSummary(item)}
-          </Text>
-        ),
-      },
-      {
-        key: "productStatusId",
-        title: "Status",
-        width: 130,
-        render: (item) => (
-          <Text variant="body" color="text">
-            {getReferenceName(productStatuses, item.productStatusId)}
-          </Text>
-        ),
-      },
-    ],
-    [productCategories, productTypes, productStatuses],
+        return (
+          status?.statusCode?.trim().toUpperCase() === "ACTIVE" ||
+          status?.statusName?.trim().toLowerCase() === "active"
+        );
+      }),
+    [benefits, benefitStatuses],
   );
 
+  /* ---------------------------------------------------------------------- */
+  /* LOOKUPS                                                                */
+  /* ---------------------------------------------------------------------- */
+
+  const getReferenceName = (
+    items: ReferenceDataItem[],
+    id?: string,
+  ): string => {
+    if (!id) {
+      return "—";
+    }
+
+    return items.find((item) => item.id === id)?.name ?? "Unknown";
+  };
+
+  const getStatusName = (items: Status[], id?: string): string => {
+    if (!id) {
+      return "—";
+    }
+
+    const status = items.find((item) => item.id === id);
+
+    return status?.statusName ?? status?.statusCode ?? "Unknown";
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* MEMBERSHIP CODE                                                        */
+  /* ---------------------------------------------------------------------- */
+
   const generateMembershipCode = (): string => {
+    const prefix = "MEMBERSHIP";
+
     const usedCodes = new Set(
       products.map((product) =>
         product.membershipProductCode.trim().toUpperCase(),
@@ -273,107 +210,162 @@ export default function MembershipsAdmin() {
     );
 
     let sequence = 1;
-    while (usedCodes.has(`MEMBERSHIP-${String(sequence).padStart(3, "0")}`)) {
+
+    while (usedCodes.has(`${prefix}-${String(sequence).padStart(3, "0")}`)) {
       sequence += 1;
     }
 
-    return `MEMBERSHIP-${String(sequence).padStart(3, "0")}`;
+    return `${prefix}-${String(sequence).padStart(3, "0")}`;
   };
 
-  const createInitialPlan = (
-    membershipProductId: string,
-    effectiveDate: string,
-  ) => {
+  /* ---------------------------------------------------------------------- */
+  /* PLAN                                                                   */
+  /* ---------------------------------------------------------------------- */
+
+  const createInitialPlan = () => {
     const now = new Date().toISOString();
-    const activePlanStatus = subscriptionPlanStatuses.find(isActiveStatus);
-    const defaultCurrency =
-      currencies.find((item) => item.code?.toUpperCase() === "INR") ??
-      currencies[0];
+
+    const activeStatus = subscriptionPlanStatuses.find(
+      (status) =>
+        status.statusCode?.trim().toUpperCase() === "ACTIVE" ||
+        status.statusName?.trim().toLowerCase() === "active",
+    );
+
+    const inrCurrency =
+      currencies.find(
+        (currency) =>
+          currency.code?.trim().toUpperCase() === "INR" ||
+          currency.name?.trim().toUpperCase() === "INR",
+      ) ?? currencies[0];
+
+    const productId = `membership-product-${Date.now()}`;
 
     return {
-      id: `plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      membershipProductId,
-      subscriptionPlanCode: "",
-      subscriptionPlanName: "",
-      description: undefined,
+      id: `membership-plan-${Date.now()}`,
+      membershipProductId: productId,
+      subscriptionPlanCode: `PLAN-${Date.now()}`,
+      subscriptionPlanName: "Monthly",
+      subscriptionPlanStatusId:
+        activeStatus?.id ?? "subscription-plan-status-active",
+      currencyId: inrCurrency?.id ?? "",
       subscriptionPeriod: 1,
       subscriptionPeriodUnit: "MONTH",
       price: {
         amountMinor: 0,
-        currency: defaultCurrency?.code ?? "INR",
+        currency: inrCurrency?.code ?? "CAD",
       },
-      currencyId: defaultCurrency?.id ?? "",
-      subscriptionPlanStatusId: activePlanStatus?.id ?? "",
-      effectiveDate,
+      billingInterval: "MONTHLY",
+      effectiveDate: now.substring(0, 10),
       expiryDate: undefined,
       createdAt: now,
-      createdBy: "user-system",
+      createdBy: organization.updatedBy,
       updatedAt: now,
-      updatedBy: "user-system",
+      updatedBy: organization.updatedBy,
       isDeleted: false,
       versionNo: 1,
     };
   };
+
+  /* ---------------------------------------------------------------------- */
+  /* EMPTY PRODUCT                                                          */
+  /* ---------------------------------------------------------------------- */
 
   const createEmptyProduct = (): MembershipProduct => {
     const now = new Date().toISOString();
-    const id = `prod-${Date.now()}`;
+    const productId = `membership-product-${Date.now()}`;
 
-    const activeCategory =
-      productCategories.find((item) => item.code === "MEMBERSHIP") ??
-      productCategories[0];
+    const activeStatus = productStatuses.find(
+      (status) =>
+        status.statusCode?.trim().toUpperCase() === "ACTIVE" ||
+        status.statusName?.trim().toLowerCase() === "active",
+    );
 
-    const activeType =
-      productTypes.find((item) => item.code === "INDIVIDUAL") ??
-      productTypes[0];
-
-    const activeStatus = productStatuses.find(isActiveStatus);
+    const initialPlan = createInitialPlan();
 
     return {
-      id,
+      id: productId,
+
       organizationId: organization.id,
+
       membershipProductCode: generateMembershipCode(),
+
       membershipProductName: "",
+
       displayName: undefined,
-      productCategoryId: activeCategory?.id ?? "",
-      productTypeId: activeType?.id ?? "",
+
+      productCategoryId: "",
+
+      productTypeId: "",
+
+      productStatusId: activeStatus?.id ?? "membership-product-status-active",
+
       description: undefined,
-      productStatusId: activeStatus?.id ?? "",
-      effectiveDate: now.substring(0, 10),
-      expiryDate: undefined,
+
       benefitIds: [],
-      plans: [createInitialPlan(id, now.substring(0, 10))],
+
+      plans: [
+        {
+          ...initialPlan,
+          membershipProductId: productId,
+        },
+      ],
+
+      effectiveDate: now.substring(0, 10),
+
+      expiryDate: undefined,
+
       createdAt: now,
-      createdBy: "user-system",
+
+      createdBy: organization.updatedBy,
+
       updatedAt: now,
-      updatedBy: "user-system",
+
+      updatedBy: organization.updatedBy,
+
       isDeleted: false,
+
       versionNo: 1,
     };
   };
+
+  /* ---------------------------------------------------------------------- */
+  /* ADD                                                                    */
+  /* ---------------------------------------------------------------------- */
 
   const handleAdd = () => {
     setEditingProduct(createEmptyProduct());
     setFormVisible(true);
   };
 
+  /* ---------------------------------------------------------------------- */
+  /* EDIT                                                                   */
+  /* ---------------------------------------------------------------------- */
+
   const handleEdit = (product: MembershipProduct) => {
     setEditingProduct(cloneProducts([product])[0]);
     setFormVisible(true);
   };
 
-  const handleSaveDraft = async (updatedProduct: MembershipProduct) => {
+  /* ---------------------------------------------------------------------- */
+  /* SAVE DRAFT                                                             */
+  /* ---------------------------------------------------------------------- */
+
+  const handleSaveDraft = async (product: MembershipProduct) => {
     setProducts((current) => {
       const next = [...current];
-      const index = next.findIndex((item) => item.id === updatedProduct.id);
+
+      const index = next.findIndex((item) => item.id === product.id);
+
+      const clonedProduct = cloneProducts([product])[0];
 
       if (index === -1) {
-        next.push(cloneProducts([updatedProduct])[0]);
+        next.push(clonedProduct);
       } else {
-        next[index] = cloneProducts([updatedProduct])[0];
+        next[index] = clonedProduct;
       }
 
       membershipDraftStore.set(organization.id, next);
+
       return next;
     });
 
@@ -381,62 +373,44 @@ export default function MembershipsAdmin() {
     setEditingProduct(null);
   };
 
+  /* ---------------------------------------------------------------------- */
+  /* DELETE                                                                 */
+  /* ---------------------------------------------------------------------- */
+
   const handleDelete = (product: MembershipProduct) => {
     setProducts((current) => {
-      const next = current.map((item) =>
-        item.id === product.id ? { ...item, isDeleted: true } : item,
+      const existsInCommitted = committedProducts.some(
+        (item) => item.id === product.id,
       );
 
+      let next: MembershipProduct[];
+
+      if (!existsInCommitted) {
+        next = current.filter((item) => item.id !== product.id);
+      } else {
+        next = current.map((item) =>
+          item.id === product.id
+            ? {
+                ...item,
+                isDeleted: true,
+              }
+            : item,
+        );
+      }
+
       membershipDraftStore.set(organization.id, next);
+
       return next;
     });
   };
 
+  /* ---------------------------------------------------------------------- */
+  /* SAVE CHANGES                                                           */
+  /* ---------------------------------------------------------------------- */
+
   const handleSaveChanges = async () => {
     if (!hasChanges || saving) {
       return;
-    }
-
-    const activePlanStatusIds = new Set(
-      subscriptionPlanStatuses
-        .filter(isActiveStatus)
-        .map((status) => status.id),
-    );
-
-    for (const product of products) {
-      if (product.isDeleted) {
-        continue;
-      }
-
-      const committed = committedProducts.find(
-        (item) => item.id === product.id,
-      );
-      const productWasActive = committed
-        ? isActiveStatus(
-            productStatuses.find(
-              (status) => status.id === committed.productStatusId,
-            ),
-          )
-        : false;
-      const productIsActive = isActiveStatus(
-        productStatuses.find((status) => status.id === product.productStatusId),
-      );
-
-      if (productWasActive && !productIsActive) {
-        const hasActivePlan = product.plans.some(
-          (plan) =>
-            !plan.isDeleted &&
-            activePlanStatusIds.has(plan.subscriptionPlanStatusId),
-        );
-
-        if (hasActivePlan) {
-          Alert.alert(
-            "Active Plans Required",
-            "Inactivate all active subscription plans before inactivating this membership product.",
-          );
-          return;
-        }
-      }
     }
 
     setSaving(true);
@@ -445,6 +419,7 @@ export default function MembershipsAdmin() {
       const committedById = new Map(
         committedProducts.map((product) => [product.id, product]),
       );
+
       const workingById = new Map(
         products.map((product) => [product.id, product]),
       );
@@ -489,10 +464,12 @@ export default function MembershipsAdmin() {
       const refreshed = await services.membershipProduct.listProducts(
         organization.id,
       );
+
       const snapshot = cloneProducts(refreshed);
 
       setCommittedProducts(cloneProducts(snapshot));
       setProducts(cloneProducts(snapshot));
+
       membershipDraftStore.clear(organization.id);
 
       Alert.alert(
@@ -511,15 +488,142 @@ export default function MembershipsAdmin() {
     }
   };
 
+  /* ---------------------------------------------------------------------- */
+  /* DISCARD                                                                */
+  /* ---------------------------------------------------------------------- */
+
   const handleDiscardChanges = () => {
     if (!hasChanges || saving) {
       return;
     }
 
     const restored = cloneProducts(committedProducts);
+
     setProducts(restored);
+
     membershipDraftStore.clear(organization.id);
   };
+
+  /* ---------------------------------------------------------------------- */
+  /* PREVIEW                                                                */
+  /* ---------------------------------------------------------------------- */
+
+  const handlePreview = () => {
+    router.push({
+      pathname: APP_ROUTES.orgAdmin.customerExperienceSection(
+        "membership",
+      ) as never,
+      params: {
+        currentProduct:
+          committedProducts.length > 0
+            ? JSON.stringify(committedProducts[0])
+            : "",
+        proposedProduct: products.length > 0 ? JSON.stringify(products[0]) : "",
+      },
+    });
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* TABLE                                                                  */
+  /* ---------------------------------------------------------------------- */
+
+  const columns = useMemo<DataTableColumn<MembershipProduct>[]>(
+    () => [
+      {
+        key: "membershipProductCode",
+        title: "Membership Code",
+        width: 170,
+      },
+
+      {
+        key: "membershipProductName",
+        title: "Membership Name",
+        width: 240,
+        render: (item) => (
+          <Text variant="body" color="text">
+            {item.displayName ?? item.membershipProductName}
+          </Text>
+        ),
+      },
+
+      {
+        key: "productCategoryId",
+        title: "Category",
+        width: 160,
+        render: (item) => (
+          <Text variant="body" color="text">
+            {getReferenceName(productCategories, item.productCategoryId)}
+          </Text>
+        ),
+      },
+
+      {
+        key: "productTypeId",
+        title: "Type",
+        width: 140,
+        render: (item) => (
+          <Text variant="body" color="text">
+            {getReferenceName(productTypes, item.productTypeId)}
+          </Text>
+        ),
+      },
+
+      {
+        key: "productStatusId",
+        title: "Status",
+        width: 130,
+        render: (item) => (
+          <Text variant="body" color="text">
+            {getStatusName(productStatuses, item.productStatusId)}
+          </Text>
+        ),
+      },
+
+      {
+        key: "plans",
+        title: "Plans",
+        width: 100,
+        render: (item) => (
+          <Text variant="body" color="text">
+            {item.plans.filter((plan) => !plan.isDeleted).length}
+          </Text>
+        ),
+      },
+
+      {
+        key: "benefitIds",
+        title: "Benefits",
+        width: 110,
+        render: (item) => (
+          <Text variant="body" color="text">
+            {item.benefitIds.length}
+          </Text>
+        ),
+      },
+
+      {
+        key: "effectiveDate",
+        title: "Effective",
+        width: 130,
+      },
+
+      {
+        key: "expiryDate",
+        title: "Expiry",
+        width: 130,
+        render: (item) => (
+          <Text variant="body" color="text">
+            {item.expiryDate ?? "—"}
+          </Text>
+        ),
+      },
+    ],
+    [productCategories, productTypes, productStatuses],
+  );
+
+  /* ---------------------------------------------------------------------- */
+  /* RENDER                                                                 */
+  /* ---------------------------------------------------------------------- */
 
   return (
     <ScrollView
@@ -532,52 +636,66 @@ export default function MembershipsAdmin() {
           <Text variant="title" color="text">
             Memberships
           </Text>
+
           <Text variant="bodySmall" color="textMuted">
-            Configure membership products, benefits and subscription plans.
+            Manage the membership products offered to your customers.
           </Text>
         </View>
 
         <View style={styles.headerActions}>
+          {hasChanges ? (
+            <Pressable
+              onPress={handleDiscardChanges}
+              disabled={saving}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                {
+                  opacity: saving ? 0.5 : pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Text variant="body" color="text">
+                Discard
+              </Text>
+            </Pressable>
+          ) : null}
+
+          <Pressable
+            onPress={handlePreview}
+            disabled={saving || products.length === 0}
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              {
+                opacity:
+                  saving || products.length === 0 ? 0.5 : pressed ? 0.8 : 1,
+              },
+            ]}
+          >
+            <Text variant="body" color="text">
+              Preview
+            </Text>
+          </Pressable>
+
+          <Button
+            label={saving ? "Saving..." : "Save Changes"}
+            onPress={() => {
+              void handleSaveChanges();
+            }}
+            disabled={!hasChanges || saving}
+          />
+
           <Pressable
             onPress={handleAdd}
             disabled={saving}
             style={({ pressed }) => [
               styles.addButton,
-              { opacity: pressed || saving ? 0.7 : 1 },
+              {
+                opacity: saving ? 0.5 : pressed ? 0.8 : 1,
+              },
             ]}
           >
             <Text variant="body" color="background">
               + Add Membership
-            </Text>
-          </Pressable>
-
-          <Pressable
-            onPress={handleSaveChanges}
-            disabled={!hasChanges || saving}
-            style={({ pressed }) => [
-              styles.saveButton,
-              {
-                opacity: !hasChanges || saving || pressed ? 0.55 : 1,
-              },
-            ]}
-          >
-            <Text variant="body" color="background">
-              {saving ? "Saving..." : "Save Changes"}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            onPress={handleDiscardChanges}
-            disabled={!hasChanges || saving}
-            style={({ pressed }) => [
-              styles.discardButton,
-              {
-                opacity: !hasChanges || saving || pressed ? 0.55 : 1,
-              },
-            ]}
-          >
-            <Text variant="body" color="text">
-              Discard
             </Text>
           </Pressable>
         </View>
@@ -590,53 +708,37 @@ export default function MembershipsAdmin() {
           </Text>
         </View>
       ) : (
-        <>
-          <DataTable
-            columns={columns}
-            data={products.filter((item) => !item.isDeleted)}
-            keyExtractor={(item) => item.id}
-            emptyMessage="No memberships configured."
-            actions={[
-              {
-                label: "Edit",
-                onPress: handleEdit,
-              },
-              {
-                label: "Delete",
-                onPress: handleDelete,
-              },
-            ]}
-          />
-
-          <Pressable
-            onPress={() =>
-              router.push(
-                APP_ROUTES.orgAdmin.customerExperienceSection(
-                  "membership",
-                ) as never,
-              )
-            }
-            style={({ pressed }) => [
-              styles.previewLink,
-              { opacity: pressed ? 0.6 : 1 },
-            ]}
-          >
-            <Text variant="body" color="primary">
-              Preview
-            </Text>
-          </Pressable>
-        </>
+        <DataTable<MembershipProduct>
+          columns={columns}
+          data={products.filter((product) => !product.isDeleted)}
+          keyExtractor={(item) => item.id}
+          emptyMessage="No memberships configured."
+          actions={[
+            {
+              label: "Edit",
+              onPress: handleEdit,
+            },
+            {
+              label: "Delete",
+              onPress: handleDelete,
+            },
+          ]}
+        />
       )}
 
       <Modal
         visible={formVisible}
         onClose={() => {
+          if (saving) {
+            return;
+          }
+
           setFormVisible(false);
           setEditingProduct(null);
         }}
         title={
           editingProduct &&
-          products.some((item) => item.id === editingProduct.id)
+          committedProducts.some((item) => item.id === editingProduct.id)
             ? "Edit Membership"
             : "Add Membership"
         }
@@ -668,25 +770,33 @@ export default function MembershipsAdmin() {
 }
 
 const styles = StyleSheet.create({
-  scroll: { flex: 1 },
-  screen: { padding: 24, gap: 24 },
+  scroll: {
+    flex: 1,
+  },
+
+  screen: {
+    padding: 24,
+    gap: 24,
+  },
+
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 16,
   },
-  headerText: { flex: 1, gap: 4 },
+
+  headerText: {
+    flex: 1,
+    gap: 4,
+  },
+
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
   },
-  previewLink: {
-    minHeight: 44,
-    justifyContent: "center",
-    paddingHorizontal: 4,
-  },
+
   addButton: {
     minHeight: 44,
     paddingHorizontal: 18,
@@ -695,27 +805,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#0F766E",
   },
-  saveButton: {
+
+  secondaryButton: {
     minHeight: 44,
     paddingHorizontal: 18,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0F766E",
-  },
-  discardButton: {
-    minHeight: 44,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
     borderWidth: 1,
     borderColor: "#D1D5DB",
+    backgroundColor: "#FFFFFF",
   },
+
   center: {
-    minHeight: 180,
+    minHeight: 160,
     alignItems: "center",
     justifyContent: "center",
   },
-  nameCell: { gap: 3 },
 });
