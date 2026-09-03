@@ -7,6 +7,7 @@ import { mockNotificationService } from "../mocks/mock-notification";
 
 import { LocalOrganizationService } from "./organization-service.local";
 import { LocalCustomerExperienceService } from "./customer-experience.local";
+import { LocalProductService } from "./product-service.local";
 
 import {
   OrganizationService,
@@ -19,6 +20,7 @@ import {
   UserAcquisitionService,
   RedemptionService,
   CustomerAuthService,
+  ProductService,
   PaymentService,
 } from "./service-contracts";
 
@@ -40,6 +42,7 @@ import type { NotificationService } from "./notification";
 const organizationService = new LocalOrganizationService(
   mockServices.organization,
 );
+const productService = new LocalProductService();
 
 const mockCustomerExperienceService = new InMemoryCustomerExperienceService(
   organizationService,
@@ -66,6 +69,7 @@ export type MemgineServices = {
   template: TemplateService;
   customerExperience: CustomerExperienceService;
   notification: NotificationService;
+  product: ProductService;
 };
 
 export const services: MemgineServices = {
@@ -78,6 +82,7 @@ export const services: MemgineServices = {
   offer: mockServices.offer,
   userAcquisition: mockServices.userAcquisition,
   redemption: mockServices.redemption,
+  product: productService,
 
   status: mockStatusService,
   auth: mockServices.auth,

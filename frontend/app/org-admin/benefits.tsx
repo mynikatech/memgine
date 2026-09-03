@@ -1,18 +1,32 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
-import { Benefit, ReferenceDataItem, services, Status } from "@/src/core";
+import type { Benefit, Product, ReferenceDataItem, Status } from "@/src/core";
+
+import { services } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
 import { DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
 
 import { BenefitForm } from "@/src/ui/admin/BenefitForm";
+
 import { useRouter } from "expo-router";
+
 import { APP_ROUTES } from "@/src/constants/navigation";
+
+function cloneBenefits(benefits: Benefit[]): Benefit[] {
+  return benefits.map((benefit) => ({
+    ...benefit,
+    retailPrice: benefit.retailPrice ? { ...benefit.retailPrice } : undefined,
+    cost: benefit.cost ? { ...benefit.cost } : undefined,
+  }));
+}
+
 export default function OrgAdminBenefits() {
   const { organization } = useBusiness();
 
   const [benefits, setBenefits] = useState<Benefit[]>([]);
+  const [committedBenefits, setCommittedBenefits] = useState<Benefit[]>([]);
 
   const [benefitCategories, setBenefitCategories] = useState<
     ReferenceDataItem[]
@@ -22,6 +36,8 @@ export default function OrgAdminBenefits() {
 
   const [benefitStatuses, setBenefitStatuses] = useState<Status[]>([]);
 
+  const [products, setProducts] = useState<Product[]>([]);
+
   const [loading, setLoading] = useState(true);
 
   const [formVisible, setFormVisible] = useState(false);
@@ -30,6 +46,10 @@ export default function OrgAdminBenefits() {
 
   const router = useRouter();
 
+  /* ------------------------------------------------------------------ */
+  /* LOAD                                                               */
+  /* ------------------------------------------------------------------ */
+
   useEffect(() => {
     let mounted = true;
 
@@ -37,22 +57,28 @@ export default function OrgAdminBenefits() {
       setLoading(true);
 
       try {
-        const [benefitList, categoryList, typeList, statusList] =
+        const [benefitList, categoryList, typeList, statusList, productList] =
           await Promise.all([
             services.benefit.listByOrganization(organization.id),
             services.referenceData.listBenefitCategories(),
             services.referenceData.listBenefitTypes(),
             services.status.listBenefitStatuses(),
+            services.product.listProducts(organization.id),
           ]);
 
         if (!mounted) {
           return;
         }
 
-        setBenefits(benefitList);
+        const snapshot = cloneBenefits(benefitList);
+
+        setBenefits(cloneBenefits(snapshot));
+        setCommittedBenefits(cloneBenefits(snapshot));
+
         setBenefitCategories(categoryList);
         setBenefitTypes(typeList);
         setBenefitStatuses(statusList);
+        setProducts(productList);
       } catch (error) {
         if (!mounted) {
           return;
@@ -76,6 +102,10 @@ export default function OrgAdminBenefits() {
     };
   }, [organization.id]);
 
+  /* ------------------------------------------------------------------ */
+  /* HELPERS                                                            */
+  /* ------------------------------------------------------------------ */
+
   const getCategoryName = (id: string) =>
     benefitCategories.find((item) => item.id === id)?.name ?? "Unknown";
 
@@ -85,8 +115,42 @@ export default function OrgAdminBenefits() {
   const getStatusName = (id: string) =>
     benefitStatuses.find((item) => item.id === id)?.statusName ?? "Unknown";
 
+  const getProductName = (id?: string) => {
+    if (!id) {
+      return "—";
+    }
+
+    const product = products.find((item) => item.id === id);
+
+    return product?.productName ?? product?.productCode ?? "Unknown";
+  };
+
   const getDisplayName = (benefit: Benefit) =>
     benefit.displayName ?? benefit.benefitName;
+
+  /* ------------------------------------------------------------------ */
+  /* BENEFIT CODE                                                       */
+  /* ------------------------------------------------------------------ */
+
+  const generateBenefitCode = (): string => {
+    const prefix = "BENEFIT";
+
+    const usedCodes = new Set(
+      benefits.map((benefit) => benefit.benefitCode.trim().toUpperCase()),
+    );
+
+    let sequence = 1;
+
+    while (usedCodes.has(`${prefix}-${String(sequence).padStart(3, "0")}`)) {
+      sequence += 1;
+    }
+
+    return `${prefix}-${String(sequence).padStart(3, "0")}`;
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* TABLE                                                               */
+  /* ------------------------------------------------------------------ */
 
   const columns = useMemo<DataTableColumn<Benefit>[]>(
     () => [
@@ -95,6 +159,7 @@ export default function OrgAdminBenefits() {
         title: "Benefit Code",
         width: 150,
       },
+
       {
         key: "benefitName",
         title: "Benefit Name",
@@ -105,6 +170,7 @@ export default function OrgAdminBenefits() {
           </Text>
         ),
       },
+
       {
         key: "benefitCategoryId",
         title: "Category",
@@ -115,6 +181,7 @@ export default function OrgAdminBenefits() {
           </Text>
         ),
       },
+
       {
         key: "benefitTypeId",
         title: "Type",
@@ -125,11 +192,24 @@ export default function OrgAdminBenefits() {
           </Text>
         ),
       },
+
+      {
+        key: "productId",
+        title: "Product",
+        width: 180,
+        render: (item) => (
+          <Text variant="body" color="text">
+            {getProductName(item.productId)}
+          </Text>
+        ),
+      },
+
       {
         key: "effectiveDate",
         title: "Effective",
         width: 130,
       },
+
       {
         key: "expiryDate",
         title: "Expiry",
@@ -140,6 +220,7 @@ export default function OrgAdminBenefits() {
           </Text>
         ),
       },
+
       {
         key: "benefitStatusId",
         title: "Status",
@@ -151,43 +232,65 @@ export default function OrgAdminBenefits() {
         ),
       },
     ],
-    [benefitCategories, benefitTypes, benefitStatuses],
+    [benefitCategories, benefitTypes, benefitStatuses, products],
   );
+
+  /* ------------------------------------------------------------------ */
+  /* EMPTY BENEFIT                                                       */
+  /* ------------------------------------------------------------------ */
 
   const createEmptyBenefit = (): Benefit => {
     const now = new Date().toISOString();
+
+    const activeStatus = benefitStatuses.find(
+      (status) =>
+        status.statusCode?.trim().toUpperCase() === "ACTIVE" ||
+        status.statusName?.trim().toLowerCase() === "active",
+    );
 
     return {
       id: `benefit-${Date.now()}`,
 
       organizationId: organization.id,
 
-      benefitCode: "",
+      benefitCode: generateBenefitCode(),
       benefitName: "",
       displayName: undefined,
 
       benefitCategoryId: "",
       benefitTypeId: "",
-      benefitStatusId: "benefit-status-active",
 
       description: undefined,
 
+      benefitStatusId: activeStatus?.id ?? "benefit-status-active",
+
+      productId: undefined,
+
+      retailPrice: undefined,
+      cost: undefined,
+
       effectiveDate: now.substring(0, 10),
+
       expiryDate: undefined,
 
       createdAt: now,
-      createdBy: "user-system",
+      createdBy: organization.updatedBy,
 
       updatedAt: now,
-      updatedBy: "user-system",
+      updatedBy: organization.updatedBy,
 
       isDeleted: false,
       versionNo: 1,
     };
   };
 
+  /* ------------------------------------------------------------------ */
+  /* ADD / EDIT                                                          */
+  /* ------------------------------------------------------------------ */
+
   const handleAdd = () => {
     setEditingBenefit(createEmptyBenefit());
+
     setFormVisible(true);
   };
 
@@ -195,6 +298,10 @@ export default function OrgAdminBenefits() {
     setEditingBenefit(benefit);
     setFormVisible(true);
   };
+
+  /* ------------------------------------------------------------------ */
+  /* SAVE                                                                */
+  /* ------------------------------------------------------------------ */
 
   const handleSave = async (benefit: Benefit) => {
     try {
@@ -228,6 +335,10 @@ export default function OrgAdminBenefits() {
     }
   };
 
+  /* ------------------------------------------------------------------ */
+  /* DELETE                                                              */
+  /* ------------------------------------------------------------------ */
+
   const handleDelete = async (benefit: Benefit) => {
     try {
       await services.benefit.deleteBenefit(organization.id, benefit.id);
@@ -244,6 +355,28 @@ export default function OrgAdminBenefits() {
       );
     }
   };
+
+  /* ------------------------------------------------------------------ */
+  /* CUSTOMER EXPERIENCE PREVIEW                                         */
+  /* ------------------------------------------------------------------ */
+
+  const handlePreviewCustomerExperience = () => {
+    router.push({
+      pathname: APP_ROUTES.orgAdmin.customerExperienceSection(
+        "benefits",
+      ) as never,
+
+      params: {
+        currentBenefits: JSON.stringify(committedBenefits),
+
+        proposedBenefits: JSON.stringify(benefits),
+      },
+    });
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* RENDER                                                              */
+  /* ------------------------------------------------------------------ */
 
   return (
     <ScrollView
@@ -303,13 +436,7 @@ export default function OrgAdminBenefits() {
           />
 
           <Pressable
-            onPress={() =>
-              router.push(
-                APP_ROUTES.orgAdmin.customerExperienceSection(
-                  "benefits",
-                ) as never,
-              )
-            }
+            onPress={handlePreviewCustomerExperience}
             style={({ pressed }) => [
               styles.previewLink,
               {
@@ -345,6 +472,7 @@ export default function OrgAdminBenefits() {
             benefitCategories={benefitCategories}
             benefitTypes={benefitTypes}
             benefitStatuses={benefitStatuses}
+            products={products}
             onSave={handleSave}
             onCancel={() => {
               setFormVisible(false);
@@ -387,6 +515,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#0F766E",
   },
+
   previewLink: {
     alignSelf: "flex-start",
     minHeight: 40,

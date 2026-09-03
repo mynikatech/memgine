@@ -5,6 +5,7 @@ import {
   Benefit,
   Customer,
   User,
+  Product,
   MembershipProduct,
   PaymentMethod,
   PurchaseSource,
@@ -290,6 +291,23 @@ export interface OrganizationService {
   createUser(input: CreateUserInput): Promise<User>;
 
   updateUser(user: User): Promise<User>;
+}
+
+export interface ProductService {
+  /**
+   * Products are organization-owned store/menu/catalogue products.
+   *
+   * This is deliberately separate from MembershipProduct.
+   */
+  listProducts(organizationId: ID): Promise<Product[]>;
+
+  getProduct(id: ID): Promise<Product | null>;
+
+  createProduct(organizationId: ID, product: Product): Promise<Product>;
+
+  updateProduct(organizationId: ID, product: Product): Promise<Product>;
+
+  deleteProduct(organizationId: ID, productId: ID): Promise<void>;
 }
 
 export interface CustomerService {
