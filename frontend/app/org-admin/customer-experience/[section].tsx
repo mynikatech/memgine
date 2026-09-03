@@ -1,5 +1,4 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-
 import React, { useCallback, useEffect, useState } from "react";
 
 import { ScrollView, StyleSheet, View } from "react-native";
@@ -22,10 +21,6 @@ import { useBusiness } from "@/src/providers";
 import { Badge, Button, Card, Header, StateView, Text } from "@/src/ui";
 
 import { Screen } from "@/src/layout";
-
-/* -------------------------------------------------------------------------- */
-/* TYPES                                                                      */
-/* -------------------------------------------------------------------------- */
 
 type StatusState = "loading" | "error" | "ready";
 
@@ -75,29 +70,19 @@ function parseArray<T>(value: string | undefined, fallback: T[]): T[] {
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* MAIN                                                                       */
-/* -------------------------------------------------------------------------- */
-
 export default function CustomerExperienceSectionPreview() {
   const router = useRouter();
 
   const {
     section,
-
     currentStores: currentStoresParam,
-
     proposedStores: proposedStoresParam,
-
     currentBenefits: currentBenefitsParam,
-
     proposedBenefits: proposedBenefitsParam,
   } = useLocalSearchParams<{
     section?: string;
-
     currentStores?: string;
     proposedStores?: string;
-
     currentBenefits?: string;
     proposedBenefits?: string;
   }>();
@@ -124,10 +109,6 @@ export default function CustomerExperienceSectionPreview() {
   const [proposedBenefits, setProposedBenefits] = useState<Benefit[]>([]);
 
   const [selectedMembershipId, setSelectedMembershipId] = useState("");
-
-  /* ---------------------------------------------------------------------- */
-  /* LOAD                                                                   */
-  /* ---------------------------------------------------------------------- */
 
   const load = useCallback(async () => {
     setStatus("loading");
@@ -159,7 +140,15 @@ export default function CustomerExperienceSectionPreview() {
         data.stores,
       );
 
-      const persistedBenefits = data.benefits ?? [];
+      /*
+       * Benefits preview is organization-level. Normal previewData.benefits
+       * is membership-specific; organizationBenefits contains the complete
+       * organization-level collection.
+       */
+      const persistedBenefits =
+        section === "benefits"
+          ? (data.organizationBenefits ?? [])
+          : (data.benefits ?? []);
 
       const parsedCurrentBenefits = cloneBenefits(
         parseArray<Benefit>(currentBenefitsParam, persistedBenefits),
@@ -193,6 +182,7 @@ export default function CustomerExperienceSectionPreview() {
     }
   }, [
     organization.id,
+    section,
     currentStoresParam,
     proposedStoresParam,
     currentBenefitsParam,
@@ -202,10 +192,6 @@ export default function CustomerExperienceSectionPreview() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  /* ---------------------------------------------------------------------- */
-  /* INVALID SECTION                                                        */
-  /* ---------------------------------------------------------------------- */
 
   if (!isSectionKey(section)) {
     return (
@@ -221,10 +207,6 @@ export default function CustomerExperienceSectionPreview() {
     );
   }
 
-  /* ---------------------------------------------------------------------- */
-  /* LOADING                                                                */
-  /* ---------------------------------------------------------------------- */
-
   if (status === "loading") {
     return (
       <Screen edges={["top"]}>
@@ -232,10 +214,6 @@ export default function CustomerExperienceSectionPreview() {
       </Screen>
     );
   }
-
-  /* ---------------------------------------------------------------------- */
-  /* ERROR                                                                  */
-  /* ---------------------------------------------------------------------- */
 
   if (status === "error" || !experience || !previewData) {
     return (
@@ -251,10 +229,6 @@ export default function CustomerExperienceSectionPreview() {
     );
   }
 
-  /* ---------------------------------------------------------------------- */
-  /* MEMBERSHIP                                                             */
-  /* ---------------------------------------------------------------------- */
-
   const selectedMembership: PreviewMembership | undefined =
     previewData.memberships.find(
       (membership: PreviewMembership) =>
@@ -264,43 +238,30 @@ export default function CustomerExperienceSectionPreview() {
   const membershipList = previewData.memberships.map(
     (membership: PreviewMembership) => ({
       subscription: membership.subscription,
-
       product: membership.product,
     }),
   );
 
   const selectedSubscriptionId = selectedMembership?.subscription.id ?? "";
 
-  /* ---------------------------------------------------------------------- */
-  /* DOMAIN DATA                                                            */
-  /* ---------------------------------------------------------------------- */
-
   const currentDomainData = {
     ...previewData,
-
     stores: currentStores,
-
     benefits: currentBenefits,
   };
 
   const proposedDomainData = {
     ...previewData,
-
     stores: proposedStores,
-
     benefits: proposedBenefits,
   };
-
-  /* ---------------------------------------------------------------------- */
-  /* RENDER                                                                 */
-  /* ---------------------------------------------------------------------- */
 
   return (
     <Screen edges={["top"]}>
       <Header
         title={`${section
           .replace(/-/g, " ")
-          .replace(/\b\w/g, (letter) => letter.toUpperCase())} Preview`}
+          .replace(/\w/g, (letter) => letter.toUpperCase())} Preview`}
         subtitle="Customer-facing section preview"
       />
 
@@ -308,10 +269,6 @@ export default function CustomerExperienceSectionPreview() {
         contentContainerStyle={styles.page}
         showsVerticalScrollIndicator={false}
       >
-        {/* ================================================================ */}
-        {/* HEADER                                                           */}
-        {/* ================================================================ */}
-
         <Card padding="md">
           <View style={styles.header}>
             <View style={styles.headerText}>
@@ -333,13 +290,7 @@ export default function CustomerExperienceSectionPreview() {
           </View>
         </Card>
 
-        {/* ================================================================ */}
-        {/* CURRENT / PROPOSED                                               */}
-        {/* ================================================================ */}
-
         <View style={styles.compareContainer}>
-          {/* CURRENT ------------------------------------------------------ */}
-
           <View style={styles.comparePanel}>
             <View style={styles.panelHeader}>
               <View style={styles.panelHeaderText}>
@@ -383,8 +334,6 @@ export default function CustomerExperienceSectionPreview() {
               />
             </View>
           </View>
-
-          {/* PROPOSED ----------------------------------------------------- */}
 
           <View style={styles.comparePanel}>
             <View style={styles.panelHeader}>

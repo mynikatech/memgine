@@ -261,6 +261,8 @@ export function BusinessExperience({
         redemptions,
         formatDate,
         detailsOverride,
+        benefitPresentationMode:
+          previewSection === "benefits" ? "organization" : "membership",
       }),
     [
       organization,
@@ -276,6 +278,7 @@ export function BusinessExperience({
       redemptions,
       formatDate,
       detailsOverride,
+      previewSection,
     ],
   );
 
@@ -507,7 +510,8 @@ export function BusinessExperience({
         </Section>
       ) : null}
 
-      {exp.membership && exp.benefits.length ? (
+      {(previewSection === "benefits" || exp.membership) &&
+      exp.benefits.length ? (
         <Section title={t("experience.yourBenefits")}>
           <Card padding="lg">
             <View style={{ gap: 18 }}>

@@ -6,7 +6,8 @@ import type { Benefit, Product, ReferenceDataItem, Status } from "@/src/core";
 import { services } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
-import { DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
+
+import { Button, DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
 
 import { BenefitForm } from "@/src/ui/admin/BenefitForm";
 
@@ -14,19 +15,56 @@ import { useRouter } from "expo-router";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 
+import { benefitDraftStore } from "@/src/core/services/benefit-draft-store";
+
+/* -------------------------------------------------------------------------- */
+/* HELPERS                                                                    */
+/* -------------------------------------------------------------------------- */
+
 function cloneBenefits(benefits: Benefit[]): Benefit[] {
   return benefits.map((benefit) => ({
     ...benefit,
-    retailPrice: benefit.retailPrice ? { ...benefit.retailPrice } : undefined,
-    cost: benefit.cost ? { ...benefit.cost } : undefined,
+
+    retailPrice: benefit.retailPrice
+      ? {
+          ...benefit.retailPrice,
+        }
+      : undefined,
+
+    cost: benefit.cost
+      ? {
+          ...benefit.cost,
+        }
+      : undefined,
   }));
 }
+
+function benefitsEqual(first: Benefit[], second: Benefit[]): boolean {
+  return JSON.stringify(first) === JSON.stringify(second);
+}
+
+/* -------------------------------------------------------------------------- */
+/* MAIN                                                                       */
+/* -------------------------------------------------------------------------- */
 
 export default function OrgAdminBenefits() {
   const { organization } = useBusiness();
 
-  const [benefits, setBenefits] = useState<Benefit[]>([]);
+  const router = useRouter();
+
+  /*
+   * Last successfully persisted state.
+   *
+   * This is the "Current" state.
+   */
   const [committedBenefits, setCommittedBenefits] = useState<Benefit[]>([]);
+
+  /*
+   * Working state.
+   *
+   * This is the "Proposed" state.
+   */
+  const [benefits, setBenefits] = useState<Benefit[]>([]);
 
   const [benefitCategories, setBenefitCategories] = useState<
     ReferenceDataItem[]
@@ -40,15 +78,15 @@ export default function OrgAdminBenefits() {
 
   const [loading, setLoading] = useState(true);
 
+  const [saving, setSaving] = useState(false);
+
   const [formVisible, setFormVisible] = useState(false);
 
   const [editingBenefit, setEditingBenefit] = useState<Benefit | null>(null);
 
-  const router = useRouter();
-
-  /* ------------------------------------------------------------------ */
-  /* LOAD                                                               */
-  /* ------------------------------------------------------------------ */
+  /* ---------------------------------------------------------------------- */
+  /* LOAD                                                                   */
+  /* ---------------------------------------------------------------------- */
 
   useEffect(() => {
     let mounted = true;
@@ -57,27 +95,55 @@ export default function OrgAdminBenefits() {
       setLoading(true);
 
       try {
-        const [benefitList, categoryList, typeList, statusList, productList] =
-          await Promise.all([
-            services.benefit.listByOrganization(organization.id),
-            services.referenceData.listBenefitCategories(),
-            services.referenceData.listBenefitTypes(),
-            services.status.listBenefitStatuses(),
-            services.product.listProducts(organization.id),
-          ]);
+        const [
+          persistedBenefits,
+          categoryList,
+          typeList,
+          statusList,
+          productList,
+        ] = await Promise.all([
+          services.benefit.listByOrganization(organization.id),
+
+          services.referenceData.listBenefitCategories(),
+
+          services.referenceData.listBenefitTypes(),
+
+          services.status.listBenefitStatuses(),
+
+          services.product.listProducts(organization.id),
+        ]);
 
         if (!mounted) {
           return;
         }
 
-        const snapshot = cloneBenefits(benefitList);
+        const persistedSnapshot = cloneBenefits(persistedBenefits);
 
-        setBenefits(cloneBenefits(snapshot));
-        setCommittedBenefits(cloneBenefits(snapshot));
+        /*
+         * If we already have an unsaved draft, restore it.
+         *
+         * This is what prevents:
+         *
+         * Benefits → Preview → Back
+         *
+         * from losing the new row.
+         */
+        const existingDraft = benefitDraftStore.get(organization.id);
+
+        const workingSnapshot = existingDraft
+          ? cloneBenefits(existingDraft)
+          : cloneBenefits(persistedSnapshot);
+
+        setCommittedBenefits(cloneBenefits(persistedSnapshot));
+
+        setBenefits(workingSnapshot);
 
         setBenefitCategories(categoryList);
+
         setBenefitTypes(typeList);
+
         setBenefitStatuses(statusList);
+
         setProducts(productList);
       } catch (error) {
         if (!mounted) {
@@ -102,9 +168,18 @@ export default function OrgAdminBenefits() {
     };
   }, [organization.id]);
 
-  /* ------------------------------------------------------------------ */
-  /* HELPERS                                                            */
-  /* ------------------------------------------------------------------ */
+  /* ---------------------------------------------------------------------- */
+  /* DERIVED                                                                */
+  /* ---------------------------------------------------------------------- */
+
+  const hasChanges = useMemo(
+    () => !benefitsEqual(committedBenefits, benefits),
+    [committedBenefits, benefits],
+  );
+
+  /* ---------------------------------------------------------------------- */
+  /* LOOKUPS                                                                */
+  /* ---------------------------------------------------------------------- */
 
   const getCategoryName = (id: string) =>
     benefitCategories.find((item) => item.id === id)?.name ?? "Unknown";
@@ -128,9 +203,9 @@ export default function OrgAdminBenefits() {
   const getDisplayName = (benefit: Benefit) =>
     benefit.displayName ?? benefit.benefitName;
 
-  /* ------------------------------------------------------------------ */
-  /* BENEFIT CODE                                                       */
-  /* ------------------------------------------------------------------ */
+  /* ---------------------------------------------------------------------- */
+  /* BENEFIT CODE                                                           */
+  /* ---------------------------------------------------------------------- */
 
   const generateBenefitCode = (): string => {
     const prefix = "BENEFIT";
@@ -148,9 +223,297 @@ export default function OrgAdminBenefits() {
     return `${prefix}-${String(sequence).padStart(3, "0")}`;
   };
 
-  /* ------------------------------------------------------------------ */
-  /* TABLE                                                               */
-  /* ------------------------------------------------------------------ */
+  /* ---------------------------------------------------------------------- */
+  /* CREATE EMPTY BENEFIT                                                   */
+  /* ---------------------------------------------------------------------- */
+
+  const createEmptyBenefit = (): Benefit => {
+    const now = new Date().toISOString();
+
+    const activeStatus = benefitStatuses.find(
+      (status) =>
+        status.statusCode?.trim().toUpperCase() === "ACTIVE" ||
+        status.statusName?.trim().toLowerCase() === "active",
+    );
+
+    return {
+      id: `benefit-${Date.now()}`,
+
+      organizationId: organization.id,
+
+      benefitCode: generateBenefitCode(),
+
+      benefitName: "",
+
+      displayName: undefined,
+
+      benefitCategoryId: "",
+
+      benefitTypeId: "",
+
+      description: undefined,
+
+      benefitStatusId: activeStatus?.id ?? "benefit-status-active",
+
+      productId: undefined,
+
+      retailPrice: undefined,
+
+      cost: undefined,
+
+      effectiveDate: now.substring(0, 10),
+
+      expiryDate: undefined,
+
+      createdAt: now,
+
+      createdBy: organization.updatedBy,
+
+      updatedAt: now,
+
+      updatedBy: organization.updatedBy,
+
+      isDeleted: false,
+
+      versionNo: 1,
+    };
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* ADD                                                                    */
+  /* ---------------------------------------------------------------------- */
+
+  const handleAdd = () => {
+    setEditingBenefit(createEmptyBenefit());
+
+    setFormVisible(true);
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* EDIT                                                                   */
+  /* ---------------------------------------------------------------------- */
+
+  const handleEdit = (benefit: Benefit) => {
+    setEditingBenefit(cloneBenefits([benefit])[0]);
+
+    setFormVisible(true);
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* POPUP SAVE — DRAFT ONLY                                                */
+  /* ---------------------------------------------------------------------- */
+
+  const handleSaveDraft = async (benefit: Benefit) => {
+    setBenefits((current) => {
+      const next = [...current];
+
+      const index = next.findIndex((item) => item.id === benefit.id);
+
+      const clonedBenefit = cloneBenefits([benefit])[0];
+
+      if (index === -1) {
+        next.push(clonedBenefit);
+      } else {
+        next[index] = clonedBenefit;
+      }
+
+      /*
+       * Keep the temporary draft alive even if this screen
+       * subsequently unmounts for Preview.
+       */
+      benefitDraftStore.set(organization.id, next);
+
+      return next;
+    });
+
+    setFormVisible(false);
+
+    setEditingBenefit(null);
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* DELETE — DRAFT ONLY                                                    */
+  /* ---------------------------------------------------------------------- */
+
+  const handleDelete = (benefit: Benefit) => {
+    setBenefits((current) => {
+      const existsInCommitted = committedBenefits.some(
+        (item) => item.id === benefit.id,
+      );
+
+      let next: Benefit[];
+
+      if (!existsInCommitted) {
+        /*
+         * Brand-new unsaved Benefit:
+         * completely remove it from the draft.
+         */
+        next = current.filter((item) => item.id !== benefit.id);
+      } else {
+        /*
+         * Existing persisted Benefit:
+         * retain it in the draft but mark it deleted.
+         *
+         * Save Changes will perform the actual delete.
+         */
+        next = current.map((item) =>
+          item.id === benefit.id
+            ? {
+                ...item,
+                isDeleted: true,
+              }
+            : item,
+        );
+      }
+
+      benefitDraftStore.set(organization.id, next);
+
+      return next;
+    });
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* SAVE CHANGES                                                           */
+  /* ---------------------------------------------------------------------- */
+
+  const handleSaveChanges = async () => {
+    if (!hasChanges || saving) {
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const committedById = new Map(
+        committedBenefits.map((benefit) => [benefit.id, benefit]),
+      );
+
+      const workingById = new Map(
+        benefits.map((benefit) => [benefit.id, benefit]),
+      );
+
+      /* -------------------------------------------------------------- */
+      /* CREATE                                                          */
+      /* -------------------------------------------------------------- */
+
+      for (const benefit of benefits) {
+        if (benefit.isDeleted || committedById.has(benefit.id)) {
+          continue;
+        }
+
+        await services.benefit.createBenefit(organization.id, benefit);
+      }
+
+      /* -------------------------------------------------------------- */
+      /* UPDATE                                                          */
+      /* -------------------------------------------------------------- */
+
+      for (const benefit of benefits) {
+        const committed = committedById.get(benefit.id);
+
+        if (!committed || benefit.isDeleted) {
+          continue;
+        }
+
+        if (JSON.stringify(committed) !== JSON.stringify(benefit)) {
+          await services.benefit.updateBenefit(organization.id, benefit);
+        }
+      }
+
+      /* -------------------------------------------------------------- */
+      /* DELETE                                                          */
+      /* -------------------------------------------------------------- */
+
+      for (const committed of committedBenefits) {
+        const working = workingById.get(committed.id);
+
+        if (working?.isDeleted || !working) {
+          await services.benefit.deleteBenefit(organization.id, committed.id);
+        }
+      }
+
+      /* -------------------------------------------------------------- */
+      /* RELOAD ACTUAL PERSISTED STATE                                  */
+      /* -------------------------------------------------------------- */
+
+      const refreshed = await services.benefit.listByOrganization(
+        organization.id,
+      );
+
+      const snapshot = cloneBenefits(refreshed);
+
+      setCommittedBenefits(cloneBenefits(snapshot));
+
+      setBenefits(cloneBenefits(snapshot));
+
+      /*
+       * Persistence succeeded.
+       *
+       * The temporary draft is no longer needed.
+       */
+      benefitDraftStore.clear(organization.id);
+
+      Alert.alert(
+        "Changes saved",
+        "Your benefit changes have been saved successfully.",
+      );
+    } catch (error) {
+      /*
+       * IMPORTANT:
+       *
+       * Do NOT clear the draft on failure.
+       *
+       * The user should still see their proposed changes
+       * and be able to retry Save Changes.
+       */
+      Alert.alert(
+        "Unable to save changes",
+        error instanceof Error
+          ? error.message
+          : "Unable to save benefit changes.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* DISCARD                                                                */
+  /* ---------------------------------------------------------------------- */
+
+  const handleDiscardChanges = () => {
+    if (!hasChanges || saving) {
+      return;
+    }
+
+    const restored = cloneBenefits(committedBenefits);
+
+    setBenefits(restored);
+
+    benefitDraftStore.clear(organization.id);
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* PREVIEW                                                                */
+  /* ---------------------------------------------------------------------- */
+
+  const handlePreview = () => {
+    router.push({
+      pathname: APP_ROUTES.orgAdmin.customerExperienceSection(
+        "benefits",
+      ) as never,
+
+      params: {
+        currentBenefits: JSON.stringify(committedBenefits),
+
+        proposedBenefits: JSON.stringify(benefits),
+      },
+    });
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* TABLE                                                                  */
+  /* ---------------------------------------------------------------------- */
 
   const columns = useMemo<DataTableColumn<Benefit>[]>(
     () => [
@@ -235,148 +598,9 @@ export default function OrgAdminBenefits() {
     [benefitCategories, benefitTypes, benefitStatuses, products],
   );
 
-  /* ------------------------------------------------------------------ */
-  /* EMPTY BENEFIT                                                       */
-  /* ------------------------------------------------------------------ */
-
-  const createEmptyBenefit = (): Benefit => {
-    const now = new Date().toISOString();
-
-    const activeStatus = benefitStatuses.find(
-      (status) =>
-        status.statusCode?.trim().toUpperCase() === "ACTIVE" ||
-        status.statusName?.trim().toLowerCase() === "active",
-    );
-
-    return {
-      id: `benefit-${Date.now()}`,
-
-      organizationId: organization.id,
-
-      benefitCode: generateBenefitCode(),
-      benefitName: "",
-      displayName: undefined,
-
-      benefitCategoryId: "",
-      benefitTypeId: "",
-
-      description: undefined,
-
-      benefitStatusId: activeStatus?.id ?? "benefit-status-active",
-
-      productId: undefined,
-
-      retailPrice: undefined,
-      cost: undefined,
-
-      effectiveDate: now.substring(0, 10),
-
-      expiryDate: undefined,
-
-      createdAt: now,
-      createdBy: organization.updatedBy,
-
-      updatedAt: now,
-      updatedBy: organization.updatedBy,
-
-      isDeleted: false,
-      versionNo: 1,
-    };
-  };
-
-  /* ------------------------------------------------------------------ */
-  /* ADD / EDIT                                                          */
-  /* ------------------------------------------------------------------ */
-
-  const handleAdd = () => {
-    setEditingBenefit(createEmptyBenefit());
-
-    setFormVisible(true);
-  };
-
-  const handleEdit = (benefit: Benefit) => {
-    setEditingBenefit(benefit);
-    setFormVisible(true);
-  };
-
-  /* ------------------------------------------------------------------ */
-  /* SAVE                                                                */
-  /* ------------------------------------------------------------------ */
-
-  const handleSave = async (benefit: Benefit) => {
-    try {
-      const existing = benefits.some((item) => item.id === benefit.id);
-
-      if (existing) {
-        const updated = await services.benefit.updateBenefit(
-          organization.id,
-          benefit,
-        );
-
-        setBenefits((current) =>
-          current.map((item) => (item.id === updated.id ? updated : item)),
-        );
-      } else {
-        const created = await services.benefit.createBenefit(
-          organization.id,
-          benefit,
-        );
-
-        setBenefits((current) => [...current, created]);
-      }
-
-      setFormVisible(false);
-      setEditingBenefit(null);
-    } catch (error) {
-      Alert.alert(
-        "Unable to save benefit",
-        error instanceof Error ? error.message : "Unable to save the benefit.",
-      );
-    }
-  };
-
-  /* ------------------------------------------------------------------ */
-  /* DELETE                                                              */
-  /* ------------------------------------------------------------------ */
-
-  const handleDelete = async (benefit: Benefit) => {
-    try {
-      await services.benefit.deleteBenefit(organization.id, benefit.id);
-
-      setBenefits((current) =>
-        current.filter((item) => item.id !== benefit.id),
-      );
-    } catch (error) {
-      Alert.alert(
-        "Unable to delete benefit",
-        error instanceof Error
-          ? error.message
-          : "Unable to delete the benefit.",
-      );
-    }
-  };
-
-  /* ------------------------------------------------------------------ */
-  /* CUSTOMER EXPERIENCE PREVIEW                                         */
-  /* ------------------------------------------------------------------ */
-
-  const handlePreviewCustomerExperience = () => {
-    router.push({
-      pathname: APP_ROUTES.orgAdmin.customerExperienceSection(
-        "benefits",
-      ) as never,
-
-      params: {
-        currentBenefits: JSON.stringify(committedBenefits),
-
-        proposedBenefits: JSON.stringify(benefits),
-      },
-    });
-  };
-
-  /* ------------------------------------------------------------------ */
-  /* RENDER                                                              */
-  /* ------------------------------------------------------------------ */
+  /* ---------------------------------------------------------------------- */
+  /* RENDER                                                                 */
+  /* ---------------------------------------------------------------------- */
 
   return (
     <ScrollView
@@ -384,6 +608,10 @@ export default function OrgAdminBenefits() {
       contentContainerStyle={styles.screen}
       showsVerticalScrollIndicator={false}
     >
+      {/* ================================================================ */}
+      {/* HEADER                                                           */}
+      {/* ================================================================ */}
+
       <View style={styles.header}>
         <View style={styles.headerText}>
           <Text variant="title" color="text">
@@ -395,20 +623,67 @@ export default function OrgAdminBenefits() {
           </Text>
         </View>
 
-        <Pressable
-          onPress={handleAdd}
-          style={({ pressed }) => [
-            styles.addButton,
-            {
-              opacity: pressed ? 0.8 : 1,
-            },
-          ]}
-        >
-          <Text variant="body" color="background">
-            + Add Benefit
-          </Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          {hasChanges ? (
+            <Pressable
+              onPress={handleDiscardChanges}
+              disabled={saving}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                {
+                  opacity: saving ? 0.5 : pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Text variant="body" color="text">
+                Discard
+              </Text>
+            </Pressable>
+          ) : null}
+
+          <Pressable
+            onPress={handlePreview}
+            disabled={saving}
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              {
+                opacity: saving ? 0.5 : pressed ? 0.8 : 1,
+              },
+            ]}
+          >
+            <Text variant="body" color="text">
+              Preview
+            </Text>
+          </Pressable>
+
+          <Button
+            label={saving ? "Saving..." : "Save Changes"}
+            onPress={() => {
+              void handleSaveChanges();
+            }}
+            disabled={!hasChanges || saving}
+          />
+
+          <Pressable
+            onPress={handleAdd}
+            disabled={saving}
+            style={({ pressed }) => [
+              styles.addButton,
+              {
+                opacity: saving ? 0.5 : pressed ? 0.8 : 1,
+              },
+            ]}
+          >
+            <Text variant="body" color="background">
+              + Add Benefit
+            </Text>
+          </Pressable>
+        </View>
       </View>
+
+      {/* ================================================================ */}
+      {/* TABLE                                                            */}
+      {/* ================================================================ */}
 
       {loading ? (
         <View style={styles.center}>
@@ -417,49 +692,42 @@ export default function OrgAdminBenefits() {
           </Text>
         </View>
       ) : (
-        <>
-          <DataTable
-            columns={columns}
-            data={benefits.filter((item) => !item.isDeleted)}
-            keyExtractor={(item) => item.id}
-            emptyMessage="No benefits configured."
-            actions={[
-              {
-                label: "Edit",
-                onPress: handleEdit,
-              },
-              {
-                label: "Delete",
-                onPress: handleDelete,
-              },
-            ]}
-          />
-
-          <Pressable
-            onPress={handlePreviewCustomerExperience}
-            style={({ pressed }) => [
-              styles.previewLink,
-              {
-                opacity: pressed ? 0.6 : 1,
-              },
-            ]}
-          >
-            <Text variant="body" color="primary">
-              Preview
-            </Text>
-          </Pressable>
-        </>
+        <DataTable
+          columns={columns}
+          data={benefits.filter((item) => !item.isDeleted)}
+          keyExtractor={(item) => item.id}
+          emptyMessage="No benefits configured."
+          actions={[
+            {
+              label: "Edit",
+              onPress: handleEdit,
+            },
+            {
+              label: "Delete",
+              onPress: handleDelete,
+            },
+          ]}
+        />
       )}
+
+      {/* ================================================================ */}
+      {/* FORM                                                             */}
+      {/* ================================================================ */}
 
       <Modal
         visible={formVisible}
         onClose={() => {
+          if (saving) {
+            return;
+          }
+
           setFormVisible(false);
+
           setEditingBenefit(null);
         }}
         title={
           editingBenefit &&
-          benefits.some((item) => item.id === editingBenefit.id)
+          committedBenefits.some((item) => item.id === editingBenefit.id)
             ? "Edit Benefit"
             : "Add Benefit"
         }
@@ -473,9 +741,10 @@ export default function OrgAdminBenefits() {
             benefitTypes={benefitTypes}
             benefitStatuses={benefitStatuses}
             products={products}
-            onSave={handleSave}
+            onSave={handleSaveDraft}
             onCancel={() => {
               setFormVisible(false);
+
               setEditingBenefit(null);
             }}
           />
@@ -484,6 +753,10 @@ export default function OrgAdminBenefits() {
     </ScrollView>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* STYLES                                                                     */
+/* -------------------------------------------------------------------------- */
 
 const styles = StyleSheet.create({
   scroll: {
@@ -507,6 +780,12 @@ const styles = StyleSheet.create({
     gap: 4,
   },
 
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
   addButton: {
     minHeight: 44,
     paddingHorizontal: 18,
@@ -516,11 +795,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#0F766E",
   },
 
-  previewLink: {
-    alignSelf: "flex-start",
-    minHeight: 40,
+  secondaryButton: {
+    minHeight: 44,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 0,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    backgroundColor: "#FFFFFF",
   },
 
   center: {
