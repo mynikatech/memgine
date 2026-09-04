@@ -1,5 +1,6 @@
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
+
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import {
@@ -8,13 +9,13 @@ import {
   type ReferenceDataItem,
 } from "@/src/core";
 
+import { APP_ROUTES } from "@/src/constants/navigation";
+
 import { useBusiness, useTheme } from "@/src/providers";
 
-import { Input, PhoneField, ReferenceSelect, Text, Checkbox } from "@/src/ui";
+import { Checkbox, Input, PhoneField, ReferenceSelect, Text } from "@/src/ui";
 
 import type { PhoneValue } from "@/src/ui/PhoneField";
-
-import { APP_ROUTES } from "@/src/constants/navigation";
 
 export default function OrganizationNew() {
   const theme = useTheme();
@@ -71,16 +72,8 @@ export default function OrganizationNew() {
         }
 
         setOrganizationTypes(types.filter((item) => item.active));
-
         setCountries(countryList);
 
-        /*
-         * Canada is the agreed MVP default.
-         *
-         * If the reference data contains Canada, use its
-         * actual ID and calling code rather than relying
-         * solely on hard-coded values.
-         */
         const canada = countryList.find(
           (country) =>
             country.countryCode === "CA" || country.id === "country-ca",
@@ -227,16 +220,6 @@ export default function OrganizationNew() {
     try {
       setBusy(true);
 
-      console.log("PLATFORM ORGANIZATION ONBOARDING START", {
-        businessName: businessName.trim(),
-        organizationTypeId,
-        primaryEmail: primaryEmail.trim(),
-        useDefaultBusinessContent,
-      });
-      console.log(
-        "[OrganizationNew] useDefaultBusinessContent =",
-        useDefaultBusinessContent,
-      );
       const result = await onboardOrganization({
         name: businessName.trim(),
         organizationTypeId,
@@ -249,20 +232,19 @@ export default function OrganizationNew() {
         useDefaultBusinessContent,
       });
 
-      console.log("PLATFORM ORGANIZATION ONBOARDING COMPLETE", {
-        organizationId: result.organization.id,
-        organizationName: result.organization.name,
-        organizationTypeId: result.organization.organizationTypeId,
-        templateId: result.context.template.id,
-      });
-      console.log("[OrganizationNew] organizationTypeId =", organizationTypeId);
-
+      /*
+       * The newly onboarded organization becomes the active organization,
+       * but Platform Admin remains the current application area.
+       *
+       * This means the new organization will appear in the
+       * "Current Organization" section when the Organizations page loads.
+       *
+       * We intentionally do NOT navigate directly to Organization Admin.
+       */
       setActiveBusiness(result.organization.id);
 
-      router.replace(APP_ROUTES.orgAdmin.root);
+      router.replace(APP_ROUTES.platformAdmin.organizations);
     } catch (err) {
-      console.error("PLATFORM ORGANIZATION ONBOARDING ERROR", err);
-
       setError(
         err instanceof Error ? err.message : "Unable to create the business.",
       );
@@ -361,9 +343,6 @@ export default function OrganizationNew() {
           disabled={busy || loadingTypes}
           testID="organization-use-default-business-content"
         />
-        <Text variant="caption" color="textMuted">
-          Debug: {useDefaultBusinessContent ? "TRUE" : "FALSE"}
-        </Text>
 
         <Input
           label="Primary Email"

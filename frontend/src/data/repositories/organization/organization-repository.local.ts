@@ -111,11 +111,17 @@ export class LocalOrganizationRepository implements OrganizationRepository {
     organizationId: ID,
     organization: Organization,
   ): Promise<Organization> {
-    const existing = await this.get(organizationId);
-
-    if (!existing) {
-      throw new Error(`Organization '${organizationId}' was not found.`);
-    }
+    /*
+     * An organization can exist only in the fallback/mock service and not
+     * yet have a local record.
+     *
+     * Once Platform Admin edits, activates/deactivates, or soft-deletes
+     * that organization, the updated organization becomes locally
+     * authoritative.
+     *
+     * Therefore update() must NOT require get(organizationId) to return
+     * a local record.
+     */
 
     if (organization.id !== organizationId) {
       throw new Error(
