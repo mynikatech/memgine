@@ -1,6 +1,5 @@
 import { mockServices } from "../mocks/mock-services";
 import { mockReferenceDataService } from "../mocks/mock-reference-data";
-import { mockStatusService } from "../mocks/mock-status";
 import { mockTemplateService } from "../mocks/mock-template";
 import { InMemoryCustomerExperienceService } from "../mocks/mock-customer-experience";
 import { mockNotificationService } from "../mocks/mock-notification";
@@ -10,6 +9,8 @@ import { LocalCustomerExperienceService } from "./customer-experience.local";
 import { LocalProductService } from "./product-service.local";
 import { LocalMembershipProductService } from "./membership-product-service.local";
 import { LocalBenefitService } from "./benefit-service.local";
+import { CachedStatusService } from "./status-cache";
+import { LocalStatusService } from "./status-service.local";
 
 import type {
   OrganizationService,
@@ -43,6 +44,12 @@ const membershipProductService: MembershipProductService =
 
 const benefitService: BenefitService = new LocalBenefitService(
   mockServices.benefit,
+);
+
+const localStatusService = new LocalStatusService();
+
+const statusService: StatusService = new CachedStatusService(
+  localStatusService,
 );
 
 const mockCustomerExperienceService = new InMemoryCustomerExperienceService(
@@ -88,7 +95,8 @@ export const services: MemgineServices = {
   userAcquisition: mockServices.userAcquisition,
   redemption: mockServices.redemption,
 
-  status: mockStatusService,
+  status: statusService,
+
   auth: mockServices.auth,
   payment: mockServices.payment,
 

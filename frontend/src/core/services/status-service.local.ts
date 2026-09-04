@@ -1,168 +1,73 @@
-import { storage } from "@/src/utils/storage";
-import type { StorageItemValue } from "@/src/utils/storage/storage-base";
-import { LOCAL_DATA_KEYS } from "@/src/data/persistence/local/keys";
-
 import type { EntityStatus, EntityType, Status } from "../domain/entities";
 
 import type { ID } from "../domain/common";
 import type { StatusService } from "./status";
 
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+import {
+  ENTITY_STATUS_DATA,
+  ENTITY_TYPE_DATA,
+  STATUS_DATA,
+} from "./status-data";
 
-type CacheEnvelope<T> = {
-  cachedAt: number;
-  expiresAt: number;
-  data: T;
-};
-
-export class CachedStatusService implements StatusService {
-  constructor(
-    private readonly source: StatusService,
-    private readonly ttlMs = CACHE_TTL_MS,
-  ) {}
-
-  private async getCached<T>(key: string): Promise<T | null> {
-    const cached = await storage.getItem<StorageItemValue>(key, null);
-
-    if (!cached || typeof cached !== "object" || Array.isArray(cached)) {
-      return null;
-    }
-
-    const envelope = cached as Partial<CacheEnvelope<T>>;
-
-    if (typeof envelope.expiresAt !== "number" || !("data" in envelope)) {
-      await storage.removeItem(key);
-      return null;
-    }
-
-    if (envelope.expiresAt <= Date.now()) {
-      await storage.removeItem(key);
-      return null;
-    }
-
-    return envelope.data as T;
-  }
-
-  private async getOrLoad<T>(
-    key: string,
-    loader: () => Promise<T>,
-  ): Promise<T> {
-    const cached = await this.getCached<T>(key);
-
-    if (cached !== null) {
-      return cached;
-    }
-
-    const data = await loader();
-
-    const now = Date.now();
-
-    const envelope: CacheEnvelope<T> = {
-      cachedAt: now,
-      expiresAt: now + this.ttlMs,
-      data,
-    };
-
-    await storage.setItem(
-      key,
-      envelope as Parameters<typeof storage.setItem>[1],
-    );
-
-    return data;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Status catalogue
-  // ---------------------------------------------------------------------------
-
+export class LocalStatusService implements StatusService {
   async getStatus(id: ID): Promise<Status | null> {
-    const statuses = await this.listStatuses();
-
-    return statuses.find((status) => status.id === id) ?? null;
+    return STATUS_DATA.find((item) => item.id === id) ?? null;
   }
 
   async getStatusByCode(code: string): Promise<Status | null> {
-    const normalized = code.trim().toUpperCase();
-
-    const statuses = await this.listStatuses();
+    const normalizedCode = code.trim().toUpperCase();
 
     return (
-      statuses.find(
-        (status) => status.statusCode.toUpperCase() === normalized,
+      STATUS_DATA.find(
+        (item) => item.statusCode.toUpperCase() === normalizedCode,
       ) ?? null
     );
   }
 
   async listStatuses(): Promise<Status[]> {
-    return this.getOrLoad(LOCAL_DATA_KEYS.statusStatuses(), () =>
-      this.source.listStatuses(),
-    );
+    return [...STATUS_DATA];
   }
 
   async listActiveStatuses(): Promise<Status[]> {
-    const statuses = await this.listStatuses();
-
-    return statuses.filter((status) => status.isActive);
+    return STATUS_DATA.filter((item) => item.isActive);
   }
 
-  // ---------------------------------------------------------------------------
-  // Entity Type catalogue
-  // ---------------------------------------------------------------------------
-
   async getEntityType(id: ID): Promise<EntityType | null> {
-    const entityTypes = await this.listEntityTypes();
-
-    return entityTypes.find((item) => item.id === id) ?? null;
+    return ENTITY_TYPE_DATA.find((item) => item.id === id) ?? null;
   }
 
   async getEntityTypeByCode(code: string): Promise<EntityType | null> {
-    const normalized = code.trim().toUpperCase();
-
-    const entityTypes = await this.listEntityTypes();
+    const normalizedCode = code.trim().toUpperCase();
 
     return (
-      entityTypes.find(
-        (item) => item.entityTypeCode.toUpperCase() === normalized,
+      ENTITY_TYPE_DATA.find(
+        (item) => item.entityTypeCode.toUpperCase() === normalizedCode,
       ) ?? null
     );
   }
 
   async listEntityTypes(): Promise<EntityType[]> {
-    return this.getOrLoad(LOCAL_DATA_KEYS.statusEntityTypes(), () =>
-      this.source.listEntityTypes(),
-    );
+    return [...ENTITY_TYPE_DATA];
   }
 
   async listActiveEntityTypes(): Promise<EntityType[]> {
-    const entityTypes = await this.listEntityTypes();
-
-    return entityTypes.filter((item) => item.isActive);
+    return ENTITY_TYPE_DATA.filter((item) => item.isActive);
   }
 
-  // ---------------------------------------------------------------------------
-  // Entity Status catalogue / mappings
-  // ---------------------------------------------------------------------------
-
   async getEntityStatus(id: ID): Promise<EntityStatus | null> {
-    const mappings = await this.listEntityStatuses();
-
-    return mappings.find((item) => item.id === id) ?? null;
+    return ENTITY_STATUS_DATA.find((item) => item.id === id) ?? null;
   }
 
   async listEntityStatuses(): Promise<EntityStatus[]> {
-    return this.getOrLoad(LOCAL_DATA_KEYS.statusEntityStatuses(), () =>
-      this.source.listEntityStatuses(),
-    );
+    return ENTITY_STATUS_DATA.filter((item) => item.isActive);
   }
 
   async listEntityStatusesByEntityType(
     entityTypeId: ID,
   ): Promise<EntityStatus[]> {
-    const mappings = await this.listEntityStatuses();
-
-    return mappings
-      .filter((item) => item.entityTypeId === entityTypeId && item.isActive)
-      .sort((a, b) => a.displayOrder - b.displayOrder);
+    return ENTITY_STATUS_DATA.filter(
+      (item) => item.entityTypeId === entityTypeId && item.isActive,
+    ).sort((a, b) => a.displayOrder - b.displayOrder);
   }
 
   async listEntityStatusesByEntityTypeCode(
@@ -177,19 +82,15 @@ export class CachedStatusService implements StatusService {
     return this.listEntityStatusesByEntityType(entityType.id);
   }
 
-  // ---------------------------------------------------------------------------
-  // Resolved Status lists
-  // ---------------------------------------------------------------------------
-
   async listStatusesByEntityType(entityTypeId: ID): Promise<Status[]> {
     const mappings = await this.listEntityStatusesByEntityType(entityTypeId);
 
-    const statuses = await this.listStatuses();
+    const statusById = new Map(
+      STATUS_DATA.map((status) => [status.id, status]),
+    );
 
     return mappings
-      .map((mapping) =>
-        statuses.find((status) => status.id === mapping.statusId),
-      )
+      .map((mapping) => statusById.get(mapping.statusId))
       .filter(
         (status): status is Status => status !== undefined && status.isActive,
       )
@@ -207,10 +108,6 @@ export class CachedStatusService implements StatusService {
 
     return this.listStatusesByEntityType(entityType.id);
   }
-
-  // ---------------------------------------------------------------------------
-  // Convenience helpers
-  // ---------------------------------------------------------------------------
 
   async listOrganizationStatuses(): Promise<Status[]> {
     return this.listStatusesByEntityTypeCode("ORGANIZATION");

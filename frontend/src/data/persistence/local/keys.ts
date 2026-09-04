@@ -44,4 +44,16 @@ export const LOCAL_DATA_KEYS = {
     `memgine:organization:${organizationId}:benefits`,
 
   benefitOrganizations: () => `memgine:benefit-organizations`,
+
+  /**
+   * Status reference-data cache.
+   *
+   * These contain CacheEnvelope<T> values written by
+   * CachedStatusService, not raw arrays.
+   */
+  statusStatuses: () => "memgine.status.statuses",
+
+  statusEntityTypes: () => "memgine.status.entity-types",
+
+  statusEntityStatuses: () => "memgine.status.entity-statuses",
 } as const;
