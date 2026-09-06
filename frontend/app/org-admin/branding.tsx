@@ -19,10 +19,6 @@ export default function OrgAdminBranding() {
     Awaited<ReturnType<typeof services.template.listTemplates>>
   >([]);
 
-  const [brandingStatuses, setBrandingStatuses] = useState<
-    Awaited<ReturnType<typeof services.status.listOrganizationBrandingStatuses>>
-  >([]);
-
   const [loading, setLoading] = useState(true);
 
   const [error, setError] = useState<string | null>(null);
@@ -35,12 +31,10 @@ export default function OrgAdminBranding() {
       setError(null);
 
       try {
-        const [organizationBranding, availableTemplates, statuses] =
-          await Promise.all([
-            services.organization.getOrganizationBranding(organization.id),
-            services.template.listTemplates(),
-            services.status.listOrganizationBrandingStatuses(),
-          ]);
+        const [organizationBranding, availableTemplates] = await Promise.all([
+          services.organization.getOrganizationBranding(organization.id),
+          services.template.listTemplates(),
+        ]);
 
         if (!mounted) {
           return;
@@ -48,7 +42,6 @@ export default function OrgAdminBranding() {
 
         setBranding(organizationBranding);
         setTemplates(availableTemplates);
-        setBrandingStatuses(statuses);
       } catch (loadError) {
         if (!mounted) {
           return;
@@ -102,20 +95,30 @@ export default function OrgAdminBranding() {
       organization={organization}
       branding={branding}
       templates={templates}
-      brandingStatuses={brandingStatuses}
       onSave={async (updatedBranding) => {
-        const savedBranding =
-          await services.organization.updateOrganizationBranding(
-            organization.id,
-            updatedBranding,
+        try {
+          const savedBranding =
+            await services.organization.updateOrganizationBranding(
+              organization.id,
+              updatedBranding,
+            );
+
+          setBranding(savedBranding);
+
+          Alert.alert(
+            "Branding updated",
+            "Your organization branding has been saved.",
+          );
+        } catch (saveError) {
+          Alert.alert(
+            "Unable to save branding",
+            saveError instanceof Error
+              ? saveError.message
+              : "Unable to save organization branding.",
           );
 
-        setBranding(savedBranding);
-
-        Alert.alert(
-          "Branding updated",
-          "Your organization branding has been saved.",
-        );
+          throw saveError;
+        }
       }}
     />
   );

@@ -20,6 +20,9 @@ export { Checkbox } from "./Checkbox";
 export { BrandLogo } from "./BrandLogo";
 export { DateInput } from "./DateInput";
 export type { DateInputProps } from "./DateInput";
+
+export { Image } from "./Image";
+export type { ImageProps } from "./Image";
 export { BrandColourSelect, MEMGINE_COLOUR_PALETTE } from "./BrandColourSelect";
 
 export { PhoneField } from "./PhoneField";
