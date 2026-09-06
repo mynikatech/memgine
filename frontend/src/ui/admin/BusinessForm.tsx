@@ -111,6 +111,13 @@ type ValidationErrors = {
   organizationTypeId?: string;
   primaryEmail?: string;
   primaryPhone?: string;
+  address?: {
+    line1?: string;
+    countryCode?: string;
+    region?: string;
+    city?: string;
+    postalCode?: string;
+  };
 };
 
 function validateEmail(value: string): boolean {
@@ -121,6 +128,34 @@ function validatePhone(value: string): boolean {
   const digits = value.replace(/\D/g, "");
 
   return digits.length === 10;
+}
+
+function validateAddress(
+  address: OrganizationDetails["address"],
+): ValidationErrors["address"] {
+  const errors: NonNullable<ValidationErrors["address"]> = {};
+
+  if (!address.line1.trim()) {
+    errors.line1 = "Address Line 1 is required.";
+  }
+
+  if (!address.countryCode.trim()) {
+    errors.countryCode = "Country is required.";
+  }
+
+  if (!address.region?.trim()) {
+    errors.region = "State / Province is required.";
+  }
+
+  if (!address.city.trim()) {
+    errors.city = "City is required.";
+  }
+
+  if (!address.postalCode?.trim()) {
+    errors.postalCode = "Postal / ZIP Code is required.";
+  }
+
+  return Object.keys(errors).length > 0 ? errors : undefined;
 }
 
 export function BusinessForm({
@@ -141,6 +176,8 @@ export function BusinessForm({
   const compact = width < 760;
   const narrow = width < 520;
 
+  const [isEditing, setIsEditing] = useState(false);
+
   const [form, setForm] = useState<Organization>(organization);
 
   const [detailForm, setDetailForm] = useState<OrganizationDetails>(
@@ -154,6 +191,7 @@ export function BusinessForm({
     organizationTypeId: false,
     primaryEmail: false,
     primaryPhone: false,
+    address: false,
   });
 
   useEffect(() => {
@@ -168,7 +206,10 @@ export function BusinessForm({
       organizationTypeId: false,
       primaryEmail: false,
       primaryPhone: false,
+      address: false,
     });
+
+    setIsEditing(false);
   }, [organization, details]);
 
   const updateOrganization = <K extends keyof Organization>(
@@ -236,6 +277,8 @@ export function BusinessForm({
         : touched.primaryPhone && !validatePhone(form.primaryPhone.number)
           ? "Enter a 10-digit phone number."
           : undefined,
+
+    address: touched.address ? validateAddress(detailForm.address) : undefined,
   };
 
   const validateBeforeSave = (): boolean => {
@@ -244,10 +287,11 @@ export function BusinessForm({
       organizationTypeId: true,
       primaryEmail: true,
       primaryPhone: true,
+      address: true,
     };
 
     setTouched(nextTouched);
-
+    const addressErrors = validateAddress(detailForm.address);
     return !(
       !form.name.trim() ||
       form.name.trim().length < 2 ||
@@ -256,7 +300,9 @@ export function BusinessForm({
       !form.primaryEmail.trim() ||
       !validateEmail(form.primaryEmail) ||
       !form.primaryPhone.number.trim() ||
-      !validatePhone(form.primaryPhone.number)
+      !validatePhone(form.primaryPhone.number) ||
+      validateAddress(detailForm.address) ||
+      !!addressErrors
     );
   };
 
@@ -287,7 +333,6 @@ export function BusinessForm({
             number: form.primaryPhone.number.trim(),
           },
         },
-
         {
           ...detailForm,
 
@@ -311,6 +356,8 @@ export function BusinessForm({
             region: detailForm.address.region?.trim() || undefined,
 
             postalCode: detailForm.address.postalCode?.trim() || undefined,
+
+            countryCode: detailForm.address.countryCode.trim(),
           },
 
           supportPhone: {
@@ -319,6 +366,16 @@ export function BusinessForm({
           },
         },
       );
+
+      setIsEditing(false);
+
+      setTouched({
+        name: false,
+        organizationTypeId: false,
+        primaryEmail: false,
+        primaryPhone: false,
+        address: false,
+      });
     } finally {
       setSaving(false);
     }
@@ -336,7 +393,14 @@ export function BusinessForm({
       organizationTypeId: false,
       primaryEmail: false,
       primaryPhone: false,
+      address: false,
     });
+
+    setIsEditing(false);
+  };
+
+  const startEditing = () => {
+    setIsEditing(true);
   };
 
   const phoneField = (
@@ -375,6 +439,7 @@ export function BusinessForm({
               }}
               placeholder="Select country"
               testID={`${testID}-country`}
+              disabled={!isEditing}
               renderItemLabel={(item) => {
                 const country = item as CountryReference;
 
@@ -405,6 +470,7 @@ export function BusinessForm({
               maxLength={10}
               error={error}
               testID={`${testID}-number`}
+              editable={isEditing}
             />
           </View>
         </View>
@@ -429,10 +495,7 @@ export function BusinessForm({
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
-      {/* ------------------------------------------------------------------ */}
-      {/* Page header                                                        */}
-      {/* ------------------------------------------------------------------ */}
-
+      {/* Page header */}
       <View
         style={[
           styles.pageHeader,
@@ -452,25 +515,28 @@ export function BusinessForm({
           </Text>
         </View>
 
-        <View
-          style={[
-            styles.headerBadge,
-            {
-              backgroundColor: theme.colors.surfaceAlt,
-              borderColor: theme.colors.border,
-            },
-          ]}
-        >
-          <Text variant="caption" color="textMuted">
-            ORGANIZATION
-          </Text>
+        <View style={styles.headerActions}>
+          <View
+            style={[
+              styles.headerBadge,
+              {
+                backgroundColor: theme.colors.surfaceAlt,
+                borderColor: theme.colors.border,
+              },
+            ]}
+          >
+            <Text variant="caption" color="textMuted">
+              ORGANIZATION
+            </Text>
+          </View>
+
+          {!isEditing ? (
+            <Button label="Edit" onPress={startEditing} disabled={saving} />
+          ) : null}
         </View>
       </View>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Business information                                               */}
-      {/* ------------------------------------------------------------------ */}
-
+      {/* Business information */}
       <Card
         padding={narrow ? "md" : "lg"}
         elevation="sm"
@@ -502,6 +568,7 @@ export function BusinessForm({
                   placeholder="Enter business name"
                   maxLength={200}
                   error={errors.name}
+                  editable={isEditing}
                 />
               </View>
 
@@ -514,6 +581,7 @@ export function BusinessForm({
                   }
                   placeholder="Customer-facing business name"
                   maxLength={100}
+                  editable={isEditing}
                 />
               </View>
 
@@ -526,6 +594,7 @@ export function BusinessForm({
                   }
                   placeholder="Legal business name"
                   maxLength={250}
+                  editable={isEditing}
                 />
               </View>
 
@@ -560,6 +629,7 @@ export function BusinessForm({
                   placeholder="business@example.com"
                   maxLength={254}
                   error={errors.primaryEmail}
+                  editable={isEditing}
                 />
               </View>
 
@@ -593,6 +663,7 @@ export function BusinessForm({
                   keyboardType="url"
                   placeholder="https://example.com"
                   maxLength={300}
+                  editable={isEditing}
                 />
               </View>
             </View>
@@ -600,10 +671,7 @@ export function BusinessForm({
         </Section>
       </Card>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Business details                                                   */}
-      {/* ------------------------------------------------------------------ */}
-
+      {/* Business details */}
       <Card
         padding={narrow ? "md" : "lg"}
         elevation="sm"
@@ -629,6 +697,7 @@ export function BusinessForm({
                   }
                   placeholder="Registration number"
                   maxLength={50}
+                  editable={isEditing}
                 />
               </View>
 
@@ -639,6 +708,7 @@ export function BusinessForm({
                   onChangeText={(value) => updateDetails("gstNumber", value)}
                   placeholder="GST / tax number"
                   maxLength={20}
+                  editable={isEditing}
                 />
               </View>
 
@@ -650,6 +720,7 @@ export function BusinessForm({
                   keyboardType="email-address"
                   placeholder="support@example.com"
                   maxLength={150}
+                  editable={isEditing}
                 />
               </View>
 
@@ -674,7 +745,7 @@ export function BusinessForm({
               ]}
             >
               <Text variant="h2" color="text">
-                Business Address
+                Business Address *
               </Text>
 
               <Text variant="bodySmall" color="textSecondary">
@@ -682,20 +753,33 @@ export function BusinessForm({
               </Text>
             </View>
 
-            <AddressForm
-              value={detailForm.address}
-              countries={countries}
-              regions={regions}
-              cities={cities}
-              onChange={(address) =>
-                setDetailForm((current) => ({
-                  ...current,
-                  address,
-                }))
-              }
-              onCountryChange={onCountryChange}
-              onRegionChange={onRegionChange}
-            />
+            <View pointerEvents={isEditing ? "auto" : "none"}>
+              <AddressForm
+                value={detailForm.address}
+                countries={countries}
+                regions={regions}
+                cities={cities}
+                requiredLine1
+                requiredCountry
+                requiredRegion
+                requiredCity
+                requiredPostalCode
+                errors={errors.address}
+                onChange={(address) => {
+                  setTouched((current) => ({
+                    ...current,
+                    address: true,
+                  }));
+
+                  setDetailForm((current) => ({
+                    ...current,
+                    address,
+                  }));
+                }}
+                onCountryChange={onCountryChange}
+                onRegionChange={onRegionChange}
+              />
+            </View>
           </View>
 
           <View style={styles.subSection}>
@@ -724,15 +808,13 @@ export function BusinessForm({
               }
               placeholder="Tell customers about your business"
               maxLength={1000}
+              editable={isEditing}
             />
           </View>
         </Section>
       </Card>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Customer experience preview                                        */}
-      {/* ------------------------------------------------------------------ */}
-
+      {/* Customer experience preview */}
       <View style={styles.previewSection}>
         <View style={styles.previewHeader}>
           <View style={styles.previewHeaderText}>
@@ -758,46 +840,45 @@ export function BusinessForm({
         />
       </View>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Actions                                                            */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Actions */}
+      {isEditing ? (
+        <View
+          style={[
+            styles.actionsContainer,
+            {
+              backgroundColor: theme.colors.card,
+              borderColor: theme.colors.border,
+            },
+          ]}
+        >
+          <View style={styles.actionText}>
+            <Text variant="bodyStrong" color="text">
+              Ready to save?
+            </Text>
 
-      <View
-        style={[
-          styles.actionsContainer,
-          {
-            backgroundColor: theme.colors.card,
-            borderColor: theme.colors.border,
-          },
-        ]}
-      >
-        <View style={styles.actionText}>
-          <Text variant="bodyStrong" color="text">
-            Ready to save?
-          </Text>
+            <Text variant="caption" color="textSecondary">
+              Your changes will be applied to this organization.
+            </Text>
+          </View>
 
-          <Text variant="caption" color="textSecondary">
-            Your changes will be applied to this organization.
-          </Text>
+          <View style={[styles.actions, compact && styles.actionsCompact]}>
+            <Button
+              label="Cancel"
+              variant="outline"
+              disabled={saving}
+              onPress={resetForm}
+              fullWidth={compact}
+            />
+
+            <Button
+              label={saving ? "Saving..." : "Save Changes"}
+              onPress={save}
+              disabled={saving}
+              fullWidth={compact}
+            />
+          </View>
         </View>
-
-        <View style={[styles.actions, compact && styles.actionsCompact]}>
-          <Button
-            label="Cancel"
-            variant="outline"
-            disabled={saving}
-            onPress={resetForm}
-            fullWidth={compact}
-          />
-
-          <Button
-            label={saving ? "Saving..." : "Save Changes"}
-            onPress={save}
-            disabled={saving}
-            fullWidth={compact}
-          />
-        </View>
-      </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -827,6 +908,12 @@ const styles = StyleSheet.create({
   pageHeaderText: {
     flex: 1,
     gap: 6,
+  },
+
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
 
   headerBadge: {

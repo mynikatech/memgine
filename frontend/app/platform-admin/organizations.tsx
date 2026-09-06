@@ -510,9 +510,7 @@ export default function PlatformOrganizations() {
                   key={organization.id}
                   organization={organization}
                   busy={busyOrganizationId === organization.id}
-                  organizationTypeName={getOrganizationTypeName(
-                    currentOrganization,
-                  )}
+                  organizationTypeName={getOrganizationTypeName(organization)}
                   onOpen={() => openOrganization(organization.id)}
                   onEdit={() => editOrganization(organization.id)}
                   onActivate={() => requestActivate(organization)}

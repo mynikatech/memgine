@@ -86,14 +86,23 @@ export default function OrgAdminBusiness() {
       setError(null);
 
       try {
-        const [organizationDetails, types, statuses, countryList] =
-          await Promise.all([
-            services.organization.getOrganizationDetails(organization.id),
-            services.referenceData.listOrganizationTypes(),
-            services.status.listOrganizationStatuses(),
-            services.referenceData.listCountries(),
-          ]);
+        const [
+          loadedOrganization,
+          organizationDetails,
+          types,
+          statuses,
+          countryList,
+        ] = await Promise.all([
+          services.organization.getOrganization(organization.id),
+          services.organization.getOrganizationDetails(organization.id),
+          services.referenceData.listOrganizationTypes(),
+          services.status.listOrganizationStatuses(),
+          services.referenceData.listCountries(),
+        ]);
 
+        if (!loadedOrganization) {
+          throw new Error("Unable to load the current organization.");
+        }
         const countryCode = organizationDetails?.address.countryCode;
 
         const regionList = countryCode
@@ -117,7 +126,7 @@ export default function OrgAdminBusiness() {
         if (!mounted) {
           return;
         }
-
+        setCurrentOrganization(loadedOrganization);
         setDetails(organizationDetails);
         setOrganizationTypes(types);
         setOrganizationStatuses(statuses);

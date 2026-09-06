@@ -7,7 +7,7 @@ import { useTheme } from "@/src/providers";
 import { FieldLabel } from "./FieldLabel";
 import { Text } from "./Text";
 
-type TextAreaProps = {
+export type TextAreaProps = {
   label?: string;
   required?: boolean;
   value: string;
@@ -16,6 +16,7 @@ type TextAreaProps = {
   error?: string;
   testID?: string;
   maxLength?: number;
+  editable?: boolean;
 };
 
 export function TextArea({
@@ -27,6 +28,7 @@ export function TextArea({
   error,
   testID,
   maxLength,
+  editable = true,
 }: TextAreaProps) {
   const theme = useTheme();
   const [focused, setFocused] = useState(false);
@@ -50,18 +52,21 @@ export function TextArea({
         multiline
         textAlignVertical="top"
         maxLength={maxLength}
+        editable={editable}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={{
-          borderWidth: 1,
+          borderWidth: focused || error ? 1.5 : 1,
           borderColor,
           borderRadius: theme.radius.md,
           paddingHorizontal: theme.spacing.md,
           paddingVertical: theme.spacing.md,
           fontSize: theme.typography.body.fontSize,
           lineHeight: theme.typography.body.lineHeight,
-          color: theme.colors.text,
-          backgroundColor: theme.colors.background,
+          color: editable ? theme.colors.text : theme.colors.textSecondary,
+          backgroundColor: editable
+            ? theme.colors.background
+            : theme.colors.surfaceAlt,
           minHeight: 104,
         }}
       />

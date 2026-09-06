@@ -39,12 +39,14 @@ export type AddressFormProps = {
   requiredCountry?: boolean;
   requiredRegion?: boolean;
   requiredCity?: boolean;
+  requiredPostalCode?: boolean;
 
   errors?: {
     line1?: string;
     countryCode?: string;
     region?: string;
     city?: string;
+    postalCode?: string;
   };
 };
 
@@ -61,6 +63,7 @@ export function AddressForm({
   requiredCountry = false,
   requiredRegion = false,
   requiredCity = false,
+  requiredPostalCode = false,
   errors,
 }: AddressFormProps) {
   const theme = useTheme();
@@ -252,8 +255,10 @@ export function AddressForm({
         >
           <Input
             label="Postal / ZIP Code"
+            required={requiredPostalCode}
             value={value.postalCode ?? ""}
             placeholder="Postal / ZIP code"
+            error={errors?.postalCode}
             onChangeText={(text) =>
               updateAddress("postalCode", text || undefined)
             }
