@@ -42,9 +42,10 @@ export async function resolveOrganizationContext(
     templateId: template.template.id,
 
     identity: {
-      displayName: aggregate.organization.displayName,
+      displayName:
+        aggregate.organization.displayName ?? aggregate.organization.name,
 
-      category: aggregate.organization.category,
+      category: template.template.category,
     },
 
     branding: {

@@ -26,8 +26,6 @@ export const SUNRISE_BAKERY_ORGANIZATION: Organization = {
   organizationTypeId: "organization-type-bakery",
   organizationStatusId: "org-status-active",
 
-  category: TemplateCategory.FOOD_AND_BEVERAGE,
-
   primaryEmail: "hello@sunrisebakery.ca",
   primaryPhone: {
     countryId: "country-ca",

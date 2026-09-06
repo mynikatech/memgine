@@ -6,7 +6,12 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 
-import { DEFAULT_ACTIVE_ORG_ID, services, type Organization } from "@/src/core";
+import {
+  DEFAULT_ACTIVE_ORG_ID,
+  services,
+  type ReferenceDataItem,
+  type Organization,
+} from "@/src/core";
 
 import { resetLocalOrganizations } from "@/src/data/persistence/local/reset";
 
@@ -17,7 +22,7 @@ import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
 import { Text } from "@/src/ui";
 
 type PendingAction = {
-  type: "deactivate" | "delete";
+  type: "activate" | "deactivate" | "delete";
   organization: Organization;
 } | null;
 
@@ -31,6 +36,9 @@ export default function PlatformOrganizations() {
     useBusiness();
 
   const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [organizationTypes, setOrganizationTypes] = useState<
+    ReferenceDataItem[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -45,7 +53,10 @@ export default function PlatformOrganizations() {
       setLoading(true);
       setError("");
 
-      const result = await services.organization.listOrganizations();
+      const [result, organizationTypeResult] = await Promise.all([
+        services.organization.listOrganizations(),
+        services.referenceData.listOrganizationTypes(),
+      ]);
 
       /*
        * Deleted organizations are soft-deleted and therefore excluded
@@ -54,6 +65,7 @@ export default function PlatformOrganizations() {
       setOrganizations(
         result.filter((organization) => !organization.isDeleted),
       );
+      setOrganizationTypes(organizationTypeResult);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Unable to load organizations.",
@@ -62,6 +74,18 @@ export default function PlatformOrganizations() {
       setLoading(false);
     }
   }, []);
+
+  const getOrganizationTypeName = useCallback(
+    (organization: Organization): string => {
+      return (
+        organizationTypes.find(
+          (organizationType) =>
+            organizationType.id === organization.organizationTypeId,
+        )?.name ?? "Unknown Organization Type"
+      );
+    },
+    [organizationTypes],
+  );
 
   useEffect(() => {
     void loadOrganizations();
@@ -118,6 +142,10 @@ export default function PlatformOrganizations() {
 
   /**
    * Resolve and persist an organization lifecycle status.
+   *
+   * The persisted organization is also written directly into local React
+   * state after a successful update so the UI changes immediately without
+   * requiring a browser refresh.
    */
   const updateOrganizationStatus = useCallback(
     async (organization: Organization, statusCode: "ACTIVE" | "INACTIVE") => {
@@ -145,14 +173,31 @@ export default function PlatformOrganizations() {
           versionNo: organization.versionNo + 1,
         };
 
+        /*
+         * Persist first.
+         */
         await services.organization.updateOrganization(
           organization.id,
           updatedOrganization,
         );
 
-        setPendingAction(null);
+        /*
+         * Then immediately update the screen's local state.
+         *
+         * This is important because the Current Organization card can
+         * otherwise continue rendering the old organization object from
+         * useBusiness() until a full reload.
+         */
+        setOrganizations((previousOrganizations) =>
+          previousOrganizations.map((item) =>
+            item.id === organization.id ? updatedOrganization : item,
+          ),
+        );
 
-        await loadOrganizations();
+        /*
+         * Close the confirmation card after a successful update.
+         */
+        setPendingAction(null);
       } catch (err) {
         setError(
           err instanceof Error
@@ -163,22 +208,28 @@ export default function PlatformOrganizations() {
         setBusyOrganizationId(null);
       }
     },
-    [busyOrganizationId, loadOrganizations],
+    [busyOrganizationId],
   );
 
+  /**
+   * Request activation confirmation.
+   */
+  const requestActivate = useCallback((organization: Organization) => {
+    setPendingAction({
+      type: "activate",
+      organization,
+    });
+  }, []);
+
+  /**
+   * Request deactivation confirmation.
+   */
   const requestDeactivate = useCallback((organization: Organization) => {
     setPendingAction({
       type: "deactivate",
       organization,
     });
   }, []);
-
-  const activateOrganization = useCallback(
-    (organization: Organization) => {
-      void updateOrganizationStatus(organization, "ACTIVE");
-    },
-    [updateOrganizationStatus],
-  );
 
   /**
    * Delete remains a soft delete.
@@ -196,6 +247,11 @@ export default function PlatformOrganizations() {
     }
 
     const { organization, type } = pendingAction;
+
+    if (type === "activate") {
+      await updateOrganizationStatus(organization, "ACTIVE");
+      return;
+    }
 
     if (type === "deactivate") {
       await updateOrganizationStatus(organization, "INACTIVE");
@@ -247,6 +303,18 @@ export default function PlatformOrganizations() {
     setActiveBusiness,
     updateOrganizationStatus,
   ]);
+
+  /*
+   * The current organization may have just been activated/deactivated.
+   *
+   * useBusiness() does not necessarily change immediately when the
+   * Platform Admin lifecycle status changes, so prefer the freshly
+   * updated organization from this screen's state when available.
+   */
+  const displayedCurrentOrganization =
+    organizations.find(
+      (organization) => organization.id === currentOrganization.id,
+    ) ?? currentOrganization;
 
   /*
    * The active organization is deliberately shown first.
@@ -338,15 +406,19 @@ export default function PlatformOrganizations() {
         <View style={styles.confirmationCard}>
           <View style={styles.confirmationText}>
             <Text variant="bodyStrong" color="text">
-              {pendingAction.type === "deactivate"
-                ? "Deactivate organization?"
-                : "Delete organization?"}
+              {pendingAction.type === "activate"
+                ? "Activate organization?"
+                : pendingAction.type === "deactivate"
+                  ? "Deactivate organization?"
+                  : "Delete organization?"}
             </Text>
 
             <Text variant="bodySmall" color="textMuted">
-              {pendingAction.type === "deactivate"
-                ? `"${pendingAction.organization.name}" will remain in Platform Admin but will be marked inactive.`
-                : `"${pendingAction.organization.name}" will be soft-deleted and removed from the active organization list.`}
+              {pendingAction.type === "activate"
+                ? `"${pendingAction.organization.name}" will be marked active and available for use.`
+                : pendingAction.type === "deactivate"
+                  ? `"${pendingAction.organization.name}" will remain in Platform Admin but will be marked inactive.`
+                  : `"${pendingAction.organization.name}" will be soft-deleted and removed from the active organization list.`}
             </Text>
           </View>
 
@@ -379,9 +451,11 @@ export default function PlatformOrganizations() {
               <Text variant="bodyStrong" color="text">
                 {busyOrganizationId
                   ? "Updating..."
-                  : pendingAction.type === "deactivate"
-                    ? "Deactivate"
-                    : "Delete"}
+                  : pendingAction.type === "activate"
+                    ? "Activate"
+                    : pendingAction.type === "deactivate"
+                      ? "Deactivate"
+                      : "Delete"}
               </Text>
             </Pressable>
           </View>
@@ -402,14 +476,19 @@ export default function PlatformOrganizations() {
             </View>
 
             <OrganizationCard
-              organization={currentOrganization}
+              organization={displayedCurrentOrganization}
               isCurrent
-              busy={busyOrganizationId === currentOrganization.id}
-              onOpen={() => openOrganization(currentOrganization.id)}
-              onEdit={() => editOrganization(currentOrganization.id)}
-              onActivate={() => activateOrganization(currentOrganization)}
-              onDeactivate={() => requestDeactivate(currentOrganization)}
-              onDelete={() => requestDelete(currentOrganization)}
+              busy={busyOrganizationId === displayedCurrentOrganization.id}
+              organizationTypeName={getOrganizationTypeName(
+                currentOrganization,
+              )}
+              onOpen={() => openOrganization(displayedCurrentOrganization.id)}
+              onEdit={() => editOrganization(displayedCurrentOrganization.id)}
+              onActivate={() => requestActivate(displayedCurrentOrganization)}
+              onDeactivate={() =>
+                requestDeactivate(displayedCurrentOrganization)
+              }
+              onDelete={() => requestDelete(displayedCurrentOrganization)}
             />
           </View>
 
@@ -431,9 +510,12 @@ export default function PlatformOrganizations() {
                   key={organization.id}
                   organization={organization}
                   busy={busyOrganizationId === organization.id}
+                  organizationTypeName={getOrganizationTypeName(
+                    currentOrganization,
+                  )}
                   onOpen={() => openOrganization(organization.id)}
                   onEdit={() => editOrganization(organization.id)}
-                  onActivate={() => activateOrganization(organization)}
+                  onActivate={() => requestActivate(organization)}
                   onDeactivate={() => requestDeactivate(organization)}
                   onDelete={() => requestDelete(organization)}
                 />
@@ -456,6 +538,7 @@ function OrganizationCard({
   organization,
   isCurrent = false,
   busy,
+  organizationTypeName,
   onOpen,
   onEdit,
   onActivate,
@@ -465,6 +548,7 @@ function OrganizationCard({
   organization: Organization;
   isCurrent?: boolean;
   busy: boolean;
+  organizationTypeName: string;
   onOpen: () => void;
   onEdit: () => void;
   onActivate: () => void;
@@ -502,7 +586,7 @@ function OrganizationCard({
         </View>
 
         <Text variant="bodySmall" color="textMuted">
-          {organization.category}
+          {organizationTypeName}
         </Text>
 
         <Text variant="caption" color="textMuted">

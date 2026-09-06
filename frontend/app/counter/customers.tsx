@@ -200,7 +200,10 @@ export default function StaffCustomers() {
                     benefit?.displayName ??
                     benefit?.benefitName ??
                     "Reward redeemed",
-                  storeName: store?.name ?? organization.displayName,
+                  storeName:
+                    store?.name ??
+                    organization.displayName ??
+                    organization.name,
                   productName:
                     product?.displayName ??
                     product?.membershipProductName ??

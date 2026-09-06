@@ -73,8 +73,6 @@ export function materializeOrganization(
 
     organizationStatusId: "status-active",
 
-    category: template.template.category,
-
     primaryEmail: input.primaryEmail,
 
     primaryPhone: {
@@ -119,6 +117,7 @@ export function materializeOrganization(
       callingCode: input.primaryPhone.callingCode,
       number: "",
     },
+
     aboutOrganization: input.useDefaultBusinessContent
       ? (businessInformation?.about ?? "")
       : "",
@@ -152,7 +151,7 @@ export function materializeOrganization(
 
     organizationId,
 
-    brandingName: organization.displayName,
+    brandingName: organization.displayName ?? organization.name,
 
     /*
      * This is currently seeded from the selected platform
@@ -187,13 +186,21 @@ export function materializeOrganization(
     versionNo: 1,
   };
 
+  /*
+   * BusinessConfiguration is application configuration and is not the
+   * persisted Organization entity. Its existing identity.category value
+   * continues to be derived from the selected template definition.
+   *
+   * This is deliberately separate from Organization.category, which no
+   * longer exists in the physical Organization model.
+   */
   const configuration: BusinessConfiguration = {
     templateId: template.template.id,
 
     identity: {
-      displayName: organization.displayName,
+      displayName: organization.displayName ?? organization.name,
 
-      category: organization.category,
+      category: template.template.category,
     },
 
     branding: {
@@ -206,7 +213,8 @@ export function materializeOrganization(
 
     customerExperience: {
       welcomeMessage:
-        identity.tagline ?? `Welcome to ${organization.displayName}!`,
+        identity.tagline ??
+        `Welcome to ${organization.displayName ?? organization.name}!`,
 
       cardStyle: CardStyle.MODERN,
 

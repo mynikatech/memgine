@@ -26,8 +26,6 @@ export const GLOW_STUDIO_ORGANIZATION: Organization = {
   organizationTypeId: "organization-type-salon",
   organizationStatusId: "org-status-active",
 
-  category: TemplateCategory.BEAUTY_AND_WELLNESS,
-
   primaryEmail: "...",
   primaryPhone: {
     countryId: "country-ca",

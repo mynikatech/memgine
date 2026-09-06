@@ -179,9 +179,11 @@ export default function MyCards() {
             await services.organization.getBusinessContext(organizationId);
 
           const organizationName =
-            ctx?.organization.displayName ?? organization.displayName;
+            ctx?.organization.displayName ??
+            ctx?.organization.name ??
+            organization.name;
 
-          group = {
+          const newGroup: OrgGroup = {
             organizationId,
             organizationName,
 
@@ -194,7 +196,9 @@ export default function MyCards() {
             cards: [],
           };
 
-          grouped.push(group);
+          grouped.push(newGroup);
+
+          group = newGroup;
         }
 
         group.cards.push({

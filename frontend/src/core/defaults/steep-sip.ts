@@ -32,8 +32,6 @@ export const STEEP_SIP_ORGANIZATION: Organization = {
   organizationTypeId: "organization-type-coffee",
   organizationStatusId: "org-status-active",
 
-  category: TemplateCategory.FOOD_AND_BEVERAGE,
-
   primaryEmail: "hello@steepandsip.com",
   primaryPhone: {
     countryId: "country-in",

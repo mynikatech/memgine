@@ -2410,8 +2410,6 @@ export class InMemoryOrganizationService implements OrganizationService {
 
       organizationStatusId: "org-status-active",
 
-      category: organizationCategory,
-
       primaryEmail: "support@example.com",
 
       primaryPhone: {

@@ -274,7 +274,7 @@ export function BusinessForm({
 
           name: form.name.trim(),
 
-          displayName: form.displayName.trim() || form.name.trim(),
+          displayName: form.displayName?.trim() || form.name.trim(),
 
           legalName: form.legalName?.trim() || undefined,
 
@@ -508,7 +508,7 @@ export function BusinessForm({
               <View style={compact ? styles.fullWidth : styles.halfWidth}>
                 <Input
                   label="Display Name"
-                  value={form.displayName}
+                  value={form.displayName ?? ""}
                   onChangeText={(value) =>
                     updateOrganization("displayName", value)
                   }

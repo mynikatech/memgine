@@ -829,7 +829,7 @@ export default function JoinFlow() {
 
           <Button
             label={t("join.joinCta", {
-              business: organization.displayName,
+              business: organization.displayName ?? organization.name,
             })}
             fullWidth
             onPress={() => setStep("register")}
@@ -1103,7 +1103,7 @@ export default function JoinFlow() {
             meta={[
               {
                 label: t("join.business"),
-                value: organization.displayName,
+                value: organization.displayName ?? organization.name,
               },
 
               ...(isStaffSale
@@ -1270,7 +1270,7 @@ export default function JoinFlow() {
                   }}
                 >
                   {t("join.successBody", {
-                    business: organization.displayName,
+                    business: organization.displayName ?? organization.name,
                     product:
                       product.displayName ?? product.membershipProductName,
                   })}
@@ -1287,7 +1287,7 @@ export default function JoinFlow() {
             meta={[
               {
                 label: t("join.business"),
-                value: organization.displayName,
+                value: organization.displayName ?? organization.name,
               },
 
               {

@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -6,6 +6,7 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import {
   onboardOrganization,
   services,
+  type Organization,
   type ReferenceDataItem,
 } from "@/src/core";
 
@@ -19,8 +20,16 @@ import type { PhoneValue } from "@/src/ui/PhoneField";
 
 export default function OrganizationNew() {
   const theme = useTheme();
-
   const { setActiveBusiness } = useBusiness();
+
+  const { organizationId } = useLocalSearchParams<{
+    organizationId?: string;
+  }>();
+
+  const isEditMode = !!organizationId;
+
+  const [existingOrganization, setExistingOrganization] =
+    useState<Organization | null>(null);
 
   const [organizationTypes, setOrganizationTypes] = useState<
     ReferenceDataItem[]
@@ -32,6 +41,7 @@ export default function OrganizationNew() {
 
   const [loadingTypes, setLoadingTypes] = useState(true);
   const [loadingCountries, setLoadingCountries] = useState(true);
+  const [loadingOrganization, setLoadingOrganization] = useState(isEditMode);
 
   const [businessName, setBusinessName] = useState("");
   const [useDefaultBusinessContent, setUseDefaultBusinessContent] =
@@ -54,6 +64,9 @@ export default function OrganizationNew() {
   const [emailTouched, setEmailTouched] = useState(false);
   const [phoneTouched, setPhoneTouched] = useState(false);
 
+  /*
+   * Load reference data used by both Create and Edit.
+   */
   useEffect(() => {
     let mounted = true;
 
@@ -74,17 +87,25 @@ export default function OrganizationNew() {
         setOrganizationTypes(types.filter((item) => item.active));
         setCountries(countryList);
 
-        const canada = countryList.find(
-          (country) =>
-            country.countryCode === "CA" || country.id === "country-ca",
-        );
+        /*
+         * Canada remains the default only for a new organization.
+         *
+         * In Edit mode the existing organization's phone country is
+         * populated by the organization load below.
+         */
+        if (!isEditMode) {
+          const canada = countryList.find(
+            (country) =>
+              country.countryCode === "CA" || country.id === "country-ca",
+          );
 
-        if (canada) {
-          setPrimaryPhone((current) => ({
-            ...current,
-            countryId: canada.id,
-            callingCode: canada.callingCode ?? "+1",
-          }));
+          if (canada) {
+            setPrimaryPhone((current) => ({
+              ...current,
+              countryId: canada.id,
+              callingCode: canada.callingCode ?? "+1",
+            }));
+          }
         }
       } catch (err) {
         if (!mounted) {
@@ -109,7 +130,82 @@ export default function OrganizationNew() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [isEditMode]);
+
+  /*
+   * Edit mode:
+   *
+   * Load the exact organization supplied by the Platform Admin
+   * Organizations screen and populate the form from that record.
+   *
+   * Create mode deliberately does nothing here.
+   */
+  useEffect(() => {
+    if (!organizationId) {
+      setLoadingOrganization(false);
+      return;
+    }
+
+    let mounted = true;
+
+    const loadOrganization = async () => {
+      try {
+        setLoadingOrganization(true);
+        setError("");
+
+        const organization =
+          await services.organization.getOrganization(organizationId);
+
+        if (!mounted) {
+          return;
+        }
+
+        if (!organization) {
+          setError(`Organization '${organizationId}' could not be found.`);
+          setExistingOrganization(null);
+          return;
+        }
+
+        /*
+         * Keep the complete original entity.
+         *
+         * The complete object is later spread during update so that
+         * fields not represented by this form are not lost.
+         */
+        setExistingOrganization(organization);
+
+        setBusinessName(organization.name);
+        setOrganizationTypeId(organization.organizationTypeId);
+        setPrimaryEmail(organization.primaryEmail);
+
+        setPrimaryPhone({
+          countryId: organization.primaryPhone.countryId,
+          callingCode: organization.primaryPhone.callingCode,
+          number: organization.primaryPhone.number,
+        });
+      } catch (err) {
+        if (!mounted) {
+          return;
+        }
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load the organization.",
+        );
+      } finally {
+        if (mounted) {
+          setLoadingOrganization(false);
+        }
+      }
+    };
+
+    void loadOrganization();
+
+    return () => {
+      mounted = false;
+    };
+  }, [organizationId]);
 
   const selectedType = useMemo(
     () => organizationTypes.find((item) => item.id === organizationTypeId),
@@ -146,7 +242,7 @@ export default function OrganizationNew() {
         ? "Primary phone number must contain exactly 10 digits."
         : undefined;
 
-  const canCreate =
+  const canSubmit =
     businessName.trim().length >= 2 &&
     businessName.trim().length <= 150 &&
     !!organizationTypeId &&
@@ -158,9 +254,15 @@ export default function OrganizationNew() {
     !!primaryPhone.callingCode &&
     !busy &&
     !loadingTypes &&
-    !loadingCountries;
+    !loadingCountries &&
+    !loadingOrganization &&
+    /*
+     * Edit mode cannot submit until the original organization
+     * has actually been loaded.
+     */
+    (!isEditMode || !!existingOrganization);
 
-  const handleCreate = async () => {
+  const validateForm = () => {
     setNameTouched(true);
     setTypeTouched(true);
     setEmailTouched(true);
@@ -169,57 +271,130 @@ export default function OrganizationNew() {
 
     if (!businessName.trim()) {
       setError("Business name is required.");
-      return;
+      return false;
     }
 
     if (businessName.trim().length < 2) {
       setError("Business name must contain at least 2 characters.");
-      return;
+      return false;
     }
 
     if (businessName.trim().length > 150) {
       setError("Business name must not exceed 150 characters.");
-      return;
+      return false;
     }
 
     if (!organizationTypeId) {
       setError("Business type is required.");
-      return;
+      return false;
     }
 
     if (!primaryEmail.trim()) {
       setError("Primary email is required.");
-      return;
+      return false;
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(primaryEmail.trim())) {
       setError("Please enter a valid primary email address.");
-      return;
+      return false;
     }
 
     if (primaryEmail.trim().length > 254) {
       setError("Primary email must not exceed 254 characters.");
-      return;
+      return false;
     }
 
     if (!primaryPhone.countryId) {
       setError("Primary phone country is required.");
-      return;
+      return false;
     }
 
     if (!primaryPhone.number.trim()) {
       setError("Primary phone number is required.");
-      return;
+      return false;
     }
 
     if (primaryPhone.number.length !== 10) {
       setError("Primary phone number must contain exactly 10 digits.");
+      return false;
+    }
+
+    if (isEditMode && !existingOrganization) {
+      setError("The organization could not be loaded for editing.");
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    if (!validateForm()) {
       return;
     }
 
     try {
       setBusy(true);
 
+      /*
+       * ------------------------------------------------------------------
+       * EDIT
+       * ------------------------------------------------------------------
+       *
+       * Never call onboardOrganization() here.
+       *
+       * Start from the complete existing entity and replace only the
+       * fields represented by this form.
+       */
+      if (isEditMode) {
+        if (!organizationId || !existingOrganization) {
+          throw new Error(
+            "The existing organization could not be loaded for editing.",
+          );
+        }
+
+        const updatedOrganization: Organization = {
+          ...existingOrganization,
+
+          name: businessName.trim(),
+          organizationTypeId,
+          primaryEmail: primaryEmail.trim(),
+
+          primaryPhone: {
+            countryId: primaryPhone.countryId,
+            callingCode: primaryPhone.callingCode,
+            number: primaryPhone.number,
+          },
+
+          updatedAt: new Date().toISOString(),
+          updatedBy: "user-system",
+          versionNo: existingOrganization.versionNo + 1,
+        };
+
+        /*
+         * Persist through the existing service → API → repository path.
+         */
+        await services.organization.updateOrganization(
+          organizationId,
+          updatedOrganization,
+        );
+
+        /*
+         * Editing an organization must NOT change the application's
+         * active organization context.
+         */
+        router.replace(APP_ROUTES.platformAdmin.organizations);
+
+        return;
+      }
+
+      /*
+       * ------------------------------------------------------------------
+       * CREATE
+       * ------------------------------------------------------------------
+       *
+       * Preserve the existing onboarding flow exactly for new
+       * organizations.
+       */
       const result = await onboardOrganization({
         name: businessName.trim(),
         organizationTypeId,
@@ -235,23 +410,25 @@ export default function OrganizationNew() {
       /*
        * The newly onboarded organization becomes the active organization,
        * but Platform Admin remains the current application area.
-       *
-       * This means the new organization will appear in the
-       * "Current Organization" section when the Organizations page loads.
-       *
-       * We intentionally do NOT navigate directly to Organization Admin.
        */
+
       setActiveBusiness(result.organization.id);
 
       router.replace(APP_ROUTES.platformAdmin.organizations);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Unable to create the business.",
+        err instanceof Error
+          ? err.message
+          : isEditMode
+            ? "Unable to update the organization."
+            : "Unable to create the business.",
       );
     } finally {
       setBusy(false);
     }
   };
+
+  const isLoading = loadingTypes || loadingCountries || loadingOrganization;
 
   return (
     <ScrollView
@@ -266,12 +443,13 @@ export default function OrganizationNew() {
     >
       <View style={styles.header}>
         <Text variant="title" color="text">
-          Onboard New Business
+          {isEditMode ? "Edit Organization" : "Onboard New Business"}
         </Text>
 
         <Text variant="bodySmall" color="textMuted">
-          Create a new business using the Memgine starter experience for its
-          business type.
+          {isEditMode
+            ? "Update the organization's existing information. Other organization data will be preserved."
+            : "Create a new business using the Memgine starter experience for its business type."}
         </Text>
       </View>
 
@@ -290,11 +468,17 @@ export default function OrganizationNew() {
           </Text>
 
           <Text variant="bodySmall" color="textMuted">
-            Only the minimum information is required to get the business
-            started. The Organization Admin can configure the remaining details
-            after onboarding.
+            {isEditMode
+              ? "Update the organization's primary business information."
+              : "Only the minimum information is required to get the business started. The Organization Admin can configure the remaining details after onboarding."}
           </Text>
         </View>
+
+        {isLoading && isEditMode ? (
+          <Text variant="bodySmall" color="textMuted">
+            Loading organization...
+          </Text>
+        ) : null}
 
         <Input
           label="Business Name"
@@ -330,19 +514,21 @@ export default function OrganizationNew() {
           placeholder={
             loadingTypes ? "Loading business types..." : "Select business type"
           }
-          disabled={busy || loadingTypes}
+          disabled={busy || loadingTypes || loadingOrganization}
           error={typeError}
           testID="organization-business-type"
         />
 
-        <Checkbox
-          value={useDefaultBusinessContent}
-          onValueChange={setUseDefaultBusinessContent}
-          label="Use default business content"
-          description="Start this business with the standard content for its selected business type. You can customize it after onboarding."
-          disabled={busy || loadingTypes}
-          testID="organization-use-default-business-content"
-        />
+        {!isEditMode ? (
+          <Checkbox
+            value={useDefaultBusinessContent}
+            onValueChange={setUseDefaultBusinessContent}
+            label="Use default business content"
+            description="Start this business with the standard content for its selected business type. You can customize it after onboarding."
+            disabled={busy || loadingTypes}
+            testID="organization-use-default-business-content"
+          />
+        ) : null}
 
         <Input
           label="Primary Email"
@@ -380,11 +566,11 @@ export default function OrganizationNew() {
           }}
           error={phoneTouched ? phoneError : undefined}
           maxDigits={10}
-          disabled={busy || loadingCountries}
+          disabled={busy || loadingCountries || loadingOrganization}
           testID="organization-primary-phone"
         />
 
-        {selectedType ? (
+        {!isEditMode && selectedType ? (
           <View
             style={[
               styles.templateCard,
@@ -424,13 +610,13 @@ export default function OrganizationNew() {
         ) : null}
 
         <Pressable
-          disabled={!canCreate}
-          onPress={handleCreate}
+          disabled={!canSubmit}
+          onPress={() => void handleSubmit()}
           style={({ pressed }) => [
             styles.createButton,
             {
               backgroundColor: theme.colors.primary,
-              opacity: !canCreate
+              opacity: !canSubmit
                 ? 0.5
                 : pressed
                   ? theme.states.pressedOpacity
@@ -439,7 +625,13 @@ export default function OrganizationNew() {
           ]}
         >
           <Text variant="bodyStrong" color="text">
-            {busy ? "Creating Business..." : "Create Business"}
+            {busy
+              ? isEditMode
+                ? "Saving Changes..."
+                : "Creating Business..."
+              : isEditMode
+                ? "Save Changes"
+                : "Create Business"}
           </Text>
         </Pressable>
 

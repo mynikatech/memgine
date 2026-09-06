@@ -284,7 +284,9 @@ export function resolveExperience(
       "Reward redeemed",
 
     location:
-      storesById.get(redemption.storeId)?.name ?? organization.displayName,
+      storesById.get(redemption.storeId)?.name ??
+      organization.displayName ??
+      organization.name,
 
     timeLabel: input.formatDate(redemption.redemptionDateTime),
   }));

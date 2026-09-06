@@ -108,7 +108,9 @@ export class InMemoryCustomerExperienceService implements CustomerExperienceServ
       await this.organizationService.getOrganizationBranding(organizationId);
 
     content.businessIdentity.displayName =
-      branding?.brandingName?.trim() || organization.displayName;
+      branding?.brandingName?.trim() ||
+      organization.displayName ||
+      organization.name;
 
     content.businessIdentity.logoUrl = branding?.logoUrl || undefined;
 

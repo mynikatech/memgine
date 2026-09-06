@@ -7,7 +7,6 @@ import {
   ID,
   ISODateString,
   Money,
-  TemplateCategory,
 } from "./common";
 
 /* ------------------------------------------------------------------ *
@@ -72,12 +71,10 @@ export interface Organization {
   code: string;
   name: string;
   legalName?: string;
-  displayName: string;
+  displayName?: string;
 
   organizationTypeId: ID;
   organizationStatusId: ID;
-
-  category: TemplateCategory;
 
   primaryEmail: string;
   primaryPhone: PhoneNumber;
@@ -113,7 +110,8 @@ export interface OrganizationDetails {
   isDeleted: boolean;
   versionNo: number;
 }
-/** The business branding information */
+
+/** The business branding information. */
 export interface OrganizationBranding {
   id: ID;
   organizationId: ID;
@@ -141,6 +139,69 @@ export interface OrganizationBranding {
   versionNo: number;
 }
 
+/* ------------------------------------------------------------------ *
+ * Template
+ * ------------------------------------------------------------------ */
+
+/**
+ * Persisted Template entity.
+ *
+ * A Template belongs to the platform/template catalogue or to an
+ * organization-owned copied configuration, depending on isDefault.
+ *
+ * Organization Type determines which type of organization the template
+ * applies to. Template Type determines what kind of template it is,
+ * for example THEME_LAYOUT or DATA_CONTENT.
+ */
+export interface Template {
+  id: ID;
+
+  templateTypeId: ID;
+
+  templateName: string;
+
+  organizationTypeId: ID;
+
+  templateDescription?: string;
+
+  templateFormat: string;
+
+  templateDefinition: unknown;
+
+  templateVersion: number;
+
+  templateStatusId: ID;
+
+  isDefault: boolean;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt: ISODateString;
+  updatedBy: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
+}
+
+/**
+ * Template Type classifies the kind of template stored by Memgine.
+ */
+export interface TemplateType {
+  id: ID;
+
+  templateTypeCode: string;
+
+  templateTypeName: string;
+
+  templateTypeDescription?: string;
+
+  statusId: ID;
+}
+
+/* ------------------------------------------------------------------ *
+ * Staff ↔ Store
+ * ------------------------------------------------------------------ */
+
 export interface StaffStoreAssignment {
   id: ID;
   organizationId: ID;
@@ -162,7 +223,11 @@ export interface StaffStoreAssignment {
   versionNo: number;
 }
 
-/** The business notification configuration */
+/* ------------------------------------------------------------------ *
+ * Organization configuration
+ * ------------------------------------------------------------------ */
+
+/** The business notification configuration. */
 export interface NotificationConfiguration {
   id: ID;
   organizationId: ID;
@@ -186,7 +251,7 @@ export interface NotificationConfiguration {
   versionNo: number;
 }
 
-/** The business  configuration to connect with external entities */
+/** The business configuration to connect with external entities. */
 export interface IntegrationConfiguration {
   id: ID;
   organizationId: ID;
@@ -205,7 +270,8 @@ export interface IntegrationConfiguration {
   isDeleted: boolean;
   versionNo: number;
 }
-/** The business  integration configuration  type to connect with external entities */
+
+/** The business integration configuration type. */
 export interface IntegrationType {
   id: string;
   code: string;
@@ -238,34 +304,26 @@ export interface OrganizationAccount {
 export interface Store {
   id: ID;
   organizationId: ID;
-
   storeCode: string;
   name: string;
   storeTypeId: ID;
-
   phoneNumber?: PhoneNumber;
   emailAddress?: string;
-
   address: Address;
   timezone: string;
-
   storeStatusId: ID;
-
   openingDate?: string;
   closingDate?: string;
-
   createdAt: ISODateString;
   createdBy: ID;
   updatedAt: ISODateString;
   updatedBy?: ID;
-
   isDeleted: boolean;
   versionNo: number;
 }
 
 /* ------------------------------------------------------------------ *
- * Customer — platform-level identity. A customer's relationship to a
- * business is expressed through a Subscription, not by ownership here.
+ * Customer — platform-level identity.
  * ------------------------------------------------------------------ */
 
 export interface Customer {
@@ -319,7 +377,11 @@ export interface Staff {
   isDeleted: boolean;
   versionNo: number;
 }
-/** User Entity Global */
+
+/* ------------------------------------------------------------------ *
+ * User
+ * ------------------------------------------------------------------ */
+
 export interface User {
   id: ID;
 
@@ -363,7 +425,9 @@ export interface User {
   versionNo: number;
 }
 
-/** Organization User - User belongs to organization **/
+/* ------------------------------------------------------------------ *
+ * Organization User
+ * ------------------------------------------------------------------ */
 
 export interface OrganizationUser {
   id: ID;
@@ -383,8 +447,7 @@ export interface OrganizationUser {
 }
 
 /* ------------------------------------------------------------------ *
- * MembershipProduct — the product a business SELLS (NOT the customer's
- * subscription). Do not collapse with Subscription.
+ * Membership Product
  * ------------------------------------------------------------------ */
 
 export interface SubscriptionPlan {
@@ -456,7 +519,26 @@ export interface MembershipProduct {
   versionNo: number;
 }
 
-/** Product Entity */
+export interface MembershipProductBenefit {
+  id: ID;
+  membershipProductId: ID;
+  benefitId: ID;
+  displaySequence: number;
+  mandatoryBenefit: boolean;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+  statusId: ID;
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt?: ISODateString;
+  updatedBy?: ID;
+  isDeleted: boolean;
+  versionNo: number;
+}
+
+/* ------------------------------------------------------------------ *
+ * Product
+ * ------------------------------------------------------------------ */
 
 export interface Product {
   id: ID;
@@ -491,6 +573,7 @@ export enum BenefitType {
 export interface BenefitValidity {
   startsAt?: ISODateString;
   endsAt?: ISODateString;
+
   /** Free-form recurrence hint, e.g. "birthday-month". */
   recurrence?: string;
 }
@@ -527,7 +610,7 @@ export interface Benefit {
 }
 
 /* ------------------------------------------------------------------ *
- * Offer — promotional, may target membership products.
+ * Offer
  * ------------------------------------------------------------------ */
 
 export interface Offer {
@@ -557,11 +640,27 @@ export interface Offer {
   versionNo: number;
 }
 
+export interface PaymentConfirmation {
+  id: ID;
+  subscriptionId: ID;
+  externalTransactionReference: string;
+  paymentAmount: Money;
+  currencyId: ID;
+  paymentDate: ISODateString;
+  paymentStatusId: ID;
+  processed: boolean;
+  processedAt?: ISODateString;
+  processingRemarks?: string;
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt?: ISODateString;
+  updatedBy?: ID;
+  isDeleted: boolean;
+  versionNo: number;
+}
+
 /* ------------------------------------------------------------------ *
  * User Acquisition
- *
- * Records how a global User entered or registered on Memgine.
- * This is global identity context, not organization-owned data.
  * ------------------------------------------------------------------ */
 
 export interface UserAcquisition {
@@ -569,7 +668,8 @@ export interface UserAcquisition {
 
   /** Global User associated with this acquisition record. */
   userId: ID;
-  /** If also Acquired via that organization */
+
+  /** If also acquired via that organization. */
   organizationId?: ID;
 
   /** Business source through which the user was acquired. */
@@ -592,8 +692,7 @@ export interface UserAcquisition {
 }
 
 /* ------------------------------------------------------------------ *
- * Subscription — the CUSTOMER's subscription to a MembershipProduct.
- * "My Cards" (customer UI) is a view over a customer's subscriptions.
+ * Subscription
  * ------------------------------------------------------------------ */
 
 export enum SubscriptionStatus {
@@ -641,8 +740,7 @@ export interface Subscription {
 }
 
 /* ------------------------------------------------------------------ *
- * Redemption — a benefit redeemed against a subscription, at a store,
- * by a staff member.
+ * Redemption
  * ------------------------------------------------------------------ */
 
 /** How a redemption was performed at the counter. */
