@@ -7,6 +7,7 @@ import type {
   MembershipProduct,
   ReferenceDataItem,
   Status,
+  SubscriptionPlan,
 } from "@/src/core";
 
 import { services } from "@/src/core";
@@ -60,6 +61,9 @@ export default function OrgAdminMemberships() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [saveMessageVisible, setSaveMessageVisible] = useState(false);
+  const [isViewing, setIsViewing] = useState(false);
 
   const [formVisible, setFormVisible] = useState(false);
   const [editingProduct, setEditingProduct] =
@@ -102,14 +106,13 @@ export default function OrgAdminMemberships() {
 
         const committedSnapshot = cloneProducts(persistedProducts);
 
-        const existingDraft = membershipDraftStore.get(organization.id);
-
-        const workingSnapshot = existingDraft
-          ? cloneProducts(existingDraft)
-          : cloneProducts(committedSnapshot);
+        membershipDraftStore.clear(organization.id);
 
         setCommittedProducts(committedSnapshot);
-        setProducts(workingSnapshot);
+        setProducts(cloneProducts(committedSnapshot));
+        setIsEditing(false);
+        setIsViewing(false);
+        setSaveMessageVisible(false);
 
         setBenefits(benefitList);
         setBenefitStatuses(benefitStatusList);
@@ -197,16 +200,16 @@ export default function OrgAdminMemberships() {
   };
 
   /* ---------------------------------------------------------------------- */
-  /* MEMBERSHIP CODE                                                        */
+  /* PLAN                                                                   */
   /* ---------------------------------------------------------------------- */
 
-  const generateMembershipCode = (): string => {
-    const prefix = "MEMBERSHIP";
+  const generateMembershipProductCode = (): string => {
+    const prefix = `${organization.code}-MEMBERSHIP`;
 
     const usedCodes = new Set(
-      products.map((product) =>
-        product.membershipProductCode.trim().toUpperCase(),
-      ),
+      products
+        .map((product) => product.membershipProductCode.trim().toUpperCase())
+        .filter(Boolean),
     );
 
     let sequence = 1;
@@ -218,11 +221,31 @@ export default function OrgAdminMemberships() {
     return `${prefix}-${String(sequence).padStart(3, "0")}`;
   };
 
-  /* ---------------------------------------------------------------------- */
-  /* PLAN                                                                   */
-  /* ---------------------------------------------------------------------- */
+  const generateSubscriptionPlanCode = (
+    membershipProductCode: string,
+    existingPlans: SubscriptionPlan[] = [],
+  ): string => {
+    const prefix = `${membershipProductCode}-PLAN`;
 
-  const createInitialPlan = () => {
+    const usedCodes = new Set(
+      existingPlans
+        .map((plan) => plan.subscriptionPlanCode.trim().toUpperCase())
+        .filter(Boolean),
+    );
+
+    let sequence = 1;
+
+    while (usedCodes.has(`${prefix}-${String(sequence).padStart(3, "0")}`)) {
+      sequence += 1;
+    }
+
+    return `${prefix}-${String(sequence).padStart(3, "0")}`;
+  };
+
+  const createInitialPlan = (
+    productId: string,
+    membershipProductCode: string,
+  ) => {
     const now = new Date().toISOString();
 
     const activeStatus = subscriptionPlanStatuses.find(
@@ -238,12 +261,13 @@ export default function OrgAdminMemberships() {
           currency.name?.trim().toUpperCase() === "INR",
       ) ?? currencies[0];
 
-    const productId = `membership-product-${Date.now()}`;
-
     return {
       id: `membership-plan-${Date.now()}`,
       membershipProductId: productId,
-      subscriptionPlanCode: `PLAN-${Date.now()}`,
+      subscriptionPlanCode: generateSubscriptionPlanCode(
+        membershipProductCode,
+        [],
+      ),
       subscriptionPlanName: "Monthly",
       subscriptionPlanStatusId:
         activeStatus?.id ?? "subscription-plan-status-active",
@@ -280,14 +304,15 @@ export default function OrgAdminMemberships() {
         status.statusName?.trim().toLowerCase() === "active",
     );
 
-    const initialPlan = createInitialPlan();
+    const membershipProductCode = generateMembershipProductCode();
+    const initialPlan = createInitialPlan(productId, membershipProductCode);
 
     return {
       id: productId,
 
       organizationId: organization.id,
 
-      membershipProductCode: generateMembershipCode(),
+      membershipProductCode,
 
       membershipProductName: "",
 
@@ -333,7 +358,26 @@ export default function OrgAdminMemberships() {
   /* ---------------------------------------------------------------------- */
 
   const handleAdd = () => {
+    if (!isEditing || saving) {
+      return;
+    }
+
+    setIsViewing(false);
     setEditingProduct(createEmptyProduct());
+    setFormVisible(true);
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* VIEW                                                                   */
+  /* ---------------------------------------------------------------------- */
+
+  const handleView = (product: MembershipProduct) => {
+    if (saving) {
+      return;
+    }
+
+    setIsViewing(true);
+    setEditingProduct(cloneProducts([product])[0]);
     setFormVisible(true);
   };
 
@@ -342,6 +386,11 @@ export default function OrgAdminMemberships() {
   /* ---------------------------------------------------------------------- */
 
   const handleEdit = (product: MembershipProduct) => {
+    if (!isEditing || saving) {
+      return;
+    }
+
+    setIsViewing(false);
     setEditingProduct(cloneProducts([product])[0]);
     setFormVisible(true);
   };
@@ -472,10 +521,12 @@ export default function OrgAdminMemberships() {
 
       membershipDraftStore.clear(organization.id);
 
-      Alert.alert(
-        "Changes saved",
-        "Your membership changes have been saved successfully.",
-      );
+      setIsEditing(false);
+      setSaveMessageVisible(true);
+
+      setTimeout(() => {
+        setSaveMessageVisible(false);
+      }, 4000);
     } catch (error) {
       Alert.alert(
         "Unable to save changes",
@@ -502,6 +553,30 @@ export default function OrgAdminMemberships() {
     setProducts(restored);
 
     membershipDraftStore.clear(organization.id);
+    setFormVisible(false);
+    setEditingProduct(null);
+    setIsViewing(false);
+    setIsEditing(false);
+  };
+
+  const handleStartEditing = () => {
+    setSaveMessageVisible(false);
+    setIsViewing(false);
+    setIsEditing(true);
+  };
+
+  const handleCancelEditing = () => {
+    if (saving) {
+      return;
+    }
+
+    const restored = cloneProducts(committedProducts);
+
+    setProducts(restored);
+    membershipDraftStore.clear(organization.id);
+    setFormVisible(false);
+    setEditingProduct(null);
+    setIsEditing(false);
   };
 
   /* ---------------------------------------------------------------------- */
@@ -643,63 +718,79 @@ export default function OrgAdminMemberships() {
         </View>
 
         <View style={styles.headerActions}>
-          {hasChanges ? (
-            <Pressable
-              onPress={handleDiscardChanges}
+          {!isEditing ? (
+            <Button
+              label="Edit"
+              onPress={handleStartEditing}
               disabled={saving}
-              style={({ pressed }) => [
-                styles.secondaryButton,
-                {
-                  opacity: saving ? 0.5 : pressed ? 0.8 : 1,
-                },
-              ]}
-            >
-              <Text variant="body" color="text">
-                Discard
-              </Text>
-            </Pressable>
-          ) : null}
+            />
+          ) : (
+            <>
+              <Pressable
+                onPress={handleCancelEditing}
+                disabled={saving}
+                style={({ pressed }) => [
+                  styles.secondaryButton,
+                  {
+                    opacity: saving ? 0.5 : pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <Text variant="body" color="text">
+                  Cancel
+                </Text>
+              </Pressable>
 
-          <Pressable
-            onPress={handlePreview}
-            disabled={saving || products.length === 0}
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              {
-                opacity:
-                  saving || products.length === 0 ? 0.5 : pressed ? 0.8 : 1,
-              },
-            ]}
-          >
-            <Text variant="body" color="text">
-              Preview
-            </Text>
-          </Pressable>
+              <Pressable
+                onPress={handlePreview}
+                disabled={saving || products.length === 0}
+                style={({ pressed }) => [
+                  styles.secondaryButton,
+                  {
+                    opacity:
+                      saving || products.length === 0 ? 0.5 : pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <Text variant="body" color="text">
+                  Preview
+                </Text>
+              </Pressable>
 
-          <Button
-            label={saving ? "Saving..." : "Save Changes"}
-            onPress={() => {
-              void handleSaveChanges();
-            }}
-            disabled={!hasChanges || saving}
-          />
+              <Button
+                label={saving ? "Saving..." : "Save Changes"}
+                onPress={() => {
+                  void handleSaveChanges();
+                }}
+                disabled={!hasChanges || saving}
+              />
 
-          <Pressable
-            onPress={handleAdd}
-            disabled={saving}
-            style={({ pressed }) => [
-              styles.addButton,
-              {
-                opacity: saving ? 0.5 : pressed ? 0.8 : 1,
-              },
-            ]}
-          >
-            <Text variant="body" color="background">
-              + Add Membership
-            </Text>
-          </Pressable>
+              <Pressable
+                onPress={handleAdd}
+                disabled={saving}
+                style={({ pressed }) => [
+                  styles.addButton,
+                  {
+                    opacity: saving ? 0.5 : pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <Text variant="body" color="background">
+                  + Add Membership
+                </Text>
+              </Pressable>
+            </>
+          )}
         </View>
       </View>
+
+      {saveMessageVisible ? (
+        <View style={styles.successMessage}>
+          <Text variant="body" color="text">
+            Changes saved successfully
+          </Text>
+        </View>
+      ) : null}
 
       {loading ? (
         <View style={styles.center}>
@@ -713,16 +804,25 @@ export default function OrgAdminMemberships() {
           data={products.filter((product) => !product.isDeleted)}
           keyExtractor={(item) => item.id}
           emptyMessage="No memberships configured."
-          actions={[
-            {
-              label: "Edit",
-              onPress: handleEdit,
-            },
-            {
-              label: "Delete",
-              onPress: handleDelete,
-            },
-          ]}
+          actions={
+            isEditing
+              ? [
+                  {
+                    label: "Edit",
+                    onPress: handleEdit,
+                  },
+                  {
+                    label: "Delete",
+                    onPress: handleDelete,
+                  },
+                ]
+              : [
+                  {
+                    label: "View",
+                    onPress: handleView,
+                  },
+                ]
+          }
         />
       )}
 
@@ -735,12 +835,15 @@ export default function OrgAdminMemberships() {
 
           setFormVisible(false);
           setEditingProduct(null);
+          setIsViewing(false);
         }}
         title={
-          editingProduct &&
-          committedProducts.some((item) => item.id === editingProduct.id)
-            ? "Edit Membership"
-            : "Add Membership"
+          isViewing
+            ? "View Membership"
+            : editingProduct &&
+                committedProducts.some((item) => item.id === editingProduct.id)
+              ? "Edit Membership"
+              : "Add Membership"
         }
         scrollable
         testID="membership-form-modal"
@@ -751,6 +854,7 @@ export default function OrgAdminMemberships() {
             isNewProduct={
               !committedProducts.some((item) => item.id === editingProduct.id)
             }
+            readOnly={isViewing}
             benefits={activeBenefits}
             productCategories={productCategories}
             productTypes={productTypes}
@@ -761,6 +865,7 @@ export default function OrgAdminMemberships() {
             onCancel={() => {
               setFormVisible(false);
               setEditingProduct(null);
+              setIsViewing(false);
             }}
           />
         ) : null}
@@ -820,6 +925,16 @@ const styles = StyleSheet.create({
   center: {
     minHeight: 160,
     alignItems: "center",
+    justifyContent: "center",
+  },
+
+  successMessage: {
+    minHeight: 44,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    backgroundColor: "#ECFDF5",
     justifyContent: "center",
   },
 });

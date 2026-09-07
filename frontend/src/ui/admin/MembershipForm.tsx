@@ -19,6 +19,7 @@ import { TextArea } from "../TextArea";
 type MembershipFormProps = {
   product: MembershipProduct;
   isNewProduct?: boolean;
+  readOnly?: boolean;
   benefits: Benefit[];
   productCategories: ReferenceDataItem[];
   productTypes: ReferenceDataItem[];
@@ -41,6 +42,7 @@ function isActiveStatus(status: Status | undefined): boolean {
 export function MembershipForm({
   product,
   isNewProduct = false,
+  readOnly = false,
   benefits,
   productCategories,
   productTypes,
@@ -94,6 +96,27 @@ export function MembershipForm({
     }));
   };
 
+  const generateSubscriptionPlanCode = (
+    membershipProductCode: string,
+    existingPlans: PlanDraft[],
+  ): string => {
+    const prefix = `${membershipProductCode}-PLAN`;
+
+    const usedCodes = new Set(
+      existingPlans
+        .map((plan) => plan.subscriptionPlanCode.trim().toUpperCase())
+        .filter(Boolean),
+    );
+
+    let sequence = 1;
+
+    while (usedCodes.has(`${prefix}-${String(sequence).padStart(3, "0")}`)) {
+      sequence += 1;
+    }
+
+    return `${prefix}-${String(sequence).padStart(3, "0")}`;
+  };
+
   const createPlan = (): PlanDraft => {
     const now = new Date().toISOString();
     const activePlanStatus = subscriptionPlanStatuses.find(isActiveStatus);
@@ -104,7 +127,10 @@ export function MembershipForm({
     return {
       id: `plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       membershipProductId: draft.id,
-      subscriptionPlanCode: "",
+      subscriptionPlanCode: generateSubscriptionPlanCode(
+        draft.membershipProductCode,
+        draft.plans,
+      ),
       subscriptionPlanName: "",
       description: "",
       subscriptionPeriod: 1,
@@ -325,8 +351,8 @@ export function MembershipForm({
           label="Membership Product Code"
           required
           value={draft.membershipProductCode}
-          onChangeText={() => undefined}
           editable={false}
+          onChangeText={() => undefined}
         />
 
         <Input
@@ -335,6 +361,7 @@ export function MembershipForm({
           value={draft.membershipProductName}
           onChangeText={(value) => update("membershipProductName", value)}
           placeholder="e.g. Sunrise Gold Membership"
+          editable={!readOnly}
         />
 
         <Input
@@ -344,6 +371,7 @@ export function MembershipForm({
             update("displayName", value.trim() ? value : undefined)
           }
           placeholder="Customer-facing name"
+          editable={!readOnly}
         />
 
         <ReferenceSelect
@@ -352,6 +380,7 @@ export function MembershipForm({
           items={productCategories}
           value={draft.productCategoryId}
           onChange={(value) => update("productCategoryId", value)}
+          disabled={readOnly}
         />
 
         <ReferenceSelect
@@ -360,6 +389,7 @@ export function MembershipForm({
           items={productTypes}
           value={draft.productTypeId}
           onChange={(value) => update("productTypeId", value)}
+          disabled={readOnly}
         />
 
         <TextArea
@@ -369,6 +399,7 @@ export function MembershipForm({
             update("description", value.trim() ? value : undefined)
           }
           placeholder="Describe this membership..."
+          editable={!readOnly}
         />
 
         <ReferenceSelect
@@ -377,7 +408,7 @@ export function MembershipForm({
           items={productStatuses}
           value={draft.productStatusId}
           onChange={(value) => update("productStatusId", value)}
-          disabled={isNewProduct}
+          disabled={isNewProduct || readOnly}
         />
 
         <Input
@@ -386,6 +417,7 @@ export function MembershipForm({
           value={draft.effectiveDate}
           onChangeText={(value) => update("effectiveDate", value)}
           placeholder="YYYY-MM-DD"
+          editable={!readOnly}
         />
 
         <Input
@@ -395,6 +427,7 @@ export function MembershipForm({
             update("expiryDate", value.trim() ? value : undefined)
           }
           placeholder="YYYY-MM-DD"
+          editable={!readOnly}
         />
       </View>
 
@@ -434,7 +467,7 @@ export function MembershipForm({
                 <Pressable
                   key={benefit.id}
                   onPress={() => toggleBenefit(benefit.id)}
-                  disabled={saving}
+                  disabled={saving || readOnly}
                   style={[
                     styles.benefitItem,
                     {
@@ -493,18 +526,20 @@ export function MembershipForm({
             </Text>
           </View>
 
-          <Pressable
-            onPress={addPlan}
-            disabled={saving}
-            style={({ pressed }) => [
-              styles.addPlanButton,
-              { opacity: pressed || saving ? 0.7 : 1 },
-            ]}
-          >
-            <Text variant="body" color="background">
-              + Add Plan
-            </Text>
-          </Pressable>
+          {!readOnly ? (
+            <Pressable
+              onPress={addPlan}
+              disabled={saving}
+              style={({ pressed }) => [
+                styles.addPlanButton,
+                { opacity: pressed || saving ? 0.7 : 1 },
+              ]}
+            >
+              <Text variant="body" color="background">
+                + Add Plan
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {draft.plans.map((plan, index) => (
@@ -528,7 +563,7 @@ export function MembershipForm({
                 </Text>
               </View>
 
-              {draft.plans.length > 1 ? (
+              {!readOnly && draft.plans.length > 1 ? (
                 <Pressable
                   onPress={() => removePlan(plan.id)}
                   disabled={saving}
@@ -544,10 +579,8 @@ export function MembershipForm({
               label="Subscription Plan Code"
               required
               value={plan.subscriptionPlanCode}
-              onChangeText={(value) =>
-                updatePlan(plan.id, "subscriptionPlanCode", value)
-              }
-              placeholder="e.g. GOLD-MONTHLY"
+              editable={false}
+              onChangeText={() => undefined}
             />
 
             <Input
@@ -558,6 +591,7 @@ export function MembershipForm({
                 updatePlan(plan.id, "subscriptionPlanName", value)
               }
               placeholder="e.g. Monthly"
+              editable={!readOnly}
             />
 
             <TextArea
@@ -571,6 +605,7 @@ export function MembershipForm({
                 )
               }
               placeholder="Describe this plan..."
+              editable={!readOnly}
             />
 
             <View style={styles.row}>
@@ -588,6 +623,7 @@ export function MembershipForm({
                     );
                   }}
                   keyboardType="numeric"
+                  editable={!readOnly}
                 />
               </View>
 
@@ -604,6 +640,7 @@ export function MembershipForm({
                   onChange={(value) =>
                     updatePlan(plan.id, "subscriptionPeriodUnit", value)
                   }
+                  disabled={readOnly}
                 />
               </View>
             </View>
@@ -636,6 +673,7 @@ export function MembershipForm({
                     }));
                   }}
                   keyboardType="decimal-pad"
+                  editable={!readOnly}
                 />
               </View>
 
@@ -656,6 +694,7 @@ export function MembershipForm({
                       currency: currency?.code ?? plan.price.currency,
                     });
                   }}
+                  disabled={readOnly}
                 />
               </View>
             </View>
@@ -668,7 +707,9 @@ export function MembershipForm({
               onChange={(value) =>
                 updatePlan(plan.id, "subscriptionPlanStatusId", value)
               }
-              disabled={isNewProduct || !existingPlanIds.has(plan.id)}
+              disabled={
+                readOnly || isNewProduct || !existingPlanIds.has(plan.id)
+              }
             />
             <Input
               label="Effective Date"
@@ -696,33 +737,35 @@ export function MembershipForm({
         ))}
       </View>
 
-      <View style={styles.actions}>
-        <Pressable
-          onPress={onCancel}
-          disabled={saving}
-          style={({ pressed }) => [
-            styles.cancelButton,
-            { opacity: pressed || saving ? 0.7 : 1 },
-          ]}
-        >
-          <Text variant="body" color="text">
-            Cancel
-          </Text>
-        </Pressable>
+      {!readOnly ? (
+        <View style={styles.actions}>
+          <Pressable
+            onPress={onCancel}
+            disabled={saving}
+            style={({ pressed }) => [
+              styles.cancelButton,
+              { opacity: pressed || saving ? 0.7 : 1 },
+            ]}
+          >
+            <Text variant="body" color="text">
+              Cancel
+            </Text>
+          </Pressable>
 
-        <Pressable
-          onPress={handleSave}
-          disabled={saving}
-          style={({ pressed }) => [
-            styles.saveButton,
-            { opacity: pressed || saving ? 0.7 : 1 },
-          ]}
-        >
-          <Text variant="body" color="background">
-            {saving ? "Saving..." : "Save Draft"}
-          </Text>
-        </Pressable>
-      </View>
+          <Pressable
+            onPress={handleSave}
+            disabled={saving}
+            style={({ pressed }) => [
+              styles.saveButton,
+              { opacity: pressed || saving ? 0.7 : 1 },
+            ]}
+          >
+            <Text variant="body" color="background">
+              {saving ? "Saving..." : "Save"}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
