@@ -44,6 +44,13 @@ export default function OrgAdminStores() {
   const router = useRouter();
   const { organization } = useBusiness();
 
+  /*
+   * View mode is the default.
+   *
+   * Edit mode is entered explicitly through the Edit button.
+   */
+  const [isEditing, setIsEditing] = useState(false);
+
   // Working state shown in the Stores table / StoreForm.
   const [stores, setStores] = useState<Store[]>([]);
 
@@ -114,9 +121,15 @@ export default function OrgAdminStores() {
 
         setStores(cloneStores(storeWorkingSession.proposedStores));
         setCommittedStores(cloneStores(storeWorkingSession.currentStores));
+
         setStoreTypes(typeList);
         setStoreStatuses(statusList);
         setCountries(countryList);
+
+        /*
+         * Every fresh entry into the Stores screen starts in View mode.
+         */
+        setIsEditing(false);
       } catch (error) {
         if (!mounted) {
           return;
@@ -205,22 +218,49 @@ export default function OrgAdminStores() {
     storeStatuses.find((item) => item.id === id)?.statusName ?? "Unknown";
 
   /* ---------------------------------------------------------------------- */
+  /* PENDING CHANGES                                                        */
+  /* ---------------------------------------------------------------------- */
+
+  const hasPendingChanges = useMemo(
+    () =>
+      JSON.stringify(committedStores) !== JSON.stringify(cloneStores(stores)),
+    [committedStores, stores],
+  );
+
+  /* ---------------------------------------------------------------------- */
   /* NEW STORE                                                              */
   /* ---------------------------------------------------------------------- */
 
   const generateStoreCode = (): string => {
-    const prefix = "STORE";
-    const usedCodes = new Set(
-      visibleStores.map((store) => store.storeCode.trim().toUpperCase()),
-    );
+    const organizationCode = organization.code.trim().toUpperCase();
 
-    let sequence = 1;
+    const prefix = `${organizationCode}-STORE`;
 
-    while (usedCodes.has(`${prefix}-${String(sequence).padStart(3, "0")}`)) {
-      sequence += 1;
-    }
+    /*
+     * Use the highest existing sequence and never reuse a previously-used
+     * sequence number.
+     *
+     * This also looks at deleted stores so a deleted Store Code is not reused.
+     */
+    const usedSequences = stores
+      .map((store) => {
+        const storeCode = store.storeCode.trim().toUpperCase();
+        const prefixWithDash = `${prefix}-`;
 
-    return `${prefix}-${String(sequence).padStart(3, "0")}`;
+        if (!storeCode.startsWith(prefixWithDash)) {
+          return 0;
+        }
+
+        const sequence = Number(storeCode.slice(prefixWithDash.length));
+
+        return Number.isFinite(sequence) ? sequence : 0;
+      })
+      .filter((sequence) => sequence > 0);
+
+    const nextSequence =
+      usedSequences.length > 0 ? Math.max(...usedSequences) + 1 : 1;
+
+    return `${prefix}-${String(nextSequence).padStart(3, "0")}`;
   };
 
   const createEmptyStore = (): Store => {
@@ -275,7 +315,23 @@ export default function OrgAdminStores() {
     };
   };
 
+  /* ---------------------------------------------------------------------- */
+  /* ENTER EDIT MODE                                                        */
+  /* ---------------------------------------------------------------------- */
+
+  const handleStartEditing = () => {
+    setIsEditing(true);
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* NEW STORE                                                              */
+  /* ---------------------------------------------------------------------- */
+
   const handleAdd = () => {
+    if (!isEditing) {
+      return;
+    }
+
     setEditingStore(createEmptyStore());
 
     setRegions([]);
@@ -289,6 +345,10 @@ export default function OrgAdminStores() {
   /* ---------------------------------------------------------------------- */
 
   const handleEdit = async (store: Store) => {
+    if (!isEditing) {
+      return;
+    }
+
     setEditingStore(store);
 
     const countryCode = store.address.countryCode;
@@ -336,6 +396,7 @@ export default function OrgAdminStores() {
   const handleSave = async (store: Store) => {
     /*
      * Save Store means "save this form into the working Proposed state".
+     *
      * It deliberately does NOT call the organization persistence service.
      */
     const existing = stores.some((item) => item.id === store.id);
@@ -372,16 +433,15 @@ export default function OrgAdminStores() {
   /* COMMIT WORKING SESSION                                                 */
   /* ---------------------------------------------------------------------- */
 
-  const hasPendingChanges = useMemo(
-    () =>
-      JSON.stringify(committedStores) !== JSON.stringify(cloneStores(stores)),
-    [committedStores, stores],
-  );
-
   const handleSaveChanges = async () => {
+    if (!isEditing) {
+      return;
+    }
+
     const currentById = new Map(
       committedStores.map((store) => [store.id, store]),
     );
+
     const proposedById = new Map(stores.map((store) => [store.id, store]));
 
     const addedStores = stores.filter(
@@ -390,6 +450,7 @@ export default function OrgAdminStores() {
 
     const updatedStores = stores.filter((store) => {
       const current = currentById.get(store.id);
+
       if (!current || store.isDeleted) {
         return false;
       }
@@ -430,6 +491,7 @@ export default function OrgAdminStores() {
           organization.id,
           store,
         );
+
         persistedStores.set(created.id, created);
       }
 
@@ -438,11 +500,11 @@ export default function OrgAdminStores() {
           organization.id,
           store,
         );
+
         persistedStores.set(updated.id, updated);
       }
 
       const committed = Array.from(persistedStores.values());
-
       const committedSnapshot = cloneStores(committed);
 
       setStores(cloneStores(committedSnapshot));
@@ -453,6 +515,11 @@ export default function OrgAdminStores() {
         currentStores: cloneStores(committedSnapshot),
         proposedStores: cloneStores(committedSnapshot),
       };
+
+      /*
+       * Successful Save Changes returns the page to View mode.
+       */
+      setIsEditing(false);
 
       Alert.alert(
         "Changes saved",
@@ -466,6 +533,31 @@ export default function OrgAdminStores() {
           : "Unable to commit the Store changes.",
       );
     }
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* DISCARD CHANGES                                                        */
+  /* ---------------------------------------------------------------------- */
+
+  const handleDiscardChanges = () => {
+    /*
+     * Restore the committed snapshot and discard every working change,
+     * including newly-added Stores that have not yet been committed.
+     */
+    const restoredStores = cloneStores(committedStores);
+
+    setStores(restoredStores);
+
+    if (storeWorkingSession) {
+      storeWorkingSession = {
+        ...storeWorkingSession,
+        proposedStores: cloneStores(restoredStores),
+      };
+    }
+
+    handleCloseForm();
+
+    setIsEditing(false);
   };
 
   /* ---------------------------------------------------------------------- */
@@ -490,16 +582,6 @@ export default function OrgAdminStores() {
      * Stores are part of the customer's Profile / Locations experience.
      *
      * Therefore this must remain the section-specific preview route.
-     *
-     * The section preview itself is responsible for showing:
-     *
-     *       CURRENT          PROPOSED
-     *       ─────────         ─────────
-     *       Profile          Profile
-     *       Locations        Locations
-     *
-     * It should NOT open the complete customer experience containing
-     * Membership, Benefits, Offers, Activity, etc.
      */
     router.push({
       pathname: APP_ROUTES.orgAdmin.customerExperienceSection(
@@ -528,6 +610,18 @@ export default function OrgAdminStores() {
     );
   }
 
+  /*
+   * A Store which exists in the working state but not in committed state is
+   * still a "new" Store from the form's lifecycle perspective.
+   *
+   * This matters for:
+   * - Status being locked to Active
+   * - Closing Date remaining unavailable
+   */
+  const isNewStore =
+    editingStore !== null &&
+    !committedStores.some((store) => store.id === editingStore.id);
+
   /* ---------------------------------------------------------------------- */
   /* RENDER                                                                 */
   /* ---------------------------------------------------------------------- */
@@ -554,34 +648,66 @@ export default function OrgAdminStores() {
           </View>
 
           <View style={styles.headerActions}>
-            <Pressable
-              onPress={() => void handleSaveChanges()}
-              disabled={!hasPendingChanges}
-              style={({ pressed }) => [
-                styles.saveChangesButton,
-                {
-                  opacity: !hasPendingChanges ? 0.45 : pressed ? 0.78 : 1,
-                },
-              ]}
-            >
-              <Text variant="body" color="background">
-                Save Changes
-              </Text>
-            </Pressable>
+            {!isEditing ? (
+              <Pressable
+                onPress={handleStartEditing}
+                style={({ pressed }) => [
+                  styles.primaryButton,
+                  {
+                    opacity: pressed ? 0.78 : 1,
+                  },
+                ]}
+              >
+                <Text variant="body" color="background">
+                  Edit
+                </Text>
+              </Pressable>
+            ) : (
+              <>
+                <Pressable
+                  onPress={handleDiscardChanges}
+                  style={({ pressed }) => [
+                    styles.secondaryButton,
+                    {
+                      opacity: pressed ? 0.78 : 1,
+                    },
+                  ]}
+                >
+                  <Text variant="body" color="text">
+                    Discard
+                  </Text>
+                </Pressable>
 
-            <Pressable
-              onPress={handleAdd}
-              style={({ pressed }) => [
-                styles.addButton,
-                {
-                  opacity: pressed ? 0.78 : 1,
-                },
-              ]}
-            >
-              <Text variant="body" color="background">
-                + Add Store
-              </Text>
-            </Pressable>
+                <Pressable
+                  onPress={() => void handleSaveChanges()}
+                  disabled={!hasPendingChanges}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    {
+                      opacity: !hasPendingChanges ? 0.45 : pressed ? 0.78 : 1,
+                    },
+                  ]}
+                >
+                  <Text variant="body" color="background">
+                    Save Changes
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={handleAdd}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    {
+                      opacity: pressed ? 0.78 : 1,
+                    },
+                  ]}
+                >
+                  <Text variant="body" color="background">
+                    + Add Store
+                  </Text>
+                </Pressable>
+              </>
+            )}
           </View>
         </View>
 
@@ -619,11 +745,16 @@ export default function OrgAdminStores() {
           </View>
         </View>
 
-        {hasPendingChanges ? (
+        {/* ================================================================ */}
+        {/* EDIT MODE INDICATOR                                               */}
+        {/* ================================================================ */}
+
+        {isEditing && hasPendingChanges ? (
           <View style={styles.pendingChangesBanner}>
             <Text variant="bodySmall" color="text">
               You have unsaved Store changes.
             </Text>
+
             <Text variant="caption" color="textMuted">
               Save individual stores as you work, then use Save Changes when you
               are ready to commit the complete session.
@@ -717,12 +848,16 @@ export default function OrgAdminStores() {
             data={visibleStores}
             keyExtractor={(item) => item.id}
             emptyMessage="No stores configured."
-            actions={[
-              {
-                label: "Edit",
-                onPress: handleEdit,
-              },
-            ]}
+            actions={
+              isEditing
+                ? [
+                    {
+                      label: "Edit",
+                      onPress: handleEdit,
+                    },
+                  ]
+                : undefined
+            }
           />
         </View>
       </ScrollView>
@@ -734,18 +869,14 @@ export default function OrgAdminStores() {
       <Modal
         visible={formVisible}
         onClose={handleCloseForm}
-        title={
-          editingStore && stores.some((item) => item.id === editingStore.id)
-            ? "Edit Store"
-            : "Add Store"
-        }
+        title={isNewStore ? "Add Store" : "Edit Store"}
         scrollable
         testID="store-form-modal"
       >
         {editingStore ? (
           <StoreForm
             store={editingStore}
-            isNew={!stores.some((item) => item.id === editingStore.id)}
+            isNew={isNewStore}
             storeTypes={storeTypes}
             storeStatuses={storeStatuses}
             countries={countries}
@@ -790,7 +921,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
-  saveChangesButton: {
+  primaryButton: {
     minHeight: 44,
     paddingHorizontal: 18,
     borderRadius: 9,
@@ -799,13 +930,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#0F766E",
   },
 
-  addButton: {
+  secondaryButton: {
     minHeight: 44,
     paddingHorizontal: 18,
     borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0F766E",
+    backgroundColor: "#F1F5F9",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
   },
 
   summaryRow: {

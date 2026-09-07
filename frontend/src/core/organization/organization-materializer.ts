@@ -24,13 +24,29 @@ export type MaterializedOrganization = {
   context: BusinessContext;
 };
 
-function createId(prefix: string): ID {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+/**
+ * Creates the technical Organization ID.
+ *
+ * Organization ID and Organization Code are deliberately
+ * independent identifiers.
+ *
+ * ID example:
+ *   org-20260907-a7k3m9x2
+ *
+ * This value is immutable and is used for database relationships.
+ */
+function createOrganizationId(): ID {
+  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+
+  const randomPart = Math.random().toString(36).slice(2, 10).toLowerCase();
+
+  return `org-${datePart}-${randomPart}`;
 }
 
 export function materializeOrganization(
   input: {
     name: string;
+    organizationCode: string;
     organizationTypeId: ID;
     primaryEmail: string;
     primaryPhone: {
@@ -54,7 +70,11 @@ export function materializeOrganization(
 
   const now = new Date().toISOString();
 
-  const organizationId = createId("org");
+  /*
+   * Technical ID and business Code are intentionally generated
+   * independently.
+   */
+  const organizationId = createOrganizationId();
 
   const identity = template.content.businessIdentity;
 
@@ -63,7 +83,13 @@ export function materializeOrganization(
   const organization: Organization = {
     id: organizationId,
 
-    code: organizationId.replace(/^org-/, "").toUpperCase(),
+    /*
+     * Human-readable, immutable Organization Code.
+     *
+     * Example:
+     *   ORG-SUNRISE
+     */
+    code: input.organizationCode,
 
     name: input.name,
 
@@ -251,4 +277,11 @@ export function materializeOrganization(
     branding,
     context,
   };
+}
+
+/**
+ * Creates technical IDs for organization-owned records.
+ */
+function createId(prefix: string): ID {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }

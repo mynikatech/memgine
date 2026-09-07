@@ -60,6 +60,7 @@ type ValidationErrors = {
   countryCode?: string;
   region?: string;
   city?: string;
+  postalCode?: string;
 
   phoneNumber?: string;
   emailAddress?: string;
@@ -469,11 +470,13 @@ export function StoreForm({
             requiredCountry
             requiredRegion
             requiredCity
+            requiredPostalCode
             errors={{
               line1: errors.addressLine1,
               countryCode: errors.countryCode,
               region: errors.region,
               city: errors.city,
+              postalCode: errors.postalCode,
             }}
             onChange={updateAddress}
             onCountryChange={onCountryChange}

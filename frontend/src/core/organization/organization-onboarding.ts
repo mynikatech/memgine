@@ -4,7 +4,6 @@ import type {
   OnboardOrganizationInput,
   OnboardOrganizationResult,
 } from "../services/service-contracts";
-import { services } from "../services/service-registry";
 
 import { getDefaultBusinessTemplate } from "../defaults/default-business-template";
 
@@ -13,10 +12,82 @@ import { materializeOrganization } from "./organization-materializer";
 import { apis } from "@/src/data";
 
 /**
+ * Converts a business name into the human-readable Organization Code base.
+ *
+ * Examples:
+ *   SUNRISE BAKERY       -> ORG-SUNRISE
+ *   HORIZON FITNESS      -> ORG-HORIZON
+ *   MAPLE DENTAL CLINIC  -> ORG-MAPLE
+ *   ABC PHARMACY         -> ORG-ABC
+ *   THE COFFEE HOUSE     -> ORG-COFFEE
+ */
+function createOrganizationCodeBase(name: string): string {
+  const words = name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const ignoredWords = new Set(["THE", "A", "AN"]);
+
+  const meaningfulWord =
+    words.find((word) => !ignoredWords.has(word)) ?? words[0] ?? "ORG";
+
+  const normalizedWord = meaningfulWord.replace(/[^A-Z0-9]/g, "").slice(0, 20);
+
+  return `ORG-${normalizedWord || "ORG"}`;
+}
+
+/**
+ * Ensures that the human-readable Organization Code is unique.
+ *
+ * The first organization gets:
+ *   ORG-SUNRISE
+ *
+ * Subsequent organizations with the same generated base get:
+ *   ORG-SUNRISE-002
+ *   ORG-SUNRISE-003
+ *
+ * Codes are never reused merely because an older organization was deleted.
+ */
+async function createUniqueOrganizationCode(name: string): Promise<string> {
+  const baseCode = createOrganizationCodeBase(name);
+
+  const result = await apis.organization.list();
+
+  if (!result.success) {
+    throw new Error(result.error.message);
+  }
+
+  const existingCodes = new Set(
+    result.data
+      .map((organization) => organization.code?.trim().toUpperCase())
+      .filter(Boolean),
+  );
+
+  if (!existingCodes.has(baseCode)) {
+    return baseCode;
+  }
+
+  let sequence = 2;
+
+  while (
+    existingCodes.has(`${baseCode}-${String(sequence).padStart(3, "0")}`)
+  ) {
+    sequence += 1;
+  }
+
+  return `${baseCode}-${String(sequence).padStart(3, "0")}`;
+}
+
+/**
  * Application-level organization onboarding operation.
  *
  * Responsibilities:
  * - validate Platform Admin input
+ * - generate the Organization Code
+ * - generate the technical Organization ID
  * - resolve the platform starter template
  * - materialize the initial organization-owned records
  * - delegate persistence to the data/API boundary
@@ -87,6 +158,16 @@ export async function onboardOrganization(
   }
 
   /*
+   * Generate the Organization Code independently from the
+   * technical Organization ID.
+   *
+   * Example:
+   *   name = "SUNRISE BAKERY"
+   *   code = "ORG-SUNRISE"
+   */
+  const organizationCode = await createUniqueOrganizationCode(name);
+
+  /*
    * Resolve the platform-owned starter template.
    *
    * This does NOT copy the template itself to the
@@ -98,13 +179,19 @@ export async function onboardOrganization(
   const materialized = materializeOrganization(
     {
       name,
+
+      organizationCode,
+
       organizationTypeId,
+
       primaryEmail,
+
       primaryPhone: {
         countryId: primaryPhoneCountryId,
         callingCode: primaryPhoneCallingCode,
         number: primaryPhoneNumber,
       },
+
       useDefaultBusinessContent: input.useDefaultBusinessContent,
     },
     template,
