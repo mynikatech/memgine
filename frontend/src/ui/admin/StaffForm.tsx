@@ -23,6 +23,8 @@ import { DateInput, Input, PhoneField, ReferenceSelect, Text } from "@/src/ui";
 type StaffFormProps = {
   staff: Staff;
 
+  organizationCode: string;
+
   users: User[];
 
   organizationUsers: OrganizationUser[];
@@ -61,7 +63,11 @@ type NewUserState = {
   userStatusId: string;
 };
 
-function generateStaffCode(existingStaff: Staff[]): string {
+function generateStaffCode(
+  existingStaff: Staff[],
+  organizationCode: string,
+  primaryStoreCode?: string,
+): string {
   const numbers = existingStaff
     .map((item) => item.staffCode?.match(/(\d+)$/)?.[1])
     .filter(Boolean)
@@ -69,7 +75,14 @@ function generateStaffCode(existingStaff: Staff[]): string {
 
   const next = Math.max(0, ...numbers) + 1;
 
-  return `STF-${String(next).padStart(4, "0")}`;
+  if (!primaryStoreCode) {
+    return "";
+  }
+
+  return `${organizationCode}-${primaryStoreCode}-STAFF-${String(next).padStart(
+    3,
+    "0",
+  )}`;
 }
 
 function createDefaultPhone(
@@ -114,6 +127,7 @@ function getUserPhoneDisplay(user?: User): string {
 
 export function StaffForm({
   staff,
+  organizationCode,
   users,
   organizationUsers,
   existingStaff,
@@ -144,7 +158,13 @@ export function StaffForm({
   const [form, setForm] = useState<Staff>(() => ({
     ...staff,
 
-    staffCode: staff.staffCode || generateStaffCode(existingStaff),
+    /*
+     * For a new Staff record the Staff Code is generated
+     * after the Primary Store is selected.
+     *
+     * Existing Staff keeps its existing Staff Code unchanged.
+     */
+    staffCode: staff.staffCode || "",
 
     staffStatusId: isNew ? activeStaffStatusId : staff.staffStatusId,
   }));
@@ -184,7 +204,7 @@ export function StaffForm({
     setForm({
       ...staff,
 
-      staffCode: staff.staffCode || generateStaffCode(existingStaff),
+      staffCode: staff.staffCode || "",
 
       staffStatusId: isNew ? activeStaffStatusId : staff.staffStatusId,
     });
@@ -362,26 +382,35 @@ export function StaffForm({
   const handlePrimaryStoreChange = (value: string) => {
     const primaryStoreId = value || undefined;
 
+    const primaryStore = stores.find((store) => store.id === primaryStoreId);
+
     update("storeId", primaryStoreId);
 
-    if (!primaryStoreId) {
-      /*
-       * If Primary Store is cleared,
-       * retain associated stores.
-       *
-       * Save validation below will
-       * prevent saving without a primary.
-       */
-      return;
+    /*
+     * Generate the Staff Code only for a new Staff record.
+     *
+     * Existing Staff Codes must never change simply because
+     * the Primary Store is changed.
+     */
+    if (isNew) {
+      update(
+        "staffCode",
+        primaryStore
+          ? generateStaffCode(
+              existingStaff,
+              organizationCode,
+              primaryStore.storeCode,
+            )
+          : "",
+      );
     }
 
     setSelectedStoreIds((current) => {
-      const withoutPrimary = current.filter((id) => id !== primaryStoreId);
+      if (!primaryStoreId) {
+        return current;
+      }
 
-      /*
-       * Primary store is always first.
-       */
-      return [primaryStoreId, ...withoutPrimary];
+      return [primaryStoreId, ...current.filter((id) => id !== primaryStoreId)];
     });
   };
 
@@ -571,7 +600,7 @@ export function StaffForm({
         {
           ...form,
 
-          staffCode: form.staffCode || generateStaffCode(existingStaff),
+          staffCode: form.staffCode,
 
           /*
            * Primary Store is the Staff.storeId.

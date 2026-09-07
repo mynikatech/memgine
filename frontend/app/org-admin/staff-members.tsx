@@ -52,7 +52,11 @@ function getStaffName(
   );
 }
 
-function generateStaffCode(staff: Staff[]): string {
+function generateStaffCode(
+  staff: Staff[],
+  organizationCode: string,
+  primaryStoreCode?: string,
+): string {
   const numbers = staff
     .map((item) => item.staffCode?.match(/(\d+)$/)?.[1])
     .filter(Boolean)
@@ -60,11 +64,24 @@ function generateStaffCode(staff: Staff[]): string {
 
   const next = Math.max(0, ...numbers) + 1;
 
-  return `STF-${String(next).padStart(4, "0")}`;
+  if (!primaryStoreCode) {
+    return "";
+  }
+
+  return `${organizationCode}-${primaryStoreCode}-STAFF-${String(next).padStart(
+    3,
+    "0",
+  )}`;
 }
 
 export default function OrgAdminStaff() {
   const { organization } = useBusiness();
+
+  /* ---------------------------------------------------------------------- */
+  /* PAGE MODE                                                              */
+  /* ---------------------------------------------------------------------- */
+
+  const [isEditing, setIsEditing] = useState(false);
 
   const [users, setUsers] = useState<User[]>([]);
   const [userStatuses, setUserStatuses] = useState<Status[]>([]);
@@ -76,23 +93,22 @@ export default function OrgAdminStaff() {
   >([]);
 
   const [stores, setStores] = useState<Store[]>([]);
+
   const [staffStatuses, setStaffStatuses] = useState<Status[]>([]);
   const [countries, setCountries] = useState<CountryReference[]>([]);
 
-  /*
-   * Store assignments are persisted independently from Staff.
-   *
-   * Staff.storeId = Primary Store
-   *
-   * StaffStoreAssignment[] = all associated stores
-   */
   const [staffAssignments, setStaffAssignments] = useState<
     StaffStoreAssignment[]
   >([]);
 
   const [loading, setLoading] = useState(true);
+
   const [formVisible, setFormVisible] = useState(false);
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
+
+  /* ---------------------------------------------------------------------- */
+  /* LOAD                                                                   */
+  /* ---------------------------------------------------------------------- */
 
   useEffect(() => {
     let mounted = true;
@@ -115,10 +131,6 @@ export default function OrgAdminStaff() {
 
           services.organization.listOrganizationUsers(organization.id),
 
-          /*
-           * IMPORTANT:
-           * Stores now come from the local production data path.
-           */
           services.organization.listStores(organization.id),
 
           services.status.listStaffStatuses(),
@@ -137,19 +149,25 @@ export default function OrgAdminStaff() {
         }
 
         setStaff(staffList);
+
         setOrganizationUsers(organizationUserList);
 
-        /*
-         * Only active/non-deleted stores should be presented.
-         */
         setStores(storeList.filter((store) => !store.isDeleted));
 
         setStaffStatuses(staffStatusList);
+
         setCountries(countryList);
+
         setUsers(userList);
+
         setUserStatuses(userStatusList);
 
         setStaffAssignments(assignmentList.filter((item) => !item.isDeleted));
+
+        /*
+         * Every fresh load starts in View mode.
+         */
+        setIsEditing(false);
       } catch (error) {
         if (!mounted) {
           return;
@@ -172,6 +190,10 @@ export default function OrgAdminStaff() {
       mounted = false;
     };
   }, [organization.id]);
+
+  /* ---------------------------------------------------------------------- */
+  /* DISPLAY HELPERS                                                        */
+  /* ---------------------------------------------------------------------- */
 
   const getRoleName = (role: StaffRole) => {
     switch (role) {
@@ -200,12 +222,10 @@ export default function OrgAdminStaff() {
   const getStatusName = (statusId: string) =>
     staffStatuses.find((item) => item.id === statusId)?.statusName ?? "Unknown";
 
-  /*
-   * Returns all stores associated with a Staff record.
-   *
-   * Primary Store is also included for backward compatibility
-   * with records created before StaffStoreAssignment existed.
-   */
+  /* ---------------------------------------------------------------------- */
+  /* STORE ASSIGNMENTS                                                      */
+  /* ---------------------------------------------------------------------- */
+
   const getAssociatedStoreIds = (staffId: string): string[] => {
     const assignmentIds = staffAssignments
       .filter(
@@ -222,12 +242,16 @@ export default function OrgAdminStaff() {
     return Array.from(new Set(assignmentIds));
   };
 
+  /* ---------------------------------------------------------------------- */
+  /* TABLE                                                                   */
+  /* ---------------------------------------------------------------------- */
+
   const columns = useMemo<DataTableColumn<Staff>[]>(
     () => [
       {
         key: "staffCode",
         title: "Staff Code",
-        width: 120,
+        width: 260,
       },
 
       {
@@ -293,6 +317,10 @@ export default function OrgAdminStaff() {
     [stores, staffStatuses, organizationUsers, users],
   );
 
+  /* ---------------------------------------------------------------------- */
+  /* NEW STAFF                                                               */
+  /* ---------------------------------------------------------------------- */
+
   const createEmptyStaff = (): Staff => {
     const now = new Date().toISOString();
 
@@ -308,22 +336,23 @@ export default function OrgAdminStaff() {
 
       organizationUserId: "",
 
-      staffCode: generateStaffCode(staff),
+      /*
+       * Staff Code is generated by StaffForm once
+       * Primary Store has been selected.
+       */
+      staffCode: "",
 
       designation: undefined,
 
-      /*
-       * Do not assume the first store is the
-       * primary store.
-       *
-       * The user must explicitly select it.
-       */
       storeId: undefined,
 
       joiningDate: now.substring(0, 10),
 
       relievingDate: undefined,
 
+      /*
+       * New Staff is always Active.
+       */
       staffStatusId: activeStatusId,
 
       role: StaffRole.STAFF,
@@ -333,16 +362,20 @@ export default function OrgAdminStaff() {
       isActive: true,
 
       createdAt: now,
-      createdBy: "user-system",
+      createdBy: organization.updatedBy ?? organization.id,
 
       updatedAt: now,
-      updatedBy: "user-system",
+      updatedBy: organization.updatedBy,
 
       isDeleted: false,
 
       versionNo: 1,
     };
   };
+
+  /* ---------------------------------------------------------------------- */
+  /* USER CREATION                                                           */
+  /* ---------------------------------------------------------------------- */
 
   const handleCreateUser = async (input: CreateUserInput): Promise<User> => {
     const created = await services.organization.createUser(input);
@@ -365,24 +398,20 @@ export default function OrgAdminStaff() {
     return created;
   };
 
-  /*
-   * Save the complete StaffStoreAssignment
-   * collection for the Staff record.
-   */
+  /* ---------------------------------------------------------------------- */
+  /* STAFF STORE ASSIGNMENTS                                                */
+  /* ---------------------------------------------------------------------- */
+
   const saveStaffStoreAssignments = async (
     staffRecord: Staff,
     selectedStoreIds: string[],
   ) => {
-    /*
-     * Remove duplicates and ignore empty values.
-     */
     const uniqueStoreIds = Array.from(
       new Set(selectedStoreIds.filter(Boolean)),
     );
 
     /*
-     * The Primary Store must always
-     * belong to the associated-store set.
+     * Primary Store must always be included.
      */
     if (staffRecord.storeId && !uniqueStoreIds.includes(staffRecord.storeId)) {
       uniqueStoreIds.unshift(staffRecord.storeId);
@@ -400,7 +429,7 @@ export default function OrgAdminStaff() {
     const desiredIds = new Set(uniqueStoreIds);
 
     /*
-     * CREATE missing associations.
+     * CREATE new associations.
      */
     for (const storeId of desiredIds) {
       if (currentIds.has(storeId)) {
@@ -427,10 +456,10 @@ export default function OrgAdminStaff() {
         endDate: undefined,
 
         createdAt: now,
-        createdBy: "user-system",
+        createdBy: organization.updatedBy ?? organization.id,
 
         updatedAt: now,
-        updatedBy: "user-system",
+        updatedBy: organization.updatedBy,
 
         isDeleted: false,
 
@@ -444,8 +473,7 @@ export default function OrgAdminStaff() {
     }
 
     /*
-     * SOFT DELETE associations which
-     * are no longer selected.
+     * SOFT DELETE associations no longer selected.
      */
     for (const assignment of currentAssignments) {
       if (desiredIds.has(assignment.storeId)) {
@@ -459,8 +487,7 @@ export default function OrgAdminStaff() {
     }
 
     /*
-     * Reload from persistence so React state
-     * exactly matches the persisted source.
+     * Reload persisted assignments.
      */
     const refreshed = await services.organization.listStaffStoreAssignments(
       organization.id,
@@ -468,6 +495,10 @@ export default function OrgAdminStaff() {
 
     setStaffAssignments(refreshed.filter((item) => !item.isDeleted));
   };
+
+  /* ---------------------------------------------------------------------- */
+  /* STAFF FORM SAVE                                                        */
+  /* ---------------------------------------------------------------------- */
 
   const handleSave = async (
     updatedStaff: Staff,
@@ -510,22 +541,110 @@ export default function OrgAdminStaff() {
     }
   };
 
-  const handleAdd = () => {
-    const newStaff = createEmptyStaff();
+  /* ---------------------------------------------------------------------- */
+  /* PAGE SAVE                                                               */
+  /* ---------------------------------------------------------------------- */
 
-    setEditingStaff(newStaff);
+  const handlePageSave = () => {
+    /*
+     * StaffForm already persists each Staff record when
+     * its Save button is pressed.
+     *
+     * This page-level Save therefore completes the
+     * current Edit session and returns to View mode.
+     */
+    closeForm();
+    setIsEditing(false);
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* PAGE CANCEL / DISCARD                                                  */
+  /* ---------------------------------------------------------------------- */
+
+  const handlePageCancel = () => {
+    /*
+     * Close any open form and leave Edit mode.
+     *
+     * Any Staff changes already saved through StaffForm
+     * remain persisted.
+     */
+    closeForm();
+    setIsEditing(false);
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* ENTER EDIT MODE                                                        */
+  /* ---------------------------------------------------------------------- */
+
+  const handleStartEditing = () => {
+    setIsEditing(true);
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* ADD STAFF                                                               */
+  /* ---------------------------------------------------------------------- */
+
+  const handleAdd = () => {
+    if (!isEditing) {
+      return;
+    }
+
+    setEditingStaff(createEmptyStaff());
+
     setFormVisible(true);
   };
+
+  /* ---------------------------------------------------------------------- */
+  /* EDIT STAFF                                                              */
+  /* ---------------------------------------------------------------------- */
 
   const handleEdit = (item: Staff) => {
+    if (!isEditing) {
+      return;
+    }
+
     setEditingStaff(item);
+
     setFormVisible(true);
   };
+
+  /* ---------------------------------------------------------------------- */
+  /* CLOSE FORM                                                              */
+  /* ---------------------------------------------------------------------- */
 
   const closeForm = () => {
     setFormVisible(false);
     setEditingStaff(null);
   };
+
+  /* ---------------------------------------------------------------------- */
+  /* SUMMARY                                                                 */
+  /* ---------------------------------------------------------------------- */
+
+  const activeStaffCount = useMemo(
+    () =>
+      staff.filter((item) => {
+        if (item.isDeleted) {
+          return false;
+        }
+
+        const status = staffStatuses.find(
+          (statusItem) => statusItem.id === item.staffStatusId,
+        );
+
+        return status?.statusName.trim().toLowerCase() === "active";
+      }).length,
+    [staff, staffStatuses],
+  );
+
+  const visibleStaff = useMemo(
+    () => staff.filter((item) => !item.isDeleted),
+    [staff],
+  );
+
+  /* ---------------------------------------------------------------------- */
+  /* RENDER                                                                  */
+  /* ---------------------------------------------------------------------- */
 
   return (
     <ScrollView
@@ -533,6 +652,10 @@ export default function OrgAdminStaff() {
       contentContainerStyle={styles.screen}
       showsVerticalScrollIndicator={false}
     >
+      {/* ================================================================== */}
+      {/* HEADER                                                              */}
+      {/* ================================================================== */}
+
       <View style={styles.header}>
         <View style={styles.headerText}>
           <Text variant="title" color="text">
@@ -540,37 +663,159 @@ export default function OrgAdminStaff() {
           </Text>
 
           <Text variant="bodySmall" color="textMuted">
-            Manage staff members, store assignments and access roles.
+            Manage staff members, roles and store assignments.
           </Text>
         </View>
 
-        <Pressable onPress={handleAdd} style={styles.addButton}>
-          <Text variant="body" color="background">
-            + Add Staff
-          </Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          {!isEditing ? (
+            /*
+             * VIEW MODE
+             */
+            <Pressable
+              onPress={handleStartEditing}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                {
+                  opacity: pressed ? 0.78 : 1,
+                },
+              ]}
+            >
+              <Text variant="body" color="background">
+                Edit
+              </Text>
+            </Pressable>
+          ) : (
+            /*
+             * EDIT MODE
+             */
+            <>
+              <Pressable
+                onPress={handlePageCancel}
+                style={({ pressed }) => [
+                  styles.secondaryButton,
+                  {
+                    opacity: pressed ? 0.78 : 1,
+                  },
+                ]}
+              >
+                <Text variant="body" color="text">
+                  Cancel
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={handlePageSave}
+                style={({ pressed }) => [
+                  styles.primaryButton,
+                  {
+                    opacity: pressed ? 0.78 : 1,
+                  },
+                ]}
+              >
+                <Text variant="body" color="background">
+                  Save
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={handleAdd}
+                style={({ pressed }) => [
+                  styles.primaryButton,
+                  {
+                    opacity: pressed ? 0.78 : 1,
+                  },
+                ]}
+              >
+                <Text variant="body" color="background">
+                  + Add Staff
+                </Text>
+              </Pressable>
+            </>
+          )}
+        </View>
       </View>
 
-      {loading ? (
-        <View style={styles.center}>
-          <Text variant="body" color="textMuted">
-            Loading staff...
+      {/* ================================================================== */}
+      {/* SUMMARY                                                             */}
+      {/* ================================================================== */}
+
+      <View style={styles.summaryRow}>
+        <View style={styles.summaryCard}>
+          <Text variant="caption" color="textMuted">
+            STAFF
+          </Text>
+
+          <Text variant="title" color="text">
+            {visibleStaff.length}
+          </Text>
+
+          <Text variant="bodySmall" color="textMuted">
+            Staff members
           </Text>
         </View>
-      ) : (
-        <DataTable
-          columns={columns}
-          data={staff.filter((item) => !item.isDeleted)}
-          keyExtractor={(item) => item.id}
-          emptyMessage="No staff configured."
-          actions={[
-            {
-              label: "Edit",
-              onPress: handleEdit,
-            },
-          ]}
-        />
-      )}
+
+        <View style={styles.summaryCard}>
+          <Text variant="caption" color="textMuted">
+            ACTIVE
+          </Text>
+
+          <Text variant="title" color="text">
+            {activeStaffCount}
+          </Text>
+
+          <Text variant="bodySmall" color="textMuted">
+            Currently active
+          </Text>
+        </View>
+      </View>
+
+      {/* ================================================================== */}
+      {/* STAFF TABLE                                                         */}
+      {/* ================================================================== */}
+
+      <View style={styles.tableSection}>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionHeaderText}>
+            <Text variant="title" color="text">
+              Staff Members
+            </Text>
+
+            <Text variant="bodySmall" color="textMuted">
+              Staff members belonging to this organization.
+            </Text>
+          </View>
+        </View>
+
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <Text variant="body" color="textMuted">
+              Loading staff...
+            </Text>
+          </View>
+        ) : (
+          <DataTable
+            columns={columns}
+            data={visibleStaff}
+            keyExtractor={(item) => item.id}
+            emptyMessage="No staff configured."
+            actions={
+              isEditing
+                ? [
+                    {
+                      label: "Edit",
+                      onPress: handleEdit,
+                    },
+                  ]
+                : undefined
+            }
+          />
+        )}
+      </View>
+
+      {/* ================================================================== */}
+      {/* STAFF FORM                                                          */}
+      {/* ================================================================== */}
 
       <Modal
         visible={formVisible}
@@ -586,6 +831,7 @@ export default function OrgAdminStaff() {
         {editingStaff ? (
           <StaffForm
             staff={editingStaff}
+            organizationCode={organization.code}
             users={users}
             userStatuses={userStatuses}
             organizationUsers={organizationUsers}
@@ -604,6 +850,10 @@ export default function OrgAdminStaff() {
     </ScrollView>
   );
 }
+
+/* ========================================================================== */
+/* STYLES                                                                     */
+/* ========================================================================== */
 
 const styles = StyleSheet.create({
   scroll: {
@@ -624,20 +874,72 @@ const styles = StyleSheet.create({
 
   headerText: {
     flex: 1,
-    gap: 4,
+    gap: 5,
   },
 
-  addButton: {
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  primaryButton: {
     minHeight: 44,
     paddingHorizontal: 18,
-    borderRadius: 8,
+    borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#0F766E",
   },
 
-  center: {
-    minHeight: 160,
+  secondaryButton: {
+    minHeight: 44,
+    paddingHorizontal: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F1F5F9",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+  },
+
+  summaryRow: {
+    flexDirection: "row",
+    gap: 16,
+  },
+
+  summaryCard: {
+    flex: 1,
+    minHeight: 116,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    gap: 4,
+  },
+
+  tableSection: {
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    gap: 16,
+  },
+
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+
+  sectionHeaderText: {
+    flex: 1,
+    gap: 4,
+  },
+
+  loadingContainer: {
+    minHeight: 120,
     alignItems: "center",
     justifyContent: "center",
   },
