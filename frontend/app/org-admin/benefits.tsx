@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import type { Benefit, Product, ReferenceDataItem, Status } from "@/src/core";
@@ -53,6 +54,13 @@ export default function OrgAdminBenefits() {
   const router = useRouter();
 
   /*
+   * Page opens in View mode.
+   *
+   * Editing must be explicitly enabled.
+   */
+  const [isEditing, setIsEditing] = useState(false);
+
+  /*
    * Last successfully persisted state.
    *
    * This is the "Current" state.
@@ -62,7 +70,7 @@ export default function OrgAdminBenefits() {
   /*
    * Working state.
    *
-   * This is the "Proposed" state.
+   * This is the "Proposed" state while Edit mode is active.
    */
   const [benefits, setBenefits] = useState<Benefit[]>([]);
 
@@ -120,13 +128,7 @@ export default function OrgAdminBenefits() {
         const persistedSnapshot = cloneBenefits(persistedBenefits);
 
         /*
-         * If we already have an unsaved draft, restore it.
-         *
-         * This is what prevents:
-         *
-         * Benefits → Preview → Back
-         *
-         * from losing the new row.
+         * Restore an existing unsaved draft if one exists.
          */
         const existingDraft = benefitDraftStore.get(organization.id);
 
@@ -145,6 +147,11 @@ export default function OrgAdminBenefits() {
         setBenefitStatuses(statusList);
 
         setProducts(productList);
+
+        /*
+         * Every fresh organization load starts in View mode.
+         */
+        setIsEditing(false);
       } catch (error) {
         if (!mounted) {
           return;
@@ -175,6 +182,11 @@ export default function OrgAdminBenefits() {
   const hasChanges = useMemo(
     () => !benefitsEqual(committedBenefits, benefits),
     [committedBenefits, benefits],
+  );
+
+  const visibleBenefits = useMemo(
+    () => benefits.filter((benefit) => !benefit.isDeleted),
+    [benefits],
   );
 
   /* ---------------------------------------------------------------------- */
@@ -208,7 +220,7 @@ export default function OrgAdminBenefits() {
   /* ---------------------------------------------------------------------- */
 
   const generateBenefitCode = (): string => {
-    const prefix = "BENEFIT";
+    const prefix = `${organization.code}-BENEFIT`;
 
     const usedCodes = new Set(
       benefits.map((benefit) => benefit.benefitCode.trim().toUpperCase()),
@@ -253,6 +265,9 @@ export default function OrgAdminBenefits() {
 
       description: undefined,
 
+      /*
+       * New Benefit defaults to Active.
+       */
       benefitStatusId: activeStatus?.id ?? "benefit-status-active",
 
       productId: undefined,
@@ -261,6 +276,10 @@ export default function OrgAdminBenefits() {
 
       cost: undefined,
 
+      /*
+       * Physical model default:
+       * Current Date.
+       */
       effectiveDate: now.substring(0, 10),
 
       expiryDate: undefined,
@@ -284,6 +303,10 @@ export default function OrgAdminBenefits() {
   /* ---------------------------------------------------------------------- */
 
   const handleAdd = () => {
+    if (!isEditing || saving) {
+      return;
+    }
+
     setEditingBenefit(createEmptyBenefit());
 
     setFormVisible(true);
@@ -294,6 +317,10 @@ export default function OrgAdminBenefits() {
   /* ---------------------------------------------------------------------- */
 
   const handleEdit = (benefit: Benefit) => {
+    if (!isEditing || saving) {
+      return;
+    }
+
     setEditingBenefit(cloneBenefits([benefit])[0]);
 
     setFormVisible(true);
@@ -318,8 +345,8 @@ export default function OrgAdminBenefits() {
       }
 
       /*
-       * Keep the temporary draft alive even if this screen
-       * subsequently unmounts for Preview.
+       * Keep draft available for Preview
+       * and navigation away from this screen.
        */
       benefitDraftStore.set(organization.id, next);
 
@@ -336,6 +363,10 @@ export default function OrgAdminBenefits() {
   /* ---------------------------------------------------------------------- */
 
   const handleDelete = (benefit: Benefit) => {
+    if (!isEditing || saving) {
+      return;
+    }
+
     setBenefits((current) => {
       const existsInCommitted = committedBenefits.some(
         (item) => item.id === benefit.id,
@@ -345,16 +376,17 @@ export default function OrgAdminBenefits() {
 
       if (!existsInCommitted) {
         /*
-         * Brand-new unsaved Benefit:
-         * completely remove it from the draft.
+         * New unsaved Benefit:
+         * remove completely from draft.
          */
         next = current.filter((item) => item.id !== benefit.id);
       } else {
         /*
-         * Existing persisted Benefit:
-         * retain it in the draft but mark it deleted.
+         * Existing Benefit:
+         * mark deleted in the working state.
          *
-         * Save Changes will perform the actual delete.
+         * Actual deletion happens only when
+         * Save Changes is pressed.
          */
         next = current.map((item) =>
           item.id === benefit.id
@@ -393,7 +425,7 @@ export default function OrgAdminBenefits() {
       );
 
       /* -------------------------------------------------------------- */
-      /* CREATE                                                          */
+      /* CREATE                                                         */
       /* -------------------------------------------------------------- */
 
       for (const benefit of benefits) {
@@ -405,7 +437,7 @@ export default function OrgAdminBenefits() {
       }
 
       /* -------------------------------------------------------------- */
-      /* UPDATE                                                          */
+      /* UPDATE                                                         */
       /* -------------------------------------------------------------- */
 
       for (const benefit of benefits) {
@@ -421,7 +453,7 @@ export default function OrgAdminBenefits() {
       }
 
       /* -------------------------------------------------------------- */
-      /* DELETE                                                          */
+      /* DELETE                                                         */
       /* -------------------------------------------------------------- */
 
       for (const committed of committedBenefits) {
@@ -433,7 +465,7 @@ export default function OrgAdminBenefits() {
       }
 
       /* -------------------------------------------------------------- */
-      /* RELOAD ACTUAL PERSISTED STATE                                  */
+      /* RELOAD PERSISTED STATE                                         */
       /* -------------------------------------------------------------- */
 
       const refreshed = await services.benefit.listByOrganization(
@@ -446,25 +478,25 @@ export default function OrgAdminBenefits() {
 
       setBenefits(cloneBenefits(snapshot));
 
-      /*
-       * Persistence succeeded.
-       *
-       * The temporary draft is no longer needed.
-       */
       benefitDraftStore.clear(organization.id);
 
+      /*
+       * Saving is complete.
+       * Return to View mode.
+       */
+      setIsEditing(false);
+
+      setFormVisible(false);
+
+      setEditingBenefit(null);
+
       Alert.alert(
-        "Changes saved",
+        "Changes saved successfully",
         "Your benefit changes have been saved successfully.",
       );
     } catch (error) {
       /*
-       * IMPORTANT:
-       *
-       * Do NOT clear the draft on failure.
-       *
-       * The user should still see their proposed changes
-       * and be able to retry Save Changes.
+       * Preserve the draft when Save fails.
        */
       Alert.alert(
         "Unable to save changes",
@@ -494,10 +526,55 @@ export default function OrgAdminBenefits() {
   };
 
   /* ---------------------------------------------------------------------- */
+  /* ENTER EDIT MODE                                                        */
+  /* ---------------------------------------------------------------------- */
+
+  const handleStartEditing = () => {
+    if (saving) {
+      return;
+    }
+
+    setIsEditing(true);
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* EXIT EDIT MODE                                                         */
+  /* ---------------------------------------------------------------------- */
+
+  const handleCancelEditing = () => {
+    if (saving) {
+      return;
+    }
+
+    /*
+     * If there are unsaved changes, Cancel behaves as
+     * Discard so that returning to View mode never leaves
+     * the page showing an uncommitted state.
+     */
+    if (hasChanges) {
+      const restored = cloneBenefits(committedBenefits);
+
+      setBenefits(restored);
+
+      benefitDraftStore.clear(organization.id);
+    }
+
+    setFormVisible(false);
+
+    setEditingBenefit(null);
+
+    setIsEditing(false);
+  };
+
+  /* ---------------------------------------------------------------------- */
   /* PREVIEW                                                                */
   /* ---------------------------------------------------------------------- */
 
   const handlePreview = () => {
+    if (saving) {
+      return;
+    }
+
     router.push({
       pathname: APP_ROUTES.orgAdmin.customerExperienceSection(
         "benefits",
@@ -519,14 +596,19 @@ export default function OrgAdminBenefits() {
     () => [
       {
         key: "benefitCode",
+
         title: "Benefit Code",
+
         width: 150,
       },
 
       {
         key: "benefitName",
+
         title: "Benefit Name",
+
         width: 240,
+
         render: (item) => (
           <Text variant="body" color="text">
             {getDisplayName(item)}
@@ -536,8 +618,11 @@ export default function OrgAdminBenefits() {
 
       {
         key: "benefitCategoryId",
+
         title: "Category",
+
         width: 160,
+
         render: (item) => (
           <Text variant="body" color="text">
             {getCategoryName(item.benefitCategoryId)}
@@ -547,8 +632,11 @@ export default function OrgAdminBenefits() {
 
       {
         key: "benefitTypeId",
+
         title: "Type",
+
         width: 140,
+
         render: (item) => (
           <Text variant="body" color="text">
             {getTypeName(item.benefitTypeId)}
@@ -558,8 +646,11 @@ export default function OrgAdminBenefits() {
 
       {
         key: "productId",
+
         title: "Product",
+
         width: 180,
+
         render: (item) => (
           <Text variant="body" color="text">
             {getProductName(item.productId)}
@@ -569,14 +660,19 @@ export default function OrgAdminBenefits() {
 
       {
         key: "effectiveDate",
+
         title: "Effective",
+
         width: 130,
       },
 
       {
         key: "expiryDate",
+
         title: "Expiry",
+
         width: 130,
+
         render: (item) => (
           <Text variant="body" color="text">
             {item.expiryDate ?? "—"}
@@ -586,8 +682,11 @@ export default function OrgAdminBenefits() {
 
       {
         key: "benefitStatusId",
+
         title: "Status",
+
         width: 130,
+
         render: (item) => (
           <Text variant="body" color="text">
             {getStatusName(item.benefitStatusId)}
@@ -595,6 +694,7 @@ export default function OrgAdminBenefits() {
         ),
       },
     ],
+
     [benefitCategories, benefitTypes, benefitStatuses, products],
   );
 
@@ -624,60 +724,87 @@ export default function OrgAdminBenefits() {
         </View>
 
         <View style={styles.headerActions}>
-          {hasChanges ? (
+          {!isEditing ? (
+            /*
+             * VIEW MODE
+             */
             <Pressable
-              onPress={handleDiscardChanges}
+              onPress={handleStartEditing}
               disabled={saving}
               style={({ pressed }) => [
-                styles.secondaryButton,
+                styles.primaryButton,
+
                 {
                   opacity: saving ? 0.5 : pressed ? 0.8 : 1,
                 },
               ]}
             >
-              <Text variant="body" color="text">
-                Discard
+              <Text variant="body" color="background">
+                Edit
               </Text>
             </Pressable>
-          ) : null}
+          ) : (
+            /*
+             * EDIT MODE
+             */
+            <>
+              <Pressable
+                onPress={handleCancelEditing}
+                disabled={saving}
+                style={({ pressed }) => [
+                  styles.secondaryButton,
 
-          <Pressable
-            onPress={handlePreview}
-            disabled={saving}
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              {
-                opacity: saving ? 0.5 : pressed ? 0.8 : 1,
-              },
-            ]}
-          >
-            <Text variant="body" color="text">
-              Preview
-            </Text>
-          </Pressable>
+                  {
+                    opacity: saving ? 0.5 : pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <Text variant="body" color="text">
+                  Cancel
+                </Text>
+              </Pressable>
 
-          <Button
-            label={saving ? "Saving..." : "Save Changes"}
-            onPress={() => {
-              void handleSaveChanges();
-            }}
-            disabled={!hasChanges || saving}
-          />
+              <Button
+                label={saving ? "Saving..." : "Save Changes"}
+                onPress={() => {
+                  void handleSaveChanges();
+                }}
+                disabled={!hasChanges || saving}
+              />
 
-          <Pressable
-            onPress={handleAdd}
-            disabled={saving}
-            style={({ pressed }) => [
-              styles.addButton,
-              {
-                opacity: saving ? 0.5 : pressed ? 0.8 : 1,
-              },
-            ]}
-          >
-            <Text variant="body" color="background">
-              + Add Benefit
-            </Text>
-          </Pressable>
+              <Pressable
+                onPress={handlePreview}
+                disabled={saving}
+                style={({ pressed }) => [
+                  styles.secondaryButton,
+
+                  {
+                    opacity: saving ? 0.5 : pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <Text variant="body" color="text">
+                  Preview
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={handleAdd}
+                disabled={saving}
+                style={({ pressed }) => [
+                  styles.addButton,
+
+                  {
+                    opacity: saving ? 0.5 : pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <Text variant="body" color="background">
+                  + Add Benefit
+                </Text>
+              </Pressable>
+            </>
+          )}
         </View>
       </View>
 
@@ -694,19 +821,24 @@ export default function OrgAdminBenefits() {
       ) : (
         <DataTable
           columns={columns}
-          data={benefits.filter((item) => !item.isDeleted)}
+          data={visibleBenefits}
           keyExtractor={(item) => item.id}
           emptyMessage="No benefits configured."
-          actions={[
-            {
-              label: "Edit",
-              onPress: handleEdit,
-            },
-            {
-              label: "Delete",
-              onPress: handleDelete,
-            },
-          ]}
+          actions={
+            isEditing
+              ? [
+                  {
+                    label: "Edit",
+                    onPress: handleEdit,
+                  },
+
+                  {
+                    label: "Delete",
+                    onPress: handleDelete,
+                  },
+                ]
+              : undefined
+          }
         />
       )}
 
@@ -786,6 +918,15 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
+  primaryButton: {
+    minHeight: 44,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0F766E",
+  },
+
   addButton: {
     minHeight: 44,
     paddingHorizontal: 18,
@@ -801,9 +942,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#F1F5F9",
     borderWidth: 1,
-    borderColor: "#D1D5DB",
-    backgroundColor: "#FFFFFF",
+    borderColor: "#CBD5E1",
   },
 
   center: {
