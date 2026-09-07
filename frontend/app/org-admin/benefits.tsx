@@ -869,6 +869,9 @@ export default function OrgAdminBenefits() {
         {editingBenefit ? (
           <BenefitForm
             benefit={editingBenefit}
+            isNew={
+              !committedBenefits.some((item) => item.id === editingBenefit.id)
+            }
             benefitCategories={benefitCategories}
             benefitTypes={benefitTypes}
             benefitStatuses={benefitStatuses}

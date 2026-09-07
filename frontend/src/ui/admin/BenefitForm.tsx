@@ -14,6 +14,7 @@ import { TextArea } from "../TextArea";
 
 type BenefitFormProps = {
   benefit: Benefit;
+  isNew: boolean;
 
   benefitCategories: ReferenceDataItem[];
   benefitTypes: ReferenceDataItem[];
@@ -102,6 +103,7 @@ export function BenefitForm({
   onSave,
   onCancel,
 }: BenefitFormProps) {
+  const isNew = !benefit.benefitCode?.trim();
   const theme = useTheme();
 
   const [form, setForm] = useState<Benefit>(() => ({
@@ -332,10 +334,6 @@ export function BenefitForm({
     try {
       await onSave({
         ...form,
-        benefitStatusId: getActiveStatusId(
-          benefitStatuses,
-          form.benefitStatusId,
-        ),
       });
     } finally {
       setSaving(false);
@@ -453,10 +451,8 @@ export function BenefitForm({
               items={benefitStatuses}
               placeholder="Active"
               required
-              disabled
-              onChange={() => {
-                /* Status is system-managed for this form. */
-              }}
+              disabled={isNew}
+              onChange={(value) => update("benefitStatusId", value)}
             />
           </View>
         </View>
