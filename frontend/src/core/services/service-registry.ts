@@ -6,6 +6,7 @@ import { mockNotificationService } from "../mocks/mock-notification";
 
 import { LocalOrganizationService } from "./organization-service.local";
 import { LocalCustomerExperienceService } from "./customer-experience.local";
+import { LocalUserAcquisitionService } from "./user-acquisition-service.local";
 import { LocalProductService } from "./product-service.local";
 import { LocalMembershipProductService } from "./membership-product-service.local";
 import { LocalBenefitService } from "./benefit-service.local";
@@ -48,6 +49,8 @@ const benefitService: BenefitService = new LocalBenefitService(
 );
 
 const offerService: OfferService = new LocalOfferService(mockServices.offer);
+const userAcquisitionService: UserAcquisitionService =
+  new LocalUserAcquisitionService(mockServices.userAcquisition);
 
 const localStatusService = new LocalStatusService();
 
@@ -96,7 +99,7 @@ export const services: MemgineServices = {
 
   offer: offerService,
 
-  userAcquisition: mockServices.userAcquisition,
+  userAcquisition: userAcquisitionService,
   redemption: mockServices.redemption,
 
   status: statusService,

@@ -11,9 +11,33 @@ import type {
 
 import { apis } from "@/src/data";
 
-import type { OrganizationService } from "./service-contracts";
+import type {
+  CreateUserInput,
+  OrganizationService,
+  UserLookupQuery,
+} from "./service-contracts";
+
 import { LocalBrandingRepository } from "@/src/data/repositories/branding/branding-repository.local";
 import { LocalOrganizationMembersRepository } from "@/src/data/repositories/organization/organization-members.repository.local";
+
+function getOrganizationUserTypeSegment(organizationUserTypeId: ID): string {
+  const normalized = organizationUserTypeId.trim().toLowerCase();
+
+  if (normalized.includes("customer")) {
+    return "CUSTOMER";
+  }
+
+  if (normalized.includes("staff")) {
+    return "STAFF";
+  }
+
+  const segment = normalized
+    .replace(/^org-user-type-/, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  return segment ? segment.toUpperCase() : "USER";
+}
 
 export class LocalOrganizationService implements OrganizationService {
   private readonly brandingRepository: LocalBrandingRepository;
@@ -23,13 +47,7 @@ export class LocalOrganizationService implements OrganizationService {
     this.brandingRepository = new LocalBrandingRepository();
     this.membersRepository = new LocalOrganizationMembersRepository();
   }
-  /**
-   * Organization
-   *
-   * Local AsyncStorage data takes precedence.
-   * Existing/demo organizations continue to come from
-   * the existing mock service when no local record exists.
-   */
+
   async getOrganization(organizationId: ID): Promise<Organization | null> {
     const result = await apis.organization.get(organizationId);
 
@@ -37,23 +55,9 @@ export class LocalOrganizationService implements OrganizationService {
       throw new Error(result.error.message);
     }
 
-    if (result.data) {
-      return result.data;
-    }
-
-    return this.fallback.getOrganization(organizationId);
+    return result.data ?? this.fallback.getOrganization(organizationId);
   }
 
-  /**
-   * Organization list
-   *
-   * The API returns locally persisted organizations.
-   * The existing mock organizations are then merged in so
-   * the demo/test organizations remain available.
-   *
-   * A local organization with the same ID overrides the
-   * fallback/mock organization.
-   */
   async listOrganizations(): Promise<Organization[]> {
     const localResult = await apis.organization.list();
 
@@ -62,7 +66,6 @@ export class LocalOrganizationService implements OrganizationService {
     }
 
     const fallbackOrganizations = await this.fallback.listOrganizations();
-
     const byId = new Map<string, Organization>();
 
     for (const organization of fallbackOrganizations) {
@@ -76,13 +79,6 @@ export class LocalOrganizationService implements OrganizationService {
     return Array.from(byId.values());
   }
 
-  /**
-   * Organization details
-   *
-   * Local details are authoritative when present.
-   * Existing mock organizations continue to use their
-   * existing mock details until migrated.
-   */
   async getOrganizationDetails(
     organizationId: ID,
   ): Promise<OrganizationDetails | null> {
@@ -92,19 +88,12 @@ export class LocalOrganizationService implements OrganizationService {
       throw new Error(result.error.message);
     }
 
-    if (result.data?.details) {
-      return result.data.details;
-    }
-
-    return this.fallback.getOrganizationDetails(organizationId);
+    return (
+      result.data?.details ??
+      this.fallback.getOrganizationDetails(organizationId)
+    );
   }
 
-  /**
-   * Update organization.
-   *
-   * Once an organization has been updated, the new value is
-   * persisted locally and therefore becomes authoritative.
-   */
   async updateOrganization(
     organizationId: ID,
     organization: Organization,
@@ -118,9 +107,6 @@ export class LocalOrganizationService implements OrganizationService {
     return result.data;
   }
 
-  /**
-   * Update organization details.
-   */
   async updateOrganizationDetails(
     organizationId: ID,
     details: OrganizationDetails,
@@ -136,13 +122,6 @@ export class LocalOrganizationService implements OrganizationService {
 
     return result.data;
   }
-
-  // ---------------------------------------------------------------------------
-  // Everything below remains mock-backed for now.
-  //
-  // As each feature is migrated, its implementation can move from the
-  // fallback service to its own repository/API/local-storage path.
-  // ---------------------------------------------------------------------------
 
   async getAccount(organizationId: ID) {
     return this.fallback.getAccount(organizationId);
@@ -164,7 +143,6 @@ export class LocalOrganizationService implements OrganizationService {
 
   async createStore(organizationId: ID, store: Store): Promise<Store> {
     const stores = await this.membersRepository.listStores(organizationId);
-
     const now = new Date().toISOString();
 
     const created: Store = {
@@ -186,7 +164,6 @@ export class LocalOrganizationService implements OrganizationService {
 
   async updateStore(organizationId: ID, store: Store): Promise<Store> {
     const stores = await this.membersRepository.listStores(organizationId);
-
     const index = stores.findIndex(
       (item) =>
         item.id === store.id &&
@@ -206,7 +183,6 @@ export class LocalOrganizationService implements OrganizationService {
     };
 
     stores[index] = updated;
-
     await this.membersRepository.saveStores(organizationId, stores);
 
     return updated;
@@ -214,7 +190,6 @@ export class LocalOrganizationService implements OrganizationService {
 
   async deleteStore(organizationId: ID, storeId: ID): Promise<void> {
     const stores = await this.membersRepository.listStores(organizationId);
-
     const index = stores.findIndex(
       (item) =>
         item.id === storeId &&
@@ -236,8 +211,51 @@ export class LocalOrganizationService implements OrganizationService {
     await this.membersRepository.saveStores(organizationId, stores);
   }
 
-  async listOrganizationUsersByUser(userId: ID) {
-    return this.fallback.listOrganizationUsersByUser(userId);
+  async listOrganizationUsersByUser(userId: ID): Promise<OrganizationUser[]> {
+    const organizations = await this.listOrganizations();
+    const localOrganizationUsers = (
+      await Promise.all(
+        organizations.map((organization) =>
+          this.membersRepository.listOrganizationUsers(organization.id),
+        ),
+      )
+    )
+      .flat()
+      .filter((item) => !item.isDeleted && item.userId === userId);
+
+    const fallbackOrganizationUsers =
+      await this.fallback.listOrganizationUsersByUser(userId);
+
+    const byId = new Map<string, OrganizationUser>();
+
+    for (const organizationUser of fallbackOrganizationUsers) {
+      byId.set(organizationUser.id, organizationUser);
+    }
+
+    for (const organizationUser of localOrganizationUsers) {
+      byId.set(organizationUser.id, organizationUser);
+    }
+
+    return Array.from(byId.values());
+  }
+
+  async getOrganizationUser(id: ID): Promise<OrganizationUser | null> {
+    const organizations = await this.listOrganizations();
+
+    for (const organization of organizations) {
+      const organizationUsers =
+        await this.membersRepository.listOrganizationUsers(organization.id);
+
+      const organizationUser = organizationUsers.find(
+        (item) => item.id === id && !item.isDeleted,
+      );
+
+      if (organizationUser) {
+        return organizationUser;
+      }
+    }
+
+    return this.fallback.getOrganizationUser(id);
   }
 
   async listOrganizationUsers(organizationId: ID): Promise<OrganizationUser[]> {
@@ -251,10 +269,42 @@ export class LocalOrganizationService implements OrganizationService {
     const organizationUsers =
       await this.membersRepository.listOrganizationUsers(organizationId);
 
+    const existing = organizationUsers.find(
+      (item) =>
+        !item.isDeleted &&
+        item.userId === organizationUser.userId &&
+        item.organizationUserTypeId === organizationUser.organizationUserTypeId,
+    );
+
+    if (existing) {
+      return existing;
+    }
+
     const now = new Date().toISOString();
+    const organization = await this.getOrganization(organizationId);
+    const organizationCode = organization?.code?.trim() || organizationId;
+    const typeSegment = getOrganizationUserTypeSegment(
+      organizationUser.organizationUserTypeId,
+    );
+    const idPrefix = `${organizationCode}-${typeSegment}`;
+
+    const usedIds = new Set(
+      organizationUsers
+        .map((item) => item.id.trim().toUpperCase())
+        .filter(Boolean),
+    );
+
+    let sequence = 1;
+    let generatedId = `${idPrefix}-${String(sequence).padStart(3, "0")}`;
+
+    while (usedIds.has(generatedId.toUpperCase())) {
+      sequence += 1;
+      generatedId = `${idPrefix}-${String(sequence).padStart(3, "0")}`;
+    }
 
     const created: OrganizationUser = {
       ...organizationUser,
+      id: generatedId,
       organizationId,
       createdAt: now,
       updatedAt: now,
@@ -270,26 +320,9 @@ export class LocalOrganizationService implements OrganizationService {
     return created;
   }
 
-  async getOrganizationUser(id: ID): Promise<OrganizationUser | null> {
-    /*
-     * OrganizationUser is organization-scoped.
-     * Existing callers that know the organization should use
-     * listOrganizationUsers().
-     */
-    return this.fallback.getOrganizationUser(id);
-  }
   async getOrganizationBranding(organizationId: ID) {
     const local = await this.brandingRepository.getCurrent(organizationId);
-
-    if (local) {
-      return local;
-    }
-
-    return this.fallback.getOrganizationBranding(organizationId);
-  }
-
-  async getNotificationConfiguration(organizationId: ID) {
-    return this.fallback.getNotificationConfiguration(organizationId);
+    return local ?? this.fallback.getOrganizationBranding(organizationId);
   }
 
   async updateOrganizationBranding(
@@ -297,6 +330,10 @@ export class LocalOrganizationService implements OrganizationService {
     branding: Parameters<OrganizationService["updateOrganizationBranding"]>[1],
   ) {
     return this.brandingRepository.save(organizationId, branding);
+  }
+
+  async getNotificationConfiguration(organizationId: ID) {
+    return this.fallback.getNotificationConfiguration(organizationId);
   }
 
   async listIntegrationConfigurations(organizationId: ID) {
@@ -349,12 +386,6 @@ export class LocalOrganizationService implements OrganizationService {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // User
-  //
-  // User is the canonical global identity.
-  // ---------------------------------------------------------------------------
-
   async listUsers(): Promise<User[]> {
     return this.membersRepository.listUsers();
   }
@@ -365,13 +396,11 @@ export class LocalOrganizationService implements OrganizationService {
     return users.find((user) => user.id === userId && !user.isDeleted) ?? null;
   }
 
-  async findUsers(
-    query: Parameters<OrganizationService["findUsers"]>[0],
-  ): Promise<User[]> {
+  async findUsers(query: UserLookupQuery): Promise<User[]> {
     const users = await this.membersRepository.listUsers();
 
     const email = query.email?.trim().toLowerCase();
-    const phone = query.phone?.trim().toLowerCase();
+    const phone = query.phone?.replace(/\D/g, "");
     const firstName = query.firstName?.trim().toLowerCase();
     const lastName = query.lastName?.trim().toLowerCase();
     const userCode = query.userCode?.trim().toLowerCase();
@@ -382,36 +411,48 @@ export class LocalOrganizationService implements OrganizationService {
         return false;
       }
 
-      if (email && !(user.primaryEmail ?? "").toLowerCase().includes(email)) {
-        return false;
-      }
-
       if (
-        phone &&
-        `${user.primaryPhone.callingCode}${user.primaryPhone.number}`
-          .toLowerCase()
-          .includes(phone)
+        email &&
+        !(user.primaryEmail ?? "").trim().toLowerCase().includes(email)
       ) {
         return false;
       }
 
-      if (firstName && !user.firstName.toLowerCase().includes(firstName)) {
+      if (phone) {
+        const userPhone =
+          `${user.primaryPhone.callingCode ?? ""}${user.primaryPhone.number ?? ""}`.replace(
+            /\D/g,
+            "",
+          );
+
+        if (!userPhone.includes(phone)) {
+          return false;
+        }
+      }
+
+      if (
+        firstName &&
+        !user.firstName.trim().toLowerCase().includes(firstName)
+      ) {
         return false;
       }
 
-      if (lastName && !user.lastName.toLowerCase().includes(lastName)) {
+      if (lastName && !user.lastName.trim().toLowerCase().includes(lastName)) {
         return false;
       }
 
-      if (userCode && !user.userCode.toLowerCase().includes(userCode)) {
+      if (userCode && !user.userCode.trim().toLowerCase().includes(userCode)) {
         return false;
       }
 
       if (nameContains) {
-        const displayName =
-          user.displayName ?? `${user.firstName} ${user.lastName}`;
+        const displayName = (
+          user.displayName ?? `${user.firstName} ${user.lastName}`
+        )
+          .trim()
+          .toLowerCase();
 
-        if (!displayName.toLowerCase().includes(nameContains)) {
+        if (!displayName.includes(nameContains)) {
           return false;
         }
       }
@@ -420,36 +461,67 @@ export class LocalOrganizationService implements OrganizationService {
     });
   }
 
-  async createUser(
-    input: Parameters<OrganizationService["createUser"]>[0],
-  ): Promise<User> {
+  async createUser(input: CreateUserInput): Promise<User> {
     const users = await this.membersRepository.listUsers();
 
-    const now = new Date().toISOString();
+    const normalizedEmail = input.primaryEmail?.trim().toLowerCase();
+    const normalizedPhone = input.primaryPhone.number.replace(/\D/g, "");
 
-    const duplicate = users.find(
-      (user) =>
-        !user.isDeleted &&
-        (user.primaryPhone.number === input.primaryPhone.number ||
-          (input.primaryEmail &&
-            user.primaryEmail?.toLowerCase() ===
-              input.primaryEmail.toLowerCase())),
-    );
+    const duplicate = users.find((user) => {
+      if (user.isDeleted) {
+        return false;
+      }
+
+      const existingEmail = user.primaryEmail?.trim().toLowerCase();
+
+      const existingPhone = user.primaryPhone.number.replace(/\D/g, "");
+
+      const sameEmail =
+        !!normalizedEmail &&
+        !!existingEmail &&
+        normalizedEmail === existingEmail;
+
+      const samePhone =
+        normalizedPhone.length > 0 &&
+        normalizedPhone === existingPhone &&
+        user.primaryPhone.countryId === input.primaryPhone.countryId;
+
+      return sameEmail || samePhone;
+    });
 
     if (duplicate) {
       throw new Error("A user with this phone number or email already exists.");
     }
 
+    const now = new Date().toISOString();
+
+    const nextSequence =
+      users.reduce((highest, user) => {
+        const match = /^USR-(\d+)$/.exec(user.userCode);
+
+        if (!match) {
+          return highest;
+        }
+
+        return Math.max(highest, Number(match[1]));
+      }, 0) + 1;
+
     const created: User = {
-      id: `user-${Date.now()}`,
-      userCode: `USR-${String(users.length + 1).padStart(6, "0")}`,
-      firstName: input.firstName,
-      middleName: input.middleName,
-      lastName: input.lastName,
+      id: `user-${Date.now().toString(36)}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`,
+      userCode: `USR-${String(nextSequence).padStart(6, "0")}`,
+      firstName: input.firstName.trim(),
+      middleName: input.middleName?.trim() || undefined,
+      lastName: input.lastName.trim(),
       displayName:
-        input.displayName ?? `${input.firstName} ${input.lastName}`.trim(),
-      primaryEmail: input.primaryEmail,
-      primaryPhone: input.primaryPhone,
+        input.displayName?.trim() ||
+        `${input.firstName.trim()} ${input.lastName.trim()}`,
+      primaryEmail: normalizedEmail || undefined,
+      primaryPhone: {
+        ...input.primaryPhone,
+        number: normalizedPhone,
+      },
       preferredLanguageId: input.preferredLanguageId,
       userStatusId: input.userStatusId,
       createdAt: now,
@@ -465,11 +537,8 @@ export class LocalOrganizationService implements OrganizationService {
     return created;
   }
 
-  async updateUser(
-    user: Parameters<OrganizationService["updateUser"]>[0],
-  ): Promise<User> {
+  async updateUser(user: User): Promise<User> {
     const users = await this.membersRepository.listUsers();
-
     const index = users.findIndex((item) => item.id === user.id);
 
     if (index === -1) {
@@ -483,7 +552,6 @@ export class LocalOrganizationService implements OrganizationService {
     };
 
     users[index] = updated;
-
     await this.membersRepository.saveUsers(users);
 
     return updated;
@@ -495,7 +563,6 @@ export class LocalOrganizationService implements OrganizationService {
 
   async createStaff(organizationId: ID, staff: Staff): Promise<Staff> {
     const staffList = await this.membersRepository.listStaff(organizationId);
-
     const now = new Date().toISOString();
 
     const created: Staff = {
@@ -517,7 +584,6 @@ export class LocalOrganizationService implements OrganizationService {
 
   async updateStaff(organizationId: ID, staff: Staff): Promise<Staff> {
     const staffList = await this.membersRepository.listStaff(organizationId);
-
     const index = staffList.findIndex(
       (item) => item.id === staff.id && item.organizationId === organizationId,
     );
@@ -534,7 +600,6 @@ export class LocalOrganizationService implements OrganizationService {
     };
 
     staffList[index] = updated;
-
     await this.membersRepository.saveStaff(organizationId, staffList);
 
     return updated;
@@ -542,7 +607,6 @@ export class LocalOrganizationService implements OrganizationService {
 
   async deleteStaff(organizationId: ID, staffId: ID): Promise<void> {
     const staffList = await this.membersRepository.listStaff(organizationId);
-
     const index = staffList.findIndex(
       (item) => item.id === staffId && item.organizationId === organizationId,
     );
@@ -560,13 +624,6 @@ export class LocalOrganizationService implements OrganizationService {
 
     await this.membersRepository.saveStaff(organizationId, staffList);
   }
-
-  // ---------------------------------------------------------------------------
-  // Staff ↔ Store assignments
-  //
-  // Staff.storeId is the primary store.
-  // StaffStoreAssignment persists the complete store association.
-  // ---------------------------------------------------------------------------
 
   async listStaffStoreAssignments(
     organizationId: ID,
@@ -613,7 +670,7 @@ export class LocalOrganizationService implements OrganizationService {
     );
 
     if (index === -1) {
-      throw new Error(`Staff store assignment not found: ${assignment.id}`);
+      throw new Error("Staff store assignment not found.");
     }
 
     const updated: StaffStoreAssignment = {
@@ -624,7 +681,6 @@ export class LocalOrganizationService implements OrganizationService {
     };
 
     assignments[index] = updated;
-
     await this.membersRepository.saveStaffStoreAssignments(
       organizationId,
       assignments,
@@ -646,7 +702,7 @@ export class LocalOrganizationService implements OrganizationService {
     );
 
     if (index === -1) {
-      return;
+      throw new Error("Staff store assignment not found.");
     }
 
     assignments[index] = {

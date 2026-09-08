@@ -7,6 +7,9 @@ export const LOCAL_DATA_KEYS = {
   organizationAccount: (organizationId: string) =>
     `memgine.organization.${organizationId}.account`,
 
+  userAcquisitions: (organizationId: string) =>
+    `memgine:organization:${organizationId}:user-acquisitions`,
+
   organizationDetails: (organizationId: string) =>
     `memgine.organization.${organizationId}.details`,
 
