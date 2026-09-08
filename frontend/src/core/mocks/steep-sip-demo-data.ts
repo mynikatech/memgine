@@ -4,6 +4,7 @@ import {
   Customer,
   MembershipProduct,
   Offer,
+  OfferCtaType,
   OrganizationUser,
   Staff,
   Store,
@@ -718,6 +719,13 @@ export const STEEP_SIP_OFFERS: Offer[] = [
     id: "steep-offer-gold-scan",
     organizationId: ORG_ID,
 
+    promotionImageUrl: "local://offers/default.jpg",
+    badgeText: undefined,
+    availabilityText: undefined,
+
+    ctaLabel: "Redeem Now",
+    ctaType: OfferCtaType.REDEEM_OFFER,
+    ctaTarget: "offer-1",
     offerCode: "ARTISAN-GOLD-SCAN",
     offerName: "Discover ARTISAN PASS GOLD",
 
@@ -744,6 +752,13 @@ export const STEEP_SIP_OFFERS: Offer[] = [
     id: "steep-offer-membership",
     organizationId: ORG_ID,
 
+    promotionImageUrl: "local://offers/default.jpg",
+    badgeText: undefined,
+    availabilityText: undefined,
+
+    ctaLabel: "Redeem Now",
+    ctaType: OfferCtaType.REDEEM_OFFER,
+    ctaTarget: "offer-1",
     offerCode: "STEEP-SIP-MEMBERSHIP",
     offerName: "Join STEEP & SIP",
 

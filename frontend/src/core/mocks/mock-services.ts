@@ -22,6 +22,7 @@ import {
   EntityStatus,
   MembershipProduct,
   Offer,
+  OfferCtaType,
   Organization,
   OrganizationDetails,
   OrganizationBranding,
@@ -1719,6 +1720,13 @@ const offers: Offer[] = [
   {
     id: "off-1",
     organizationId: "org-sunrise",
+    promotionImageUrl: "local://offers/default.jpg",
+    badgeText: undefined,
+    availabilityText: undefined,
+
+    ctaLabel: "Redeem Now",
+    ctaType: OfferCtaType.REDEEM_OFFER,
+    ctaTarget: "offer-1",
 
     offerCode: "SUNRISE-WEEKEND-COMBO",
     offerName: "Weekend Croissant Combo",
@@ -1745,6 +1753,13 @@ const offers: Offer[] = [
   {
     id: "off-2",
     organizationId: "org-sunrise",
+    promotionImageUrl: "local://offers/default.jpg",
+    badgeText: undefined,
+    availabilityText: undefined,
+
+    ctaLabel: "Redeem Now",
+    ctaType: OfferCtaType.REDEEM_OFFER,
+    ctaTarget: "offer-1",
 
     offerCode: "SUNRISE-DOUBLE-REWARDS",
     offerName: "Double Rewards Tuesday",
@@ -1767,6 +1782,13 @@ const offers: Offer[] = [
   {
     id: "glow-off-1",
     organizationId: "org-glow",
+    promotionImageUrl: "local://offers/default.jpg",
+    badgeText: undefined,
+    availabilityText: undefined,
+
+    ctaLabel: "Redeem Now",
+    ctaType: OfferCtaType.REDEEM_OFFER,
+    ctaTarget: "offer-1",
 
     offerCode: "GLOW-NEW-CLIENT-20",
     offerName: "New Client 20% Off",

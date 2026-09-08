@@ -613,6 +613,11 @@ export interface Benefit {
  * Offer
  * ------------------------------------------------------------------ */
 
+export enum OfferCtaType {
+  REDEEM_OFFER = "REDEEM_OFFER",
+  SHOP = "SHOP",
+}
+
 export interface Offer {
   id: ID;
   organizationId: ID;
@@ -621,6 +626,10 @@ export interface Offer {
   offerName: string;
   description?: string;
 
+  promotionImageUrl: string;
+  badgeText?: string;
+  availabilityText?: string;
+
   membershipProductId?: ID;
   storeId?: ID;
 
@@ -628,6 +637,10 @@ export interface Offer {
 
   effectiveDate: string;
   expiryDate?: string;
+
+  ctaLabel: string;
+  ctaType: OfferCtaType;
+  ctaTarget?: string;
 
   statusId: ID;
 

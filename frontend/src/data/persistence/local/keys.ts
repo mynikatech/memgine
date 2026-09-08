@@ -45,6 +45,9 @@ export const LOCAL_DATA_KEYS = {
 
   benefitOrganizations: () => `memgine:benefit-organizations`,
 
+  offers: (organizationId: string) =>
+    `memgine:organization:${organizationId}:offers`,
+
   /**
    * Status reference-data cache.
    *

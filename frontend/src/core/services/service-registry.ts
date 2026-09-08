@@ -9,6 +9,7 @@ import { LocalCustomerExperienceService } from "./customer-experience.local";
 import { LocalProductService } from "./product-service.local";
 import { LocalMembershipProductService } from "./membership-product-service.local";
 import { LocalBenefitService } from "./benefit-service.local";
+import { LocalOfferService } from "./offer-service.local";
 import { CachedStatusService } from "./status-cache";
 import { LocalStatusService } from "./status-service.local";
 
@@ -45,6 +46,8 @@ const membershipProductService: MembershipProductService =
 const benefitService: BenefitService = new LocalBenefitService(
   mockServices.benefit,
 );
+
+const offerService: OfferService = new LocalOfferService(mockServices.offer);
 
 const localStatusService = new LocalStatusService();
 
@@ -91,7 +94,8 @@ export const services: MemgineServices = {
 
   benefit: benefitService,
 
-  offer: mockServices.offer,
+  offer: offerService,
+
   userAcquisition: mockServices.userAcquisition,
   redemption: mockServices.redemption,
 

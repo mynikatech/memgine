@@ -1,15 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
-import type {
-  MembershipProduct,
-  Offer,
-  ReferenceDataItem,
-  Status,
-  Store,
-} from "@/src/core";
+import type { MembershipProduct, Offer, Status, Store } from "@/src/core";
 
-import { services } from "@/src/core";
+import { OfferCtaType, services } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
 import { DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
@@ -21,16 +15,20 @@ import { APP_ROUTES } from "@/src/constants/navigation";
 export default function OrgAdminOffers() {
   const { organization } = useBusiness();
 
+  const [committedOffers, setCommittedOffers] = useState<Offer[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [products, setProducts] = useState<MembershipProduct[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [offerStatuses, setOfferStatuses] = useState<Status[]>([]);
 
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [saveMessageVisible, setSaveMessageVisible] = useState(false);
 
   const [formVisible, setFormVisible] = useState(false);
-
   const [editingOffer, setEditingOffer] = useState<Offer | null>(null);
+  const [viewingOffer, setViewingOffer] = useState(false);
 
   const router = useRouter();
 
@@ -53,10 +51,18 @@ export default function OrgAdminOffers() {
           return;
         }
 
-        setOffers(offerList);
+        const activeOffers = offerList.filter((item) => !item.isDeleted);
+
+        setCommittedOffers(activeOffers);
+        setOffers(activeOffers);
         setProducts(productList);
         setStores(storeList);
         setOfferStatuses(statusList);
+        setIsEditing(false);
+        setSaveMessageVisible(false);
+        setFormVisible(false);
+        setEditingOffer(null);
+        setViewingOffer(false);
       } catch (error) {
         if (!mounted) {
           return;
@@ -79,6 +85,11 @@ export default function OrgAdminOffers() {
       mounted = false;
     };
   }, [organization.id]);
+
+  const hasChanges = useMemo(
+    () => JSON.stringify(offers) !== JSON.stringify(committedOffers),
+    [offers, committedOffers],
+  );
 
   const getProductName = (productId?: string) => {
     if (!productId) {
@@ -174,84 +185,222 @@ export default function OrgAdminOffers() {
     [products, stores, offerStatuses],
   );
 
+  const generateOfferCode = (): string => {
+    const prefix = `${organization.code}-OFFER`;
+
+    const usedCodes = new Set(
+      offers
+        .map((offer) => offer.offerCode.trim().toUpperCase())
+        .filter(Boolean),
+    );
+
+    let sequence = 1;
+
+    while (usedCodes.has(`${prefix}-${String(sequence).padStart(3, "0")}`)) {
+      sequence += 1;
+    }
+
+    return `${prefix}-${String(sequence).padStart(3, "0")}`;
+  };
+
   const createEmptyOffer = (): Offer => {
     const now = new Date().toISOString();
+    const offerCode = generateOfferCode();
 
-    const draftStatus =
-      offerStatuses.find((item) => item.statusCode === "DRAFT") ??
-      offerStatuses.find((item) => item.id === "offer-status-draft") ??
+    const activeStatus =
+      offerStatuses.find(
+        (item) =>
+          item.statusCode?.trim().toUpperCase() === "ACTIVE" ||
+          item.statusName?.trim().toLowerCase() === "active",
+      ) ??
+      offerStatuses.find((item) => item.id === "offer-status-active") ??
       offerStatuses[0];
 
     return {
-      id: `offer-${Date.now()}`,
-
+      id: `offer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       organizationId: organization.id,
-
-      offerCode: "",
+      offerCode,
       offerName: "",
       description: undefined,
-
+      promotionImageUrl: "",
+      badgeText: undefined,
+      availabilityText: undefined,
       membershipProductId: undefined,
       storeId: undefined,
-
       discountPercentage: undefined,
-
       effectiveDate: now.substring(0, 10),
       expiryDate: undefined,
-
-      statusId: draftStatus?.id ?? "",
-
+      ctaLabel: "",
+      ctaType: OfferCtaType.REDEEM_OFFER,
+      ctaTarget: undefined,
+      statusId: activeStatus?.id ?? "",
       createdAt: now,
       createdBy: "user-system",
-
       updatedAt: now,
       updatedBy: "user-system",
-
       isDeleted: false,
       versionNo: 1,
     };
   };
 
   const handleAdd = () => {
+    if (!isEditing || saving) {
+      return;
+    }
+
+    setViewingOffer(false);
     setEditingOffer(createEmptyOffer());
     setFormVisible(true);
   };
 
   const handleEdit = (offer: Offer) => {
-    setEditingOffer(offer);
+    if (!isEditing || saving) {
+      return;
+    }
+
+    setViewingOffer(false);
+    setEditingOffer({ ...offer });
     setFormVisible(true);
   };
 
-  const handleSave = async (updatedOffer: Offer) => {
-    try {
-      const existing = offers.some((item) => item.id === updatedOffer.id);
+  const handleView = (offer: Offer) => {
+    if (isEditing || saving) {
+      return;
+    }
 
-      if (existing) {
-        const updated = await services.offer.updateOffer(
-          organization.id,
-          updatedOffer,
-        );
+    setViewingOffer(true);
+    setEditingOffer({ ...offer });
+    setFormVisible(true);
+  };
 
-        setOffers((current) =>
-          current.map((item) => (item.id === updated.id ? updated : item)),
-        );
-      } else {
-        const created = await services.offer.createOffer(
-          organization.id,
-          updatedOffer,
-        );
+  const handleSaveDraft = async (updatedOffer: Offer) => {
+    setOffers((current) => {
+      const exists = current.some((item) => item.id === updatedOffer.id);
 
-        setOffers((current) => [...current, created]);
+      if (exists) {
+        return current.map((item) =>
+          item.id === updatedOffer.id ? updatedOffer : item,
+        );
       }
 
+      return [...current, updatedOffer];
+    });
+
+    setFormVisible(false);
+    setEditingOffer(null);
+    setViewingOffer(false);
+  };
+
+  const handleDelete = (offer: Offer) => {
+    if (!isEditing || saving) {
+      return;
+    }
+
+    Alert.alert(
+      "Delete Offer",
+      `Delete "${offer.offerName || offer.offerCode}"? The offer will be removed when you save the changes.`,
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            setOffers((current) =>
+              current.filter((item) => item.id !== offer.id),
+            );
+          },
+        },
+      ],
+    );
+  };
+
+  const handleSaveChanges = async () => {
+    if (!hasChanges || saving) {
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const committedById = new Map(
+        committedOffers.map((offer) => [offer.id, offer]),
+      );
+      const workingById = new Map(offers.map((offer) => [offer.id, offer]));
+
+      for (const offer of offers) {
+        const existing = committedById.get(offer.id);
+
+        if (!existing) {
+          await services.offer.createOffer(organization.id, offer);
+          continue;
+        }
+
+        if (JSON.stringify(existing) !== JSON.stringify(offer)) {
+          await services.offer.updateOffer(organization.id, offer);
+        }
+      }
+
+      for (const committed of committedOffers) {
+        if (!workingById.has(committed.id)) {
+          await services.offer.updateOffer(organization.id, {
+            ...committed,
+            isDeleted: true,
+            updatedAt: new Date().toISOString(),
+            updatedBy: "user-system",
+          });
+        }
+      }
+
+      const persisted = await services.offer.listByOrganization(
+        organization.id,
+      );
+      const activePersisted = persisted.filter((item) => !item.isDeleted);
+
+      setCommittedOffers(activePersisted);
+      setOffers(activePersisted);
+      setIsEditing(false);
       setFormVisible(false);
       setEditingOffer(null);
+      setViewingOffer(false);
+      setSaveMessageVisible(true);
+
+      setTimeout(() => {
+        setSaveMessageVisible(false);
+      }, 4000);
     } catch (error) {
       Alert.alert(
-        "Unable to save offer",
-        error instanceof Error ? error.message : "Unable to save offer.",
+        "Unable to save changes",
+        error instanceof Error
+          ? error.message
+          : "Unable to save offer changes.",
       );
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const handleCancelEditing = () => {
+    if (saving) {
+      return;
+    }
+
+    setOffers(committedOffers);
+    setIsEditing(false);
+    setFormVisible(false);
+    setEditingOffer(null);
+    setViewingOffer(false);
+  };
+
+  const handleStartEditing = () => {
+    if (saving) {
+      return;
+    }
+
+    setSaveMessageVisible(false);
+    setIsEditing(true);
   };
 
   return (
@@ -271,20 +420,99 @@ export default function OrgAdminOffers() {
           </Text>
         </View>
 
-        <Pressable
-          onPress={handleAdd}
-          style={({ pressed }) => [
-            styles.addButton,
-            {
-              opacity: pressed ? 0.8 : 1,
-            },
-          ]}
-        >
-          <Text variant="body" color="background">
-            + Add Offer
-          </Text>
-        </Pressable>
+        {!isEditing ? (
+          <Pressable
+            onPress={handleStartEditing}
+            disabled={saving}
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              {
+                opacity: saving ? 0.5 : pressed ? 0.8 : 1,
+              },
+            ]}
+          >
+            <Text variant="body" color="text">
+              Edit
+            </Text>
+          </Pressable>
+        ) : (
+          <View style={styles.headerActions}>
+            <Pressable
+              onPress={handleCancelEditing}
+              disabled={saving}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                {
+                  opacity: saving ? 0.5 : pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Text variant="body" color="text">
+                Cancel
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={handleSaveChanges}
+              disabled={saving || !hasChanges}
+              style={({ pressed }) => [
+                styles.addButton,
+                {
+                  opacity: saving || !hasChanges ? 0.5 : pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Text variant="body" color="background">
+                {saving ? "Saving..." : "Save Changes"}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() =>
+                router.push(
+                  APP_ROUTES.orgAdmin.customerExperienceSection(
+                    "offers",
+                  ) as never,
+                )
+              }
+              disabled={saving}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                {
+                  opacity: saving ? 0.5 : pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Text variant="body" color="text">
+                Preview
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={handleAdd}
+              disabled={saving}
+              style={({ pressed }) => [
+                styles.addButton,
+                {
+                  opacity: saving ? 0.5 : pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Text variant="body" color="background">
+                + Add Offer
+              </Text>
+            </Pressable>
+          </View>
+        )}
       </View>
+
+      {saveMessageVisible ? (
+        <View style={styles.successMessage}>
+          <Text variant="bodySmall" color="text">
+            Changes saved successfully
+          </Text>
+        </View>
+      ) : null}
 
       {loading ? (
         <View style={styles.center}>
@@ -299,12 +527,25 @@ export default function OrgAdminOffers() {
             data={offers.filter((item) => !item.isDeleted)}
             keyExtractor={(item) => item.id}
             emptyMessage="No offers configured."
-            actions={[
-              {
-                label: "Edit",
-                onPress: handleEdit,
-              },
-            ]}
+            actions={
+              isEditing
+                ? [
+                    {
+                      label: "Edit",
+                      onPress: handleEdit,
+                    },
+                    {
+                      label: "Delete",
+                      onPress: handleDelete,
+                    },
+                  ]
+                : [
+                    {
+                      label: "View",
+                      onPress: handleView,
+                    },
+                  ]
+            }
           />
 
           <Pressable
@@ -334,11 +575,15 @@ export default function OrgAdminOffers() {
         onClose={() => {
           setFormVisible(false);
           setEditingOffer(null);
+          setViewingOffer(false);
         }}
         title={
-          editingOffer && offers.some((item) => item.id === editingOffer.id)
-            ? "Edit Offer"
-            : "Add Offer"
+          viewingOffer
+            ? "View Offer"
+            : editingOffer &&
+                committedOffers.some((item) => item.id === editingOffer.id)
+              ? "Edit Offer"
+              : "Add Offer"
         }
         scrollable
         testID="offer-form-modal"
@@ -349,10 +594,16 @@ export default function OrgAdminOffers() {
             membershipProducts={products}
             stores={stores}
             offerStatuses={offerStatuses}
-            onSave={handleSave}
+            existingOffers={offers}
+            isNewOffer={
+              !committedOffers.some((item) => item.id === editingOffer.id)
+            }
+            readOnly={viewingOffer}
+            onSave={handleSaveDraft}
             onCancel={() => {
               setFormVisible(false);
               setEditingOffer(null);
+              setViewingOffer(false);
             }}
           />
         ) : null}
@@ -383,6 +634,14 @@ const styles = StyleSheet.create({
     gap: 4,
   },
 
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+
   addButton: {
     minHeight: 44,
     paddingHorizontal: 18,
@@ -390,6 +649,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#0F766E",
+  },
+
+  secondaryButton: {
+    minHeight: 44,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+  },
+
+  successMessage: {
+    minHeight: 44,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    justifyContent: "center",
+    backgroundColor: "#ECFDF5",
   },
 
   previewLink: {
