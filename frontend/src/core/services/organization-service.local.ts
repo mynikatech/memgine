@@ -18,6 +18,7 @@ import type {
 } from "./service-contracts";
 
 import { LocalBrandingRepository } from "@/src/data/repositories/branding/branding-repository.local";
+import { LocalNotificationConfigurationRepository } from "@/src/data/repositories/notification-configuration/notification-configuration-repository.local";
 import { LocalOrganizationMembersRepository } from "@/src/data/repositories/organization/organization-members.repository.local";
 
 function getOrganizationUserTypeSegment(organizationUserTypeId: ID): string {
@@ -42,10 +43,13 @@ function getOrganizationUserTypeSegment(organizationUserTypeId: ID): string {
 export class LocalOrganizationService implements OrganizationService {
   private readonly brandingRepository: LocalBrandingRepository;
   private readonly membersRepository: LocalOrganizationMembersRepository;
+  private readonly notificationConfigurationRepository: LocalNotificationConfigurationRepository;
 
   constructor(private readonly fallback: OrganizationService) {
     this.brandingRepository = new LocalBrandingRepository();
     this.membersRepository = new LocalOrganizationMembersRepository();
+    this.notificationConfigurationRepository =
+      new LocalNotificationConfigurationRepository();
   }
 
   async getOrganization(organizationId: ID): Promise<Organization | null> {
@@ -333,7 +337,10 @@ export class LocalOrganizationService implements OrganizationService {
   }
 
   async getNotificationConfiguration(organizationId: ID) {
-    return this.fallback.getNotificationConfiguration(organizationId);
+    const local =
+      await this.notificationConfigurationRepository.getCurrent(organizationId);
+
+    return local ?? this.fallback.getNotificationConfiguration(organizationId);
   }
 
   async listIntegrationConfigurations(organizationId: ID) {
@@ -346,7 +353,7 @@ export class LocalOrganizationService implements OrganizationService {
       OrganizationService["updateNotificationConfiguration"]
     >[1],
   ) {
-    return this.fallback.updateNotificationConfiguration(
+    return this.notificationConfigurationRepository.save(
       organizationId,
       configuration,
     );

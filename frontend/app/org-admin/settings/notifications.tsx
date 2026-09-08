@@ -1,14 +1,10 @@
 import { useEffect, useState } from "react";
+
 import { Alert, View } from "react-native";
 
-import type {
-  NotificationConfiguration,
-  ReferenceDataItem,
-  Status,
-} from "@/src/core";
+import type { NotificationConfiguration, Status } from "@/src/core";
 
 import { services } from "@/src/core";
-
 import { useBusiness } from "@/src/providers";
 import { StateView } from "@/src/ui";
 import { NotificationConfigurationForm } from "@/src/ui/admin/NotificationConfigurationForm";
@@ -24,7 +20,6 @@ export default function OrgAdminNotifications() {
   );
 
   const [loading, setLoading] = useState(true);
-
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -92,6 +87,8 @@ export default function OrgAdminNotifications() {
           ? saveError.message
           : "Unable to save notification configuration.",
       );
+
+      throw saveError;
     }
   };
 
