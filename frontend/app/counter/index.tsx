@@ -16,6 +16,7 @@ import type {
   MembershipOption,
   MembershipProduct,
   Status,
+  Staff,
   Store,
   User,
 } from "@/src/core";
@@ -86,14 +87,22 @@ export default function StaffCounter() {
 
   const orgId = organization.id;
 
-  const staffId = principal.kind === "STAFF" ? principal.staffId : "staff";
-  const staffRole = principal.kind === "STAFF" ? principal.role : "STAFF";
+  const authenticatedStaffId =
+    principal.kind === "STAFF" ? principal.staffId : null;
+
+  const [counterStaff, setCounterStaff] = useState<Staff | null>(null);
+
+  const [counterStaffName, setCounterStaffName] = useState("");
+
+  const staffId = counterStaff?.id ?? authenticatedStaffId ?? "";
+  const staffRole =
+    counterStaff?.designation?.trim() ||
+    counterStaff?.role ||
+    (principal.kind === "STAFF" ? principal.role : null);
 
   const [store, setStore] = useState<Store | null>(null);
 
   const storeId = store?.id ?? "";
-
-  const [promoCode, setPromoCode] = useState("");
 
   const [action, setAction] = useState<"redeem" | "sell">("redeem");
 
@@ -116,6 +125,10 @@ export default function StaffCounter() {
 
   const [newCustomerDraft, setNewCustomerDraft] =
     useState<CustomerFormSubmitResult | null>(null);
+
+  // True when Counter registration finds that the supplied phone number
+  // already belongs to an existing canonical User.
+  const [newCustomerWasExisting, setNewCustomerWasExisting] = useState(false);
 
   const [newOtpRequestId, setNewOtpRequestId] = useState("");
 
@@ -290,6 +303,7 @@ export default function StaffCounter() {
     setSearched(false);
 
     setNewCustomerDraft(null);
+    setNewCustomerWasExisting(false);
 
     setNewOtpRequestId("");
 
@@ -329,6 +343,7 @@ export default function StaffCounter() {
       try {
         const [
           orgStores,
+          staffMembers,
           countryReferences,
           statuses,
           organizationUsers,
@@ -338,6 +353,7 @@ export default function StaffCounter() {
           organizationBenefits,
         ] = await Promise.all([
           services.organization.listStores(orgId),
+          services.organization.listStaff(orgId),
           services.referenceData.listCountries(),
           services.status.listUserStatuses(),
           services.organization.listOrganizationUsers(orgId),
@@ -469,6 +485,54 @@ export default function StaffCounter() {
         }
 
         setStore(orgStores[0] ?? null);
+
+        /*
+         * Counter staff resolution is deliberately session-shaped.
+         *
+         * Today there is no real authentication session, so the demo
+         * principal may not point at the one staff record created for the
+         * organization. When that happens, and exactly one active staff
+         * member exists, use that record for the current Counter session.
+         *
+         * Once authentication is introduced, principal.staffId will point
+         * at the authenticated Staff record and this fallback will simply
+         * stop being used. No Counter UI change will then be required.
+         */
+        const activeStaffMembers = staffMembers.filter(
+          (staff) => !staff.isDeleted && staff.isActive,
+        );
+        const principalStaff = authenticatedStaffId
+          ? activeStaffMembers.find(
+              (staff) => staff.id === authenticatedStaffId,
+            )
+          : null;
+        const resolvedStaff =
+          principalStaff ??
+          (activeStaffMembers.length === 1 ? activeStaffMembers[0] : null);
+
+        setCounterStaff(resolvedStaff);
+
+        if (resolvedStaff) {
+          const staffOrgUser = await services.organization.getOrganizationUser(
+            resolvedStaff.organizationUserId,
+          );
+          const staffUser = staffOrgUser
+            ? await services.organization.getUser(staffOrgUser.userId)
+            : null;
+
+          const resolvedStaffName =
+            staffUser?.displayName?.trim() ||
+            `${staffUser?.firstName ?? ""} ${staffUser?.middleName ?? ""} ${
+              staffUser?.lastName ?? ""
+            }`
+              .replace(/\s+/g, " ")
+              .trim();
+
+          setCounterStaffName(resolvedStaffName || "Staff");
+        } else {
+          setCounterStaffName("");
+        }
+
         setCountries(countryReferences);
         setUserStatuses(statuses);
         setSamples(built);
@@ -501,7 +565,6 @@ export default function StaffCounter() {
     storeId,
     staffId,
     method,
-    promoCode: promoCode.trim() || undefined,
   });
 
   /*
@@ -857,6 +920,11 @@ export default function StaffCounter() {
         registrationSource: "COUNTER",
         registrationChannel: "POS",
       });
+
+      // Registration deliberately reuses an existing canonical User when
+      // the phone number already exists. Surface that distinction to the
+      // Counter instead of presenting it as a newly-created customer.
+      setNewCustomerWasExisting(!registration.createdUser);
 
       console.log("STAFF CUSTOMER REGISTRATION COMPLETE", {
         organizationId: orgId,
@@ -1499,20 +1567,11 @@ export default function StaffCounter() {
         <View style={styles.ctxRow}>
           <Text style={styles.ctxLabel}>Staff</Text>
           <Text style={styles.ctxValue}>
-            {staffId} · {staffRole}
+            {counterStaff
+              ? `${counterStaffName || "Staff"} · ${counterStaff.role}`
+              : "Staff not resolved"}
           </Text>
         </View>
-
-        <Text style={styles.label}>Staff promo / referral code (optional)</Text>
-
-        <TextInput
-          testID="counter-promo"
-          value={promoCode}
-          onChangeText={setPromoCode}
-          placeholder="e.g. STAFF-AVA"
-          placeholderTextColor={COLORS.textMuted}
-          style={styles.input}
-        />
       </View>
 
       {/* Redeem vs Sell */}
@@ -1800,6 +1859,7 @@ export default function StaffCounter() {
                   onSave={handleNewCustomerFormSave}
                   onCancel={() => {
                     setNewCustomerDraft(null);
+                    setNewCustomerWasExisting(false);
                     setNewOtpRequestId("");
                     setNewDevCode("");
                     setNewOtpCode("");
@@ -1867,6 +1927,7 @@ export default function StaffCounter() {
                   testID="counter-new-resend-otp"
                   disabled={newOtpVerifying}
                   onPress={() => {
+                    setNewCustomerWasExisting(false);
                     setNewOtpRequestId("");
                     setNewDevCode("");
                     setNewOtpCode("");
@@ -1882,6 +1943,7 @@ export default function StaffCounter() {
                   testID="counter-new-cancel-otp"
                   onPress={() => {
                     setNewCustomerDraft(null);
+                    setNewCustomerWasExisting(false);
                     setNewOtpRequestId("");
                     setNewDevCode("");
                     setNewOtpCode("");
@@ -1899,8 +1961,17 @@ export default function StaffCounter() {
           ) : (
             <View style={styles.customerSavedBox}>
               <Text style={styles.identified}>
-                Customer saved and ready at Counter
+                {newCustomerWasExisting
+                  ? "Existing customer found — ready at Counter"
+                  : "New customer saved and ready at Counter"}
               </Text>
+
+              {newCustomerWasExisting ? (
+                <Text style={styles.muted}>
+                  This phone number already belongs to an existing customer. The
+                  existing customer was opened instead of creating a duplicate.
+                </Text>
+              ) : null}
 
               <Text style={styles.muted}>{customer.fullName}</Text>
 
