@@ -7,7 +7,6 @@ export {
 } from "./api/result";
 
 export { data, apis } from "./data-registry";
-
 export type { ApiClient } from "./api/client";
 
 export { BrandingApi } from "./api/branding-api";
@@ -16,38 +15,31 @@ export { BenefitApi } from "./api/benefit-api";
 export { MembershipProductApi } from "./api/membership-product-api";
 export { OfferApi } from "./api/offer-api";
 export { SubscriptionApi } from "./api/subscription-api";
+export { RedemptionApi } from "./api/redemption-api";
 
 export type { BrandingRepository } from "./repositories/branding/branding-repository";
 export { LocalBrandingRepository } from "./repositories/branding/branding-repository.local";
-
 export type {
   OrganizationRepository,
   CreateOrganizationRepositoryInput,
 } from "./repositories/organization/organization-repository";
-
 export { LocalOrganizationRepository } from "./repositories/organization/organization-repository.local";
-
 export { LocalOrganizationMembersRepository } from "./repositories/organization/organization-members.repository.local";
-
 export type { BenefitRepository } from "./repositories/benefit/benefit-repository";
 export { LocalBenefitRepository } from "./repositories/benefit/benefit-repository.local";
-
 export type { MembershipProductRepository } from "./repositories/membership/membership-product-repository";
 export { LocalMembershipProductRepository } from "./repositories/membership/membership-product-repository.local";
-
 export type { OfferRepository } from "./repositories/offer/offer-repository";
 export { LocalOfferRepository } from "./repositories/offer/offer-repository.local";
-
 export type { SubscriptionRepository } from "./repositories/subscription/subscription-repository";
 export { LocalSubscriptionRepository } from "./repositories/subscription/subscription-repository.local";
-
+export type { RedemptionRepository } from "./repositories/redemption/redemption-repository";
+export { LocalRedemptionRepository } from "./repositories/redemption/redemption-repository.local";
 export type { IntegrationConfigurationRepository } from "./repositories/integration-configuration/integration-configuration-repository";
-
 export { LocalIntegrationConfigurationRepository } from "./repositories/integration-configuration/integration-configuration-repository.local";
 
 export { asyncStorageStore } from "./persistence/local/async-storage-store";
 export type { LocalStore } from "./persistence/local/local-store";
 export { LOCAL_DATA_KEYS } from "./persistence/local/keys";
-
 export { memorySessionStore } from "./persistence/session/session-store";
 export type { SessionStore } from "./persistence/session/session-store";

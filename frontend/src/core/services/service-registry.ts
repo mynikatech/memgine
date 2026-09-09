@@ -13,6 +13,7 @@ import { LocalBenefitService } from "./benefit-service.local";
 import { LocalOfferService } from "./offer-service.local";
 import { LocalSubscriptionService } from "./subscription-service.local";
 import { LocalPaymentService } from "./payment-service.local";
+import { LocalRedemptionService } from "./redemption-service.local";
 import { CachedStatusService } from "./status-cache";
 import { LocalStatusService } from "./status-service.local";
 
@@ -81,6 +82,8 @@ const paymentService: PaymentService = new LocalPaymentService(
   mockServices.payment,
 );
 
+const redemptionService: RedemptionService = new LocalRedemptionService();
+
 export type MemgineServices = {
   organization: OrganizationService;
   customer: CustomerService;
@@ -110,7 +113,7 @@ export const services: MemgineServices = {
   benefit: benefitService,
   offer: offerService,
   userAcquisition: userAcquisitionService,
-  redemption: mockServices.redemption,
+  redemption: redemptionService,
   status: statusService,
   auth: mockServices.auth,
   payment: paymentService,

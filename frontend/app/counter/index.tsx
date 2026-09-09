@@ -327,18 +327,34 @@ export default function StaffCounter() {
 
     (async () => {
       try {
-        const [orgStores, countryReferences, statuses] = await Promise.all([
+        const [
+          orgStores,
+          countryReferences,
+          statuses,
+          organizationUsers,
+          subscriptions,
+          catalog,
+          subscriptionStatuses,
+          organizationBenefits,
+        ] = await Promise.all([
           services.organization.listStores(orgId),
           services.referenceData.listCountries(),
           services.status.listUserStatuses(),
+          services.organization.listOrganizationUsers(orgId),
+          services.subscription.listByOrganization(orgId),
+          services.membershipProduct.listProducts(orgId),
+          services.status.listStatusesByEntityTypeCode("SUBSCRIPTION"),
+          services.benefit.listByOrganization(orgId),
         ]);
 
-        const subscriptions =
-          await services.subscription.listByOrganization(orgId);
-
-        const activeSubscriptions = subscriptions.filter(
-          (subscription) =>
-            subscription.subscriptionStatusId === "subscription-status-active",
+        const activeSubscriptionStatusIds = new Set(
+          subscriptionStatuses
+            .filter(
+              (status) =>
+                status.statusCode?.trim().toUpperCase() === "ACTIVE" ||
+                status.statusName?.trim().toLowerCase() === "active",
+            )
+            .map((status) => status.id),
         );
 
         const built: {
@@ -346,13 +362,46 @@ export default function StaffCounter() {
           raw: string;
         }[] = [];
 
-        for (const subscription of activeSubscriptions) {
-          const organizationUser =
-            await services.organization.getOrganizationUser(
-              subscription.organizationUserId,
-            );
+        for (const subscription of subscriptions) {
+          if (
+            subscription.isDeleted ||
+            !activeSubscriptionStatusIds.has(subscription.subscriptionStatusId)
+          ) {
+            continue;
+          }
+
+          const organizationUser = organizationUsers.find(
+            (candidate) =>
+              !candidate.isDeleted &&
+              candidate.id === subscription.organizationUserId,
+          );
 
           if (!organizationUser) {
+            continue;
+          }
+
+          const planProduct = catalog.find(
+            (candidate) =>
+              !candidate.isDeleted &&
+              candidate.plans.some(
+                (plan) => plan.id === subscription.subscriptionPlanId,
+              ),
+          );
+
+          const plan = planProduct?.plans.find(
+            (candidate) => candidate.id === subscription.subscriptionPlanId,
+          );
+
+          if (!planProduct || !plan) {
+            continue;
+          }
+
+          const benefits = organizationBenefits.filter(
+            (benefit) =>
+              !benefit.isDeleted && planProduct.benefitIds.includes(benefit.id),
+          );
+
+          if (!benefits.length) {
             continue;
           }
 
@@ -360,31 +409,10 @@ export default function StaffCounter() {
             organizationUser.userId,
           );
 
-          const plan = await services.subscriptionPlan.getPlan(
-            subscription.subscriptionPlanId,
-          );
-
-          if (!plan) {
-            continue;
-          }
-
-          const product = await services.membershipProduct.getProduct(
-            plan.membershipProductId,
-          );
-
-          if (!product) {
-            continue;
-          }
-
-          const benefits = await services.benefit.listByProduct(
-            plan.membershipProductId,
-          );
-
           built.push({
-            label: `${customer?.fullName ?? organizationUser.userId} · ${
-              product.displayName ?? product.membershipProductName
+            label: `${customer?.fullName ?? "Customer"} · ${
+              planProduct.displayName ?? planProduct.membershipProductName
             }`,
-
             raw: encodeRedemptionToken({
               version: 1,
               code: `RDM-${subscription.id.toUpperCase()}`,
@@ -402,13 +430,9 @@ export default function StaffCounter() {
         }
 
         setStore(orgStores[0] ?? null);
-
         setCountries(countryReferences);
-
         setUserStatuses(statuses);
-
         setSamples(built);
-
         resetIdentity();
       } catch {
         if (!active) {
@@ -416,7 +440,6 @@ export default function StaffCounter() {
         }
 
         setStore(null);
-
         setSamples([]);
       }
     })();
