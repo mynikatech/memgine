@@ -39,7 +39,6 @@ type CustomerRow = {
   user: User;
   subscriptions: Subscription[];
   membershipName?: string;
-  membershipProductName?: string;
 };
 
 type ProspectRow = {
@@ -48,7 +47,6 @@ type ProspectRow = {
   acquisition?: UserAcquisition;
   store?: Store;
   membershipName?: string;
-  membershipProductName?: string;
 };
 
 type PendingProspect = {
@@ -178,13 +176,8 @@ export default function OrgAdminCustomers() {
         }
       }
 
-      const getMembershipDisplay = (
-        subscriptionList: Subscription[],
-      ): {
-        planName?: string;
-        productName?: string;
-      } => {
-        const activeOrFirst = subscriptionList
+      const getMembershipName = (subscriptionList: Subscription[]) => {
+        const memberships = subscriptionList
           .filter((subscription) => !subscription.isDeleted)
           .map((subscription) => {
             const product = membershipProductsByPlanId.get(
@@ -196,16 +189,33 @@ export default function OrgAdminCustomers() {
                 !item.isDeleted && item.id === subscription.subscriptionPlanId,
             );
 
-            return {
-              planName: plan?.subscriptionPlanName?.trim(),
-              productName:
-                product?.membershipProductName?.trim() ||
-                product?.displayName?.trim(),
-            };
-          })
-          .find((item) => item.planName || item.productName);
+            const tier = plan?.subscriptionPlanName?.trim();
+            const productName =
+              product?.membershipProductName?.trim() ||
+              product?.displayName?.trim();
 
-        return activeOrFirst ?? {};
+            return { tier, productName };
+          })
+          .filter((membership) => membership.tier || membership.productName);
+
+        const uniqueMemberships = memberships.filter(
+          (membership, index, list) =>
+            list.findIndex(
+              (item) =>
+                item.tier === membership.tier &&
+                item.productName === membership.productName,
+            ) === index,
+        );
+
+        return (
+          uniqueMemberships
+            .map((membership) =>
+              [membership.tier, membership.productName]
+                .filter(Boolean)
+                .join("\n"),
+            )
+            .join("\n\n") || undefined
+        );
       };
 
       const subscriptionsByOrganizationUser = new Map<ID, Subscription[]>();
@@ -277,9 +287,7 @@ export default function OrgAdminCustomers() {
             organizationUser,
             user,
             subscriptions: userSubscriptions,
-            membershipName: getMembershipDisplay(userSubscriptions).planName,
-            membershipProductName:
-              getMembershipDisplay(userSubscriptions).productName,
+            membershipName: getMembershipName(userSubscriptions),
           });
         } else {
           prospectRows.push({
@@ -525,16 +533,9 @@ export default function OrgAdminCustomers() {
         title: "Membership",
         width: 220,
         render: (item) => (
-          <View style={styles.primaryCell}>
-            <Text variant="body" color="text">
-              {item.membershipName ?? "No membership"}
-            </Text>
-            {item.membershipProductName ? (
-              <Text variant="caption" color="textMuted">
-                {item.membershipProductName}
-              </Text>
-            ) : null}
-          </View>
+          <Text variant="body" color="text">
+            {item.membershipName ?? "No membership"}
+          </Text>
         ),
       },
     ],
@@ -593,16 +594,9 @@ export default function OrgAdminCustomers() {
         title: "Membership",
         width: 220,
         render: (item) => (
-          <View style={styles.primaryCell}>
-            <Text variant="body" color="text">
-              {item.membershipName ?? "No membership"}
-            </Text>
-            {item.membershipProductName ? (
-              <Text variant="caption" color="textMuted">
-                {item.membershipProductName}
-              </Text>
-            ) : null}
-          </View>
+          <Text variant="body" color="text">
+            {item.membershipName ?? "No membership"}
+          </Text>
         ),
       },
     ],
@@ -1483,9 +1477,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#CCFBF1",
   },
   customerCell: {
-    gap: 2,
-  },
-  primaryCell: {
     gap: 2,
   },
   center: {

@@ -460,35 +460,51 @@ export default function StaffCustomers() {
         title: "Membership",
         width: 220,
         render: (item) => {
-          const activeSubscription = activeSubscriptionEntityStatusId
-            ? item.subscriptions.find(
-                (subscription) =>
+          const memberships = item.subscriptions
+            .filter(
+              (subscription) =>
+                !subscription.isDeleted &&
+                (activeSubscriptionEntityStatusId === undefined ||
                   subscription.subscriptionStatusId ===
-                  activeSubscriptionEntityStatusId,
-              )
-            : undefined;
+                    activeSubscriptionEntityStatusId),
+            )
+            .map((subscription) => ({
+              tier: item.membershipNamesBySubscriptionId[
+                subscription.id
+              ]?.trim(),
+              product:
+                item.productsBySubscriptionId[
+                  subscription.id
+                ]?.membershipProductName?.trim() ||
+                item.productsBySubscriptionId[
+                  subscription.id
+                ]?.displayName?.trim(),
+            }))
+            .filter((membership) => membership.tier || membership.product);
 
-          const membershipName = activeSubscription
-            ? item.membershipNamesBySubscriptionId[activeSubscription.id]
-            : undefined;
-          const membershipProduct = activeSubscription
-            ? item.productsBySubscriptionId[activeSubscription.id]
-            : undefined;
-          const productName =
-            membershipProduct?.membershipProductName?.trim() ||
-            membershipProduct?.displayName?.trim();
-
-          return (
-            <View>
-              <Text variant="body" color="text">
-                {membershipName ?? "No membership"}
-              </Text>
-              {membershipName && productName ? (
-                <Text variant="caption" color="textMuted">
-                  ({productName})
-                </Text>
-              ) : null}
+          return memberships.length > 0 ? (
+            <View style={{ gap: 8 }}>
+              {memberships.map((membership, index) => (
+                <View
+                  key={`${membership.tier ?? "membership"}-${membership.product ?? "product"}-${index}`}
+                >
+                  {membership.tier ? (
+                    <Text variant="body" color="text">
+                      {membership.tier}
+                    </Text>
+                  ) : null}
+                  {membership.product ? (
+                    <Text variant="caption" color="textMuted">
+                      {membership.product}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
             </View>
+          ) : (
+            <Text variant="body" color="textMuted">
+              No membership
+            </Text>
           );
         },
       },

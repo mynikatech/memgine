@@ -476,13 +476,21 @@ export default function StaffCounter() {
 
   const loadMembershipData = useCallback(
     async (customerId: string) => {
-      const [organizationUsers, subscriptions, catalog, productStatuses] =
-        await Promise.all([
-          services.organization.listOrganizationUsers(orgId),
-          services.subscription.listByOrganization(orgId),
-          services.membershipProduct.listProducts(orgId),
-          services.status.listMembershipProductStatuses(),
-        ]);
+      const [
+        organizationUsers,
+        subscriptions,
+        catalog,
+        productStatuses,
+        subscriptionStatuses,
+        organizationBenefits,
+      ] = await Promise.all([
+        services.organization.listOrganizationUsers(orgId),
+        services.subscription.listByOrganization(orgId),
+        services.membershipProduct.listProducts(orgId),
+        services.status.listMembershipProductStatuses(),
+        services.status.listStatusesByEntityTypeCode("SUBSCRIPTION"),
+        services.benefit.listByOrganization(orgId),
+      ]);
 
       const activeProductStatusIds = new Set(
         productStatuses
@@ -508,35 +516,77 @@ export default function StaffCounter() {
         ),
       );
 
+      const activeSubscriptionStatusIds = new Set(
+        subscriptionStatuses
+          .filter(
+            (status) =>
+              status.statusCode?.trim().toUpperCase() === "ACTIVE" ||
+              status.statusName?.trim().toLowerCase() === "active",
+          )
+          .map((status) => status.id),
+      );
+
       const customerSubscriptions = subscriptions.filter(
         (subscription) =>
           !subscription.isDeleted &&
           customerOrganizationUserIds.has(subscription.organizationUserId) &&
-          subscription.subscriptionStatusId === "subscription-status-active",
+          activeSubscriptionStatusIds.has(subscription.subscriptionStatusId),
       );
+
+      console.log("COUNTER MEMBERSHIP OWNERSHIP RESOLUTION", {
+        customerId,
+        customerOrganizationUserIds: Array.from(customerOrganizationUserIds),
+        activeSubscriptionStatusIds: Array.from(activeSubscriptionStatusIds),
+        customerSubscriptions: customerSubscriptions.map((subscription) => ({
+          id: subscription.id,
+          subscriptionPlanId: subscription.subscriptionPlanId,
+          organizationUserId: subscription.organizationUserId,
+          subscriptionStatusId: subscription.subscriptionStatusId,
+        })),
+        catalog: catalog.map((product) => ({
+          id: product.id,
+          membershipProductName: product.membershipProductName,
+          plans: product.plans.map((plan) => ({
+            id: plan.id,
+            name: plan.subscriptionPlanName,
+            amountMinor: plan.price.amountMinor,
+            membershipProductId: plan.membershipProductId,
+          })),
+        })),
+      });
 
       const options: MembershipOption[] = [];
       const ownedProductIds = new Set<string>();
 
       for (const subscription of customerSubscriptions) {
-        const plan = await services.subscriptionPlan.getPlan(
-          subscription.subscriptionPlanId,
+        // MembershipProduct persists its plans, so resolve the plan directly
+        // from the organization catalogue rather than the legacy/mock plan service.
+        const product = catalog.find(
+          (candidate) =>
+            !candidate.isDeleted &&
+            candidate.plans.some(
+              (plan) => plan.id === subscription.subscriptionPlanId,
+            ),
         );
 
-        if (!plan) {
+        const plan = product?.plans.find(
+          (candidate) => candidate.id === subscription.subscriptionPlanId,
+        );
+
+        if (!product || !plan) {
+          console.warn("COUNTER SUBSCRIPTION PLAN NOT FOUND IN CATALOG", {
+            subscriptionId: subscription.id,
+            subscriptionPlanId: subscription.subscriptionPlanId,
+            customerId,
+          });
           continue;
         }
 
-        const product = await services.membershipProduct.getProduct(
-          plan.membershipProductId,
-        );
+        ownedProductIds.add(product.id);
 
-        if (product) {
-          ownedProductIds.add(product.id);
-        }
-
-        const benefits = await services.benefit.listByProduct(
-          plan.membershipProductId,
+        const benefits = organizationBenefits.filter(
+          (benefit) =>
+            !benefit.isDeleted && product.benefitIds.includes(benefit.id),
         );
 
         const usedBenefitIds = new Set(
@@ -548,7 +598,7 @@ export default function StaffCounter() {
         options.push({
           subscription,
           productName: product?.membershipProductName ?? "Membership",
-          tier: product?.displayName,
+          tier: plan.subscriptionPlanName || product.displayName,
           benefits: benefits.map((benefit) => ({
             ...benefit,
             available: !usedBenefitIds.has(benefit.id),
@@ -1300,9 +1350,12 @@ export default function StaffCounter() {
             <Text style={styles.label}>Current memberships</Text>
 
             {memberships.map((option) => (
-              <Text key={option.subscription.id} style={styles.muted}>
-                • {option.tier ?? option.productName} (owned)
-              </Text>
+              <View key={option.subscription.id} style={{ gap: 2 }}>
+                <Text style={styles.benefitTitle}>
+                  {option.tier ?? "Membership"}
+                </Text>
+                <Text style={styles.muted}>{option.productName} · owned</Text>
+              </View>
             ))}
           </>
         ) : null}
@@ -1318,10 +1371,14 @@ export default function StaffCounter() {
                 }}
               >
                 <Text style={styles.benefitTitle}>
-                  {product.displayName ?? product.membershipProductName}
+                  {product.plans[0]?.subscriptionPlanName ??
+                    product.displayName ??
+                    "Membership"}
                 </Text>
 
-                <Text style={styles.muted}>{priceLabel(product)}</Text>
+                <Text style={styles.muted}>
+                  {product.membershipProductName} · {priceLabel(product)}
+                </Text>
               </View>
 
               <Pressable
