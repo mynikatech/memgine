@@ -13,9 +13,10 @@ import {
   type CreateUserInput,
   type CountryReference,
   type ID,
+  type MembershipProduct,
   type OrganizationUser,
-  type Store,
   type Status,
+  type Store,
   type Subscription,
   type User,
   type UserAcquisition,
@@ -30,12 +31,15 @@ import { Input } from "@/src/ui/Input";
 
 const CUSTOMER_USER_TYPE_ID = "org-user-type-customer";
 const ACTIVE_ORGANIZATION_USER_STATUS_ID = "status-active";
+const ACTIVE_USER_STATUS_ID = "user-status-active";
 const SYSTEM_USER_ID = "user-system";
 
 type CustomerRow = {
   organizationUser: OrganizationUser;
   user: User;
   subscriptions: Subscription[];
+  membershipName?: string;
+  membershipProductName?: string;
 };
 
 type ProspectRow = {
@@ -43,6 +47,8 @@ type ProspectRow = {
   user: User;
   acquisition?: UserAcquisition;
   store?: Store;
+  membershipName?: string;
+  membershipProductName?: string;
 };
 
 type PendingProspect = {
@@ -59,28 +65,6 @@ type SelectedCustomer = {
   acquisition?: UserAcquisition;
   store?: Store;
 };
-
-function formatAcquisitionSource(source: string | undefined): string {
-  if (!source) {
-    return "—";
-  }
-
-  const known: Record<string, string> = {
-    ORG_ADMIN: "Organization Admin",
-    PROMO_SCANNER: "Promotion Scanner",
-    APP: "Mobile App",
-    WEBSITE: "Website",
-    REFERRAL: "Referral",
-  };
-
-  if (known[source]) {
-    return known[source];
-  }
-
-  return source
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
-}
 
 function getDisplayName(user: User): string {
   return (
@@ -147,14 +131,16 @@ export default function OrgAdminCustomers() {
         organizationStores,
         users,
         subscriptions,
+        membershipProducts,
         acquisitions,
         countryReferences,
-        statuses,
+        userStatusList,
       ] = await Promise.all([
         services.organization.listOrganizationUsers(organization.id),
         services.organization.listStores(organization.id),
         services.organization.listUsers(),
         services.subscription.listByOrganization(organization.id),
+        services.membershipProduct.listProducts(organization.id),
         services.userAcquisition.listByOrganization(organization.id),
         services.referenceData.listCountries(),
         services.status.listUserStatuses(),
@@ -166,7 +152,7 @@ export default function OrgAdminCustomers() {
 
       setStores(organizationStores);
       setCountries(countryReferences);
-      setUserStatuses(statuses);
+      setUserStatuses(userStatusList);
 
       const userMap = new Map<ID, User>(
         users.filter((user) => !user.isDeleted).map((user) => [user.id, user]),
@@ -177,6 +163,50 @@ export default function OrgAdminCustomers() {
           .filter((store) => !store.isDeleted)
           .map((store) => [store.id, store]),
       );
+
+      const membershipProductsByPlanId = new Map<ID, MembershipProduct>();
+
+      for (const product of membershipProducts) {
+        if (product.isDeleted) {
+          continue;
+        }
+
+        for (const plan of product.plans ?? []) {
+          if (!plan.isDeleted) {
+            membershipProductsByPlanId.set(plan.id, product);
+          }
+        }
+      }
+
+      const getMembershipDisplay = (
+        subscriptionList: Subscription[],
+      ): {
+        planName?: string;
+        productName?: string;
+      } => {
+        const activeOrFirst = subscriptionList
+          .filter((subscription) => !subscription.isDeleted)
+          .map((subscription) => {
+            const product = membershipProductsByPlanId.get(
+              subscription.subscriptionPlanId,
+            );
+
+            const plan = product?.plans?.find(
+              (item) =>
+                !item.isDeleted && item.id === subscription.subscriptionPlanId,
+            );
+
+            return {
+              planName: plan?.subscriptionPlanName?.trim(),
+              productName:
+                product?.membershipProductName?.trim() ||
+                product?.displayName?.trim(),
+            };
+          })
+          .find((item) => item.planName || item.productName);
+
+        return activeOrFirst ?? {};
+      };
 
       const subscriptionsByOrganizationUser = new Map<ID, Subscription[]>();
 
@@ -247,6 +277,9 @@ export default function OrgAdminCustomers() {
             organizationUser,
             user,
             subscriptions: userSubscriptions,
+            membershipName: getMembershipDisplay(userSubscriptions).planName,
+            membershipProductName:
+              getMembershipDisplay(userSubscriptions).productName,
           });
         } else {
           prospectRows.push({
@@ -254,6 +287,7 @@ export default function OrgAdminCustomers() {
             user,
             acquisition,
             store,
+            membershipName: undefined,
           });
         }
       }
@@ -433,6 +467,10 @@ export default function OrgAdminCustomers() {
     [],
   );
 
+  /*
+   * Keep the same columns for Existing Customers, Prospective Customers,
+   * and Counter Customers.
+   */
   const customerColumns = useMemo<DataTableColumn<CustomerRow>[]>(
     () => [
       {
@@ -482,6 +520,23 @@ export default function OrgAdminCustomers() {
           </Text>
         ),
       },
+      {
+        key: "membership",
+        title: "Membership",
+        width: 220,
+        render: (item) => (
+          <View style={styles.primaryCell}>
+            <Text variant="body" color="text">
+              {item.membershipName ?? "No membership"}
+            </Text>
+            {item.membershipProductName ? (
+              <Text variant="caption" color="textMuted">
+                {item.membershipProductName}
+              </Text>
+            ) : null}
+          </View>
+        ),
+      },
     ],
     [getRelationshipStatus],
   );
@@ -490,7 +545,7 @@ export default function OrgAdminCustomers() {
     () => [
       {
         key: "name",
-        title: "Prospective Customer",
+        title: "Customer",
         width: 240,
         render: (item) => (
           <View style={styles.customerCell}>
@@ -498,7 +553,7 @@ export default function OrgAdminCustomers() {
               {getDisplayName(item.user)}
             </Text>
             <Text variant="caption" color="textMuted">
-              No membership purchased
+              Prospective customer
             </Text>
           </View>
         ),
@@ -529,38 +584,29 @@ export default function OrgAdminCustomers() {
         width: 140,
         render: (item) => (
           <Text variant="body" color="text">
-            {formatStatusId(item.user.userStatusId)}
+            {getRelationshipStatus(item)}
           </Text>
         ),
       },
       {
-        key: "source",
-        title: "Source",
-        width: 180,
+        key: "membership",
+        title: "Membership",
+        width: 220,
         render: (item) => (
-          <View style={styles.customerCell}>
+          <View style={styles.primaryCell}>
             <Text variant="body" color="text">
-              {formatAcquisitionSource(item.acquisition?.registrationSource)}
+              {item.membershipName ?? "No membership"}
             </Text>
-            <Text variant="caption" color="textMuted">
-              {formatAcquisitionSource(item.acquisition?.registrationChannel) ??
-                "—"}
-            </Text>
+            {item.membershipProductName ? (
+              <Text variant="caption" color="textMuted">
+                {item.membershipProductName}
+              </Text>
+            ) : null}
           </View>
         ),
       },
-      {
-        key: "store",
-        title: "Source Store",
-        width: 220,
-        render: (item) => (
-          <Text variant="body" color="text">
-            {item.store?.name ?? "—"}
-          </Text>
-        ),
-      },
     ],
-    [],
+    [getRelationshipStatus],
   );
 
   const handleCustomerFormSave = useCallback(
@@ -596,7 +642,7 @@ export default function OrgAdminCustomers() {
               draftId: result.userId as ID,
               user: {
                 ...result.user,
-                userStatusId: result.user.userStatusId,
+                userStatusId: editingProspectiveCustomer.user.userStatusId,
                 createdBy: editingProspectiveCustomer.user.createdBy,
               },
               sourceStoreId:
@@ -669,7 +715,6 @@ export default function OrgAdminCustomers() {
             ...edit.user.primaryPhone,
             number: edit.user.primaryPhone.number.replace(/\D/g, ""),
           },
-          userStatusId: edit.user.userStatusId,
           updatedAt: new Date().toISOString(),
           updatedBy: SYSTEM_USER_ID,
         };
@@ -788,14 +833,6 @@ export default function OrgAdminCustomers() {
       setSaving(false);
     }
   }, [loadCustomers, organization.id, pendingProspects, prospectEdits, saving]);
-
-  const activeUserStatusId = useMemo(
-    () =>
-      userStatuses.find(
-        (status) => status.statusCode?.trim().toUpperCase() === "ACTIVE",
-      )?.id ?? "",
-    [userStatuses],
-  );
 
   const handleCancelChanges = useCallback(() => {
     if (saving) {
@@ -1124,7 +1161,7 @@ export default function OrgAdminCustomers() {
                 stores={stores}
                 countries={countries}
                 userStatuses={userStatuses}
-                activeUserStatusId={activeUserStatusId}
+                activeUserStatusId={ACTIVE_USER_STATUS_ID}
                 mode={editingProspectiveCustomer ? "edit" : "add"}
                 initialUser={editingProspectiveCustomer?.user}
                 initialSourceStoreId={
@@ -1446,6 +1483,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#CCFBF1",
   },
   customerCell: {
+    gap: 2,
+  },
+  primaryCell: {
     gap: 2,
   },
   center: {

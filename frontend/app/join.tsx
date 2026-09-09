@@ -53,6 +53,15 @@ import { registerCustomerForOrganization } from "@/src/core/customer/customer-re
  *
  * Subscription
  *   -> SubscriptionPlan
+ *
+ * Payment:
+ *
+ * JoinFlow
+ *   -> PaymentService
+ *      -> LocalPaymentService (development)
+ *      -> Real provider adapter (production)
+ *
+ * JoinFlow deliberately does NOT know which payment provider is being used.
  */
 
 type Step =
@@ -101,6 +110,14 @@ const normalizeOtp = (value: string): string =>
  * --------------------------------------------------------------
  * Payment methods
  * --------------------------------------------------------------
+ *
+ * The selected payment method is currently presentation/UI state.
+ *
+ * The actual payment is always delegated to services.payment.
+ *
+ * When the PaymentService contract is extended with provider-specific
+ * payment-method information, this state can be passed to the service
+ * without changing the rest of the purchase workflow.
  */
 
 const PAYMENT_METHODS: PaymentMethod[] = [
@@ -245,6 +262,27 @@ export default function JoinFlow() {
    * --------------------------------------------------------------
    * Load product / customer / OrganizationUser
    * --------------------------------------------------------------
+   *
+   * IMPORTANT:
+   *
+   * Do NOT use:
+   *
+   *   services.membershipProduct.getProduct(pid)
+   *
+   * for this flow.
+   *
+   * The local MembershipProduct service is organization-scoped for
+   * persisted/local data. getProduct(id) currently delegates only
+   * to its fallback implementation.
+   *
+   * Therefore we load the organization catalogue and resolve the
+   * selected product from that catalogue.
+   *
+   * Benefits are handled the same way:
+   *
+   *   listByOrganization(orgId)
+   *
+   * and then filtered against product.benefitIds.
    */
 
   useEffect(() => {
@@ -264,12 +302,22 @@ export default function JoinFlow() {
           storeId: params.storeId,
         });
 
+        /*
+         * --------------------------------------------------------
+         * 1. Load organization membership catalogue
+         * --------------------------------------------------------
+         */
+        const membershipProducts =
+          await services.membershipProduct.listProducts(orgId);
+
         let pid = params.productId;
 
+        /*
+         * If no product was supplied, preserve the existing
+         * behaviour of selecting the first available product.
+         */
         if (!pid) {
-          const list = await services.membershipProduct.listProducts(orgId);
-
-          pid = list[0]?.id;
+          pid = membershipProducts[0]?.id;
         }
 
         if (!pid) {
@@ -278,28 +326,94 @@ export default function JoinFlow() {
           );
         }
 
-        const prod = await services.membershipProduct.getProduct(pid);
+        /*
+         * Resolve the product from the organization-scoped
+         * persisted/local catalogue.
+         */
+        const prod = membershipProducts.find(
+          (item) => item.id === pid && !item.isDeleted,
+        );
 
         if (!prod) {
           throw new Error(`Membership product not found: ${pid}`);
         }
 
-        const bens = await services.benefit.listByProduct(pid);
+        /*
+         * --------------------------------------------------------
+         * 2. Load organization benefits
+         * --------------------------------------------------------
+         *
+         * Do not use services.benefit.listByProduct(pid) here.
+         *
+         * The local implementation of listByProduct() currently
+         * falls back to the mock implementation because it does
+         * not receive organizationId.
+         *
+         * The organization-scoped method is the correct persisted
+         * data path.
+         */
+        const organizationBenefits =
+          await services.benefit.listByOrganization(orgId);
 
-        const cust = await services.customer.getCustomer(customerId);
+        const bens = organizationBenefits.filter(
+          (benefit) =>
+            !benefit.isDeleted && prod.benefitIds.includes(benefit.id),
+        );
+
+        /*
+         * --------------------------------------------------------
+         * 3. Resolve customer
+         * --------------------------------------------------------
+         */
+        /*
+         * --------------------------------------------------------
+         * 3. Resolve canonical customer / OrganizationUser
+         * --------------------------------------------------------
+         *
+         * Counter passes the canonical User ID as customerId.
+         *
+         * Do not use services.customer.getCustomer(customerId) here.
+         * Resolve the User first, then create the lightweight Customer
+         * view used by JoinFlow.
+         */
+        const users = await services.organization.listUsers();
+
+        const user = users.find(
+          (item) => !item.isDeleted && item.id === customerId,
+        );
+
+        let cust: Customer | null = null;
+
+        if (user) {
+          const fullName =
+            user.displayName?.trim() ||
+            [user.firstName, user.middleName, user.lastName]
+              .filter((value) => Boolean(value?.trim()))
+              .join(" ") ||
+            "Customer";
+
+          cust = {
+            id: user.id,
+            fullName,
+            email: user.primaryEmail,
+            phone: `${user.primaryPhone.callingCode ?? ""}${
+              user.primaryPhone.number ?? ""
+            }`,
+            createdAt: user.createdAt,
+          } as Customer;
+        }
 
         let resolvedOrganizationUserId: string | null = null;
 
-        /*
-         * For staff-assisted purchases the customer should already have
-         * an OrganizationUser. For direct purchases this may not exist yet.
-         */
         try {
           const organizationUsers =
             await services.organization.listOrganizationUsersByUser(customerId);
 
           const organizationUser = organizationUsers.find(
-            (item) => item.organizationId === orgId,
+            (item) =>
+              !item.isDeleted &&
+              item.organizationId === orgId &&
+              item.organizationUserTypeId === "org-user-type-customer",
           );
 
           resolvedOrganizationUserId = organizationUser?.id ?? null;
@@ -548,6 +662,21 @@ export default function JoinFlow() {
    * --------------------------------------------------------------
    * CREATE SUBSCRIPTION
    * --------------------------------------------------------------
+   *
+   * The business workflow is intentionally provider-neutral:
+   *
+   *   JoinFlow
+   *       ↓
+   *   services.payment.pay()
+   *       ↓
+   *   PaymentService
+   *       ↓
+   *   local / real payment implementation
+   *
+   * There is NO mock payment implementation in this screen.
+   *
+   * Subscription creation happens only after PaymentService
+   * reports PAID.
    */
 
   const payAndSubscribe = useCallback(async () => {
@@ -558,12 +687,41 @@ export default function JoinFlow() {
     setStep("processing");
 
     try {
+      /*
+       * --------------------------------------------------------
+       * 1. PAYMENT
+       * --------------------------------------------------------
+       *
+       * JoinFlow only knows about PaymentService.
+       *
+       * The current service registry supplies the local payment
+       * implementation. Production can replace that implementation
+       * without changing this workflow.
+       */
       const payment = await services.payment.pay({
         amountMinor: plan.price.amountMinor,
         currency: plan.price.currency,
         description: product.membershipProductName,
       });
 
+      console.log("PAYMENT RESULT", {
+        status: payment.status,
+        reference: payment.reference,
+      });
+
+      /*
+       * Do NOT create the subscription unless the payment service
+       * explicitly reports success.
+       */
+      if (payment.status !== "PAID") {
+        throw new Error("Payment was not completed.");
+      }
+
+      /*
+       * --------------------------------------------------------
+       * 2. RESOLVE ACTIVE SUBSCRIPTION STATUS
+       * --------------------------------------------------------
+       */
       const subscriptionEntityStatuses =
         await services.status.listStatusesByEntityTypeCode("SUBSCRIPTION");
 
@@ -583,6 +741,11 @@ export default function JoinFlow() {
         throw new Error("ACTIVE status is not configured for Subscription.");
       }
 
+      /*
+       * --------------------------------------------------------
+       * 3. CALCULATE SUBSCRIPTION DATES
+       * --------------------------------------------------------
+       */
       const startDate = new Date();
 
       const endDate = calculateEndDate(
@@ -604,6 +767,13 @@ export default function JoinFlow() {
         organizationId: orgId,
       });
 
+      /*
+       * --------------------------------------------------------
+       * 4. CREATE SUBSCRIPTION
+       * --------------------------------------------------------
+       *
+       * This happens ONLY after successful payment.
+       */
       const sub = await services.subscription.createSubscription({
         subscriptionNumber: generateSubscriptionNumber(),
 
@@ -631,10 +801,16 @@ export default function JoinFlow() {
       console.log("SUBSCRIPTION CREATED", {
         subscriptionId: sub.id,
         subscriptionStatusId: sub.subscriptionStatusId,
+        paymentReference: payment.reference,
       });
 
       setSubscription(sub);
 
+      /*
+       * Payment reference comes from the PaymentService.
+       *
+       * JoinFlow does not generate it.
+       */
       setReference(payment.reference);
 
       /*
@@ -662,6 +838,7 @@ export default function JoinFlow() {
     isStaffSale,
     params.staffId,
     orgId,
+    customerId,
     setActiveContext,
   ]);
 

@@ -2,153 +2,201 @@ import { useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import type {
-  Customer,
   MembershipProduct,
   OrganizationUser,
   Subscription,
   SubscriptionPlan,
+  User,
 } from "@/src/core";
-
 import { services } from "@/src/core";
-
 import { useBusiness } from "@/src/providers";
 import { DataTable, DataTableColumn, Input, Text } from "@/src/ui";
 
 type SubscriptionRow = {
   subscription: Subscription;
   organizationUser: OrganizationUser;
-  customer?: Customer;
+  user?: User;
   subscriptionPlan?: SubscriptionPlan;
   membershipProduct?: MembershipProduct;
 };
 
+function displayName(user?: User): string {
+  if (!user) return "Unknown Customer";
+  return (
+    user.displayName?.trim() ||
+    `${user.firstName ?? ""} ${user.middleName ?? ""} ${user.lastName ?? ""}`
+      .replace(/\s+/g, " ")
+      .trim() ||
+    user.userCode
+  );
+}
+
+function phone(user?: User): string {
+  if (!user?.primaryPhone) return "—";
+  return (
+    `${user.primaryPhone.callingCode ?? ""} ${user.primaryPhone.number ?? ""}`.trim() ||
+    "—"
+  );
+}
+
+function formatDate(value?: string): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+}
+
+function formatDateTime(value?: string): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function formatMoney(value?: {
+  amountMinor: number;
+  currency: string;
+}): string {
+  if (!value) return "—";
+  return `${value.currency} ${(value.amountMinor / 100).toFixed(2)}`;
+}
+
+function formatStatus(statusId?: string): string {
+  if (!statusId) return "Unknown";
+  return statusId
+    .replace(/^(subscription-status|status)-/, "")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function DetailItem({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.detailItem}>
+      <Text variant="caption" color="textMuted">
+        {label}
+      </Text>
+      <Text variant="body" color="text">
+        {value}
+      </Text>
+    </View>
+  );
+}
+
 export default function OrgAdminSubscriptions() {
   const { organization } = useBusiness();
-
   const [rows, setRows] = useState<SubscriptionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-
-  const [selectedSubscription, setSelectedSubscription] =
-    useState<SubscriptionRow | null>(null);
+  const [selected, setSelected] = useState<SubscriptionRow | null>(null);
+  const [activeStatusId, setActiveStatusId] = useState<string | undefined>();
 
   useEffect(() => {
     let mounted = true;
 
     async function load() {
       setLoading(true);
-
       try {
-        const [subscriptions, organizationUsers] = await Promise.all([
-          services.subscription.listByOrganization(organization.id),
-          services.organization.listOrganizationUsers(organization.id),
-        ]);
+        const [subscriptions, organizationUsers, users, products, statuses] =
+          await Promise.all([
+            services.subscription.listByOrganization(organization.id),
+            services.organization.listOrganizationUsers(organization.id),
+            services.organization.listUsers(),
+            services.membershipProduct.listProducts(organization.id),
+            services.status.listStatusesByEntityTypeCode("SUBSCRIPTION"),
+          ]);
 
-        const organizationUserMap = new Map<string, OrganizationUser>(
+        const active = statuses.find(
+          (item) => item.statusCode?.trim().toUpperCase() === "ACTIVE",
+        );
+
+        if (!mounted) return;
+        setActiveStatusId(active?.id);
+
+        const organizationUserMap = new Map(
           organizationUsers
             .filter((item) => !item.isDeleted)
             .map((item) => [item.id, item]),
         );
-
-        const resolved = await Promise.all(
-          subscriptions
-            .filter((subscription) => !subscription.isDeleted)
-            .map(async (subscription): Promise<SubscriptionRow | null> => {
-              const organizationUser = organizationUserMap.get(
-                subscription.organizationUserId,
-              );
-
-              if (!organizationUser) {
-                return null;
-              }
-
-              const [customer, subscriptionPlan] = await Promise.all([
-                services.customer.getCustomer(organizationUser.userId),
-                services.subscriptionPlan.getPlan(
-                  subscription.subscriptionPlanId,
-                ),
-              ]);
-
-              let membershipProduct: MembershipProduct | undefined;
-
-              if (subscriptionPlan) {
-                membershipProduct =
-                  (await services.membershipProduct.getProduct(
-                    subscriptionPlan.membershipProductId,
-                  )) ?? undefined;
-              }
-
-              return {
-                subscription,
-                organizationUser,
-                customer: customer ?? undefined,
-                subscriptionPlan: subscriptionPlan ?? undefined,
-                membershipProduct,
-              };
-            }),
+        const userMap = new Map(
+          users
+            .filter((item) => !item.isDeleted)
+            .map((item) => [item.id, item]),
+        );
+        const productMap = new Map(
+          products
+            .filter((item) => !item.isDeleted)
+            .map((item) => [item.id, item]),
         );
 
-        if (!mounted) {
-          return;
+        const resolved: SubscriptionRow[] = [];
+
+        for (const subscription of subscriptions) {
+          if (subscription.isDeleted) continue;
+          const organizationUser = organizationUserMap.get(
+            subscription.organizationUserId,
+          );
+          if (!organizationUser) continue;
+
+          const product = Array.from(productMap.values()).find((item) =>
+            item.plans?.some(
+              (plan) => plan.id === subscription.subscriptionPlanId,
+            ),
+          );
+          const plan = product?.plans?.find(
+            (item) =>
+              item.id === subscription.subscriptionPlanId && !item.isDeleted,
+          );
+
+          resolved.push({
+            subscription,
+            organizationUser,
+            user: userMap.get(organizationUser.userId),
+            subscriptionPlan: plan,
+            membershipProduct: product,
+          });
         }
 
-        const validRows = resolved.filter(
-          (item): item is SubscriptionRow => item !== null,
-        );
-
-        setRows(validRows);
-      } catch {
-        if (!mounted) {
-          return;
-        }
-
-        setRows([]);
+        if (mounted) setRows(resolved);
+      } catch (error) {
+        console.error("ORG ADMIN SUBSCRIPTIONS LOAD ERROR", error);
+        if (mounted) setRows([]);
       } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+        if (mounted) setLoading(false);
       }
     }
 
     void load();
-
     return () => {
       mounted = false;
     };
   }, [organization.id]);
 
   const filteredRows = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    if (!query) {
-      return rows;
-    }
-
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
     return rows.filter(
-      ({ subscription, customer, subscriptionPlan, membershipProduct }) =>
-        subscription.subscriptionNumber.toLowerCase().includes(query) ||
-        subscription.id.toLowerCase().includes(query) ||
-        subscription.subscriptionStatusId.toLowerCase().includes(query) ||
-        subscription.organizationUserId.toLowerCase().includes(query) ||
-        subscriptionPlan?.subscriptionPlanName.toLowerCase().includes(query) ||
-        subscriptionPlan?.subscriptionPlanCode.toLowerCase().includes(query) ||
-        membershipProduct?.membershipProductName
+      ({ subscription, user, subscriptionPlan, membershipProduct }) =>
+        subscription.subscriptionNumber.toLowerCase().includes(q) ||
+        subscription.id.toLowerCase().includes(q) ||
+        displayName(user).toLowerCase().includes(q) ||
+        user?.primaryEmail?.toLowerCase().includes(q) ||
+        phone(user).toLowerCase().includes(q) ||
+        subscriptionPlan?.subscriptionPlanName.toLowerCase().includes(q) ||
+        subscriptionPlan?.subscriptionPlanCode.toLowerCase().includes(q) ||
+        membershipProduct?.membershipProductName.toLowerCase().includes(q) ||
+        membershipProduct?.displayName?.toLowerCase().includes(q) ||
+        formatStatus(subscription.subscriptionStatusId)
           .toLowerCase()
-          .includes(query) ||
-        membershipProduct?.displayName?.toLowerCase().includes(query) ||
-        customer?.fullName.toLowerCase().includes(query) ||
-        customer?.email?.toLowerCase().includes(query) ||
-        customer?.phone?.toLowerCase().includes(query),
+          .includes(q),
     );
   }, [rows, search]);
 
   const activeCount = useMemo(
     () =>
-      rows.filter(
-        ({ subscription }) =>
-          subscription.subscriptionStatusId === "subscription-status-active",
-      ).length,
-    [rows],
+      activeStatusId
+        ? rows.filter(
+            (row) => row.subscription.subscriptionStatusId === activeStatusId,
+          ).length
+        : 0,
+    [rows, activeStatusId],
   );
 
   const columns = useMemo<DataTableColumn<SubscriptionRow>[]>(
@@ -162,14 +210,12 @@ export default function OrgAdminSubscriptions() {
             <Text variant="bodyStrong" color="text">
               {item.subscription.subscriptionNumber}
             </Text>
-
             <Text variant="caption" color="textMuted">
               ID: {item.subscription.id}
             </Text>
           </View>
         ),
       },
-
       {
         key: "customer",
         title: "Customer",
@@ -177,16 +223,14 @@ export default function OrgAdminSubscriptions() {
         render: (item) => (
           <View style={styles.primaryCell}>
             <Text variant="body" color="text">
-              {item.customer?.fullName ?? "Unknown Customer"}
+              {displayName(item.user)}
             </Text>
-
             <Text variant="caption" color="textMuted">
-              {item.customer?.email ?? item.customer?.phone ?? "—"}
+              {item.user?.primaryEmail ?? phone(item.user)}
             </Text>
           </View>
         ),
       },
-
       {
         key: "plan",
         title: "Subscription Plan",
@@ -194,21 +238,20 @@ export default function OrgAdminSubscriptions() {
         render: (item) => (
           <View style={styles.primaryCell}>
             <Text variant="body" color="text">
-              {item.subscriptionPlan?.subscriptionPlanName ?? "Unknown Plan"}
+              {item.subscriptionPlan?.subscriptionPlanName ??
+                item.membershipProduct?.displayName ??
+                "Unknown Plan"}
             </Text>
-
             <Text variant="caption" color="textMuted">
-              {item.membershipProduct?.displayName ??
-                item.membershipProduct?.membershipProductName ??
+              {item.membershipProduct?.membershipProductName ??
                 item.subscriptionPlan?.subscriptionPlanCode ??
                 "—"}
             </Text>
           </View>
         ),
       },
-
       {
-        key: "subscriptionDate",
+        key: "purchase",
         title: "Purchase Date",
         width: 140,
         render: (item) => (
@@ -217,9 +260,8 @@ export default function OrgAdminSubscriptions() {
           </Text>
         ),
       },
-
       {
-        key: "startDate",
+        key: "start",
         title: "Start Date",
         width: 140,
         render: (item) => (
@@ -228,9 +270,8 @@ export default function OrgAdminSubscriptions() {
           </Text>
         ),
       },
-
       {
-        key: "endDate",
+        key: "end",
         title: "End Date",
         width: 140,
         render: (item) => (
@@ -239,7 +280,6 @@ export default function OrgAdminSubscriptions() {
           </Text>
         ),
       },
-
       {
         key: "status",
         title: "Status",
@@ -250,7 +290,6 @@ export default function OrgAdminSubscriptions() {
           </Text>
         ),
       },
-
       {
         key: "amount",
         title: "Amount",
@@ -265,10 +304,6 @@ export default function OrgAdminSubscriptions() {
     [],
   );
 
-  const handleView = (row: SubscriptionRow) => {
-    setSelectedSubscription(row);
-  };
-
   return (
     <>
       <ScrollView
@@ -277,15 +312,12 @@ export default function OrgAdminSubscriptions() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <View style={styles.headerText}>
-            <Text variant="title" color="text">
-              Subscriptions
-            </Text>
-
-            <Text variant="bodySmall" color="textMuted">
-              View subscriptions purchased by customers of your organization.
-            </Text>
-          </View>
+          <Text variant="title" color="text">
+            Subscriptions
+          </Text>
+          <Text variant="bodySmall" color="textMuted">
+            View subscriptions purchased by customers of your organization.
+          </Text>
         </View>
 
         <View style={styles.summary}>
@@ -293,31 +325,26 @@ export default function OrgAdminSubscriptions() {
             <Text variant="caption" color="textMuted">
               Total Subscriptions
             </Text>
-
             <Text variant="h2" color="text">
               {rows.length}
             </Text>
           </View>
-
           <View style={styles.summaryCard}>
             <Text variant="caption" color="textMuted">
               Active
             </Text>
-
             <Text variant="h2" color="text">
               {activeCount}
             </Text>
           </View>
         </View>
 
-        <View style={styles.searchContainer}>
-          <Input
-            label="Search Subscriptions"
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search customer, subscription, plan or status"
-          />
-        </View>
+        <Input
+          label="Search Subscriptions"
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search customer, subscription, plan or status"
+        />
 
         {loading ? (
           <View style={styles.center}>
@@ -335,273 +362,108 @@ export default function OrgAdminSubscriptions() {
                 ? "No subscriptions match your search."
                 : "No subscriptions found for this organization."
             }
-            actions={[
-              {
-                label: "View",
-                onPress: handleView,
-              },
-            ]}
+            actions={[{ label: "View", onPress: setSelected }]}
           />
         )}
       </ScrollView>
 
       <Modal
-        visible={selectedSubscription !== null}
+        visible={selected !== null}
         transparent
         animationType="fade"
-        onRequestClose={() => setSelectedSubscription(null)}
+        onRequestClose={() => setSelected(null)}
       >
-        {selectedSubscription ? (
-          <View style={styles.modalOverlay}>
-            <View style={styles.viewModal}>
+        {selected ? (
+          <View style={styles.overlay}>
+            <View style={styles.modal}>
               <View style={styles.modalHeader}>
-                <View style={styles.headerText}>
-                  <View style={styles.subscriptionTitleRow}>
-                    <Text variant="h2" color="text">
-                      {selectedSubscription.subscription.subscriptionNumber}
-                    </Text>
-
-                    <View style={styles.statusBadge}>
-                      <Text variant="caption" color="text">
-                        {formatStatus(
-                          selectedSubscription.subscription
-                            .subscriptionStatusId,
-                        )}
-                      </Text>
-                    </View>
-                  </View>
-
+                <View>
+                  <Text variant="h2" color="text">
+                    {selected.subscription.subscriptionNumber}
+                  </Text>
                   <Text variant="bodySmall" color="textMuted">
                     Subscription details
                   </Text>
                 </View>
-
-                <Pressable
-                  onPress={() => setSelectedSubscription(null)}
-                  style={styles.closeButton}
-                >
+                <Pressable onPress={() => setSelected(null)}>
                   <Text variant="body" color="textMuted">
                     ✕
                   </Text>
                 </Pressable>
               </View>
-
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.modalContent}
-              >
+              <ScrollView contentContainerStyle={styles.modalContent}>
                 <View style={styles.detailsGrid}>
                   <DetailItem
-                    label="Subscription Number"
-                    value={selectedSubscription.subscription.subscriptionNumber}
-                  />
-
-                  <DetailItem
-                    label="Subscription ID"
-                    value={selectedSubscription.subscription.id}
-                  />
-
-                  <DetailItem
                     label="Customer"
-                    value={
-                      selectedSubscription.customer?.fullName ??
-                      "Unknown Customer"
-                    }
+                    value={displayName(selected.user)}
                   />
-
                   <DetailItem
                     label="Customer Email"
-                    value={selectedSubscription.customer?.email ?? "—"}
+                    value={selected.user?.primaryEmail ?? "—"}
                   />
-
                   <DetailItem
                     label="Customer Phone"
-                    value={selectedSubscription.customer?.phone ?? "—"}
+                    value={phone(selected.user)}
                   />
-
                   <DetailItem
                     label="Organization User ID"
-                    value={selectedSubscription.organizationUser.id}
+                    value={selected.organizationUser.id}
                   />
-
                   <DetailItem
                     label="Subscription Plan"
                     value={
-                      selectedSubscription.subscriptionPlan
-                        ?.subscriptionPlanName ??
-                      selectedSubscription.subscriptionPlan
-                        ?.subscriptionPlanCode ??
-                      "—"
+                      selected.subscriptionPlan?.subscriptionPlanName ?? "—"
                     }
                   />
-
                   <DetailItem
                     label="Plan Code"
                     value={
-                      selectedSubscription.subscriptionPlan
-                        ?.subscriptionPlanCode ?? "—"
+                      selected.subscriptionPlan?.subscriptionPlanCode ?? "—"
                     }
                   />
-
                   <DetailItem
                     label="Membership Product"
                     value={
-                      selectedSubscription.membershipProduct?.displayName ??
-                      selectedSubscription.membershipProduct
-                        ?.membershipProductName ??
+                      selected.membershipProduct?.displayName ??
+                      selected.membershipProduct?.membershipProductName ??
                       "—"
                     }
                   />
-
                   <DetailItem
                     label="Purchase Date"
-                    value={formatDate(
-                      selectedSubscription.subscription.subscriptionDate,
-                    )}
+                    value={formatDate(selected.subscription.subscriptionDate)}
                   />
-
                   <DetailItem
                     label="Start Date"
-                    value={formatDate(
-                      selectedSubscription.subscription.startDate,
-                    )}
+                    value={formatDate(selected.subscription.startDate)}
                   />
-
                   <DetailItem
                     label="End Date"
-                    value={formatDate(
-                      selectedSubscription.subscription.endDate,
-                    )}
+                    value={formatDate(selected.subscription.endDate)}
                   />
-
                   <DetailItem
                     label="Status"
                     value={formatStatus(
-                      selectedSubscription.subscription.subscriptionStatusId,
+                      selected.subscription.subscriptionStatusId,
                     )}
                   />
-
                   <DetailItem
                     label="Total Amount"
-                    value={formatMoney(
-                      selectedSubscription.subscription.totalAmount,
-                    )}
+                    value={formatMoney(selected.subscription.totalAmount)}
                   />
-
                   <DetailItem
                     label="Created At"
-                    value={formatDateTime(
-                      selectedSubscription.subscription.createdAt,
-                    )}
-                  />
-
-                  <DetailItem
-                    label="Version"
-                    value={String(selectedSubscription.subscription.versionNo)}
+                    value={formatDateTime(selected.subscription.createdAt)}
                   />
                 </View>
-
-                {selectedSubscription.subscriptionPlan ? (
-                  <View style={styles.infoCard}>
-                    <Text variant="bodyStrong" color="text">
-                      Subscription Plan
-                    </Text>
-
-                    <DetailItem
-                      label="Plan Name"
-                      value={
-                        selectedSubscription.subscriptionPlan
-                          .subscriptionPlanName
-                      }
-                    />
-
-                    <DetailItem
-                      label="Plan Code"
-                      value={
-                        selectedSubscription.subscriptionPlan
-                          .subscriptionPlanCode
-                      }
-                    />
-
-                    <DetailItem
-                      label="Description"
-                      value={
-                        selectedSubscription.subscriptionPlan.description ?? "—"
-                      }
-                    />
-
-                    <DetailItem
-                      label="Period"
-                      value={`${selectedSubscription.subscriptionPlan.subscriptionPeriod} ${selectedSubscription.subscriptionPlan.subscriptionPeriodUnit}`}
-                    />
-
-                    <DetailItem
-                      label="Plan Price"
-                      value={formatMoney(
-                        selectedSubscription.subscriptionPlan.price,
-                      )}
-                    />
-
-                    <DetailItem
-                      label="Plan Status"
-                      value={formatStatus(
-                        selectedSubscription.subscriptionPlan
-                          .subscriptionPlanStatusId,
-                      )}
-                    />
-                  </View>
-                ) : null}
-
-                {selectedSubscription.membershipProduct ? (
-                  <View style={styles.infoCard}>
-                    <Text variant="bodyStrong" color="text">
-                      Membership Product
-                    </Text>
-
-                    <DetailItem
-                      label="Product Name"
-                      value={
-                        selectedSubscription.membershipProduct
-                          .membershipProductName
-                      }
-                    />
-
-                    <DetailItem
-                      label="Display Name"
-                      value={
-                        selectedSubscription.membershipProduct.displayName ??
-                        "—"
-                      }
-                    />
-
-                    <DetailItem
-                      label="Product Code"
-                      value={
-                        selectedSubscription.membershipProduct
-                          .membershipProductCode
-                      }
-                    />
-
-                    <DetailItem
-                      label="Description"
-                      value={
-                        selectedSubscription.membershipProduct.description ??
-                        "—"
-                      }
-                    />
-                  </View>
-                ) : null}
-
-                <View style={styles.modalActions}>
-                  <Pressable
-                    onPress={() => setSelectedSubscription(null)}
-                    style={styles.secondaryButton}
-                  >
-                    <Text variant="body" color="text">
-                      Close
-                    </Text>
-                  </Pressable>
-                </View>
+                <Pressable
+                  style={styles.close}
+                  onPress={() => setSelected(null)}
+                >
+                  <Text variant="body" color="text">
+                    Close
+                  </Text>
+                </Pressable>
               </ScrollView>
             </View>
           </View>
@@ -611,204 +473,52 @@ export default function OrgAdminSubscriptions() {
   );
 }
 
-function DetailItem({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.detailItem}>
-      <Text variant="caption" color="textMuted">
-        {label}
-      </Text>
-
-      <Text variant="body" color="text">
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-function formatDate(value: string): string {
-  if (!value) {
-    return "—";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleDateString();
-}
-
-function formatDateTime(value: string): string {
-  if (!value) {
-    return "—";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleString();
-}
-
-function formatStatus(value: string): string {
-  if (!value) {
-    return "Unknown";
-  }
-
-  const normalized = value
-    .replace(/^subscription-status-/i, "")
-    .replace(/^subscription-plan-status-/i, "")
-    .replace(/^status-/i, "");
-
-  return normalized
-    .toLowerCase()
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function formatMoney(value: { amountMinor: number; currency: string }): string {
-  return `${value.currency} ${(value.amountMinor / 100).toFixed(2)}`;
-}
-
 const styles = StyleSheet.create({
-  scroll: {
-    flex: 1,
-  },
-
-  screen: {
-    padding: 24,
-    gap: 24,
-  },
-
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 16,
-  },
-
-  headerText: {
-    flex: 1,
-    gap: 4,
-  },
-
-  summary: {
-    flexDirection: "row",
-    gap: 16,
-    flexWrap: "wrap",
-  },
-
+  scroll: { flex: 1 },
+  screen: { padding: 18, gap: 18 },
+  header: { gap: 4 },
+  summary: { flexDirection: "row", gap: 16 },
   summaryCard: {
-    minWidth: 190,
-    padding: 18,
+    width: 190,
+    minHeight: 90,
     borderWidth: 1,
-    borderColor: "#D1D5DB",
+    borderColor: "#d6dce2",
     borderRadius: 10,
-    backgroundColor: "#FFFFFF",
+    padding: 16,
     gap: 8,
   },
-
-  searchContainer: {
-    maxWidth: 600,
-  },
-
-  primaryCell: {
-    gap: 2,
-  },
-
-  center: {
-    minHeight: 160,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  modalOverlay: {
+  center: { padding: 40, alignItems: "center" },
+  primaryCell: { gap: 3 },
+  overlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
+    backgroundColor: "rgba(0,0,0,0.35)",
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
   },
-
-  viewModal: {
-    width: "100%",
-    maxWidth: 700,
-    maxHeight: "90%",
-    backgroundColor: "#FFFFFF",
+  modal: {
+    width: "90%",
+    maxWidth: 900,
+    maxHeight: "88%",
+    backgroundColor: "white",
     borderRadius: 12,
-    padding: 24,
-    gap: 20,
+    overflow: "hidden",
   },
-
   modalHeader: {
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e1e5e9",
     flexDirection: "row",
-    alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: 16,
   },
-
-  subscriptionTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    backgroundColor: "#DCFCE7",
-  },
-
-  closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F3F4F6",
-  },
-
-  modalContent: {
-    gap: 20,
-    paddingBottom: 4,
-  },
-
-  detailsGrid: {
-    gap: 16,
-  },
-
-  detailItem: {
-    gap: 3,
-  },
-
-  infoCard: {
-    gap: 14,
-    padding: 18,
-    borderRadius: 10,
+  modalContent: { padding: 20, gap: 20 },
+  detailsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 18 },
+  detailItem: { minWidth: 240, flexGrow: 1, gap: 4 },
+  close: {
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#F9FAFB",
-  },
-
-  modalActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginTop: 4,
-  },
-
-  secondaryButton: {
-    minHeight: 44,
-    paddingHorizontal: 18,
+    borderColor: "#d6dce2",
     borderRadius: 8,
+    padding: 12,
     alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
   },
 });

@@ -15,6 +15,7 @@ import type {
   Redemption,
   Store,
   Subscription,
+  SubscriptionPlan,
 } from "@/src/core";
 import { services } from "@/src/core";
 import { APP_ROUTES } from "@/src/constants/navigation";
@@ -24,6 +25,8 @@ import {
   Badge,
   Button,
   Card,
+  DataTable,
+  type DataTableColumn,
   Header,
   Section,
   StateView,
@@ -43,7 +46,8 @@ type CustomerRow = {
   user: User;
   organizationUser: OrganizationUser;
   subscriptions: Subscription[];
-  products: MembershipProduct[];
+  productsBySubscriptionId: Record<string, MembershipProduct | undefined>;
+  membershipNamesBySubscriptionId: Record<string, string | undefined>;
   redemptions: CustomerRedemption[];
 };
 
@@ -202,48 +206,130 @@ export default function StaffCustomers() {
           organizationUser,
           subscriptions:
             subscriptionsByOrganizationUser.get(organizationUser.id) ?? [],
-          products: [],
+          productsBySubscriptionId: {},
+          membershipNamesBySubscriptionId: {},
           redemptions: [],
         });
       }
 
       /*
-       * Resolve membership products and redemption history for the same
-       * customers. This preserves the Counter customer-detail experience
-       * while using the Org Admin directory's correct user source.
+       * Resolve membership products from the organization-scoped catalogue.
+       *
+       * IMPORTANT: getProduct(id) is not safe for persisted organization
+       * products because the local implementation delegates that lookup to
+       * its fallback service. The organization-scoped listProducts() path is
+       * the source of truth used by JoinFlow.
        */
-      const stores = await services.organization.listStores(organization.id);
+      const [
+        membershipProducts,
+        organizationBenefits,
+        stores,
+        subscriptionStatuses,
+      ] = await Promise.all([
+        services.membershipProduct.listProducts(organization.id),
+        services.benefit.listByOrganization(organization.id),
+        services.organization.listStores(organization.id),
+        services.status.listStatusesByEntityTypeCode("SUBSCRIPTION"),
+      ]);
+
+      const productsById = new Map(
+        membershipProducts
+          .filter((product) => !product.isDeleted)
+          .map((product) => [product.id, product]),
+      );
+
+      const benefitsById = new Map(
+        organizationBenefits
+          .filter((benefit) => !benefit.isDeleted)
+          .map((benefit) => [benefit.id, benefit]),
+      );
+
       const storesById = new Map<string, Store>(
         stores
           .filter((store) => !store.isDeleted)
           .map((store) => [store.id, store]),
       );
 
+      const activeSubscriptionStatus = subscriptionStatuses.find(
+        (item) => item?.statusCode?.trim().toUpperCase() === "ACTIVE",
+      );
+
+      const activeStatusId = activeSubscriptionStatus?.id;
+
       for (const row of customerRows) {
         for (const subscription of row.subscriptions) {
-          const plan = await services.subscriptionPlan.getPlan(
-            subscription.subscriptionPlanId,
-          );
+          /*
+           * IMPORTANT: resolve the plan from the same organization-scoped
+           * membership-product catalogue that the customer directory uses.
+           *
+           * Each MembershipProduct contains its SubscriptionPlan records in
+           * `plans`. That is the reliable persisted relationship for Counter.
+           * The previous implementation called subscriptionPlan.getPlan()
+           * first; in the local service that can fall back to mock data and
+           * return no matching plan, causing us to fall back to the product
+           * name ("ARTISAN PASS") instead of the plan name ("SILVER").
+           *
+           * Org Admin -> Subscriptions presents the same relationship as:
+           *   primary   = SubscriptionPlan.subscriptionPlanName (SILVER)
+           *   secondary = MembershipProduct.membershipProductName (ARTISAN PASS)
+           *
+           * Counter must use exactly that presentation.
+           */
+          let matchedPlan: SubscriptionPlan | undefined;
+          let product: MembershipProduct | undefined;
 
-          if (!plan) {
-            continue;
+          for (const candidate of membershipProducts) {
+            if (candidate.isDeleted) {
+              continue;
+            }
+
+            const candidatePlan = candidate.plans?.find(
+              (plan) =>
+                !plan.isDeleted && plan.id === subscription.subscriptionPlanId,
+            );
+
+            if (candidatePlan) {
+              product = candidate;
+              matchedPlan = candidatePlan;
+              break;
+            }
           }
 
-          const product = await services.membershipProduct.getProduct(
-            plan.membershipProductId,
-          );
+          /*
+           * Keep a fallback for data sets where the organization product
+           * catalogue does not contain the embedded plan. This does not
+           * change the normal persisted path above.
+           */
+          if (!matchedPlan) {
+            matchedPlan =
+              (await services.subscriptionPlan.getPlan(
+                subscription.subscriptionPlanId,
+              )) ?? undefined;
 
-          if (product) {
-            row.products.push(product);
+            if (matchedPlan) {
+              product = productsById.get(matchedPlan.membershipProductId);
+            }
           }
 
-          const benefits = await services.benefit.listByProduct(
-            plan.membershipProductId,
-          );
+          row.productsBySubscriptionId[subscription.id] = product;
 
-          const benefitsById = new Map(
-            benefits.map((benefit) => [benefit.id, benefit]),
-          );
+          /*
+           * Match Org Admin -> Subscriptions exactly:
+           *   primary name   = plan name (e.g. SILVER)
+           *   product name   = secondary line (e.g. ARTISAN PASS)
+           */
+          row.membershipNamesBySubscriptionId[subscription.id] =
+            matchedPlan?.subscriptionPlanName?.trim() || undefined;
+
+          if (!product) {
+            console.warn("COUNTER SUBSCRIPTION PRODUCT MISSING", {
+              subscriptionId: subscription.id,
+              subscriptionPlanId: subscription.subscriptionPlanId,
+              organizationId: organization.id,
+            });
+          }
+
+          const productBenefitIds = new Set(product?.benefitIds ?? []);
 
           const subscriptionRedemptions =
             await services.redemption.listBySubscription(subscription.id);
@@ -255,9 +341,9 @@ export default function StaffCustomers() {
             row.redemptions.push({
               redemption,
               benefitName:
-                benefit?.displayName ??
-                benefit?.benefitName ??
-                "Reward redeemed",
+                benefit && productBenefitIds.has(benefit.id)
+                  ? (benefit.displayName ?? benefit.benefitName)
+                  : "Reward redeemed",
               storeName:
                 store?.name ?? organization.displayName ?? organization.name,
               productName:
@@ -268,6 +354,8 @@ export default function StaffCustomers() {
           }
         }
       }
+
+      setActiveSubscriptionEntityStatusId(activeStatusId);
 
       console.log("COUNTER CUSTOMERS LOADED", {
         organizationId: organization.id,
@@ -318,6 +406,96 @@ export default function StaffCustomers() {
     ? rows.find((row) => row.user.id === selectedCustomerId)
     : undefined;
 
+  const customerColumns = React.useMemo<DataTableColumn<CustomerRow>[]>(
+    () => [
+      {
+        key: "name",
+        title: "Customer",
+        width: 240,
+        render: (item) => (
+          <View style={styles.customerCell}>
+            <Text variant="bodyStrong" color="text">
+              {getDisplayName(item.user)}
+            </Text>
+            <Text variant="caption" color="textMuted">
+              {`Joined ${new Date(
+                item.organizationUser.joiningDate,
+              ).toLocaleDateString()}`}
+            </Text>
+          </View>
+        ),
+      },
+      {
+        key: "email",
+        title: "Email",
+        width: 240,
+        render: (item) => (
+          <Text variant="body" color="text">
+            {item.user.primaryEmail ?? "—"}
+          </Text>
+        ),
+      },
+      {
+        key: "phone",
+        title: "Phone",
+        width: 180,
+        render: (item) => (
+          <Text variant="body" color="text">
+            {getPhoneDisplay(item.user) || "—"}
+          </Text>
+        ),
+      },
+      {
+        key: "status",
+        title: "Status",
+        width: 140,
+        render: (item) => (
+          <Text variant="body" color="text">
+            {formatStatusId(item.organizationUser.organizationUserStatusId)}
+          </Text>
+        ),
+      },
+      {
+        key: "membership",
+        title: "Membership",
+        width: 220,
+        render: (item) => {
+          const activeSubscription = activeSubscriptionEntityStatusId
+            ? item.subscriptions.find(
+                (subscription) =>
+                  subscription.subscriptionStatusId ===
+                  activeSubscriptionEntityStatusId,
+              )
+            : undefined;
+
+          const membershipName = activeSubscription
+            ? item.membershipNamesBySubscriptionId[activeSubscription.id]
+            : undefined;
+          const membershipProduct = activeSubscription
+            ? item.productsBySubscriptionId[activeSubscription.id]
+            : undefined;
+          const productName =
+            membershipProduct?.membershipProductName?.trim() ||
+            membershipProduct?.displayName?.trim();
+
+          return (
+            <View>
+              <Text variant="body" color="text">
+                {membershipName ?? "No membership"}
+              </Text>
+              {membershipName && productName ? (
+                <Text variant="caption" color="textMuted">
+                  ({productName})
+                </Text>
+              ) : null}
+            </View>
+          );
+        },
+      },
+    ],
+    [activeSubscriptionEntityStatusId],
+  );
+
   if (status === "loading") {
     return (
       <Screen
@@ -363,23 +541,17 @@ export default function StaffCustomers() {
    * ------------------------------------------------------------
    */
   if (selectedRow) {
-    const activeMembershipIndex = activeSubscriptionEntityStatusId
-      ? selectedRow.subscriptions.findIndex(
+    const activeSubscription = activeSubscriptionEntityStatusId
+      ? selectedRow.subscriptions.find(
           (subscription) =>
             subscription.subscriptionStatusId ===
             activeSubscriptionEntityStatusId,
         )
-      : -1;
+      : undefined;
 
-    const activeSubscription =
-      activeMembershipIndex >= 0
-        ? selectedRow.subscriptions[activeMembershipIndex]
-        : undefined;
-
-    const activeProduct =
-      activeMembershipIndex >= 0
-        ? selectedRow.products[activeMembershipIndex]
-        : undefined;
+    const activeProduct = activeSubscription
+      ? selectedRow.productsBySubscriptionId[activeSubscription.id]
+      : undefined;
 
     const totalRedeemed = selectedRow.redemptions.reduce(
       (total, item) => total + (item.redemption.quantity ?? 1),
@@ -479,7 +651,7 @@ export default function StaffCustomers() {
           </Card>
 
           {/* Membership */}
-          <Section title="STEEP & SIP Memberships">
+          <Section title="Memberships">
             {selectedRow.subscriptions.length === 0 ? (
               <Card padding="lg">
                 <Text variant="body" color="textMuted">
@@ -487,8 +659,9 @@ export default function StaffCustomers() {
                 </Text>
               </Card>
             ) : (
-              selectedRow.subscriptions.map((subscription, index) => {
-                const product = selectedRow.products[index];
+              selectedRow.subscriptions.map((subscription) => {
+                const product =
+                  selectedRow.productsBySubscriptionId[subscription.id];
 
                 const isActive =
                   activeSubscriptionEntityStatusId !== undefined &&
@@ -500,13 +673,14 @@ export default function StaffCustomers() {
                     <View style={styles.membershipHeader}>
                       <View style={styles.membershipText}>
                         <Text variant="h2" color="text">
-                          {product?.displayName ??
-                            product?.membershipProductName ??
-                            "Membership"}
+                          {selectedRow.membershipNamesBySubscriptionId[
+                            subscription.id
+                          ] ?? "Membership"}
                         </Text>
 
                         <Text variant="bodySmall" color="textMuted">
                           {product?.membershipProductName ??
+                            product?.displayName ??
                             "Membership Product"}
                         </Text>
                       </View>
@@ -691,87 +865,17 @@ export default function StaffCustomers() {
               </Text>
             </Card>
           ) : (
-            filteredRows.map((row) => {
-              const activeSubscription = activeSubscriptionEntityStatusId
-                ? row.subscriptions.find(
-                    (subscription) =>
-                      subscription.subscriptionStatusId ===
-                      activeSubscriptionEntityStatusId,
-                  )
-                : undefined;
-
-              const activeProductIndex = activeSubscription
-                ? row.subscriptions.indexOf(activeSubscription)
-                : -1;
-
-              const activeProduct =
-                activeProductIndex >= 0
-                  ? row.products[activeProductIndex]
-                  : undefined;
-
-              const redemptionCount = row.redemptions.reduce(
-                (total, item) => total + (item.redemption.quantity ?? 1),
-                0,
-              );
-
-              return (
-                <Pressable
-                  key={row.user.id}
-                  onPress={() => setSelectedCustomerId(row.user.id)}
-                  testID={`staff-customer-${row.user.id}`}
-                >
-                  <Card padding="md">
-                    <View style={styles.row}>
-                      <View style={styles.avatarSmall}>
-                        <Text variant="body" color="text">
-                          {(getDisplayName(row.user) ?? "?")
-                            .trim()
-                            .charAt(0)
-                            .toUpperCase()}
-                        </Text>
-                      </View>
-
-                      <View style={styles.rowMain}>
-                        <Text variant="h2" color="text">
-                          {getDisplayName(row.user)}
-                        </Text>
-
-                        <Text variant="bodySmall" color="textMuted">
-                          {getPhoneDisplay(row.user) ??
-                            row.user.primaryEmail ??
-                            "No contact information"}
-                        </Text>
-
-                        {activeProduct ? (
-                          <Text variant="bodySmall" color="textMuted">
-                            {activeProduct.displayName ??
-                              activeProduct.membershipProductName}
-                          </Text>
-                        ) : (
-                          <Text variant="bodySmall" color="textMuted">
-                            No active membership
-                          </Text>
-                        )}
-
-                        {redemptionCount > 0 ? (
-                          <Text variant="caption" color="textMuted">
-                            {redemptionCount} redeemed
-                          </Text>
-                        ) : null}
-                      </View>
-
-                      <View style={styles.rowRight}>
-                        {activeSubscription ? (
-                          <Badge label="ACTIVE" tone="success" />
-                        ) : (
-                          <Badge label="VIEW" tone="neutral" />
-                        )}
-                      </View>
-                    </View>
-                  </Card>
-                </Pressable>
-              );
-            })
+            <DataTable
+              columns={customerColumns}
+              data={filteredRows}
+              keyExtractor={(item) => item.organizationUser.id}
+              actions={[
+                {
+                  label: "View",
+                  onPress: (item) => setSelectedCustomerId(item.user.id),
+                },
+              ]}
+            />
           )}
         </Section>
       </ScrollView>
@@ -808,6 +912,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+  },
+
+  customerCell: {
+    gap: 3,
   },
 
   rowMain: {

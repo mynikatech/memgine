@@ -12,6 +12,7 @@ import { LocalMembershipProductService } from "./membership-product-service.loca
 import { LocalBenefitService } from "./benefit-service.local";
 import { LocalOfferService } from "./offer-service.local";
 import { LocalSubscriptionService } from "./subscription-service.local";
+import { LocalPaymentService } from "./payment-service.local";
 import { CachedStatusService } from "./status-cache";
 import { LocalStatusService } from "./status-service.local";
 
@@ -43,7 +44,10 @@ const organizationService: OrganizationService = new LocalOrganizationService(
 const productService: ProductService = new LocalProductService();
 
 const membershipProductService: MembershipProductService =
-  new LocalMembershipProductService(mockServices.membershipProduct);
+  new LocalMembershipProductService(
+    mockServices.membershipProduct,
+    organizationService,
+  );
 
 const benefitService: BenefitService = new LocalBenefitService(
   mockServices.benefit,
@@ -73,6 +77,10 @@ const mockCustomerExperienceService = new InMemoryCustomerExperienceService(
 const customerExperienceService: CustomerExperienceService =
   new LocalCustomerExperienceService(mockCustomerExperienceService);
 
+const paymentService: PaymentService = new LocalPaymentService(
+  mockServices.payment,
+);
+
 export type MemgineServices = {
   organization: OrganizationService;
   customer: CustomerService;
@@ -95,36 +103,20 @@ export type MemgineServices = {
 
 export const services: MemgineServices = {
   organization: organizationService,
-
   customer: mockServices.customer,
-
   membershipProduct: membershipProductService,
-
   subscription: subscriptionService,
-
   subscriptionPlan: mockServices.subscriptionPlan,
-
   benefit: benefitService,
-
   offer: offerService,
-
   userAcquisition: userAcquisitionService,
-
   redemption: mockServices.redemption,
-
   status: statusService,
-
   auth: mockServices.auth,
-
-  payment: mockServices.payment,
-
+  payment: paymentService,
   referenceData: mockReferenceDataService,
-
   template: mockTemplateService,
-
   customerExperience: customerExperienceService,
-
   notification: mockNotificationService,
-
   product: productService,
 };

@@ -151,11 +151,14 @@ export function BusinessProvider({
   /*
    * Resolve the current organization.
    *
-   * Existing legacy organizations may still be served by
-   * BUSINESS_CONTEXTS during this migration.
+   * Persisted organization/API data is the source of truth.
+   * This is important for customer-facing screens because
+   * organization branding/logo changes made in Org Admin are
+   * stored in persisted organization configuration.
    *
-   * Newly-created organizations MUST resolve through the
-   * new persisted organization/API path.
+   * BUSINESS_CONTEXTS remains a fallback for legacy/demo
+   * organizations that do not have a persisted organization
+   * context.
    */
   useEffect(() => {
     if (organizationId) {
@@ -165,25 +168,17 @@ export function BusinessProvider({
     let cancelled = false;
 
     const resolve = async () => {
-      /*
-       * Existing legacy organizations can still be resolved directly
-       * from the legacy business-context registry.
-       */
-      const legacy = BUSINESS_CONTEXTS[activeOrgId];
-
-      if (legacy) {
-        if (cancelled) {
-          return;
-        }
-
-        setResolvedContext(legacy);
-        setResolving(false);
-        return;
-      }
-
       setResolving(true);
 
       try {
+        /*
+         * IMPORTANT:
+         * Resolve persisted organization data FIRST.
+         *
+         * Previously BUSINESS_CONTEXTS was checked first, which
+         * meant an organization present in the legacy registry
+         * could bypass its persisted branding configuration.
+         */
         const context = await resolveOrganizationContext(activeOrgId);
 
         if (cancelled) {
@@ -192,6 +187,17 @@ export function BusinessProvider({
 
         if (context) {
           setResolvedContext(context);
+          setResolving(false);
+          return;
+        }
+
+        /*
+         * Legacy fallback.
+         */
+        const legacy = BUSINESS_CONTEXTS[activeOrgId];
+
+        if (legacy) {
+          setResolvedContext(legacy);
           setResolving(false);
           return;
         }
@@ -241,9 +247,8 @@ export function BusinessProvider({
         );
 
         /*
-         * If the stored organization became invalid, recover by using
-         * the default organization rather than leaving the application
-         * permanently stuck on an invalid tenant.
+         * If persisted resolution fails for a non-default active
+         * organization, recover using the default organization.
          */
         if (activeOrgId !== DEFAULT_ACTIVE_ORG_ID) {
           console.warn(
@@ -262,6 +267,18 @@ export function BusinessProvider({
               );
             });
 
+          return;
+        }
+
+        /*
+         * If the default persisted organization cannot be resolved,
+         * retain the legacy registry as a final emergency fallback.
+         */
+        const legacy = BUSINESS_CONTEXTS[activeOrgId];
+
+        if (legacy) {
+          setResolvedContext(legacy);
+          setResolving(false);
           return;
         }
 
@@ -304,19 +321,14 @@ export function BusinessProvider({
 
     const active: LocaleProfile = {
       language: configuration.localization.defaultLanguage,
-
       currency: configuration.localization.defaultCurrency,
-
       timezone: configuration.localization.timezone,
     };
 
     const localization: LocalizationContext = {
       active,
-
       formatting: toFormattingContext(active),
-
       isRTL: false,
-
       availableLanguages: ["en"],
     };
 
@@ -338,7 +350,6 @@ export function BusinessProvider({
 
       entitlements: {
         planTier: account.planTier,
-
         managementModel: account.managementModel,
       },
 

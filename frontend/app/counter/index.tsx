@@ -22,7 +22,6 @@ import type {
 
 import {
   encodeRedemptionToken,
-  listActiveMemberships,
   redeemBenefits,
   redeemFromToken,
   RedemptionContext,
@@ -466,61 +465,147 @@ export default function StaffCounter() {
 
   /*
    * ------------------------------------------------------------
+   * Load memberships/catalog for a canonical User
+   *
+   * Counter must use the same persisted User + OrganizationUser +
+   * Subscription data as the Customers screen. The legacy Customer
+   * lookup is not the source of truth for these records, so do not use
+   * services.customer.getCustomer() to resolve memberships here.
+   * ------------------------------------------------------------
+   */
+
+  const loadMembershipData = useCallback(
+    async (customerId: string) => {
+      const [organizationUsers, subscriptions, catalog, productStatuses] =
+        await Promise.all([
+          services.organization.listOrganizationUsers(orgId),
+          services.subscription.listByOrganization(orgId),
+          services.membershipProduct.listProducts(orgId),
+          services.status.listMembershipProductStatuses(),
+        ]);
+
+      const activeProductStatusIds = new Set(
+        productStatuses
+          .filter(
+            (status) =>
+              status.statusCode?.trim().toUpperCase() === "ACTIVE" ||
+              status.statusName?.trim().toLowerCase() === "active",
+          )
+          .map((status) => status.id),
+      );
+
+      const customerOrganizationUsers = organizationUsers.filter(
+        (organizationUser) =>
+          !organizationUser.isDeleted &&
+          organizationUser.organizationUserTypeId ===
+            "org-user-type-customer" &&
+          organizationUser.userId === customerId,
+      );
+
+      const customerOrganizationUserIds = new Set(
+        customerOrganizationUsers.map(
+          (organizationUser) => organizationUser.id,
+        ),
+      );
+
+      const customerSubscriptions = subscriptions.filter(
+        (subscription) =>
+          !subscription.isDeleted &&
+          customerOrganizationUserIds.has(subscription.organizationUserId) &&
+          subscription.subscriptionStatusId === "subscription-status-active",
+      );
+
+      const options: MembershipOption[] = [];
+      const ownedProductIds = new Set<string>();
+
+      for (const subscription of customerSubscriptions) {
+        const plan = await services.subscriptionPlan.getPlan(
+          subscription.subscriptionPlanId,
+        );
+
+        if (!plan) {
+          continue;
+        }
+
+        const product = await services.membershipProduct.getProduct(
+          plan.membershipProductId,
+        );
+
+        if (product) {
+          ownedProductIds.add(product.id);
+        }
+
+        const benefits = await services.benefit.listByProduct(
+          plan.membershipProductId,
+        );
+
+        const usedBenefitIds = new Set(
+          (await services.redemption.listBySubscription(subscription.id)).map(
+            (redemption) => redemption.benefitId,
+          ),
+        );
+
+        options.push({
+          subscription,
+          productName: product?.membershipProductName ?? "Membership",
+          tier: product?.displayName,
+          benefits: benefits.map((benefit) => ({
+            ...benefit,
+            available: !usedBenefitIds.has(benefit.id),
+          })),
+        });
+      }
+
+      const availableProducts = catalog.filter(
+        (product) =>
+          !product.isDeleted &&
+          activeProductStatusIds.has(product.productStatusId) &&
+          !ownedProductIds.has(product.id),
+      );
+
+      return {
+        memberships: options,
+        availableProducts,
+      };
+    },
+    [orgId],
+  );
+
+  /*
+   * ------------------------------------------------------------
    * Identify customer
    * ------------------------------------------------------------
    */
 
   const identifyCustomer = async (customerId: string) => {
-    const cust = await services.customer.getCustomer(customerId);
+    const users = await services.organization.listUsers();
+    const user = users.find(
+      (item) => !item.isDeleted && item.id === customerId,
+    );
 
-    setCustomer(cust);
-
-    if (!cust) {
+    if (!user) {
+      setCustomer(null);
       setMemberships([]);
-
       setAvailableForSale([]);
-
       setSelectedSubId("");
-
       setSelectedBenefitIds(new Set());
-
       return;
     }
 
-    const opts = await listActiveMemberships(services, orgId, customerId);
+    const counterCustomer = customerFromUser(user);
+    setCustomer(counterCustomer);
+
+    const { memberships: opts, availableProducts } = await loadMembershipData(
+      user.id,
+    );
 
     setMemberships(opts);
-
-    /*
-     * Determine already-owned products.
-     */
-    const ownedProductIds = new Set<string>();
-
-    for (const option of opts) {
-      const plan = await services.subscriptionPlan.getPlan(
-        option.subscription.subscriptionPlanId,
-      );
-
-      if (plan) {
-        ownedProductIds.add(plan.membershipProductId);
-      }
-    }
-
-    const catalog = await services.membershipProduct.listProducts(orgId);
-
-    setAvailableForSale(
-      catalog.filter(
-        (product) =>
-          product.productStatusId === "product-status-active" &&
-          !ownedProductIds.has(product.id),
-      ),
-    );
+    setAvailableForSale(availableProducts);
 
     if (opts.length) {
       selectMembership(opts[0].subscription.id, opts);
     } else {
       setSelectedSubId("");
-
       setSelectedBenefitIds(new Set());
     }
   };
@@ -591,16 +676,19 @@ export default function StaffCounter() {
 
     setCustomer(counterCustomer);
 
-    /*
-     * The customer is now immediately available to Counter.
-     *
-     * We deliberately leave the membership catalogue logic for
-     * the next Counter round, as requested.
-     */
-    setMemberships([]);
-    setAvailableForSale([]);
-    setSelectedSubId("");
-    setSelectedBenefitIds(new Set());
+    const { memberships: opts, availableProducts } = await loadMembershipData(
+      registration.user.id,
+    );
+
+    setMemberships(opts);
+    setAvailableForSale(availableProducts);
+
+    if (opts.length) {
+      selectMembership(opts[0].subscription.id, opts);
+    } else {
+      setSelectedSubId("");
+      setSelectedBenefitIds(new Set());
+    }
   };
 
   const verifyNewCustomerOtp = async () => {
@@ -886,9 +974,27 @@ export default function StaffCounter() {
 
       const normalizedPhone = normalizePhone(phone);
 
-      const users = await services.organization.listUsers();
+      const [users, organizationUsers] = await Promise.all([
+        services.organization.listUsers(),
+        services.organization.listOrganizationUsers(orgId),
+      ]);
+
+      const customerUserIds = new Set(
+        organizationUsers
+          .filter(
+            (organizationUser) =>
+              !organizationUser.isDeleted &&
+              organizationUser.organizationUserTypeId ===
+                "org-user-type-customer",
+          )
+          .map((organizationUser) => organizationUser.userId),
+      );
 
       const matchingUser = users.find((user) => {
+        if (user.isDeleted || !customerUserIds.has(user.id)) {
+          return false;
+        }
+
         const userNumber = normalizePhone(user.primaryPhone.number ?? "");
         return userNumber === normalizedPhone;
       });
@@ -947,15 +1053,26 @@ export default function StaffCounter() {
       const organizationUsers =
         await services.organization.listOrganizationUsers(orgId);
 
-      const customers = (
-        await Promise.all(
-          organizationUsers
-            .filter((organizationUser) => !organizationUser.isDeleted)
-            .map((organizationUser) =>
-              services.customer.getCustomer(organizationUser.userId),
-            ),
-        )
-      ).filter((item): item is Customer => Boolean(item));
+      const users = await services.organization.listUsers();
+      const userMap = new Map(
+        users.filter((user) => !user.isDeleted).map((user) => [user.id, user]),
+      );
+
+      const customerUserIds = new Set(
+        organizationUsers
+          .filter(
+            (organizationUser) =>
+              !organizationUser.isDeleted &&
+              organizationUser.organizationUserTypeId ===
+                "org-user-type-customer",
+          )
+          .map((organizationUser) => organizationUser.userId),
+      );
+
+      const customers = Array.from(customerUserIds)
+        .map((userId) => userMap.get(userId))
+        .filter((user): user is User => Boolean(user))
+        .map(customerFromUser);
 
       const normalizedTerm = term.toLowerCase();
       const normalizedPhoneTerm = normalizePhone(term);
@@ -1004,9 +1121,12 @@ export default function StaffCounter() {
     setResult(res);
 
     if (customer) {
-      const opts = await listActiveMemberships(services, orgId, customer.id);
+      const { memberships: opts, availableProducts } = await loadMembershipData(
+        customer.id,
+      );
 
       setMemberships(opts);
+      setAvailableForSale(availableProducts);
 
       const opt = opts.find((item) => item.subscription.id === selectedSubId);
 
