@@ -36,6 +36,10 @@ export { LocalMembershipProductRepository } from "./repositories/membership/memb
 export type { OfferRepository } from "./repositories/offer/offer-repository";
 export { LocalOfferRepository } from "./repositories/offer/offer-repository.local";
 
+export type { IntegrationConfigurationRepository } from "./repositories/integration-configuration/integration-configuration-repository";
+
+export { LocalIntegrationConfigurationRepository } from "./repositories/integration-configuration/integration-configuration-repository.local";
+
 export { asyncStorageStore } from "./persistence/local/async-storage-store";
 export type { LocalStore } from "./persistence/local/local-store";
 export { LOCAL_DATA_KEYS } from "./persistence/local/keys";

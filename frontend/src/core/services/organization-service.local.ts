@@ -20,6 +20,7 @@ import type {
 import { LocalBrandingRepository } from "@/src/data/repositories/branding/branding-repository.local";
 import { LocalNotificationConfigurationRepository } from "@/src/data/repositories/notification-configuration/notification-configuration-repository.local";
 import { LocalOrganizationMembersRepository } from "@/src/data/repositories/organization/organization-members.repository.local";
+import { LocalIntegrationConfigurationRepository } from "@/src/data/repositories/integration-configuration/integration-configuration-repository.local";
 
 function getOrganizationUserTypeSegment(organizationUserTypeId: ID): string {
   const normalized = organizationUserTypeId.trim().toLowerCase();
@@ -44,12 +45,15 @@ export class LocalOrganizationService implements OrganizationService {
   private readonly brandingRepository: LocalBrandingRepository;
   private readonly membersRepository: LocalOrganizationMembersRepository;
   private readonly notificationConfigurationRepository: LocalNotificationConfigurationRepository;
+  private readonly integrationConfigurationRepository: LocalIntegrationConfigurationRepository;
 
   constructor(private readonly fallback: OrganizationService) {
     this.brandingRepository = new LocalBrandingRepository();
     this.membersRepository = new LocalOrganizationMembersRepository();
     this.notificationConfigurationRepository =
       new LocalNotificationConfigurationRepository();
+    this.integrationConfigurationRepository =
+      new LocalIntegrationConfigurationRepository();
   }
 
   async getOrganization(organizationId: ID): Promise<Organization | null> {
@@ -344,6 +348,13 @@ export class LocalOrganizationService implements OrganizationService {
   }
 
   async listIntegrationConfigurations(organizationId: ID) {
+    const local =
+      await this.integrationConfigurationRepository.list(organizationId);
+
+    if (local.length > 0) {
+      return local.filter((item) => !item.isDeleted);
+    }
+
     return this.fallback.listIntegrationConfigurations(organizationId);
   }
 
@@ -365,29 +376,74 @@ export class LocalOrganizationService implements OrganizationService {
       OrganizationService["updateIntegrationConfiguration"]
     >[1],
   ) {
-    return this.fallback.updateIntegrationConfiguration(
-      organizationId,
-      configuration,
+    const configurations =
+      await this.integrationConfigurationRepository.list(organizationId);
+
+    const index = configurations.findIndex(
+      (item) =>
+        item.id === configuration.id &&
+        item.organizationId === organizationId &&
+        !item.isDeleted,
     );
+
+    if (index === -1) {
+      throw new Error("Integration configuration not found.");
+    }
+
+    const updated = {
+      ...configuration,
+      organizationId,
+      updatedAt: new Date().toISOString(),
+      versionNo: configurations[index].versionNo + 1,
+    };
+
+    configurations[index] = updated;
+
+    await this.integrationConfigurationRepository.save(
+      organizationId,
+      configurations,
+    );
+
+    return updated;
   }
 
   async createIntegrationConfiguration(
-    organizationId: string,
+    organizationId: ID,
     configuration: Parameters<
       OrganizationService["createIntegrationConfiguration"]
     >[1],
   ) {
-    return this.fallback.createIntegrationConfiguration(
+    const configurations =
+      await this.integrationConfigurationRepository.list(organizationId);
+
+    const now = new Date().toISOString();
+
+    const created = {
+      ...configuration,
       organizationId,
-      configuration,
-    );
+      createdAt: now,
+      updatedAt: now,
+      isDeleted: false,
+      versionNo: 1,
+    };
+
+    await this.integrationConfigurationRepository.save(organizationId, [
+      ...configurations,
+      created,
+    ]);
+    const verify =
+      await this.integrationConfigurationRepository.list(organizationId);
+
+    console.log("INTEGRATION PERSISTENCE VERIFY", organizationId, verify);
+
+    return created;
   }
 
   async deleteIntegrationConfiguration(
-    organizationId: string,
-    configurationId: string,
+    organizationId: ID,
+    configurationId: ID,
   ) {
-    return this.fallback.deleteIntegrationConfiguration(
+    await this.integrationConfigurationRepository.delete(
       organizationId,
       configurationId,
     );

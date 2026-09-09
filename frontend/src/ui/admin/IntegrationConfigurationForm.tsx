@@ -1,22 +1,25 @@
 import { useEffect, useState } from "react";
+
 import { Pressable, StyleSheet, View } from "react-native";
 
-import {
+import type {
   IntegrationConfiguration,
   ReferenceDataItem,
   Status,
 } from "@/src/core";
+
 import { useTheme } from "@/src/providers";
 
+import { Input } from "../Input";
 import { ReferenceSelect } from "../ReferenceSelect";
 import { Text } from "../Text";
-import { Input } from "../Input";
 
 type Props = {
   configuration: IntegrationConfiguration | null;
   integrationTypes: ReferenceDataItem[];
   statuses: Status[];
-  onSave: (configuration: IntegrationConfiguration) => Promise<void>;
+  mode: "add" | "edit" | "view";
+  onSave: (configuration: IntegrationConfiguration) => void;
   onCancel?: () => void;
 };
 
@@ -24,6 +27,7 @@ export function IntegrationConfigurationForm({
   configuration,
   integrationTypes,
   statuses,
+  mode,
   onSave,
   onCancel,
 }: Props) {
@@ -33,8 +37,6 @@ export function IntegrationConfigurationForm({
     configuration,
   );
 
-  const [saving, setSaving] = useState(false);
-
   useEffect(() => {
     setForm(configuration);
   }, [configuration]);
@@ -43,10 +45,16 @@ export function IntegrationConfigurationForm({
     return null;
   }
 
+  const readOnly = mode === "view";
+
   const update = <K extends keyof IntegrationConfiguration>(
     field: K,
     value: IntegrationConfiguration[K],
   ) => {
+    if (readOnly) {
+      return;
+    }
+
     setForm((current) =>
       current
         ? {
@@ -57,14 +65,16 @@ export function IntegrationConfigurationForm({
     );
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-
-    try {
-      await onSave(form);
-    } finally {
-      setSaving(false);
+  const handleSave = () => {
+    if (!form || readOnly) {
+      return;
     }
+
+    onSave({
+      ...form,
+      integrationName: form.integrationName.trim(),
+      provider: form.provider.trim(),
+    });
   };
 
   return (
@@ -76,6 +86,7 @@ export function IntegrationConfigurationForm({
             value={form.integrationName}
             onChangeText={(value) => update("integrationName", value)}
             placeholder="Enter integration name"
+            editable={!readOnly}
           />
         </View>
 
@@ -85,6 +96,7 @@ export function IntegrationConfigurationForm({
             value={form.integrationTypeId}
             items={integrationTypes}
             placeholder="Please select"
+            disabled={readOnly}
             onChange={(value) => update("integrationTypeId", value)}
           />
         </View>
@@ -95,6 +107,7 @@ export function IntegrationConfigurationForm({
             value={form.provider}
             onChangeText={(value) => update("provider", value)}
             placeholder="Enter provider"
+            editable={!readOnly}
           />
         </View>
 
@@ -104,61 +117,46 @@ export function IntegrationConfigurationForm({
             value={form.integrationStatusId}
             items={statuses}
             placeholder="Please select"
+            disabled={mode === "add" || readOnly}
             onChange={(value) => update("integrationStatusId", value)}
           />
         </View>
       </View>
 
-      <View style={styles.actions}>
-        {onCancel ? (
-          <PressableButton
-            label="Cancel"
-            onPress={onCancel}
-            disabled={saving}
-          />
-        ) : null}
+      {!readOnly ? (
+        <View style={styles.actions}>
+          {onCancel ? (
+            <Pressable
+              onPress={onCancel}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                {
+                  opacity: pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Text variant="body" color="text">
+                Cancel
+              </Text>
+            </Pressable>
+          ) : null}
 
-        <PressableButton
-          label={saving ? "Saving..." : "Save"}
-          onPress={handleSave}
-          disabled={saving}
-          primary
-        />
-      </View>
+          <Pressable
+            onPress={handleSave}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              {
+                opacity: pressed ? 0.8 : 1,
+              },
+            ]}
+          >
+            <Text variant="body" color="background">
+              Save
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
-  );
-}
-
-type ButtonProps = {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  primary?: boolean;
-};
-
-function PressableButton({ label, onPress, disabled, primary }: ButtonProps) {
-  const theme = useTheme();
-
-  return (
-    <Pressable
-      disabled={disabled}
-      onPress={onPress}
-      style={{
-        minHeight: 44,
-        paddingHorizontal: theme.spacing.lg,
-        borderRadius: theme.radius.md,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: primary
-          ? theme.colors.primary
-          : theme.colors.surfaceAlt,
-        opacity: disabled ? theme.states.disabledOpacity : 1,
-      }}
-    >
-      <Text variant="body" color={primary ? "background" : "text"}>
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -166,17 +164,39 @@ const styles = StyleSheet.create({
   container: {
     gap: 24,
   },
+
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 16,
   },
+
   field: {
     width: "48%",
   },
+
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end",
     gap: 12,
+    paddingTop: 4,
+  },
+
+  primaryButton: {
+    minHeight: 44,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0F766E",
+  },
+
+  secondaryButton: {
+    minHeight: 44,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#E5E7EB",
   },
 });

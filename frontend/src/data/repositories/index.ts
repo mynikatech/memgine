@@ -8,3 +8,7 @@ export type {
 } from "./organization/organization-repository";
 
 export { LocalOrganizationRepository } from "./organization/organization-repository.local";
+
+export type { IntegrationConfigurationRepository } from "./integration-configuration/integration-configuration-repository";
+
+export { LocalIntegrationConfigurationRepository } from "./integration-configuration/integration-configuration-repository.local";

@@ -25,6 +25,9 @@ export const LOCAL_DATA_KEYS = {
   notificationConfiguration: (organizationId: string) =>
     `memgine.organization.${organizationId}.notification-configuration`,
 
+  integrationConfigurations: (organizationId: string) =>
+    `memgine.organization.${organizationId}.integration-configurations`,
+
   users: () => `memgine:users`,
 
   organizationUsers: (organizationId: string) =>
