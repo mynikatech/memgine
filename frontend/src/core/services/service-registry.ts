@@ -11,6 +11,7 @@ import { LocalProductService } from "./product-service.local";
 import { LocalMembershipProductService } from "./membership-product-service.local";
 import { LocalBenefitService } from "./benefit-service.local";
 import { LocalOfferService } from "./offer-service.local";
+import { LocalSubscriptionService } from "./subscription-service.local";
 import { CachedStatusService } from "./status-cache";
 import { LocalStatusService } from "./status-service.local";
 
@@ -49,6 +50,7 @@ const benefitService: BenefitService = new LocalBenefitService(
 );
 
 const offerService: OfferService = new LocalOfferService(mockServices.offer);
+
 const userAcquisitionService: UserAcquisitionService =
   new LocalUserAcquisitionService(mockServices.userAcquisition);
 
@@ -56,6 +58,11 @@ const localStatusService = new LocalStatusService();
 
 const statusService: StatusService = new CachedStatusService(
   localStatusService,
+);
+
+const subscriptionService: SubscriptionService = new LocalSubscriptionService(
+  mockServices.subscription,
+  organizationService,
 );
 
 const mockCustomerExperienceService = new InMemoryCustomerExperienceService(
@@ -88,11 +95,13 @@ export type MemgineServices = {
 
 export const services: MemgineServices = {
   organization: organizationService,
+
   customer: mockServices.customer,
 
   membershipProduct: membershipProductService,
 
-  subscription: mockServices.subscription,
+  subscription: subscriptionService,
+
   subscriptionPlan: mockServices.subscriptionPlan,
 
   benefit: benefitService,
@@ -100,17 +109,21 @@ export const services: MemgineServices = {
   offer: offerService,
 
   userAcquisition: userAcquisitionService,
+
   redemption: mockServices.redemption,
 
   status: statusService,
 
   auth: mockServices.auth,
+
   payment: mockServices.payment,
 
   referenceData: mockReferenceDataService,
+
   template: mockTemplateService,
 
   customerExperience: customerExperienceService,
+
   notification: mockNotificationService,
 
   product: productService,

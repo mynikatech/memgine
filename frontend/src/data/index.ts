@@ -15,6 +15,7 @@ export { OrganizationApi } from "./api/organization-api";
 export { BenefitApi } from "./api/benefit-api";
 export { MembershipProductApi } from "./api/membership-product-api";
 export { OfferApi } from "./api/offer-api";
+export { SubscriptionApi } from "./api/subscription-api";
 
 export type { BrandingRepository } from "./repositories/branding/branding-repository";
 export { LocalBrandingRepository } from "./repositories/branding/branding-repository.local";
@@ -25,6 +26,7 @@ export type {
 } from "./repositories/organization/organization-repository";
 
 export { LocalOrganizationRepository } from "./repositories/organization/organization-repository.local";
+
 export { LocalOrganizationMembersRepository } from "./repositories/organization/organization-members.repository.local";
 
 export type { BenefitRepository } from "./repositories/benefit/benefit-repository";
@@ -35,6 +37,9 @@ export { LocalMembershipProductRepository } from "./repositories/membership/memb
 
 export type { OfferRepository } from "./repositories/offer/offer-repository";
 export { LocalOfferRepository } from "./repositories/offer/offer-repository.local";
+
+export type { SubscriptionRepository } from "./repositories/subscription/subscription-repository";
+export { LocalSubscriptionRepository } from "./repositories/subscription/subscription-repository.local";
 
 export type { IntegrationConfigurationRepository } from "./repositories/integration-configuration/integration-configuration-repository";
 

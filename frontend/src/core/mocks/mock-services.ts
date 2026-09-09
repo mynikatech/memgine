@@ -2950,6 +2950,13 @@ export class InMemoryCustomerAuthService implements CustomerAuthService {
       mobile: input.mobile.trim(),
     });
 
+    console.log("OTP SEND", {
+      requestId,
+      devCode,
+      mobile: input.mobile.trim(),
+      stored: this.codes.get(requestId),
+    });
+
     return {
       requestId,
       devCode,
@@ -2958,6 +2965,14 @@ export class InMemoryCustomerAuthService implements CustomerAuthService {
 
   async verifyOtp(input: VerifyOtpInput): Promise<VerifyOtpResult> {
     const entry = this.codes.get(input.requestId);
+
+    console.log("OTP VERIFY", {
+      requestId: input.requestId,
+      enteredCode: input.code.trim(),
+      entry,
+      storedCode: entry?.code,
+      match: entry?.code === input.code.trim(),
+    });
 
     const verified = !!entry && entry.code === input.code.trim();
 
@@ -2969,13 +2984,6 @@ export class InMemoryCustomerAuthService implements CustomerAuthService {
 
     this.codes.delete(input.requestId);
 
-    /*
-     * Authentication verifies the mobile.
-     *
-     * Customer identity is resolved by CustomerService after OTP
-     * verification. Therefore this service deliberately does NOT
-     * manufacture or return "cust-1".
-     */
     return {
       verified: true,
     };

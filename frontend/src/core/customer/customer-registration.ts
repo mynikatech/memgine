@@ -1,141 +1,225 @@
-import type { Customer, OrganizationUser } from "@/src/core";
+import type {
+  CreateUserInput,
+  Customer,
+  ID,
+  OrganizationUser,
+  User,
+  UserAcquisition,
+} from "@/src/core";
 
 import { services } from "@/src/core";
 
 export interface RegisterCustomerInput {
-  organizationId: string;
-  fullName: string;
-  mobile: string;
+  organizationId: ID;
+  userInput?: CreateUserInput;
+  /** Backward-compatible fields used by existing Counter/Join callers. */
+  fullName?: string;
+  mobile?: string;
   email?: string;
-  customerId?: string;
+  userId?: ID;
+  sourceStoreId?: ID;
+  registrationSource?: string;
+  registrationChannel?: string;
 }
 
 export interface RegisterCustomerResult {
+  user: User;
   customer: Customer;
   organizationUser: OrganizationUser;
+  acquisition?: UserAcquisition;
+  createdUser: boolean;
+  createdOrganizationUser: boolean;
 }
 
-/**
- * Resolve the customer and establish their relationship with the
- * organization.
- *
- * Customer-facing terminology should simply be "registration".
- *
- * Internally:
- *
- * Customer
- *    ↓
- * OrganizationUser
- *
- * This operation is intentionally idempotent:
- *
- * - existing Customer → reuse
- * - existing OrganizationUser → reuse
- * - otherwise create what is missing
- */
+const CUSTOMER_ORGANIZATION_USER_TYPE_ID = "org-user-type-customer";
+const ACTIVE_ORGANIZATION_USER_STATUS_ID = "status-active";
+const SYSTEM_USER_ID = "user-system";
+
+function normalizePhoneNumber(value: string | undefined): string {
+  return (value ?? "").replace(/\D/g, "");
+}
+
+function phonesMatch(
+  left: User["primaryPhone"],
+  right: User["primaryPhone"],
+): boolean {
+  return (
+    left.countryId === right.countryId &&
+    normalizePhoneNumber(left.callingCode) ===
+      normalizePhoneNumber(right.callingCode) &&
+    normalizePhoneNumber(left.number) === normalizePhoneNumber(right.number)
+  );
+}
+
 export async function registerCustomerForOrganization(
   input: RegisterCustomerInput,
 ): Promise<RegisterCustomerResult> {
-  const mobile = input.mobile.trim();
+  const legacyFullName = input.fullName?.trim() ?? "";
+  const legacyMobile = normalizePhoneNumber(input.mobile);
 
-  if (!mobile) {
-    throw new Error("Mobile number is required.");
-  }
+  let requestedPhone = input.userInput?.primaryPhone;
 
-  /*
-   * --------------------------------------------------------------
-   * 1. Resolve Customer
-   * --------------------------------------------------------------
-   */
-
-  let customer: Customer | undefined;
-
-  if (input.customerId) {
-    customer =
-      (await services.customer.getCustomer(input.customerId)) ?? undefined;
-  }
-
-  /*
-   * If the customer wasn't supplied/found by ID, identify them
-   * using their verified mobile number.
-   */
-  if (!customer) {
-    const matches = await services.customer.findCustomers({
-      phone: mobile,
-    });
-
-    customer = matches[0];
-  }
-
-  /*
-   * New customer.
-   */
-  if (!customer) {
-    customer = await services.customer.createCustomer({
-      fullName: input.fullName.trim(),
-      phone: mobile,
-      email: input.email?.trim() || undefined,
-    });
-  } else {
-    /*
-     * Existing customer is authoritative.
-     *
-     * We deliberately do not update their profile here because
-     * CustomerService currently has no updateCustomer contract.
-     */
-  }
-
-  /*
-   * --------------------------------------------------------------
-   * 2. Resolve OrganizationUser
-   * --------------------------------------------------------------
-   */
-
-  const organizationUsers =
-    await services.organization.listOrganizationUsersByUser(customer.id);
-
-  let organizationUser = organizationUsers.find(
-    (item) =>
-      item.organizationId === input.organizationId &&
-      item.organizationUserTypeId === "org-user-type-customer" &&
-      !item.isDeleted,
-  );
-
-  /*
-   * Already a customer of this business.
-   */
-  if (organizationUser) {
-    return {
-      customer,
-      organizationUser,
+  if (!requestedPhone && legacyMobile) {
+    requestedPhone = {
+      countryId: "",
+      callingCode: "",
+      number: legacyMobile,
     };
   }
 
-  /*
-   * New relationship with this business.
-   */
-  const now = new Date().toISOString();
+  if (!requestedPhone) {
+    throw new Error("Primary Phone Number is required.");
+  }
 
-  organizationUser = await services.organization.createOrganizationUser(
-    input.organizationId,
-    {
-      id: `org-user-${Date.now()}`,
+  const users = await services.organization.listUsers();
+
+  /*
+   * Phone number is the identity criterion for Counter.
+   *
+   * We deliberately resolve the canonical User first. We never create
+   * another global User when the same phone already exists.
+   */
+  let user: User | null = null;
+
+  if (input.userId) {
+    user = (await services.organization.getUser(input.userId)) ?? null;
+  }
+
+  if (!user) {
+    user =
+      users.find(
+        (candidate) =>
+          phonesMatch(candidate.primaryPhone, requestedPhone) ||
+          (!!legacyMobile &&
+            normalizePhoneNumber(candidate.primaryPhone.number) ===
+              legacyMobile),
+      ) ?? null;
+  }
+
+  let createdUser = false;
+
+  if (!user) {
+    const nameParts = legacyFullName.split(/\s+/).filter(Boolean);
+    const firstName =
+      input.userInput?.firstName?.trim() || nameParts[0] || "Customer";
+    const lastName =
+      input.userInput?.lastName?.trim() ||
+      (nameParts.length > 1 ? nameParts[nameParts.length - 1] : "");
+
+    user = await services.organization.createUser({
+      firstName,
+      middleName: input.userInput?.middleName,
+      lastName,
+      displayName: input.userInput?.displayName || legacyFullName || undefined,
+      primaryEmail: input.userInput?.primaryEmail,
+      primaryPhone: {
+        countryId: requestedPhone.countryId,
+        callingCode: requestedPhone.callingCode,
+        number: normalizePhoneNumber(requestedPhone.number),
+      },
+      preferredLanguageId: input.userInput?.preferredLanguageId,
+      userStatusId:
+        input.userInput?.userStatusId || ACTIVE_ORGANIZATION_USER_STATUS_ID,
+      createdBy: input.userInput?.createdBy || SYSTEM_USER_ID,
+    });
+
+    createdUser = true;
+  }
+
+  /*
+   * Resolve the organization-specific Customer relationship.
+   */
+  const organizationUsers =
+    await services.organization.listOrganizationUsersByUser(user.id);
+
+  let organizationUser =
+    organizationUsers.find(
+      (item) =>
+        !item.isDeleted &&
+        item.organizationId === input.organizationId &&
+        item.organizationUserTypeId === CUSTOMER_ORGANIZATION_USER_TYPE_ID,
+    ) ?? null;
+
+  let createdOrganizationUser = false;
+
+  if (!organizationUser) {
+    const now = new Date().toISOString();
+
+    organizationUser = await services.organization.createOrganizationUser(
+      input.organizationId,
+      {
+        id: `org-user-${Date.now().toString(36)}`,
+        organizationId: input.organizationId,
+        userId: user.id,
+        organizationUserTypeId: CUSTOMER_ORGANIZATION_USER_TYPE_ID,
+        organizationUserStatusId: ACTIVE_ORGANIZATION_USER_STATUS_ID,
+        joiningDate: now,
+        createdAt: now,
+        createdBy: SYSTEM_USER_ID,
+        updatedAt: now,
+        updatedBy: SYSTEM_USER_ID,
+        isDeleted: false,
+        versionNo: 1,
+      },
+    );
+
+    createdOrganizationUser = true;
+  }
+
+  /*
+   * UserAcquisition records where/how the customer entered the
+   * organization. Counter creates its own acquisition immediately.
+   *
+   * If this user already has an acquisition for this organization,
+   * do not create a duplicate acquisition.
+   */
+  const acquisitions = await services.userAcquisition.getByUser(user.id);
+
+  let acquisition =
+    acquisitions.find(
+      (item) => !item.isDeleted && item.organizationId === input.organizationId,
+    ) ?? undefined;
+
+  if (!acquisition) {
+    const now = new Date().toISOString();
+
+    acquisition = await services.userAcquisition.createAcquisition({
+      id: `user-acq-${Date.now().toString(36)}`,
+      userId: user.id,
       organizationId: input.organizationId,
-      userId: customer.id,
-      organizationUserTypeId: "org-user-type-customer",
-      organizationUserStatusId: "status-active",
-      joiningDate: now.substring(0, 10),
+      registrationSource: input.registrationSource ?? "COUNTER",
+      registrationChannel: input.registrationChannel ?? "POS",
+      sourceStoreId: input.sourceStoreId,
       createdAt: now,
-      createdBy: "user-system",
+      createdBy: SYSTEM_USER_ID,
       updatedAt: now,
-      updatedBy: "user-system",
+      updatedBy: SYSTEM_USER_ID,
       isDeleted: false,
       versionNo: 1,
-    },
-  );
+    });
+  }
+
+  const fullName =
+    user.displayName?.trim() ||
+    [user.firstName, user.middleName, user.lastName]
+      .filter((value) => Boolean(value?.trim()))
+      .join(" ") ||
+    "Customer";
+
+  const customer = {
+    id: user.id,
+    fullName,
+    email: user.primaryEmail,
+    phone: `${user.primaryPhone.callingCode ?? ""}${user.primaryPhone.number ?? ""}`,
+    createdAt: user.createdAt,
+  } as Customer;
 
   return {
+    user,
     customer,
     organizationUser,
+    acquisition,
+    createdUser,
+    createdOrganizationUser,
   };
 }

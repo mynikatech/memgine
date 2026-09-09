@@ -28,6 +28,10 @@ type CustomerFormProps = {
   mode?: "add" | "edit";
   initialUser?: User;
   initialSourceStoreId?: string;
+  hideAcquisitionSection?: boolean;
+  hideUserStatusSection?: boolean;
+  acquisitionSource?: string;
+  acquisitionChannel?: string;
   onSave: (result: CustomerFormSubmitResult) => Promise<void>;
   onCancel: () => void;
 };
@@ -100,6 +104,10 @@ export function CustomerForm({
   mode = "add",
   initialUser,
   initialSourceStoreId,
+  hideAcquisitionSection = false,
+  hideUserStatusSection = false,
+  acquisitionSource = "ORG_ADMIN",
+  acquisitionChannel = "ADMIN_UI",
   onSave,
   onCancel,
 }: CustomerFormProps) {
@@ -373,57 +381,61 @@ export function CustomerForm({
           </Text>
         )}
 
-        <ReferenceSelect
-          label="User Status"
-          required
-          value={draft.userStatusId}
-          items={userStatuses}
-          disabled={mode === "add"}
-          placeholder="Select status"
-          renderItemLabel={(status) => status.statusName}
-          onChange={(value) => update("userStatusId", value)}
-        />
+        {!hideUserStatusSection ? (
+          <ReferenceSelect
+            label="User Status"
+            required
+            value={draft.userStatusId}
+            items={userStatuses}
+            disabled={mode === "add"}
+            placeholder="Select status"
+            renderItemLabel={(status) => status.statusName}
+            onChange={(value) => update("userStatusId", value)}
+          />
+        ) : null}
       </View>
 
-      <View style={styles.section}>
-        <Text variant="bodyStrong" color="text">
-          Acquisition
-        </Text>
-
-        <ReferenceSelect
-          label="Source Store"
-          value={draft.sourceStoreId}
-          items={storeItems}
-          allowClear={mode === "add"}
-          disabled={mode === "edit"}
-          placeholder="Select source store"
-          onChange={(value) => update("sourceStoreId", value)}
-        />
-
-        <View style={styles.infoBox}>
-          <Text variant="caption" color="textMuted">
-            Source: Org Admin
+      {!hideAcquisitionSection ? (
+        <View style={styles.section}>
+          <Text variant="bodyStrong" color="text">
+            Acquisition
           </Text>
 
-          <Text variant="caption" color="textMuted">
-            Channel: Admin UI
-          </Text>
+          <ReferenceSelect
+            label="Source Store"
+            value={draft.sourceStoreId}
+            items={storeItems}
+            allowClear={mode === "add"}
+            disabled={mode === "edit"}
+            placeholder="Select source store"
+            onChange={(value) => update("sourceStoreId", value)}
+          />
 
-          <Text variant="caption" color="textMuted">
-            User Type: Customer
-          </Text>
-
-          <Text variant="caption" color="textMuted">
-            Membership: Not yet purchased
-          </Text>
-
-          {mode === "edit" ? (
+          <View style={styles.infoBox}>
             <Text variant="caption" color="textMuted">
-              Acquisition information is read-only.
+              Source: {acquisitionSource}
             </Text>
-          ) : null}
+
+            <Text variant="caption" color="textMuted">
+              Channel: {acquisitionChannel}
+            </Text>
+
+            <Text variant="caption" color="textMuted">
+              User Type: Customer
+            </Text>
+
+            <Text variant="caption" color="textMuted">
+              Membership: Not yet purchased
+            </Text>
+
+            {mode === "edit" ? (
+              <Text variant="caption" color="textMuted">
+                Acquisition information is read-only.
+              </Text>
+            ) : null}
+          </View>
         </View>
-      </View>
+      ) : null}
 
       <View style={styles.actions}>
         <Pressable

@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
   Pressable,
@@ -10,49 +10,41 @@ import {
   View,
 } from "react-native";
 
-import {
+import type {
+  CountryReference,
   Customer,
-  encodeRedemptionToken,
-  listActiveMemberships,
   MembershipOption,
   MembershipProduct,
+  Status,
+  Store,
+  User,
+} from "@/src/core";
+
+import {
+  encodeRedemptionToken,
+  listActiveMemberships,
   redeemBenefits,
   redeemFromToken,
   RedemptionContext,
   RedemptionMethod,
   RedemptionResult,
-  RedemptionServices,
   services,
-  Store,
 } from "@/src/core";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { useBusiness, useTranslation } from "@/src/providers";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
-import { registerCustomerForOrganization } from "@/src/core/customer/customer-registration";
+import {
+  registerCustomerForOrganization,
+  type RegisterCustomerResult,
+} from "@/src/core/customer/customer-registration";
+import {
+  CustomerForm,
+  type CustomerFormSubmitResult,
+} from "@/src/ui/admin/CustomerForm";
 
 type Mode = "qr" | "phone" | "assisted" | "new";
-
-type CountryOption = {
-  country: string;
-  code: string;
-};
-
-const COUNTRY_OPTIONS: CountryOption[] = [
-  { country: "Canada", code: "+1" },
-  { country: "United States", code: "+1" },
-  { country: "India", code: "+91" },
-  { country: "United Kingdom", code: "+44" },
-  { country: "Australia", code: "+61" },
-  {
-    country: "United Arab Emirates",
-    code: "+971",
-  },
-  { country: "Singapore", code: "+65" },
-];
-
-const DEFAULT_COUNTRY = COUNTRY_OPTIONS[0];
 
 const MAX_PHONE_DIGITS = 10;
 
@@ -96,7 +88,6 @@ export default function StaffCounter() {
   const orgId = organization.id;
 
   const staffId = principal.kind === "STAFF" ? principal.staffId : "staff";
-
   const staffRole = principal.kind === "STAFF" ? principal.role : "STAFF";
 
   const [store, setStore] = useState<Store | null>(null);
@@ -115,19 +106,17 @@ export default function StaffCounter() {
 
   /*
    * New Customer
+   *
+   * Counter reuses the same CustomerForm as Org Admin. The form
+   * collects the complete customer details first. OTP verification
+   * then authenticates the phone before the customer is persisted.
    */
-  const [newFirstName, setNewFirstName] = useState("");
+  const [countries, setCountries] = useState<CountryReference[]>([]);
 
-  const [newLastName, setNewLastName] = useState("");
+  const [userStatuses, setUserStatuses] = useState<Status[]>([]);
 
-  const [newCountryCode, setNewCountryCode] = useState(DEFAULT_COUNTRY.code);
-
-  const [newSelectedCountry, setNewSelectedCountry] =
-    useState<CountryOption>(DEFAULT_COUNTRY);
-
-  const [newCountryPickerVisible, setNewCountryPickerVisible] = useState(false);
-
-  const [newPhone, setNewPhone] = useState("");
+  const [newCustomerDraft, setNewCustomerDraft] =
+    useState<CustomerFormSubmitResult | null>(null);
 
   const [newOtpRequestId, setNewOtpRequestId] = useState("");
 
@@ -136,6 +125,10 @@ export default function StaffCounter() {
   const [newOtpCode, setNewOtpCode] = useState("");
 
   const [newOtpSent, setNewOtpSent] = useState(false);
+
+  const [newOtpVerifying, setNewOtpVerifying] = useState(false);
+
+  const newOtpVerificationInFlight = useRef(false);
 
   /*
    * Redemption result
@@ -165,6 +158,10 @@ export default function StaffCounter() {
   const [otpCode, setOtpCode] = useState("");
 
   const [otpSent, setOtpSent] = useState(false);
+
+  const [otpVerifying, setOtpVerifying] = useState(false);
+
+  const otpVerificationInFlight = useRef(false);
 
   /*
    * Staff assisted lookup
@@ -284,6 +281,8 @@ export default function StaffCounter() {
     setOtpCode("");
 
     setOtpSent(false);
+    setOtpVerifying(false);
+    otpVerificationInFlight.current = false;
 
     setSearchTerm("");
 
@@ -291,17 +290,7 @@ export default function StaffCounter() {
 
     setSearched(false);
 
-    setNewFirstName("");
-
-    setNewLastName("");
-
-    setNewCountryCode(DEFAULT_COUNTRY.code);
-
-    setNewSelectedCountry(DEFAULT_COUNTRY);
-
-    setNewCountryPickerVisible(false);
-
-    setNewPhone("");
+    setNewCustomerDraft(null);
 
     setNewOtpRequestId("");
 
@@ -310,6 +299,8 @@ export default function StaffCounter() {
     setNewOtpCode("");
 
     setNewOtpSent(false);
+    setNewOtpVerifying(false);
+    newOtpVerificationInFlight.current = false;
 
     setCustomer(null);
 
@@ -337,7 +328,11 @@ export default function StaffCounter() {
 
     (async () => {
       try {
-        const orgStores = await services.organization.listStores(orgId);
+        const [orgStores, countryReferences, statuses] = await Promise.all([
+          services.organization.listStores(orgId),
+          services.referenceData.listCountries(),
+          services.status.listUserStatuses(),
+        ]);
 
         const subscriptions =
           await services.subscription.listByOrganization(orgId);
@@ -408,6 +403,10 @@ export default function StaffCounter() {
         }
 
         setStore(orgStores[0] ?? null);
+
+        setCountries(countryReferences);
+
+        setUserStatuses(statuses);
 
         setSamples(built);
 
@@ -528,63 +527,38 @@ export default function StaffCounter() {
 
   /*
    * ------------------------------------------------------------
-   * New Customer country selection
+   * New Customer
+   *
+   * The CustomerForm collects the complete customer information.
+   * Counter then sends OTP to the supplied phone. Only after OTP
+   * verification do we persist the User, OrganizationUser and
+   * acquisition record.
    * ------------------------------------------------------------
    */
 
-  const selectNewCountry = (country: CountryOption) => {
-    setNewSelectedCountry(country);
-
-    setNewCountryCode(country.code);
-
-    setNewCountryPickerVisible(false);
-  };
-
-  /*
-   * ------------------------------------------------------------
-   * New Customer OTP
-   * ------------------------------------------------------------
-   */
-
-  const sendNewCustomerOtp = async () => {
+  const handleNewCustomerFormSave = async (
+    formResult: CustomerFormSubmitResult,
+  ) => {
     setError("");
 
-    if (!newFirstName.trim() || !newLastName.trim()) {
-      setError("Enter both first and last name.");
+    const phone = formResult.user.primaryPhone;
 
+    if (!phone) {
+      setError("Primary Phone Number is required.");
       return;
     }
 
-    const normalizedMobile = normalizePhone(newPhone);
-
-    if (normalizedMobile.length !== MAX_PHONE_DIGITS) {
-      setError("Enter a 10-digit mobile number.");
-
-      return;
-    }
+    const mobile = `${phone.callingCode}${phone.number}`;
 
     try {
-      const normalizedCountryCode =
-        newCountryCode.trim() || DEFAULT_COUNTRY.code;
-
-      const fullMobile = `${normalizedCountryCode}${normalizedMobile}`;
-
-      console.log("STAFF NEW CUSTOMER SEND OTP", {
-        countryCode: normalizedCountryCode,
-        mobile: normalizedMobile,
-        fullMobile,
-      });
-
       const res = await services.auth.sendOtp({
-        mobile: fullMobile,
+        mobile,
       });
 
+      setNewCustomerDraft(formResult);
       setNewOtpRequestId(String(res.requestId));
-
       setNewDevCode(String(res.devCode ?? ""));
-
       setNewOtpCode("");
-
       setNewOtpSent(true);
     } catch (error) {
       console.error("STAFF NEW CUSTOMER SEND OTP ERROR", error);
@@ -597,79 +571,124 @@ export default function StaffCounter() {
     }
   };
 
+  const customerFromUser = (user: User): Customer =>
+    ({
+      id: user.id,
+      fullName:
+        user.displayName?.trim() ||
+        `${user.firstName} ${user.middleName ?? ""} ${user.lastName}`
+          .replace(/\s+/g, " ")
+          .trim(),
+      email: user.primaryEmail,
+      phone: `${user.primaryPhone.callingCode ?? ""}${user.primaryPhone.number ?? ""}`,
+      createdAt: user.createdAt,
+    }) as Customer;
+
+  const identifyRegisteredUser = async (
+    registration: RegisterCustomerResult,
+  ) => {
+    const counterCustomer = customerFromUser(registration.user);
+
+    setCustomer(counterCustomer);
+
+    /*
+     * The customer is now immediately available to Counter.
+     *
+     * We deliberately leave the membership catalogue logic for
+     * the next Counter round, as requested.
+     */
+    setMemberships([]);
+    setAvailableForSale([]);
+    setSelectedSubId("");
+    setSelectedBenefitIds(new Set());
+  };
+
   const verifyNewCustomerOtp = async () => {
+    if (newOtpVerificationInFlight.current) {
+      return;
+    }
+
     setError("");
 
     const normalizedOtp = normalizeOtp(newOtpCode);
 
+    if (!newCustomerDraft) {
+      setError("Customer details are missing. Please enter them again.");
+      return;
+    }
+
     if (!newOtpRequestId) {
       setError("Verification session has expired. Please request a new OTP.");
-
       return;
     }
 
     if (normalizedOtp.length !== OTP_LENGTH) {
       setError("Enter the 6-digit verification code.");
-
       return;
     }
 
+    newOtpVerificationInFlight.current = true;
+    setNewOtpVerifying(true);
+
     try {
-      console.log("STAFF NEW CUSTOMER VERIFY OTP", {
-        requestId: newOtpRequestId,
-        codeLength: normalizedOtp.length,
-      });
+      const requestId = newOtpRequestId;
 
       const res = await services.auth.verifyOtp({
-        requestId: newOtpRequestId,
+        requestId,
         code: normalizedOtp,
       });
 
-      /*
-       * IMPORTANT:
-       *
-       * verifyOtp() returns only verified.
-       * It deliberately does not return customerId.
-       */
       if (!res.verified) {
         setError("Incorrect code. Please enter the OTP shown above.");
-
         return;
       }
 
-      const fullName = `${newFirstName.trim()} ${newLastName.trim()}`.trim();
+      // The OTP is single-use. Lock this request before registration starts
+      // so a second tap cannot consume the same request and show a misleading
+      // "Incorrect code" message while the first registration is still running.
+      setNewOtpRequestId("");
 
-      const fullMobile = `${
-        newCountryCode.trim() || DEFAULT_COUNTRY.code
-      }${normalizePhone(newPhone)}`;
-
-      /*
-       * OTP has authenticated the mobile.
-       *
-       * Registration resolves/creates the customer
-       * and OrganizationUser.
-       */
       const registration = await registerCustomerForOrganization({
         organizationId: orgId,
-        fullName,
-        mobile: fullMobile,
+        userInput: newCustomerDraft.user,
+        sourceStoreId: newCustomerDraft.sourceStoreId,
+        registrationSource: "COUNTER",
+        registrationChannel: "POS",
       });
 
       console.log("STAFF CUSTOMER REGISTRATION COMPLETE", {
         organizationId: orgId,
-        customerId: registration.customer.id,
+        userId: registration.user.id,
         organizationUserId: registration.organizationUser.id,
+        createdUser: registration.createdUser,
+        createdOrganizationUser: registration.createdOrganizationUser,
       });
 
-      await identifyCustomer(registration.customer.id);
+      await identifyRegisteredUser(registration);
+
+      setNewCustomerDraft(null);
+      setNewDevCode("");
+      setNewOtpCode("");
+      setNewOtpSent(false);
+      setError("");
     } catch (error) {
       console.error("STAFF CUSTOMER REGISTRATION ERROR", error);
 
+      // Verification succeeded before registration. Because that OTP is now
+      // consumed, allow the customer to request a fresh OTP rather than
+      // leaving them on a screen whose next tap can only produce "Incorrect code".
+      setNewOtpRequestId("");
+      setNewOtpSent(false);
+      setNewOtpCode("");
+
       setError(
         error instanceof Error
-          ? error.message
-          : "Unable to complete customer registration.",
+          ? `${error.message} Please request a new OTP and try again.`
+          : "Unable to complete customer registration. Please request a new OTP and try again.",
       );
+    } finally {
+      newOtpVerificationInFlight.current = false;
+      setNewOtpVerifying(false);
     }
   };
 
@@ -705,13 +724,27 @@ export default function StaffCounter() {
     }
 
     try {
-      /*
-       * Ensure OrganizationUser exists.
-       */
+      const existingUser = await services.organization.getUser(customer.id);
+
+      if (!existingUser) {
+        throw new Error("The identified customer user could not be found.");
+      }
+
       const registration = await registerCustomerForOrganization({
         organizationId: orgId,
-        fullName: customer.fullName,
-        mobile: customer.phone ?? "",
+        userId: existingUser.id,
+        userInput: {
+          firstName: existingUser.firstName,
+          middleName: existingUser.middleName,
+          lastName: existingUser.lastName,
+          displayName: existingUser.displayName,
+          primaryEmail: existingUser.primaryEmail,
+          primaryPhone: existingUser.primaryPhone,
+          userStatusId: existingUser.userStatusId,
+          createdBy: existingUser.createdBy,
+        },
+        registrationSource: "COUNTER",
+        registrationChannel: "POS",
       });
 
       console.log("STAFF SALE CUSTOMER READY", {
@@ -813,60 +846,77 @@ export default function StaffCounter() {
   };
 
   const verifyOtp = async () => {
+    if (otpVerificationInFlight.current) {
+      return;
+    }
+
     setError("");
 
     const normalizedOtp = normalizeOtp(otpCode);
 
     if (!otpRequestId) {
       setError("Verification session has expired. Please request a new OTP.");
-
       return;
     }
 
     if (normalizedOtp.length !== OTP_LENGTH) {
       setError("Enter the 6-digit verification code.");
-
       return;
     }
 
+    otpVerificationInFlight.current = true;
+    setOtpVerifying(true);
+
     try {
+      const requestId = otpRequestId;
+
       const res = await services.auth.verifyOtp({
-        requestId: otpRequestId,
+        requestId,
         code: normalizedOtp,
       });
 
       if (!res.verified) {
         setError("Incorrect code. Please enter the OTP shown above.");
-
         return;
       }
 
-      /*
-       * Auth verifies the phone but does not return
-       * customerId.
-       *
-       * Resolve the existing customer by the verified
-       * mobile number.
-       */
+      // OTP is single-use; prevent a second tap from submitting the consumed
+      // request while customer lookup is still running.
+      setOtpRequestId("");
+
       const normalizedPhone = normalizePhone(phone);
 
-      const customers = await services.customer.findCustomers({
-        phone: normalizedPhone,
+      const users = await services.organization.listUsers();
+
+      const matchingUser = users.find((user) => {
+        const userNumber = normalizePhone(user.primaryPhone.number ?? "");
+        return userNumber === normalizedPhone;
       });
 
-      if (customers.length === 0) {
-        setError("No customer found for this phone number.");
-
+      if (!matchingUser) {
+        setOtpRequestId("");
+        setOtpSent(false);
+        setOtpCode("");
+        setError(
+          "OTP verified, but no customer was found for this phone number. Please request a new OTP and try again.",
+        );
         return;
       }
 
-      await identifyCustomer(customers[0].id);
+      await identifyCustomer(matchingUser.id);
+      setOtpSent(false);
+      setOtpCode("");
+      setDevCode("");
+      setError("");
     } catch (error) {
       console.error("COUNTER VERIFY OTP ERROR", error);
 
       setError(
         error instanceof Error ? error.message : "Unable to verify the OTP.",
       );
+    } finally {
+      otpVerificationInFlight.current = false;
+      setOtpVerifying(false);
     }
   };
 
@@ -891,23 +941,46 @@ export default function StaffCounter() {
       return;
     }
 
-    const byName = await services.customer.findCustomers({
-      nameContains: term,
-    });
+    try {
+      // Search the same organization-scoped customer relationships used by
+      // the Customers screen. This keeps Counter and Org Admin in sync.
+      const organizationUsers =
+        await services.organization.listOrganizationUsers(orgId);
 
-    const byPhone = await services.customer.findCustomers({
-      phone: term,
-    });
+      const customers = (
+        await Promise.all(
+          organizationUsers
+            .filter((organizationUser) => !organizationUser.isDeleted)
+            .map((organizationUser) =>
+              services.customer.getCustomer(organizationUser.userId),
+            ),
+        )
+      ).filter((item): item is Customer => Boolean(item));
 
-    const merged = [...byName];
+      const normalizedTerm = term.toLowerCase();
+      const normalizedPhoneTerm = normalizePhone(term);
 
-    for (const c of byPhone) {
-      if (!merged.some((m) => m.id === c.id)) {
-        merged.push(c);
-      }
+      const filtered = customers.filter((candidate) => {
+        const name = candidate.fullName?.toLowerCase() ?? "";
+        const email = candidate.email?.toLowerCase() ?? "";
+        const candidatePhone = normalizePhone(candidate.phone ?? "");
+
+        return (
+          name.includes(normalizedTerm) ||
+          email.includes(normalizedTerm) ||
+          (normalizedPhoneTerm.length > 0 &&
+            candidatePhone.includes(normalizedPhoneTerm))
+        );
+      });
+
+      setSearchResults(filtered);
+    } catch (error) {
+      console.error("COUNTER CUSTOMER SEARCH ERROR", error);
+      setSearchResults([]);
+      setError(
+        error instanceof Error ? error.message : "Unable to search customers.",
+      );
     }
-
-    setSearchResults(merged);
 
     setSearched(true);
   };
@@ -1174,19 +1247,16 @@ export default function StaffCounter() {
 
         <View style={styles.ctxRow}>
           <Text style={styles.ctxLabel}>Business</Text>
-
           <Text style={styles.ctxValue}>{organization.displayName}</Text>
         </View>
 
         <View style={styles.ctxRow}>
           <Text style={styles.ctxLabel}>Store</Text>
-
           <Text style={styles.ctxValue}>{store?.name ?? "—"}</Text>
         </View>
 
         <View style={styles.ctxRow}>
           <Text style={styles.ctxLabel}>Staff</Text>
-
           <Text style={styles.ctxValue}>
             {staffId} · {staffRole}
           </Text>
@@ -1365,15 +1435,20 @@ export default function StaffCounter() {
 
               <Pressable
                 testID="counter-verify-otp"
-                disabled={normalizeOtp(otpCode).length !== OTP_LENGTH}
+                disabled={
+                  otpVerifying || normalizeOtp(otpCode).length !== OTP_LENGTH
+                }
                 onPress={verifyOtp}
                 style={[
                   styles.primaryBtn,
-                  normalizeOtp(otpCode).length !== OTP_LENGTH &&
+                  (otpVerifying ||
+                    normalizeOtp(otpCode).length !== OTP_LENGTH) &&
                     styles.btnDisabled,
                 ]}
               >
-                <Text style={styles.primaryBtnText}>Verify</Text>
+                <Text style={styles.primaryBtnText}>
+                  {otpVerifying ? "Verifying..." : "Verify"}
+                </Text>
               </Pressable>
             </>
           )}
@@ -1458,171 +1533,145 @@ export default function StaffCounter() {
           <Text style={styles.cardTitle}>New Customer</Text>
 
           <Text style={styles.muted}>
-            Register a new customer with first name, last name and mobile OTP
-            verification before showing the membership catalogue.
+            Add the complete customer details, verify the mobile number by OTP,
+            and save the customer immediately for use at Counter and in Org
+            Admin.
           </Text>
 
           {!customer ? (
-            <>
-              <View style={styles.nameRow}>
-                <TextInput
-                  testID="counter-new-first-name"
-                  value={newFirstName}
-                  onChangeText={setNewFirstName}
-                  placeholder="First name"
-                  placeholderTextColor={COLORS.textMuted}
-                  autoCapitalize="words"
-                  style={[styles.input, styles.nameField]}
+            !newOtpSent ? (
+              countries.length > 0 && userStatuses.length > 0 ? (
+                <CustomerForm
+                  organizationId={orgId}
+                  stores={[]}
+                  initialSourceStoreId={store?.id}
+                  hideAcquisitionSection
+                  hideUserStatusSection
+                  countries={countries}
+                  userStatuses={userStatuses}
+                  activeUserStatusId={
+                    userStatuses.find(
+                      (status) =>
+                        status.statusCode?.trim().toUpperCase() === "ACTIVE",
+                    )?.id ?? ""
+                  }
+                  mode="add"
+                  onSave={handleNewCustomerFormSave}
+                  onCancel={() => {
+                    setNewCustomerDraft(null);
+                    setNewOtpRequestId("");
+                    setNewDevCode("");
+                    setNewOtpCode("");
+                    setNewOtpSent(false);
+                    setError("");
+                  }}
                 />
+              ) : (
+                <Text style={styles.muted}>
+                  Loading customer reference data...
+                </Text>
+              )
+            ) : (
+              <View style={styles.otpSection}>
+                <Text style={styles.label}>Mobile Verification</Text>
+
+                <Text style={styles.muted}>
+                  A verification code has been sent to the customer&apos;s
+                  mobile number.
+                </Text>
+
+                {newCustomerDraft?.user.primaryPhone ? (
+                  <Text style={styles.identified}>
+                    {newCustomerDraft.user.primaryPhone.callingCode}{" "}
+                    {newCustomerDraft.user.primaryPhone.number}
+                  </Text>
+                ) : null}
+
+                <Text style={styles.tiny}>Dev code: {newDevCode}</Text>
 
                 <TextInput
-                  testID="counter-new-last-name"
-                  value={newLastName}
-                  onChangeText={setNewLastName}
-                  placeholder="Last name"
-                  placeholderTextColor={COLORS.textMuted}
-                  autoCapitalize="words"
-                  style={[styles.input, styles.nameField]}
-                />
-              </View>
-
-              <View style={styles.phoneRow}>
-                <Pressable
-                  testID="counter-new-country-code-dropdown"
-                  onPress={() => setNewCountryPickerVisible(true)}
-                  style={[styles.countryDropdown, styles.countryCodeInput]}
-                >
-                  <Text style={styles.countryCodeText}>
-                    {newSelectedCountry.code}
-                  </Text>
-
-                  <Text style={styles.countryNameText}>
-                    {newSelectedCountry.country}
-                  </Text>
-                </Pressable>
-
-                <TextInput
-                  testID="counter-new-phone"
-                  value={newPhone}
-                  onChangeText={(value) => setNewPhone(normalizePhone(value))}
-                  placeholder="Mobile number"
+                  testID="counter-new-otp"
+                  value={newOtpCode}
+                  onChangeText={(value) => setNewOtpCode(normalizeOtp(value))}
+                  placeholder="Enter OTP"
                   placeholderTextColor={COLORS.textMuted}
                   keyboardType="number-pad"
-                  maxLength={MAX_PHONE_DIGITS}
-                  style={[styles.input, styles.phoneInput]}
+                  maxLength={OTP_LENGTH}
+                  style={styles.input}
                 />
-              </View>
 
-              <Text style={styles.phoneHint}>Enter exactly 10 digits</Text>
-
-              {!newOtpSent ? (
                 <Pressable
-                  testID="counter-new-send-otp"
+                  testID="counter-new-verify-otp"
                   disabled={
-                    newFirstName.trim().length === 0 ||
-                    newLastName.trim().length === 0 ||
-                    normalizePhone(newPhone).length !== MAX_PHONE_DIGITS
+                    newOtpVerifying ||
+                    normalizeOtp(newOtpCode).length !== OTP_LENGTH
                   }
-                  onPress={sendNewCustomerOtp}
+                  onPress={verifyNewCustomerOtp}
                   style={[
                     styles.primaryBtn,
-                    (newFirstName.trim().length === 0 ||
-                      newLastName.trim().length === 0 ||
-                      normalizePhone(newPhone).length !== MAX_PHONE_DIGITS) &&
-                      styles.btnDisabled,
+                    newOtpVerifying ||
+                    normalizeOtp(newOtpCode).length !== OTP_LENGTH
+                      ? styles.btnDisabled
+                      : undefined,
                   ]}
                 >
-                  <Text style={styles.primaryBtnText}>Send OTP</Text>
+                  <Text style={styles.primaryBtnText}>
+                    {newOtpVerifying
+                      ? "Verifying & Saving..."
+                      : "Verify & Save Customer"}
+                  </Text>
                 </Pressable>
-              ) : (
-                <>
-                  <Text style={styles.tiny}>Dev code: {newDevCode}</Text>
 
-                  <TextInput
-                    testID="counter-new-otp"
-                    value={newOtpCode}
-                    onChangeText={(value) => setNewOtpCode(normalizeOtp(value))}
-                    placeholder="Enter OTP"
-                    placeholderTextColor={COLORS.textMuted}
-                    keyboardType="number-pad"
-                    maxLength={OTP_LENGTH}
-                    style={styles.input}
-                  />
-
-                  <Pressable
-                    testID="counter-new-verify-otp"
-                    disabled={normalizeOtp(newOtpCode).length !== OTP_LENGTH}
-                    onPress={verifyNewCustomerOtp}
-                    style={[
-                      styles.primaryBtn,
-                      normalizeOtp(newOtpCode).length !== OTP_LENGTH &&
-                        styles.btnDisabled,
-                    ]}
-                  >
-                    <Text style={styles.primaryBtnText}>Verify & Continue</Text>
-                  </Pressable>
-                </>
-              )}
-
-              <Modal
-                visible={newCountryPickerVisible}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setNewCountryPickerVisible(false)}
-              >
                 <Pressable
-                  style={styles.modalOverlay}
-                  onPress={() => setNewCountryPickerVisible(false)}
+                  testID="counter-new-resend-otp"
+                  disabled={newOtpVerifying}
+                  onPress={() => {
+                    setNewOtpRequestId("");
+                    setNewDevCode("");
+                    setNewOtpCode("");
+                    setNewOtpSent(false);
+                    setError("");
+                  }}
+                  style={styles.secondaryBtn}
                 >
-                  <Pressable
-                    onPress={(event) => event.stopPropagation()}
-                    style={styles.countryModal}
-                  >
-                    <Text style={styles.modalTitle}>Select country</Text>
-
-                    <View style={styles.countryList}>
-                      {COUNTRY_OPTIONS.map((country) => {
-                        const selected =
-                          newSelectedCountry.country === country.country;
-
-                        return (
-                          <Pressable
-                            key={`${country.country}-${country.code}`}
-                            testID={`counter-country-${country.country
-                              .toLowerCase()
-                              .replace(/\s+/g, "-")}`}
-                            onPress={() => selectNewCountry(country)}
-                            style={[
-                              styles.countryOption,
-                              selected && styles.countryOptionSelected,
-                            ]}
-                          >
-                            <View
-                              style={{
-                                flex: 1,
-                              }}
-                            >
-                              <Text style={styles.countryOptionName}>
-                                {country.country}
-                              </Text>
-
-                              <Text style={styles.countryOptionCode}>
-                                {country.code}
-                              </Text>
-                            </View>
-
-                            {selected ? (
-                              <Text style={styles.countrySelectedMark}>✓</Text>
-                            ) : null}
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  </Pressable>
+                  <Text style={styles.secondaryBtnText}>Request New OTP</Text>
                 </Pressable>
-              </Modal>
-            </>
-          ) : null}
+
+                <Pressable
+                  testID="counter-new-cancel-otp"
+                  onPress={() => {
+                    setNewCustomerDraft(null);
+                    setNewOtpRequestId("");
+                    setNewDevCode("");
+                    setNewOtpCode("");
+                    setNewOtpSent(false);
+                    setError("");
+                  }}
+                  style={styles.secondaryBtn}
+                >
+                  <Text style={styles.secondaryBtnText}>
+                    Back to Customer Details
+                  </Text>
+                </Pressable>
+              </View>
+            )
+          ) : (
+            <View style={styles.customerSavedBox}>
+              <Text style={styles.identified}>
+                Customer saved and ready at Counter
+              </Text>
+
+              <Text style={styles.muted}>{customer.fullName}</Text>
+
+              {customer.phone ? (
+                <Text style={styles.tiny}>{customer.phone}</Text>
+              ) : null}
+
+              {customer.email ? (
+                <Text style={styles.tiny}>{customer.email}</Text>
+              ) : null}
+            </View>
+          )}
 
           {afterIdentify(RedemptionMethod.STAFF_ASSISTED)}
         </View>
@@ -1777,42 +1826,6 @@ const styles = StyleSheet.create({
     alignItems: "stretch",
   },
 
-  countryCodeInput: {
-    width: 105,
-  },
-
-  countryDropdown: {
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    justifyContent: "center",
-  },
-
-  countryCodeText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: COLORS.text,
-  },
-
-  countryNameText: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-    marginTop: 2,
-  },
-
-  phoneInput: {
-    flex: 1,
-  },
-
-  phoneHint: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-    marginTop: -2,
-  },
-
   searchRow: {
     flexDirection: "row",
     gap: 8,
@@ -1915,6 +1928,35 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  secondaryBtn: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    paddingVertical: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+
+  secondaryBtnText: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+
+  otpSection: {
+    gap: 8,
+  },
+
+  customerSavedBox: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    padding: 12,
+    backgroundColor: COLORS.background,
+    gap: 4,
+  },
+
   primaryBtnText: {
     color: COLORS.background,
     fontSize: 15,
@@ -2000,64 +2042,5 @@ const styles = StyleSheet.create({
   outcome: {
     fontSize: 13,
     color: COLORS.text,
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "center",
-    padding: 24,
-  },
-
-  countryModal: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    maxHeight: "75%",
-  },
-
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: COLORS.text,
-    marginBottom: SPACING.sm,
-  },
-
-  countryList: {
-    gap: 8,
-  },
-
-  countryOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    backgroundColor: COLORS.background,
-  },
-
-  countryOptionSelected: {
-    borderColor: COLORS.accent,
-    backgroundColor: COLORS.accentSoft,
-  },
-
-  countryOptionName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.text,
-  },
-
-  countryOptionCode: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    marginTop: 2,
-  },
-
-  countrySelectedMark: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: COLORS.accent,
   },
 });

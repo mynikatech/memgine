@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import * as React from "react";
 import {
   Pressable,
   ScrollView,
@@ -9,7 +9,7 @@ import {
 import { useFocusEffect, useRouter } from "expo-router";
 
 import type {
-  Customer,
+  User,
   MembershipProduct,
   OrganizationUser,
   Redemption,
@@ -40,12 +40,74 @@ type CustomerRedemption = {
 };
 
 type CustomerRow = {
-  customer: Customer;
+  user: User;
   organizationUser: OrganizationUser;
   subscriptions: Subscription[];
   products: MembershipProduct[];
   redemptions: CustomerRedemption[];
 };
+
+function getDisplayName(user: User): string {
+  return (
+    user.displayName?.trim() ||
+    `${user.firstName ?? ""} ${user.middleName ?? ""} ${user.lastName ?? ""}`
+      .replace(/\s+/g, " ")
+      .trim() ||
+    user.userCode
+  );
+}
+
+function getPhoneDisplay(user: User): string {
+  return `${user.primaryPhone?.callingCode ?? ""} ${
+    user.primaryPhone?.number ?? ""
+  }`.trim();
+}
+
+function formatStatusId(statusId: string | undefined): string {
+  if (!statusId) {
+    return "Unknown";
+  }
+
+  const known: Record<string, string> = {
+    "status-active": "Active",
+    "status-inactive": "Inactive",
+    "status-suspended": "Suspended",
+    "user-status-active": "Active",
+    "user-status-inactive": "Inactive",
+    "user-status-suspended": "Suspended",
+    "organization-user-status-active": "Active",
+    "organization-user-status-inactive": "Inactive",
+    "organization-user-status-suspended": "Suspended",
+  };
+
+  if (known[statusId]) {
+    return known[statusId];
+  }
+
+  return statusId
+    .replace(/^(user-status|organization-user-status|status)-/, "")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function statusTone(statusId: string | undefined): "success" | "neutral" {
+  return formatStatusId(statusId).toLowerCase() === "active"
+    ? "success"
+    : "neutral";
+}
+
+function DetailItem({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.detailItem}>
+      <Text variant="caption" color="textMuted">
+        {label}
+      </Text>
+      <Text variant="body" color="text">
+        {value}
+      </Text>
+    </View>
+  );
+}
 
 export default function StaffCustomers() {
   const router = useRouter();
@@ -53,203 +115,198 @@ export default function StaffCustomers() {
   const { organization } = useBusiness();
   const { formatDate } = useTranslation();
 
-  const [status, setStatus] = useState<Status>("loading");
-  const [rows, setRows] = useState<CustomerRow[]>([]);
-  const [search, setSearch] = useState("");
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
-    null,
-  );
+  const [status, setStatus] = React.useState<Status>("loading");
+  const [rows, setRows] = React.useState<CustomerRow[]>([]);
+  const [search, setSearch] = React.useState("");
+  const [selectedCustomerId, setSelectedCustomerId] = React.useState<
+    string | null
+  >(null);
 
   const [
     activeSubscriptionEntityStatusId,
     setActiveSubscriptionEntityStatusId,
-  ] = useState<string | undefined>(undefined);
+  ] = React.useState<string | undefined>(undefined);
 
-  const loadCustomers = useCallback(async () => {
+  const loadCustomers = React.useCallback(async () => {
     setStatus("loading");
 
     try {
       /*
-       * Subscription.subscriptionStatusId stores the EntityStatus.id.
-       * Resolve the EntityStatus whose underlying Status has code ACTIVE,
-       * matching the logic used when a subscription is created.
-       */
-      const subscriptionEntityStatuses =
-        await services.status.listEntityStatusesByEntityTypeCode(
-          "SUBSCRIPTION",
-        );
-
-      let activeEntityStatusId: string | undefined;
-
-      for (const entityStatus of subscriptionEntityStatuses) {
-        const status = await services.status.getStatus(entityStatus.statusId);
-
-        if (status?.statusCode?.trim().toUpperCase() === "ACTIVE") {
-          activeEntityStatusId = entityStatus.id;
-          break;
-        }
-      }
-
-      if (!activeEntityStatusId) {
-        throw new Error("ACTIVE status is not configured for Subscription.");
-      }
-
-      setActiveSubscriptionEntityStatusId(activeEntityStatusId);
-
-      /*
-       * Resolve the business's customer relationships:
+       * Use the exact same source-of-truth pattern as Org Admin Customers:
        *
        * Organization
        *    ↓
        * OrganizationUser
-       *    ↓
-       * Customer
+       *    ↓ userId
+       * User
+       *
+       * Do NOT call services.customer.getCustomer() here. The Org Admin
+       * customer directory resolves the organization relationship against
+       * services.organization.listUsers(), which is also the persisted local
+       * AsyncStorage/mock data source used by the rest of the app.
        */
-      const organizationUsers =
-        await services.organization.listOrganizationUsers(organization.id);
+      const [organizationUsers, users, subscriptions] = await Promise.all([
+        services.organization.listOrganizationUsers(organization.id),
+        services.organization.listUsers(),
+        services.subscription.listByOrganization(organization.id),
+      ]);
+
+      const userMap = new Map<string, User>(
+        users.filter((user) => !user.isDeleted).map((user) => [user.id, user]),
+      );
+
+      const subscriptionsByOrganizationUser = new Map<string, Subscription[]>();
+
+      for (const subscription of subscriptions) {
+        if (subscription.isDeleted) {
+          continue;
+        }
+
+        const current =
+          subscriptionsByOrganizationUser.get(
+            subscription.organizationUserId,
+          ) ?? [];
+
+        current.push(subscription);
+        subscriptionsByOrganizationUser.set(
+          subscription.organizationUserId,
+          current,
+        );
+      }
 
       /*
-       * Stores are organization-level data, so load them once.
+       * Match Org Admin exactly: only non-deleted Customer organization
+       * relationships are included.
+       */
+      const customerOrganizationUsers = organizationUsers.filter(
+        (organizationUser) =>
+          !organizationUser.isDeleted &&
+          organizationUser.organizationUserTypeId === "org-user-type-customer",
+      );
+
+      const customerRows: CustomerRow[] = [];
+
+      for (const organizationUser of customerOrganizationUsers) {
+        const user = userMap.get(organizationUser.userId);
+
+        if (!user) {
+          console.warn("COUNTER CUSTOMER USER MISSING", {
+            organizationUserId: organizationUser.id,
+            userId: organizationUser.userId,
+          });
+          continue;
+        }
+
+        customerRows.push({
+          user,
+          organizationUser,
+          subscriptions:
+            subscriptionsByOrganizationUser.get(organizationUser.id) ?? [],
+          products: [],
+          redemptions: [],
+        });
+      }
+
+      /*
+       * Resolve membership products and redemption history for the same
+       * customers. This preserves the Counter customer-detail experience
+       * while using the Org Admin directory's correct user source.
        */
       const stores = await services.organization.listStores(organization.id);
-
       const storesById = new Map<string, Store>(
-        stores.map((store) => [store.id, store]),
+        stores
+          .filter((store) => !store.isDeleted)
+          .map((store) => [store.id, store]),
       );
 
-      const resolvedRows = await Promise.all(
-        organizationUsers
-          .filter(
-            (organizationUser) =>
-              !organizationUser.isDeleted &&
-              organizationUser.organizationUserTypeId ===
-                "org-user-type-customer",
-          )
-          .map(async (organizationUser) => {
-            const customer = await services.customer.getCustomer(
-              organizationUser.userId,
-            );
+      for (const row of customerRows) {
+        for (const subscription of row.subscriptions) {
+          const plan = await services.subscriptionPlan.getPlan(
+            subscription.subscriptionPlanId,
+          );
 
-            if (!customer) {
-              return null;
-            }
+          if (!plan) {
+            continue;
+          }
 
-            /*
-             * Resolve all subscriptions belonging to this
-             * OrganizationUser.
-             */
-            const subscriptions =
-              await services.subscription.listByOrganizationUser(
-                organizationUser.id,
-              );
+          const product = await services.membershipProduct.getProduct(
+            plan.membershipProductId,
+          );
 
-            const products: MembershipProduct[] = [];
-            const redemptions: CustomerRedemption[] = [];
+          if (product) {
+            row.products.push(product);
+          }
 
-            /*
-             * Resolve:
-             *
-             * Subscription
-             *    ↓
-             * SubscriptionPlan
-             *    ↓
-             * MembershipProduct
-             *
-             * and:
-             *
-             * Subscription
-             *    ↓
-             * Redemptions
-             */
-            for (const subscription of subscriptions) {
-              const plan = await services.subscriptionPlan.getPlan(
-                subscription.subscriptionPlanId,
-              );
+          const benefits = await services.benefit.listByProduct(
+            plan.membershipProductId,
+          );
 
-              if (!plan) {
-                continue;
-              }
+          const benefitsById = new Map(
+            benefits.map((benefit) => [benefit.id, benefit]),
+          );
 
-              const product = await services.membershipProduct.getProduct(
-                plan.membershipProductId,
-              );
+          const subscriptionRedemptions =
+            await services.redemption.listBySubscription(subscription.id);
 
-              if (product) {
-                products.push(product);
-              }
+          for (const redemption of subscriptionRedemptions) {
+            const benefit = benefitsById.get(redemption.benefitId);
+            const store = storesById.get(redemption.storeId);
 
-              const benefits = await services.benefit.listByProduct(
-                plan.membershipProductId,
-              );
+            row.redemptions.push({
+              redemption,
+              benefitName:
+                benefit?.displayName ??
+                benefit?.benefitName ??
+                "Reward redeemed",
+              storeName:
+                store?.name ?? organization.displayName ?? organization.name,
+              productName:
+                product?.displayName ??
+                product?.membershipProductName ??
+                "Membership",
+            });
+          }
+        }
+      }
 
-              const benefitsById = new Map(
-                benefits.map((benefit) => [benefit.id, benefit]),
-              );
+      console.log("COUNTER CUSTOMERS LOADED", {
+        organizationId: organization.id,
+        organizationUsers: organizationUsers.length,
+        customerOrganizationUsers: customerOrganizationUsers.length,
+        users: users.length,
+        customerRows: customerRows.length,
+      });
 
-              const subscriptionRedemptions =
-                await services.redemption.listBySubscription(subscription.id);
-
-              for (const redemption of subscriptionRedemptions) {
-                const benefit = benefitsById.get(redemption.benefitId);
-
-                const store = storesById.get(redemption.storeId);
-
-                redemptions.push({
-                  redemption,
-                  benefitName:
-                    benefit?.displayName ??
-                    benefit?.benefitName ??
-                    "Reward redeemed",
-                  storeName:
-                    store?.name ??
-                    organization.displayName ??
-                    organization.name,
-                  productName:
-                    product?.displayName ??
-                    product?.membershipProductName ??
-                    "Membership",
-                });
-              }
-            }
-
-            return {
-              customer,
-              organizationUser,
-              subscriptions,
-              products,
-              redemptions,
-            };
-          }),
-      );
-
-      setRows(resolvedRows.filter((row): row is CustomerRow => row !== null));
-
+      setRows(customerRows);
       setStatus("ready");
     } catch (error) {
-      console.error("STAFF CUSTOMERS LOAD ERROR", error);
+      console.error("COUNTER CUSTOMERS LOAD ERROR", error);
+      setRows([]);
       setStatus("error");
     }
   }, [organization.id, organization.displayName]);
 
   useFocusEffect(
-    useCallback(() => {
+    React.useCallback(() => {
       loadCustomers();
     }, [loadCustomers]),
   );
 
-  const filteredRows = useMemo(() => {
+  const filteredRows = React.useMemo(() => {
     const value = search.trim().toLowerCase();
 
     if (!value) {
       return rows;
     }
 
-    return rows.filter(({ customer }) => {
-      const name = customer.fullName?.toLowerCase() ?? "";
+    return rows.filter(({ user }) => {
+      const name =
+        `${user.displayName ?? ""} ${user.firstName ?? ""} ${user.middleName ?? ""} ${user.lastName ?? ""}`.toLowerCase();
 
-      const phone = customer.phone?.toLowerCase() ?? "";
+      const phone =
+        `${user.primaryPhone.callingCode ?? ""} ${user.primaryPhone.number ?? ""}`.toLowerCase();
 
-      const email = customer.email?.toLowerCase() ?? "";
+      const email = user.primaryEmail?.toLowerCase() ?? "";
 
       return (
         name.includes(value) || phone.includes(value) || email.includes(value)
@@ -258,7 +315,7 @@ export default function StaffCustomers() {
   }, [rows, search]);
 
   const selectedRow = selectedCustomerId
-    ? rows.find((row) => row.customer.id === selectedCustomerId)
+    ? rows.find((row) => row.user.id === selectedCustomerId)
     : undefined;
 
   if (status === "loading") {
@@ -358,7 +415,7 @@ export default function StaffCustomers() {
             <View style={styles.customerHeader}>
               <View style={styles.avatar}>
                 <Text variant="h2" color="text">
-                  {(selectedRow.customer.fullName ?? "?")
+                  {(getDisplayName(selectedRow.user) ?? "?")
                     .trim()
                     .charAt(0)
                     .toUpperCase()}
@@ -367,21 +424,57 @@ export default function StaffCustomers() {
 
               <View style={styles.customerHeaderText}>
                 <Text variant="h2" color="text">
-                  {selectedRow.customer.fullName}
+                  {getDisplayName(selectedRow.user)}
                 </Text>
 
-                {selectedRow.customer.phone ? (
+                {getPhoneDisplay(selectedRow.user) ? (
                   <Text variant="body" color="textMuted">
-                    {selectedRow.customer.phone}
+                    {getPhoneDisplay(selectedRow.user)}
                   </Text>
                 ) : null}
 
-                {selectedRow.customer.email ? (
+                {selectedRow.user.primaryEmail ? (
                   <Text variant="bodySmall" color="textMuted">
-                    {selectedRow.customer.email}
+                    {selectedRow.user.primaryEmail}
                   </Text>
                 ) : null}
               </View>
+
+              <Badge
+                label={formatStatusId(
+                  selectedRow.user.userStatusId,
+                ).toUpperCase()}
+                tone={statusTone(selectedRow.user.userStatusId)}
+              />
+            </View>
+          </Card>
+
+          {/* Organization relationship */}
+          <Card padding="lg">
+            <Text variant="bodyStrong" color="text">
+              Business Relationship
+            </Text>
+
+            <View style={styles.infoRow}>
+              <Text variant="bodySmall" color="textMuted">
+                Customer status
+              </Text>
+              <Text variant="bodySmall" color="text">
+                {formatStatusId(
+                  selectedRow.organizationUser.organizationUserStatusId,
+                )}
+              </Text>
+            </View>
+
+            <View style={styles.infoRow}>
+              <Text variant="bodySmall" color="textMuted">
+                Joined business
+              </Text>
+              <Text variant="bodySmall" color="text">
+                {selectedRow.organizationUser.joiningDate
+                  ? formatDate(selectedRow.organizationUser.joiningDate)
+                  : "—"}
+              </Text>
             </View>
           </Card>
 
@@ -623,15 +716,15 @@ export default function StaffCustomers() {
 
               return (
                 <Pressable
-                  key={row.customer.id}
-                  onPress={() => setSelectedCustomerId(row.customer.id)}
-                  testID={`staff-customer-${row.customer.id}`}
+                  key={row.user.id}
+                  onPress={() => setSelectedCustomerId(row.user.id)}
+                  testID={`staff-customer-${row.user.id}`}
                 >
                   <Card padding="md">
                     <View style={styles.row}>
                       <View style={styles.avatarSmall}>
                         <Text variant="body" color="text">
-                          {(row.customer.fullName ?? "?")
+                          {(getDisplayName(row.user) ?? "?")
                             .trim()
                             .charAt(0)
                             .toUpperCase()}
@@ -640,12 +733,12 @@ export default function StaffCustomers() {
 
                       <View style={styles.rowMain}>
                         <Text variant="h2" color="text">
-                          {row.customer.fullName}
+                          {getDisplayName(row.user)}
                         </Text>
 
                         <Text variant="bodySmall" color="textMuted">
-                          {row.customer.phone ??
-                            row.customer.email ??
+                          {getPhoneDisplay(row.user) ??
+                            row.user.primaryEmail ??
                             "No contact information"}
                         </Text>
 
@@ -753,6 +846,21 @@ const styles = StyleSheet.create({
   customerHeaderText: {
     flex: 1,
     gap: 3,
+  },
+
+  detailGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 16,
+    marginTop: 20,
+    paddingTop: 18,
+    borderTopWidth: 1,
+    borderTopColor: "#EAEAEA",
+  },
+
+  detailItem: {
+    width: "46%",
+    gap: 4,
   },
 
   membershipHeader: {
