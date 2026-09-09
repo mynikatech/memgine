@@ -405,14 +405,53 @@ export default function StaffCounter() {
             continue;
           }
 
-          const customer = await services.customer.getCustomer(
+          // Customer is a legacy projection. The canonical identity is
+          // User -> OrganizationUser, so resolve the display name from User
+          // first and only use Customer as a compatibility fallback.
+          const user = await services.organization.getUser(
             organizationUser.userId,
           );
+          const legacyCustomer = user
+            ? null
+            : await services.customer.getCustomer(organizationUser.userId);
+
+          const customerName =
+            user?.displayName?.trim() ||
+            `${user?.firstName ?? ""} ${user?.middleName ?? ""} ${
+              user?.lastName ?? ""
+            }`
+              .replace(/\s+/g, " ")
+              .trim() ||
+            legacyCustomer?.fullName?.trim() ||
+            "Customer";
+
+          // The membership product's display name may be the common brand
+          // name (for example, "ARTISAN PASS") rather than the tier.
+          // Resolve the tier from the canonical product/plan fields so the
+          // counter clearly identifies Silver vs Gold.
+          const membershipDescriptor = [
+            planProduct.tier,
+            planProduct.displayName,
+            planProduct.membershipProductName,
+            planProduct.membershipProductCode,
+            plan.subscriptionPlanCode,
+            plan.subscriptionPlanName,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toUpperCase();
+
+          const tier = ["PLATINUM", "GOLD", "SILVER"].find((candidate) =>
+            membershipDescriptor.includes(candidate),
+          );
+
+          const membershipLabel = tier
+            ? `${tier.charAt(0)}${tier.slice(1).toLowerCase()} Artisan Pass`
+            : planProduct.displayName?.trim() ||
+              planProduct.membershipProductName.trim();
 
           built.push({
-            label: `${customer?.fullName ?? "Customer"} · ${
-              planProduct.displayName ?? planProduct.membershipProductName
-            }`,
+            label: `${customerName} · ${membershipLabel}`,
             raw: encodeRedemptionToken({
               version: 1,
               code: `RDM-${subscription.id.toUpperCase()}`,
@@ -434,7 +473,9 @@ export default function StaffCounter() {
         setUserStatuses(statuses);
         setSamples(built);
         resetIdentity();
-      } catch {
+      } catch (error) {
+        console.error("COUNTER QR SAMPLE LOAD ERROR", error);
+
         if (!active) {
           return;
         }
