@@ -763,45 +763,58 @@ export function BusinessExperience({
   /* Offers                                                             */
   /* ------------------------------------------------------------------ */
 
-  const OffersTab = (
-    <View style={{ gap: theme.spacing.lg }} testID="experience-tab-offers">
-      {renderTabPreviewLink("offers")}
+  const OffersTab = (() => {
+    /**
+     * Offers are organization-owned and may optionally be restricted to a
+     * MembershipProduct. The selected subscription remains the single source
+     * of truth for membership-specific filtering.
+     *
+     * Customer Offers intentionally uses one consistent card treatment:
+     * there is no separate featured/hero offer. Every applicable offer is
+     * presented once as its own offer card.
+     */
+    const selectedMembershipProductId = product?.id;
 
-      <Section title={t("experience.todaysPerks")}>
-        {exp.featuredPromotion
-          ? renderPromotionCard(exp.featuredPromotion)
-          : null}
+    const visibleOffers = exp.offers.filter((offer) => {
+      if (!offer.membershipProductId) {
+        return true;
+      }
 
-        <View
-          style={{
-            gap: theme.spacing.md,
-            marginTop: exp.featuredPromotion ? theme.spacing.md : 0,
-          }}
-        >
-          {exp.offers.map((o) => (
-            <OfferCard
-              key={o.id}
-              testID={`experience-offer-${o.id}`}
-              title={o.offerName}
-              description={o.description}
-            />
-          ))}
+      return offer.membershipProductId === selectedMembershipProductId;
+    });
 
-          {!exp.offers.length ? (
-            <Card padding="lg">
-              <Text variant="bodySmall" color="textMuted">
-                No offers are currently available.
-              </Text>
-            </Card>
-          ) : null}
-        </View>
-      </Section>
-    </View>
-  );
+    return (
+      <View style={{ gap: theme.spacing.lg }} testID="experience-tab-offers">
+        {renderTabPreviewLink("offers")}
 
-  /* ------------------------------------------------------------------ */
-  /* History                                                            */
-  /* ------------------------------------------------------------------ */
+        <Section title={t("experience.todaysPerks")}>
+          <View style={{ gap: theme.spacing.md }}>
+            {visibleOffers.map((offer) => (
+              <OfferCard
+                key={offer.id}
+                testID={`experience-offer-${offer.id}`}
+                title={offer.offerName}
+                description={offer.description}
+                imageUrl={offer.promotionImageUrl}
+                badge={offer.badgeText}
+                availabilityText={offer.availabilityText}
+                discountPercentage={offer.discountPercentage}
+                ctaLabel={offer.ctaLabel}
+              />
+            ))}
+
+            {!visibleOffers.length ? (
+              <Card padding="lg">
+                <Text variant="bodySmall" color="textMuted">
+                  No offers are currently available for this membership.
+                </Text>
+              </Card>
+            ) : null}
+          </View>
+        </Section>
+      </View>
+    );
+  })();
 
   const HistoryTab = (() => {
     const sortedActivity = [...exp.activity].sort((a, b) => {
@@ -1889,7 +1902,6 @@ export function BusinessExperience({
           logoUrl={membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl}
           monogram={exp.monogram}
           size={46}
-          fit="cover"
           testID="experience-brand-logo"
         />
 
