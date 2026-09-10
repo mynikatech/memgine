@@ -123,6 +123,12 @@ type Props = {
    * inside the Business Experience.
    */
   membershipLogoUrl?: string;
+
+  /** Organization-specific customer-facing tagline. */
+  tagline?: string;
+
+  /** Organization-specific customer hero image. */
+  heroImageUrl?: string;
 };
 
 export function BusinessExperience({
@@ -151,6 +157,8 @@ export function BusinessExperience({
   onPreviewTab,
   previewSection,
   membershipLogoUrl,
+  tagline,
+  heroImageUrl,
 }: Props) {
   const {
     organization: contextOrganization,
@@ -233,7 +241,7 @@ export function BusinessExperience({
           configuration.customerExperience.showActivity,
       },
     }),
-    [configuration, resolvedBranding, previewDefinition],
+    [configuration, resolvedBranding, previewDefinition, tagline],
   );
 
   const resolvedContent = previewDefinition?.content ?? content;
@@ -491,7 +499,59 @@ export function BusinessExperience({
     <View style={{ gap: theme.spacing.lg }} testID="experience-tab-card">
       {renderTabPreviewLink("card")}
 
-      {exp.heroPromotion ? renderPromotionCard(exp.heroPromotion) : null}
+      {heroImageUrl ? (
+        <Card
+          padding="none"
+          style={{
+            overflow: "hidden",
+            borderRadius: theme.radius.lg,
+          }}
+        >
+          <HeroImage uri={heroImageUrl} height={190} />
+
+          <View
+            style={{
+              paddingHorizontal: theme.spacing.lg,
+              paddingTop: theme.spacing.md,
+              paddingBottom: theme.spacing.lg,
+              gap: theme.spacing.sm,
+            }}
+          >
+            <Badge label="MEMBER PERKS" tone="brand" />
+
+            <Text variant="h2" color="text">
+              Something special is waiting
+            </Text>
+
+            <Text variant="bodySmall" color="textSecondary">
+              {tagline?.trim() ||
+                "Enjoy your member benefits and discover what is new for you."}
+            </Text>
+
+            {exp.membership ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: theme.spacing.sm,
+                  marginTop: theme.spacing.xs,
+                }}
+              >
+                <Ionicons
+                  name="sparkles-outline"
+                  size={16}
+                  color={theme.colors.primary}
+                />
+                <Text variant="caption" color="primary">
+                  {exp.membership.tier} member benefits
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </Card>
+      ) : exp.heroPromotion ? (
+        renderPromotionCard(exp.heroPromotion)
+      ) : null}
 
       {exp.membership ? (
         <Section title={t("experience.yourMemberships")}>
@@ -1826,7 +1886,7 @@ export function BusinessExperience({
         }}
       >
         <BrandLogo
-          logoUrl={resolvedConfiguration.branding.logoUrl}
+          logoUrl={membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl}
           monogram={exp.monogram}
           size={46}
           fit="cover"
@@ -1839,7 +1899,7 @@ export function BusinessExperience({
           </Text>
 
           <Text variant="caption" color="textMuted">
-            {exp.tagline}
+            {tagline?.trim() || exp.tagline}
           </Text>
         </View>
       </View>

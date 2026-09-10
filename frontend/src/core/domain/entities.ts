@@ -124,6 +124,12 @@ export interface OrganizationBranding {
   faviconUrl?: string;
   splashScreenImageUrl?: string;
 
+  /** Optional customer-facing tagline configured by the organization. */
+  tagline?: string;
+
+  /** Optional customer-facing hero image configured by the organization. */
+  heroImageUrl?: string;
+
   primaryColor?: string;
   secondaryColor?: string;
   accentColor?: string;

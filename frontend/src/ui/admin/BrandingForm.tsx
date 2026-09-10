@@ -34,9 +34,15 @@ type BrandingAssetField =
   | "logoUrl"
   | "darkThemeLogoUrl"
   | "faviconUrl"
-  | "splashScreenImageUrl";
+  | "splashScreenImageUrl"
+  | "heroImageUrl";
 
-type BrandingAssetType = "logo" | "darkThemeLogo" | "favicon" | "splashScreen";
+type BrandingAssetType =
+  | "logo"
+  | "darkThemeLogo"
+  | "favicon"
+  | "splashScreen"
+  | "heroImage";
 
 type BrandingFormProps = {
   organization: Organization;
@@ -63,6 +69,8 @@ function createEmptyBranding(
     darkThemeLogoUrl: undefined,
     faviconUrl: undefined,
     splashScreenImageUrl: undefined,
+    tagline: undefined,
+    heroImageUrl: undefined,
 
     primaryColor: undefined,
     secondaryColor: undefined,
@@ -120,6 +128,9 @@ function getAssetType(field: BrandingAssetField): BrandingAssetType {
 
     case "splashScreenImageUrl":
       return "splashScreen";
+
+    case "heroImageUrl":
+      return "heroImage";
   }
 }
 
@@ -388,6 +399,10 @@ export function BrandingForm({
 
         splashScreenImageUrl: form.splashScreenImageUrl?.trim() || undefined,
 
+        tagline: form.tagline?.trim() || undefined,
+
+        heroImageUrl: form.heroImageUrl?.trim() || undefined,
+
         primaryColor: form.primaryColor?.trim() || undefined,
 
         secondaryColor: form.secondaryColor?.trim() || undefined,
@@ -605,6 +620,16 @@ export function BrandingForm({
             </View>
 
             <View style={compact ? styles.fullWidth : styles.halfWidth}>
+              <Input
+                label="Tagline"
+                value={form.tagline ?? ""}
+                onChangeText={(value) => update("tagline", value)}
+                placeholder="Great products, great experiences, every day."
+                editable={!controlsDisabled}
+              />
+            </View>
+
+            <View style={compact ? styles.fullWidth : styles.halfWidth}>
               <ReferenceSelect
                 label="Theme Template"
                 required
@@ -678,6 +703,17 @@ export function BrandingForm({
               saving={saving}
               onPick={() => void handlePickAsset("splashScreenImageUrl")}
               onRemove={() => handleRemoveAsset("splashScreenImageUrl")}
+            />
+
+            <AssetPreview
+              label="Hero Image"
+              description="Primary customer experience hero/banner"
+              value={form.heroImageUrl}
+              compact
+              editable={isEditing}
+              saving={saving}
+              onPick={() => void handlePickAsset("heroImageUrl")}
+              onRemove={() => handleRemoveAsset("heroImageUrl")}
             />
           </View>
         </Section>
@@ -786,7 +822,7 @@ export function BrandingForm({
                 </Text>
 
                 <Text variant="bodySmall" color="textSecondary">
-                  Customer experience preview
+                  {form.tagline?.trim() || "Customer experience preview"}
                 </Text>
               </View>
             </View>
@@ -828,6 +864,16 @@ export function BrandingForm({
                 </Text>
               </View>
             </View>
+
+            {hasImage(form.heroImageUrl) ? (
+              <View style={styles.previewHero}>
+                <Image
+                  source={{ uri: form.heroImageUrl }}
+                  resizeMode="cover"
+                  style={styles.previewHeroImage}
+                />
+              </View>
+            ) : null}
 
             <View style={styles.colorSummary}>
               <View style={styles.colorSummaryItem}>
@@ -1119,6 +1165,20 @@ const styles = StyleSheet.create({
   previewMembershipText: {
     flex: 1,
     gap: 4,
+  },
+
+  previewHero: {
+    width: "100%",
+    height: 180,
+    borderRadius: 14,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+
+  previewHeroImage: {
+    width: "100%",
+    height: "100%",
   },
 
   previewAction: {

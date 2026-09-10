@@ -87,6 +87,13 @@ export default function BusinessExperienceRoute() {
     string | undefined
   >(undefined);
 
+  const [activeOrganizationTagline, setActiveOrganizationTagline] = useState<
+    string | undefined
+  >(undefined);
+
+  const [activeOrganizationHeroImageUrl, setActiveOrganizationHeroImageUrl] =
+    useState<string | undefined>(undefined);
+
   const load = useCallback(async () => {
     setStatus("loading");
 
@@ -126,6 +133,12 @@ export default function BusinessExperienceRoute() {
 
       setActiveOrganizationLogoUrl(
         organizationBranding?.logoUrl?.trim() || undefined,
+      );
+      setActiveOrganizationTagline(
+        organizationBranding?.tagline?.trim() || undefined,
+      );
+      setActiveOrganizationHeroImageUrl(
+        organizationBranding?.heroImageUrl?.trim() || undefined,
       );
 
       setActiveBusiness(organizationId);
@@ -392,6 +405,8 @@ export default function BusinessExperienceRoute() {
         onJoin={joinMembership}
         onExit={exit}
         membershipLogoUrl={activeOrganizationLogoUrl}
+        tagline={activeOrganizationTagline}
+        heroImageUrl={activeOrganizationHeroImageUrl}
       />
     );
   }

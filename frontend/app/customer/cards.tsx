@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Image, Pressable, View } from "react-native";
 
 import type {
   Benefit,
@@ -57,6 +57,8 @@ type OrgGroup = {
   theme: Theme;
   cardStyle: CardStyle;
   logoUrl?: string;
+  tagline?: string;
+  heroImageUrl?: string;
   cards: CardVM[];
 };
 
@@ -533,6 +535,35 @@ export default function MyCards() {
               title={group.organizationName}
               testID={`cards-group-${group.organizationId}`}
             >
+              {group.heroImageUrl ? (
+                <View
+                  style={{
+                    width: "100%",
+                    height: 190,
+                    borderRadius: 16,
+                    overflow: "hidden",
+                    marginBottom: 12,
+                  }}
+                >
+                  <Image
+                    source={{ uri: group.heroImageUrl }}
+                    resizeMode="cover"
+                    style={{ width: "100%", height: "100%" }}
+                    accessibilityLabel={`${group.organizationName} hero`}
+                  />
+                </View>
+              ) : null}
+
+              {group.tagline ? (
+                <Text
+                  variant="body"
+                  color="textSecondary"
+                  style={{ marginBottom: 12 }}
+                >
+                  {group.tagline}
+                </Text>
+              ) : null}
+
               {group.cards.map((vm) => {
                 const isActive =
                   vm.subscriptionStatus?.statusCode?.trim().toUpperCase() ===
