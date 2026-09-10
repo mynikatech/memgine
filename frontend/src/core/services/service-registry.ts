@@ -13,9 +13,14 @@ import { LocalBenefitService } from "./benefit-service.local";
 import { LocalOfferService } from "./offer-service.local";
 import { LocalSubscriptionService } from "./subscription-service.local";
 import { LocalPaymentService } from "./payment-service.local";
-import { LocalRedemptionService } from "./redemption-service.local";
 import { CachedStatusService } from "./status-cache";
 import { LocalStatusService } from "./status-service.local";
+import { LocalRedemptionService } from "./redemption-service.local";
+import { LocalCustomerPreferenceService } from "./customer-preference-service.local";
+import { LocalReferralService } from "./referral-service.local";
+import { ReferralEngine } from "./referral-engine";
+
+import { apis } from "@/src/data/data-registry";
 
 import type {
   OrganizationService,
@@ -84,6 +89,13 @@ const paymentService: PaymentService = new LocalPaymentService(
 
 const redemptionService: RedemptionService = new LocalRedemptionService();
 
+const customerPreferenceService = new LocalCustomerPreferenceService(
+  apis.customerPreference,
+);
+
+const referralService = new LocalReferralService(apis.referral);
+const referralEngine = new ReferralEngine(referralService);
+
 export type MemgineServices = {
   organization: OrganizationService;
   customer: CustomerService;
@@ -102,6 +114,9 @@ export type MemgineServices = {
   customerExperience: CustomerExperienceService;
   notification: NotificationService;
   product: ProductService;
+  customerPreference: import("./service-contracts.profile-referral.additions").CustomerPreferenceService;
+  referral: import("./service-contracts.profile-referral.additions").ReferralService;
+  referralEngine: ReferralEngine;
 };
 
 export const services: MemgineServices = {
@@ -122,4 +137,7 @@ export const services: MemgineServices = {
   customerExperience: customerExperienceService,
   notification: mockNotificationService,
   product: productService,
+  customerPreference: customerPreferenceService,
+  referral: referralService,
+  referralEngine,
 };

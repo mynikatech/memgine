@@ -1,4 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
+import type { OrganizationDetails } from "@/src/core";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 
@@ -94,6 +95,9 @@ export default function BusinessExperienceRoute() {
   const [activeOrganizationHeroImageUrl, setActiveOrganizationHeroImageUrl] =
     useState<string | undefined>(undefined);
 
+  const [activeOrganizationDetails, setActiveOrganizationDetails] =
+    useState<OrganizationDetails | null>(null);
+
   const load = useCallback(async () => {
     setStatus("loading");
 
@@ -128,8 +132,12 @@ export default function BusinessExperienceRoute() {
       // branding, not whichever business happens to be active in the global
       // provider. This is the same canonical branding source used by the
       // Customer Wallet.
-      const organizationBranding =
-        await services.organization.getOrganizationBranding(organizationId);
+      const [organizationBranding, organizationDetails] = await Promise.all([
+        services.organization.getOrganizationBranding(organizationId),
+        services.organization.getOrganizationDetails(organizationId),
+      ]);
+
+      setActiveOrganizationDetails(organizationDetails ?? null);
 
       setActiveOrganizationLogoUrl(
         organizationBranding?.logoUrl?.trim() || undefined,
@@ -407,6 +415,7 @@ export default function BusinessExperienceRoute() {
         membershipLogoUrl={activeOrganizationLogoUrl}
         tagline={activeOrganizationTagline}
         heroImageUrl={activeOrganizationHeroImageUrl}
+        detailsOverride={activeOrganizationDetails}
       />
     );
   }

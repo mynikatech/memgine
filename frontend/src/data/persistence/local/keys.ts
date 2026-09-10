@@ -38,6 +38,20 @@ export const LOCAL_DATA_KEYS = {
   redemptions: () => `memgine:redemptions`,
   offers: (organizationId: string) =>
     `memgine:organization:${organizationId}:offers`,
+
+  // Customer Preference reference/configuration data.
+  preferenceTypes: () => `memgine:preference-types`,
+
+  // User-owned preference values.
+  customerPreferences: (userId: string) =>
+    `memgine:user:${userId}:customer-preferences`,
+
+  // Organization-owned referral configuration and referral instances.
+  referralProgram: (organizationId: string) =>
+    `memgine:organization:${organizationId}:referral-program`,
+  referrals: (organizationId: string) =>
+    `memgine:organization:${organizationId}:referrals`,
+
   statusStatuses: () => "memgine.status.statuses",
   statusEntityTypes: () => "memgine.status.entity-types",
   statusEntityStatuses: () => "memgine.status.entity-statuses",

@@ -6,6 +6,8 @@ import { OrganizationApi } from "./api/organization-api";
 import { ProductApi } from "./api/product-api";
 import { SubscriptionApi } from "./api/subscription-api";
 import { RedemptionApi } from "./api/redemption-api";
+import { CustomerPreferenceApi } from "./api/customer-preference-api";
+import { ReferralApi } from "./api/referral-api";
 
 import { LocalBrandingRepository } from "./repositories/branding/branding-repository.local";
 import { LocalBenefitRepository } from "./repositories/benefit/benefit-repository.local";
@@ -16,6 +18,8 @@ import { LocalOrganizationRepository } from "./repositories/organization/organiz
 import { LocalProductRepository } from "./repositories/product/product-repository.local";
 import { LocalSubscriptionRepository } from "./repositories/subscription/subscription-repository.local";
 import { LocalRedemptionRepository } from "./repositories/redemption/redemption-repository.local";
+import { LocalCustomerPreferenceRepository } from "./repositories/customer-preference/customer-preference-repository.local";
+import { LocalReferralRepository } from "./repositories/referral/referral-repository.local";
 
 const organizationRepository = new LocalOrganizationRepository();
 const brandingRepository = new LocalBrandingRepository();
@@ -26,6 +30,8 @@ const benefitRepository = new LocalBenefitRepository();
 const offerRepository = new LocalOfferRepository();
 const subscriptionRepository = new LocalSubscriptionRepository();
 const redemptionRepository = new LocalRedemptionRepository();
+const customerPreferenceRepository = new LocalCustomerPreferenceRepository();
+const referralRepository = new LocalReferralRepository();
 
 export const data = {
   organizationRepository,
@@ -37,6 +43,8 @@ export const data = {
   offerRepository,
   subscriptionRepository,
   redemptionRepository,
+  customerPreferenceRepository,
+  referralRepository,
 } as const;
 
 export const apis = {
@@ -48,4 +56,6 @@ export const apis = {
   offer: new OfferApi(offerRepository),
   subscription: new SubscriptionApi(subscriptionRepository),
   redemption: new RedemptionApi(redemptionRepository),
+  customerPreference: new CustomerPreferenceApi(customerPreferenceRepository),
+  referral: new ReferralApi(referralRepository),
 } as const;

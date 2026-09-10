@@ -18,6 +18,7 @@ import type {
   Organization,
   OrganizationDetails,
   Redemption,
+  ReferralProgram,
   Store,
   Status,
   Subscription,
@@ -38,6 +39,13 @@ import {
 } from "@/src/ui/domain";
 
 import { ExperienceTabKey, resolveExperience } from "./resolve-experience";
+
+function formatPhoneNumber(
+  phone?: OrganizationDetails["supportPhone"],
+): string {
+  if (!phone) return "";
+  return [phone.callingCode, phone.number].filter(Boolean).join(" ").trim();
+}
 
 /**
  * Customer-facing sections which can be independently previewed by Org Admin.
@@ -255,6 +263,207 @@ export function BusinessExperience({
   }, [initialTab]);
 
   const effectiveTab = activeTab ?? tab;
+
+  /* ------------------------------------------------------------------ */
+  /* Persisted customer profile data                                   */
+  /* ------------------------------------------------------------------ */
+
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
+  const [profileOrganizationDetails, setProfileOrganizationDetails] =
+    useState<OrganizationDetails | null>(detailsOverride ?? null);
+  const [profileOrganizationWebsite, setProfileOrganizationWebsite] =
+    useState<string>(organization.website ?? "");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [marketingEmailsEnabled, setMarketingEmailsEnabled] = useState(false);
+  const [referralProgram, setReferralProgram] =
+    useState<ReferralProgram | null>(null);
+  const [referralSharePayload, setReferralSharePayload] = useState<{
+    referralId: string;
+    referralCode: string;
+    message: string;
+  } | null>(null);
+  const [referralLoading, setReferralLoading] = useState(false);
+  const [savingPreference, setSavingPreference] = useState<
+    "NOTIFICATIONS" | "MARKETING_EMAILS" | null
+  >(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadProfileData = async () => {
+      if (!subscription || previewMode) {
+        if (!cancelled) {
+          setProfileUserId(null);
+          setReferralProgram(null);
+          setNotificationsEnabled(true);
+          setMarketingEmailsEnabled(false);
+          setProfileOrganizationDetails(detailsOverride ?? null);
+          setProfileOrganizationWebsite(organization.website ?? "");
+        }
+        return;
+      }
+
+      try {
+        const [organizationUser, persistedOrganization, persistedDetails] =
+          await Promise.all([
+            services.organization.getOrganizationUser(
+              subscription.organizationUserId,
+            ),
+            services.organization.getOrganization(organization.id),
+            services.organization.getOrganizationDetails(organization.id),
+          ]);
+
+        let resolvedOrganizationUser = organizationUser;
+
+        if (!resolvedOrganizationUser) {
+          const organizationUsers =
+            await services.organization.listOrganizationUsers(organization.id);
+          resolvedOrganizationUser =
+            organizationUsers.find(
+              (organizationUser) =>
+                organizationUser.id === subscription.organizationUserId,
+            ) ?? null;
+        }
+
+        const userId = resolvedOrganizationUser?.userId ?? null;
+
+        if (cancelled) return;
+
+        setProfileUserId(userId);
+        setProfileOrganizationDetails(
+          persistedDetails ?? detailsOverride ?? null,
+        );
+        setProfileOrganizationWebsite(
+          persistedOrganization?.website ?? organization.website ?? "",
+        );
+
+        if (!userId) {
+          setReferralProgram(null);
+          setNotificationsEnabled(true);
+          setMarketingEmailsEnabled(false);
+          return;
+        }
+
+        const [notifications, marketingEmails, program] = await Promise.all([
+          services.customerPreference.getValue(userId, "NOTIFICATIONS"),
+          services.customerPreference.getValue(userId, "MARKETING_EMAILS"),
+          services.referral.getProgram(organization.id),
+        ]);
+
+        if (cancelled) return;
+
+        setNotificationsEnabled(
+          notifications == null ? true : notifications.toLowerCase() === "true",
+        );
+        setMarketingEmailsEnabled(
+          marketingEmails == null
+            ? false
+            : marketingEmails.toLowerCase() === "true",
+        );
+        setReferralProgram(program);
+      } catch {
+        if (!cancelled) {
+          setProfileUserId(null);
+          setReferralProgram(null);
+          setNotificationsEnabled(true);
+          setMarketingEmailsEnabled(false);
+          setProfileOrganizationDetails(detailsOverride ?? null);
+          setProfileOrganizationWebsite(organization.website ?? "");
+        }
+      }
+    };
+
+    void loadProfileData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    subscription,
+    previewMode,
+    organization.id,
+    detailsOverride,
+    organization.website,
+  ]);
+
+  const handlePreferenceToggle = async (
+    preferenceTypeCode: "NOTIFICATIONS" | "MARKETING_EMAILS",
+  ) => {
+    if (savingPreference) return;
+
+    let userId = profileUserId;
+
+    if (!userId && subscription) {
+      const organizationUser =
+        (await services.organization.getOrganizationUser(
+          subscription.organizationUserId,
+        )) ?? null;
+
+      if (organizationUser) {
+        userId = organizationUser.userId;
+      } else {
+        const organizationUsers =
+          await services.organization.listOrganizationUsers(organization.id);
+        userId =
+          organizationUsers.find(
+            (item) => item.id === subscription.organizationUserId,
+          )?.userId ?? null;
+      }
+    }
+
+    if (!userId) return;
+
+    const previousValue =
+      preferenceTypeCode === "NOTIFICATIONS"
+        ? notificationsEnabled
+        : marketingEmailsEnabled;
+    const nextValue = !previousValue;
+
+    if (preferenceTypeCode === "NOTIFICATIONS") {
+      setNotificationsEnabled(nextValue);
+    } else {
+      setMarketingEmailsEnabled(nextValue);
+    }
+
+    setSavingPreference(preferenceTypeCode);
+
+    try {
+      await services.customerPreference.setValue(
+        userId,
+        preferenceTypeCode,
+        String(nextValue),
+      );
+    } catch {
+      if (preferenceTypeCode === "NOTIFICATIONS") {
+        setNotificationsEnabled(previousValue);
+      } else {
+        setMarketingEmailsEnabled(previousValue);
+      }
+    } finally {
+      setSavingPreference(null);
+    }
+  };
+
+  const handleReferralPress = async () => {
+    if (!profileUserId || !referralProgram) return;
+
+    setReferralLoading(true);
+
+    try {
+      const payload = await services.referralEngine.createSharePayload(
+        organization.id,
+        profileUserId,
+        {
+          businessName: organization.displayName ?? organization.name,
+        },
+      );
+
+      setReferralSharePayload(payload);
+      setReferralOpen(true);
+    } finally {
+      setReferralLoading(false);
+    }
+  };
 
   const handleTabChange = (nextTab: ExperienceTabKey) => {
     if (activeTab === undefined) {
@@ -1481,6 +1690,57 @@ export function BusinessExperience({
    * individual-section preview. This prevents the admin preview from
    * drifting away from the actual customer experience.
    */
+  const profileDetails = profileOrganizationDetails ?? detailsOverride;
+  const businessAbout = profileDetails?.aboutOrganization?.trim() || "";
+  const businessSupportEmail = profileDetails?.supportEmail?.trim() || "";
+  const businessSupportPhone = formatPhoneNumber(profileDetails?.supportPhone);
+  const businessWebsite = profileOrganizationWebsite.trim();
+
+  const ProfileBusinessInformationSection =
+    businessAbout ||
+    businessSupportEmail ||
+    businessSupportPhone ||
+    businessWebsite ? (
+      <Section title={t("experience.about")}>
+        <Card padding="lg">
+          <View style={{ gap: theme.spacing.md }}>
+            {businessAbout ? (
+              <Text variant="body" color="textSecondary">
+                {businessAbout}
+              </Text>
+            ) : null}
+
+            {businessSupportEmail ? (
+              <InfoRow
+                icon="mail-outline"
+                label={t("experience.email")}
+                value={businessSupportEmail}
+                theme={theme}
+              />
+            ) : null}
+
+            {businessSupportPhone ? (
+              <InfoRow
+                icon="call-outline"
+                label={t("experience.phone")}
+                value={businessSupportPhone}
+                theme={theme}
+              />
+            ) : null}
+
+            {businessWebsite ? (
+              <InfoRow
+                icon="globe-outline"
+                label={t("experience.website")}
+                value={businessWebsite}
+                theme={theme}
+              />
+            ) : null}
+          </View>
+        </Card>
+      </Section>
+    ) : null;
+
   const BusinessInformationSection = exp.businessInformation ? (
     <Section title={t("experience.about")}>
       <Card padding="lg">
@@ -1566,46 +1826,55 @@ export function BusinessExperience({
         </Section>
       ) : null}
 
-      {BusinessInformationSection}
+      {ProfileBusinessInformationSection}
 
-      {exp.businessPreferences ? (
-        <Section title={t("experience.preferences")}>
-          <Card padding="lg">
-            <View style={{ gap: theme.spacing.md }}>
-              <PrefRow
-                label={t("experience.notifications")}
-                on={exp.businessPreferences.notifications}
-                t={t}
-                theme={theme}
-              />
+      <Section title={t("experience.preferences")}>
+        <Card padding="lg">
+          <View style={{ gap: theme.spacing.md }}>
+            <PrefRow
+              label={t("experience.notifications")}
+              on={notificationsEnabled}
+              t={t}
+              theme={theme}
+              onPress={() => void handlePreferenceToggle("NOTIFICATIONS")}
+              disabled={savingPreference === "NOTIFICATIONS"}
+            />
 
-              <PrefRow
-                label={t("experience.marketingEmails")}
-                on={exp.businessPreferences.marketingEmails}
-                t={t}
-                theme={theme}
-              />
-            </View>
-          </Card>
-        </Section>
-      ) : null}
+            <PrefRow
+              label={t("experience.marketingEmails")}
+              on={marketingEmailsEnabled}
+              t={t}
+              theme={theme}
+              onPress={() => void handlePreferenceToggle("MARKETING_EMAILS")}
+              disabled={savingPreference === "MARKETING_EMAILS"}
+            />
+          </View>
+        </Card>
+      </Section>
 
-      {exp.referral ? (
+      {referralProgram ? (
         <Card padding="lg">
           <View style={{ gap: theme.spacing.sm }}>
             <Text variant="title" color="text">
-              {exp.referral.headline}
+              {referralProgram.referralProgramName}
             </Text>
 
-            <Text variant="bodySmall" color="textMuted">
-              {exp.referral.description}
-            </Text>
+            {referralProgram.description ? (
+              <Text variant="bodySmall" color="textMuted">
+                {referralProgram.description}
+              </Text>
+            ) : null}
 
             <Button
-              label={t("experience.referral")}
+              label={
+                referralLoading
+                  ? "Creating referral…"
+                  : t("experience.referral")
+              }
               variant="secondary"
-              onPress={() => setReferralOpen(true)}
+              onPress={() => void handleReferralPress()}
               testID="experience-referral"
+              disabled={referralLoading || !profileUserId}
             />
           </View>
         </Card>
@@ -1925,7 +2194,9 @@ export function BusinessExperience({
         }}
         showsVerticalScrollIndicator={false}
       >
-        {memberships.length > 1 ? (
+        {memberships.length > 1 &&
+        effectiveTab !== "profile" &&
+        previewSection !== "profile" ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -2057,31 +2328,48 @@ export function BusinessExperience({
         title={exp.referral?.headline ?? t("experience.referral")}
         testID="experience-referral-modal"
       >
-        {exp.referral ? (
+        {referralProgram || exp.referral ? (
           <View style={{ gap: theme.spacing.md }}>
             <Text variant="body" color="textSecondary">
-              {exp.referral.description}
+              {referralProgram?.description ?? exp.referral?.description}
             </Text>
 
-            <View
-              style={{
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <Text variant="caption" color="textMuted">
-                {t("experience.referralCode")}
-              </Text>
-
-              <Badge label={exp.referral.code} tone="brand" />
-            </View>
+            {referralSharePayload ? (
+              <>
+                <View style={{ alignItems: "center", gap: 6 }}>
+                  <Text variant="caption" color="textMuted">
+                    {t("experience.referralCode")}
+                  </Text>
+                  <Badge
+                    label={referralSharePayload.referralCode}
+                    tone="brand"
+                  />
+                </View>
+                <Text
+                  variant="bodySmall"
+                  color="textSecondary"
+                  style={{ textAlign: "center" }}
+                >
+                  {referralSharePayload.message}
+                </Text>
+              </>
+            ) : exp.referral ? (
+              <View style={{ alignItems: "center", gap: 6 }}>
+                <Text variant="caption" color="textMuted">
+                  {t("experience.referralCode")}
+                </Text>
+                <Badge label={exp.referral.code} tone="brand" />
+              </View>
+            ) : null}
 
             <Text
               variant="bodySmall"
               color="primary"
               style={{ textAlign: "center" }}
             >
-              {exp.referral.rewardLabel}
+              {referralProgram?.referrerRewardValue != null
+                ? `Referral reward: ${referralProgram.referrerRewardValue}`
+                : exp.referral?.rewardLabel}
             </Text>
           </View>
         ) : null}
@@ -2207,38 +2495,72 @@ function PrefRow({
   on,
   t,
   theme,
+  onPress,
+  disabled = false,
 }: {
   label: string;
   on: boolean;
   t: (path: string) => string;
   theme: ReturnType<typeof useBusiness>["theme"];
+  onPress?: () => void;
+  disabled?: boolean;
 }) {
   return (
-    <View
+    <Pressable
+      onPress={onPress}
+      disabled={disabled || !onPress}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: on, disabled: disabled || !onPress }}
       style={{
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
+        opacity: disabled ? 0.55 : 1,
       }}
     >
       <Text variant="bodySmall" color="text">
         {label}
       </Text>
 
-      <View
-        style={{
-          backgroundColor: on
-            ? theme.colors.successSoft
-            : theme.colors.surfaceAlt,
-          paddingHorizontal: 10,
-          paddingVertical: 4,
-          borderRadius: theme.radius.pill,
-        }}
-      >
-        <Text variant="caption" color={on ? "success" : "textMuted"}>
-          {on ? t("experience.on") : t("experience.off")}
-        </Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <View
+          style={{
+            width: 42,
+            height: 24,
+            borderRadius: 12,
+            padding: 3,
+            backgroundColor: on
+              ? theme.colors.primary
+              : theme.colors.surfaceAlt,
+            justifyContent: "center",
+          }}
+        >
+          <View
+            style={{
+              width: 18,
+              height: 18,
+              borderRadius: 9,
+              backgroundColor: theme.colors.surface,
+              alignSelf: on ? "flex-end" : "flex-start",
+            }}
+          />
+        </View>
+
+        <View
+          style={{
+            backgroundColor: on
+              ? theme.colors.successSoft
+              : theme.colors.surfaceAlt,
+            paddingHorizontal: 10,
+            paddingVertical: 4,
+            borderRadius: theme.radius.pill,
+          }}
+        >
+          <Text variant="caption" color={on ? "success" : "textMuted"}>
+            {on ? t("experience.on") : t("experience.off")}
+          </Text>
+        </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
