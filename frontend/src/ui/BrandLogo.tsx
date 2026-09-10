@@ -9,6 +9,7 @@ type BrandLogoProps = {
   monogram: string;
   size?: number;
   borderRadius?: number;
+  fit?: "contain" | "cover";
   testID?: string;
 };
 
@@ -17,6 +18,7 @@ export function BrandLogo({
   monogram,
   size = 46,
   borderRadius,
+  fit = "contain",
   testID,
 }: BrandLogoProps) {
   const theme = useTheme();
@@ -27,9 +29,6 @@ export function BrandLogo({
 
   const fallbackMonogram = monogram.trim().charAt(0).toUpperCase() || "?";
 
-  /*
-   * A configured logo takes precedence.
-   */
   if (normalizedLogoUrl) {
     return (
       <View
@@ -46,7 +45,7 @@ export function BrandLogo({
       >
         <Image
           source={{ uri: normalizedLogoUrl }}
-          resizeMode="contain"
+          resizeMode={fit}
           style={{
             width: "100%",
             height: "100%",
@@ -56,12 +55,6 @@ export function BrandLogo({
     );
   }
 
-  /*
-   * IMPORTANT:
-   *
-   * No logo is not an empty state.
-   * The monogram is the platform's default customer-facing identity.
-   */
   return (
     <View
       testID={testID}

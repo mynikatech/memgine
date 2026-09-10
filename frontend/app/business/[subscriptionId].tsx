@@ -1,6 +1,7 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
+
 import { APP_ROUTES } from "@/src/constants/navigation";
 
 import type {
@@ -12,22 +13,26 @@ import type {
   Subscription,
   Status as DomainStatus,
 } from "@/src/core";
-import { getBusinessContent, services } from "@/src/core";
+
+import {
+  F_AND_B_DEFAULT_CONTENT,
+  SALON_DEFAULT_CONTENT,
+  getBusinessContent,
+  services,
+} from "@/src/core";
 import { BusinessExperience } from "@/src/experience";
+
 import {
   useBusiness,
   useCustomerContext,
   useTheme,
   useTranslation,
 } from "@/src/providers";
+
 import { StateView } from "@/src/ui";
 
 type Status = "loading" | "error" | "ready";
 
-/**
- * All data required to render one membership inside
- * the business experience.
- */
 type MembershipBundle = {
   subscription: Subscription;
   subscriptionStatus?: DomainStatus;
@@ -37,20 +42,22 @@ type MembershipBundle = {
 };
 
 /**
- * Business Experience route.
+ * Customer Business Experience route.
  *
- * Final Subscription model:
+ * Data resolution is intentionally product-architecture-first:
  *
  * Subscription
- *   ├── organizationUserId
- *   │      └── OrganizationUser
- *   │             ├── organizationId
- *   │             └── userId
- *   │
- *   └── subscriptionPlanId
- *          └── SubscriptionPlan
- *                 └── membershipProductId
- *                        └── MembershipProduct
+ *   -> OrganizationUser -> organizationId / userId
+ *
+ * Subscription.subscriptionPlanId
+ *   -> MembershipProduct.plans[].id
+ *   -> MembershipProduct
+ *
+ * MembershipProduct.benefitIds
+ *   -> Benefit.listByOrganization()
+ *
+ * Local services are the primary source. Their temporary mock fallback
+ * remains available underneath the service boundary for legacy/demo data.
  */
 export default function BusinessExperienceRoute() {
   const router = useRouter();
@@ -59,44 +66,32 @@ export default function BusinessExperienceRoute() {
     subscriptionId: string;
   }>();
 
-  const { setActiveBusiness } = useBusiness();
-
+  const { setActiveBusiness, template } = useBusiness();
   const { setActiveContext, setActiveSubscription } = useCustomerContext();
 
   const { t } = useTranslation();
   const theme = useTheme();
 
   const [status, setStatus] = useState<Status>("loading");
-
   const [memberships, setMemberships] = useState<MembershipBundle[]>([]);
-
   const [availableMemberships, setAvailableMemberships] = useState<
     MembershipProduct[]
   >([]);
-
   const [offers, setOffers] = useState<Offer[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
-
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
-
-  /**
-   * Organization for the currently displayed business.
-   *
-   * Subscription itself no longer contains organizationId.
-   */
   const [activeOrganizationId, setActiveOrganizationId] = useState<
     string | null
   >(null);
+  const [activeOrganizationLogoUrl, setActiveOrganizationLogoUrl] = useState<
+    string | undefined
+  >(undefined);
 
   const load = useCallback(async () => {
     setStatus("loading");
 
     try {
-      /*
-       * ------------------------------------------------------------
-       * 1. Load the selected subscription.
-       * ------------------------------------------------------------
-       */
+      // 1. Resolve the selected subscription.
       const initial = subscriptionId
         ? await services.subscription.getSubscription(subscriptionId)
         : null;
@@ -106,16 +101,7 @@ export default function BusinessExperienceRoute() {
         return;
       }
 
-      /*
-       * ------------------------------------------------------------
-       * 2. Resolve Subscription -> OrganizationUser.
-       *
-       * OrganizationUser gives us:
-       *
-       *   organizationId
-       *   userId
-       * ------------------------------------------------------------
-       */
+      // 2. Resolve the business/customer relationship.
       const initialOrganizationUser =
         await services.organization.getOrganizationUser(
           initial.organizationUserId,
@@ -127,38 +113,29 @@ export default function BusinessExperienceRoute() {
       }
 
       const organizationId = initialOrganizationUser.organizationId;
-
       const customerId = initialOrganizationUser.userId;
 
       setActiveOrganizationId(organizationId);
 
-      /*
-       * Set active business and customer context.
-       */
+      // The membership card must use the selected subscription's own business
+      // branding, not whichever business happens to be active in the global
+      // provider. This is the same canonical branding source used by the
+      // Customer Wallet.
+      const organizationBranding =
+        await services.organization.getOrganizationBranding(organizationId);
+
+      setActiveOrganizationLogoUrl(
+        organizationBranding?.logoUrl?.trim() || undefined,
+      );
+
       setActiveBusiness(organizationId);
-
       setActiveContext(organizationId, initial.id);
-
       setActiveSubscription(initial.id);
 
-      /*
-       * ------------------------------------------------------------
-       * 3. Get all subscriptions belonging to this global user.
-       *
-       * listByCustomer() now resolves subscriptions through
-       * OrganizationUser.userId.
-       * ------------------------------------------------------------
-       */
+      // 3. Get all subscriptions belonging to the same global User.
       const customerSubscriptions =
         await services.subscription.listByCustomer(customerId);
 
-      /*
-       * We need to identify which of those subscriptions belong
-       * to this SAME organization.
-       *
-       * organizationId is obtained through each subscription's
-       * OrganizationUser.
-       */
       const resolvedSubscriptions = await Promise.all(
         customerSubscriptions.map(async (subscription) => {
           const organizationUser =
@@ -173,6 +150,8 @@ export default function BusinessExperienceRoute() {
         }),
       );
 
+      // Only subscriptions belonging to the selected business are shown
+      // inside this Business Experience.
       const siblings = resolvedSubscriptions
         .filter(
           ({ organizationUser }) =>
@@ -180,99 +159,93 @@ export default function BusinessExperienceRoute() {
         )
         .map(({ subscription }) => subscription);
 
-      /*
-       * ------------------------------------------------------------
-       * 4. Resolve every subscription to:
-       *
-       * Subscription
-       *   -> SubscriptionPlan
-       *      -> MembershipProduct
-       *         -> Benefits
-       *
-       * Subscription
-       *   -> Redemptions
-       * ------------------------------------------------------------
-       */
+      // 4. Load the business membership catalog once.
+      //
+      // This is important for newly-created Org Admin products. We do NOT
+      // resolve the plan through the old standalone/mock subscription-plan
+      // lookup because the canonical product model stores plans inside
+      // MembershipProduct.plans[].
+      const catalog =
+        await services.membershipProduct.listProducts(organizationId);
+
+      // 5. Resolve each subscription through:
+      //
+      // Subscription.subscriptionPlanId
+      //      -> MembershipProduct.plans[].id
+      //      -> MembershipProduct
+      //      -> MembershipProduct.benefitIds
+      //
+      // The local service remains the primary source and may temporarily
+      // fall back to legacy mock data where persisted data is absent.
       const resolvedBundles = await Promise.all(
         siblings.map(async (subscription): Promise<MembershipBundle | null> => {
-          /*
-           * Subscription -> SubscriptionPlan
-           */
-          const plan = await services.subscriptionPlan.getPlan(
-            subscription.subscriptionPlanId,
-          );
-
-          if (!plan) {
-            return null;
-          }
-
-          /*
-           * SubscriptionPlan -> MembershipProduct
-           */
-          const product = await services.membershipProduct.getProduct(
-            plan.membershipProductId,
+          const product = catalog.find(
+            (candidate) =>
+              !candidate.isDeleted &&
+              candidate.plans.some(
+                (plan) => plan.id === subscription.subscriptionPlanId,
+              ),
           );
 
           if (!product) {
             return null;
           }
 
-          /*
-           * MembershipProduct -> Benefits
-           */
-          const benefits = await services.benefit.listByProduct(
-            plan.membershipProductId,
+          const matchedPlan = product.plans.find(
+            (plan) => plan.id === subscription.subscriptionPlanId,
           );
 
-          /*
-           * Subscription -> Redemptions
-           */
+          if (!matchedPlan) {
+            return null;
+          }
+
+          const organizationBenefits =
+            await services.benefit.listByOrganization(organizationId);
+
+          const benefits = organizationBenefits.filter(
+            (benefit) =>
+              !benefit.isDeleted && product.benefitIds.includes(benefit.id),
+          );
+
           const redemptions = await services.redemption.listBySubscription(
             subscription.id,
           );
 
-          /*
-           * Subscription -> EntityStatus -> Status
-           *
-           * subscription.subscriptionStatusId is the EntityStatus.id.
-           * EntityStatus.statusId points to the generic Status record.
-           */
           const subscriptionEntityStatus =
             await services.status.getEntityStatus(
               subscription.subscriptionStatusId,
             );
 
-          const subscriptionStatus = subscriptionEntityStatus
-            ? ((await services.status.getStatus(
-                subscriptionEntityStatus.statusId,
-              )) ?? undefined)
-            : undefined;
-
-          console.log("SUBSCRIPTION STATUS RESOLUTION", {
-            customerId,
-            subscriptionId: subscription.id,
-
-            subscriptionStatusId: subscription.subscriptionStatusId,
-
-            entityStatus: subscriptionEntityStatus
-              ? {
-                  id: subscriptionEntityStatus.id,
-                  statusId: subscriptionEntityStatus.statusId,
-                }
-              : null,
-
-            resolvedStatus: subscriptionStatus
-              ? {
-                  id: subscriptionStatus.id,
-                  statusCode: subscriptionStatus.statusCode,
-                }
-              : null,
-          });
+          const subscriptionStatus =
+            (subscriptionEntityStatus
+              ? await services.status.getStatus(
+                  subscriptionEntityStatus.statusId,
+                )
+              : await services.status.getStatus(
+                  subscription.subscriptionStatusId,
+                )) ?? undefined;
 
           return {
             subscription,
             subscriptionStatus,
-            product,
+            product: {
+              ...product,
+              // BusinessExperience currently derives the membership headline
+              // from product.displayName. For the customer-facing projection,
+              // present the selected plan first and keep the product brand next
+              // to it: e.g. "SILVER ARTISAN PASS".
+              displayName:
+                [
+                  matchedPlan.subscriptionPlanName,
+                  product.membershipProductName,
+                ]
+                  .filter(Boolean)
+                  .join(" ") || product.displayName,
+              plans: [
+                matchedPlan,
+                ...product.plans.filter((plan) => plan.id !== matchedPlan.id),
+              ],
+            },
             benefits,
             redemptions,
           };
@@ -288,53 +261,31 @@ export default function BusinessExperienceRoute() {
         return;
       }
 
-      /*
-       * ------------------------------------------------------------
-       * 5. Load organization-level content.
-       * ------------------------------------------------------------
-       */
-      const [orgOffers, orgStores, catalog] = await Promise.all([
+      // 6. Organization-level experience data.
+      //
+      // These services are AsyncStorage-first through the local service
+      // registry, with the temporary mock fallback retained underneath.
+      const [orgOffers, orgStores] = await Promise.all([
         services.offer.listByOrganization(organizationId),
-
         services.organization.listStores(organizationId),
-
-        services.membershipProduct.listProducts(organizationId),
       ]);
 
-      /*
-       * ------------------------------------------------------------
-       * 6. Determine which products the customer already owns.
-       * ------------------------------------------------------------
-       */
       const ownedProductIds = new Set(
         bundles.map((bundle) => bundle.product.id),
       );
 
-      /*
-       * Active products that the customer does not already own.
-       */
       const available = catalog.filter(
         (product) =>
+          !product.isDeleted &&
           product.productStatusId === "product-status-active" &&
           !ownedProductIds.has(product.id),
       );
 
-      /*
-       * ------------------------------------------------------------
-       * 7. Set final screen state.
-       * ------------------------------------------------------------
-       */
       setMemberships(bundles);
-
       setAvailableMemberships(available);
-
       setOffers(orgOffers);
-
       setStores(orgStores);
 
-      /*
-       * Keep the subscription from the URL selected.
-       */
       const selectedId = bundles.some(
         (bundle) => bundle.subscription.id === initial.id,
       )
@@ -345,7 +296,8 @@ export default function BusinessExperienceRoute() {
       setActiveSubscription(selectedId);
 
       setStatus("ready");
-    } catch {
+    } catch (error) {
+      console.error("BUSINESS EXPERIENCE LOAD FAILED", error);
       setStatus("error");
     }
   }, [
@@ -359,28 +311,16 @@ export default function BusinessExperienceRoute() {
     load();
   }, [load]);
 
-  /*
-   * Current membership displayed in the business experience.
-   */
   const current =
     memberships.find(
       (membership) => membership.subscription.id === selectedSubId,
     ) ?? memberships[0];
 
-  /**
-   * Switch between subscriptions belonging to this organization.
-   */
   const selectSubscription = (id: string) => {
     setSelectedSubId(id);
     setActiveSubscription(id);
   };
 
-  /**
-   * Start the existing purchase flow for another membership.
-   *
-   * The organization ID comes from OrganizationUser rather
-   * than Subscription.
-   */
   const joinMembership = async (productId: string) => {
     if (!current) {
       return;
@@ -402,9 +342,6 @@ export default function BusinessExperienceRoute() {
     );
   };
 
-  /**
-   * Exit the business experience.
-   */
   const exit = () => {
     if (router.canGoBack()) {
       router.back();
@@ -413,23 +350,31 @@ export default function BusinessExperienceRoute() {
     }
   };
 
-  /*
-   * --------------------------------------------------------------
-   * READY
-   * --------------------------------------------------------------
-   */
   if (status === "ready" && current && activeOrganizationId) {
-    console.log("BUSINESS EXPERIENCE ROUTE DEBUG", {
-      subscriptionId: current.subscription.id,
-      subscriptionStatusId: current.subscription.subscriptionStatusId,
-      subscriptionStatus: current.subscriptionStatus,
-      subscriptionStatusCode: current.subscriptionStatus?.statusCode,
-      benefits: current.benefits.length,
-      redemptions: current.redemptions.length,
-    });
+    /*
+     * Organization-owned content is still being migrated to the persisted
+     * configuration/content layer. Known legacy organizations continue to
+     * use their registered organization content. For a newly onboarded
+     * organization whose content has not yet been persisted, fall back to
+     * the platform starter content that matches the active template.
+     *
+     * This prevents a newly-created Glow Studio (or another new business)
+     * from crashing simply because its dynamic organization ID is not in the
+     * legacy static business-content registry.
+     */
+    let businessContent;
+    try {
+      businessContent = getBusinessContent(activeOrganizationId);
+    } catch {
+      const templateCategory = String(template?.category ?? "").toLowerCase();
+      businessContent = templateCategory.includes("beauty")
+        ? SALON_DEFAULT_CONTENT
+        : F_AND_B_DEFAULT_CONTENT;
+    }
+
     return (
       <BusinessExperience
-        content={getBusinessContent(activeOrganizationId)}
+        content={businessContent}
         subscription={current.subscription}
         subscriptionStatus={current.subscriptionStatus}
         product={current.product}
@@ -446,15 +391,11 @@ export default function BusinessExperienceRoute() {
         availableMemberships={availableMemberships}
         onJoin={joinMembership}
         onExit={exit}
+        membershipLogoUrl={activeOrganizationLogoUrl}
       />
     );
   }
 
-  /*
-   * --------------------------------------------------------------
-   * LOADING / ERROR
-   * --------------------------------------------------------------
-   */
   return (
     <View
       style={{

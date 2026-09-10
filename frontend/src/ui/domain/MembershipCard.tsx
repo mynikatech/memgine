@@ -4,6 +4,7 @@ import { View } from "react-native";
 import { CardStyle } from "@/src/core";
 import { useTheme } from "@/src/providers";
 
+import { BrandLogo } from "../BrandLogo";
 import { Text } from "../Text";
 
 /**
@@ -15,6 +16,7 @@ import { Text } from "../Text";
  */
 type MembershipCardProps = {
   organizationName: string;
+  logoUrl?: string;
   tier: string;
   validUntil: string;
   active?: boolean;
@@ -24,6 +26,7 @@ type MembershipCardProps = {
 
 export function MembershipCard({
   organizationName,
+  logoUrl,
   tier,
   validUntil,
   active = true,
@@ -33,7 +36,6 @@ export function MembershipCard({
   const theme = useTheme();
   const initial = organizationName.trim().charAt(0).toUpperCase();
 
-  // Surface treatment varies by card style; brand colour stays an accent.
   const surface =
     cardStyle === CardStyle.CLASSIC
       ? theme.colors.primarySoft
@@ -49,7 +51,10 @@ export function MembershipCard({
         {
           borderRadius: theme.radius.lg,
           borderWidth: 1,
-          borderColor: cardStyle === CardStyle.CLASSIC ? theme.colors.primarySoft : theme.colors.border,
+          borderColor:
+            cardStyle === CardStyle.CLASSIC
+              ? theme.colors.primarySoft
+              : theme.colors.border,
           backgroundColor: surface,
           overflow: "hidden",
           minHeight: 172,
@@ -57,24 +62,39 @@ export function MembershipCard({
         cardStyle === CardStyle.MINIMAL ? theme.shadows.sm : theme.shadows.md,
       ]}
     >
-      {showAccentBar ? <View style={{ height: 6, backgroundColor: theme.colors.primary }} /> : null}
-      <View style={{ padding: theme.spacing.lg, gap: theme.spacing.lg, flex: 1, justifyContent: "space-between" }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm, flex: 1 }}>
-            <View
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: theme.radius.md,
-                backgroundColor: theme.colors.primarySoft,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Text variant="title" color="primary">
-                {initial}
-              </Text>
-            </View>
+      {showAccentBar ? (
+        <View style={{ height: 6, backgroundColor: theme.colors.primary }} />
+      ) : null}
+      <View
+        style={{
+          padding: theme.spacing.lg,
+          gap: theme.spacing.lg,
+          flex: 1,
+          justifyContent: "space-between",
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: theme.spacing.sm,
+              flex: 1,
+            }}
+          >
+            <BrandLogo
+              logoUrl={logoUrl}
+              monogram={initial}
+              fit="cover"
+              size={40}
+              borderRadius={theme.radius.md}
+            />
             <View style={{ flex: 1 }}>
               <Text variant="caption" color="textMuted">
                 MEMBERSHIP
@@ -89,7 +109,9 @@ export function MembershipCard({
               flexDirection: "row",
               alignItems: "center",
               gap: 6,
-              backgroundColor: active ? theme.colors.successSoft : theme.colors.surfaceAlt,
+              backgroundColor: active
+                ? theme.colors.successSoft
+                : theme.colors.surfaceAlt,
               paddingHorizontal: 10,
               paddingVertical: 4,
               borderRadius: theme.radius.pill,
@@ -108,10 +130,21 @@ export function MembershipCard({
 
         <View>
           <Text variant="display" color="text">
-            {tier} Member
+            {tier || "Membership"}
           </Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
-            <Ionicons name="calendar-outline" size={14} color={theme.colors.textMuted} />
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              marginTop: 4,
+            }}
+          >
+            <Ionicons
+              name="calendar-outline"
+              size={14}
+              color={theme.colors.textMuted}
+            />
             <Text variant="bodySmall" color="textMuted">
               Valid until {validUntil}
             </Text>

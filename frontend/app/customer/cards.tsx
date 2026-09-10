@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 
 import type {
@@ -8,9 +8,12 @@ import type {
   MembershipProduct,
   OrganizationUser,
   Subscription,
+  Status as DomainStatus,
+  User,
 } from "@/src/core";
 
 import { services } from "@/src/core";
+import { mockServices } from "@/src/core/mocks/mock-services";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
@@ -21,231 +24,451 @@ import {
   useTranslation,
 } from "@/src/providers";
 import { buildTheme, Theme } from "@/src/theme/theme";
-import { Badge, Card, Header, Section, StateView, Text } from "@/src/ui";
+import {
+  Badge,
+  Card,
+  Header,
+  ReferenceSelect,
+  Section,
+  StateView,
+  Text,
+} from "@/src/ui";
 import { MembershipCard } from "@/src/ui/domain";
 
 type Status = "loading" | "error" | "ready";
 
-//const CUSTOMER_ID = "cust-1";
+type CustomerOption = {
+  id: string;
+  name: string;
+  source: "local" | "mock";
+};
 
 type CardVM = {
   subscription: Subscription;
+  subscriptionStatus?: DomainStatus;
   organizationUser: OrganizationUser;
   product: MembershipProduct;
   benefits: Benefit[];
 };
 
-/**
- * Subscriptions grouped by their Organization.
- *
- * The organization is resolved through OrganizationUser because the
- * final Subscription model intentionally does not contain organizationId.
- */
 type OrgGroup = {
   organizationId: string;
   organizationName: string;
-
-  /**
-   * Each organization renders in its own business theme/style,
-   * regardless of the currently active business.
-   */
   theme: Theme;
   cardStyle: CardStyle;
-
+  logoUrl?: string;
   cards: CardVM[];
 };
 
 /**
  * Customer Membership Wallet.
  *
- * Subscriptions are resolved through:
+ * Production/customer data path:
  *
- * Customer
- *   -> OrganizationUser
- *      -> Subscription
- *         -> SubscriptionPlan
- *            -> MembershipProduct
+ * Authenticated customer
+ *   -> global User
+ *      -> OrganizationUser(s)
+ *         -> Subscription(s)
+ *            -> MembershipProduct.plans[]
+ *               -> Benefits
+ *
+ * For the current local/demo phase a temporary customer selector is exposed
+ * so multiple customers can be tested. John Smith is resolved from persisted
+ * AsyncStorage data. Ada Baker remains an explicitly isolated mock option so
+ * the existing mocked business experiences can still be compared.
+ *
+ * TODO: replace the temporary selector with the authenticated User ID once
+ * customer phone authentication is wired in.
  */
 export default function MyCards() {
   const router = useRouter();
-
-  const { organization, configuration, setActiveBusiness } = useBusiness();
-
-  const { customerId, setActiveContext } = useCustomerContext();
-
+  const { configuration, setActiveBusiness } = useBusiness();
+  const {
+    customerId,
+    setActiveContext,
+    clearActiveContext,
+    setActiveCustomer,
+  } = useCustomerContext();
   const { t, formatDate } = useTranslation();
 
   const [status, setStatus] = useState<Status>("loading");
   const [groups, setGroups] = useState<OrgGroup[]>([]);
+  const [customerOptions, setCustomerOptions] = useState<CustomerOption[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState(customerId);
 
-  const load = useCallback(async () => {
-    setStatus("loading");
+  const loadCustomers = useCallback(async () => {
+    const byId = new Map<string, CustomerOption>();
 
-    try {
-      /**
-       * Step 1:
-       *
-       * Find all organization-user relationships belonging to
-       * the current global user/customer.
-       */
-      const organizationUsers =
-        await services.organization.listOrganizationUsersByUser(customerId);
+    // Real persisted customers only. A User becomes a customer in this
+    // selector when it has a customer OrganizationUser relationship.
+    const [users, organizations] = await Promise.all([
+      services.organization.listUsers(),
+      services.organization.listOrganizations(),
+    ]);
 
-      /**
-       * Step 2:
-       *
-       * Get subscriptions for every organization-user relationship.
-       */
-      const subscriptionLists = await Promise.all(
-        organizationUsers.map((organizationUser) =>
-          services.subscription.listByOrganizationUser(organizationUser.id),
-        ),
-      );
+    const customerUserIds = new Set<string>();
 
-      const subscriptions = subscriptionLists.flat();
+    const organizationUsers = await Promise.all(
+      organizations.map((item) =>
+        services.organization.listOrganizationUsers(item.id),
+      ),
+    );
 
-      const grouped: OrgGroup[] = [];
+    for (const user of organizationUsers.flat()) {
+      if (
+        !user.isDeleted &&
+        user.organizationUserTypeId.trim().toLowerCase().includes("customer")
+      ) {
+        customerUserIds.add(user.userId);
+      }
+    }
 
-      /**
-       * Step 3:
-       *
-       * Resolve the rest of the subscription relationships.
-       */
-      for (const subscription of subscriptions) {
-        /**
-         * Find the OrganizationUser that owns this subscription.
-         *
-         * We already loaded these above, so this is only an in-memory lookup.
-         */
-        const organizationUser = organizationUsers.find(
-          (item) => item.id === subscription.organizationUserId,
-        );
-
-        if (!organizationUser) {
-          continue;
-        }
-
-        /**
-         * Subscription
-         *     -> SubscriptionPlan
-         */
-        const plan = await services.subscriptionPlan.getPlan(
-          subscription.subscriptionPlanId,
-        );
-
-        if (!plan) {
-          continue;
-        }
-
-        /**
-         * SubscriptionPlan
-         *     -> MembershipProduct
-         */
-        const product = await services.membershipProduct.getProduct(
-          plan.membershipProductId,
-        );
-
-        if (!product) {
-          continue;
-        }
-
-        /**
-         * MembershipProduct
-         *     -> Benefits
-         */
-        const benefits = await services.benefit.listByProduct(
-          plan.membershipProductId,
-        );
-
-        /**
-         * OrganizationUser
-         *     -> Organization
-         */
-        const organizationId = organizationUser.organizationId;
-
-        let group = grouped.find(
-          (item) => item.organizationId === organizationId,
-        );
-
-        if (!group) {
-          /**
-           * Resolve THIS organization's own business context.
-           *
-           * This is important for the multi-business wallet:
-           * Sunrise cards should use Sunrise branding,
-           * Glow cards should use Glow branding, etc.
-           */
-          const ctx =
-            await services.organization.getBusinessContext(organizationId);
-
-          const organizationName =
-            ctx?.organization.displayName ??
-            ctx?.organization.name ??
-            organization.name;
-
-          const newGroup: OrgGroup = {
-            organizationId,
-            organizationName,
-
-            theme: buildTheme(ctx?.configuration.branding),
-
-            cardStyle:
-              ctx?.configuration.customerExperience.cardStyle ??
-              configuration.customerExperience.cardStyle,
-
-            cards: [],
-          };
-
-          grouped.push(newGroup);
-
-          group = newGroup;
-        }
-
-        group.cards.push({
-          subscription,
-          organizationUser,
-          product,
-          benefits,
-        });
+    for (const user of users) {
+      const candidate = user as User;
+      if (candidate.isDeleted || !customerUserIds.has(candidate.id)) {
+        continue;
       }
 
-      setGroups(grouped);
-      setStatus("ready");
-    } catch {
-      setStatus("error");
+      const name =
+        candidate.displayName?.trim() ||
+        `${candidate.firstName} ${candidate.lastName}`.trim();
+
+      if (name) {
+        byId.set(candidate.id, {
+          id: candidate.id,
+          name,
+          source: "local",
+        });
+      }
     }
-  }, [
-    customerId,
-    organization.displayName,
-    configuration.customerExperience.cardStyle,
-  ]);
+
+    // Temporary comparison persona. This is the only customer mock retained
+    // here; it is intentionally not mixed into the persisted John flow.
+    byId.set("cust-1", {
+      id: "cust-1",
+      name: "Ada Baker (Mock)",
+      source: "mock",
+    });
+
+    const options = Array.from(byId.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+
+    setCustomerOptions(options);
+
+    // Prefer the current context when it represents a real persisted user;
+    // otherwise default to the first persisted customer rather than cust-1.
+    const current = options.find((item) => item.id === customerId);
+    const next =
+      current ?? options.find((item) => item.source === "local") ?? options[0];
+
+    if (next) {
+      setSelectedCustomerId(next.id);
+      setActiveCustomer(next.id);
+      return next;
+    }
+
+    return null;
+  }, [customerId, setActiveCustomer]);
+
+  const load = useCallback(
+    async (selectedId: string) => {
+      setStatus("loading");
+
+      try {
+        const selected = customerOptions.find((item) => item.id === selectedId);
+
+        if (!selected) {
+          setGroups([]);
+          setStatus("ready");
+          return;
+        }
+
+        const grouped: OrgGroup[] = [];
+
+        if (selected.source === "mock") {
+          /**
+           * Temporary mock comparison path for Ada Baker only.
+           * This preserves the existing mocked business experiences while the
+           * real customer path is migrated to persisted data.
+           */
+          const organizationUsers =
+            await mockServices.organization.listOrganizationUsersByUser(
+              selected.id,
+            );
+
+          const subscriptionLists = await Promise.all(
+            organizationUsers.map((organizationUser: OrganizationUser) =>
+              mockServices.subscription.listByOrganizationUser(
+                organizationUser.id,
+              ),
+            ),
+          );
+
+          const subscriptions = subscriptionLists.flat();
+
+          for (const subscription of subscriptions) {
+            if (subscription.isDeleted) continue;
+
+            const organizationUser = organizationUsers.find(
+              (item: OrganizationUser) =>
+                item.id === subscription.organizationUserId,
+            );
+            if (!organizationUser) continue;
+
+            const plan = await mockServices.subscriptionPlan.getPlan(
+              subscription.subscriptionPlanId,
+            );
+            if (!plan) continue;
+
+            const product = await mockServices.membershipProduct.getProduct(
+              plan.membershipProductId,
+            );
+            if (!product) continue;
+
+            const benefits = await mockServices.benefit.listByProduct(
+              plan.membershipProductId,
+            );
+
+            const organizationId = organizationUser.organizationId;
+            let group = grouped.find(
+              (item) => item.organizationId === organizationId,
+            );
+
+            if (!group) {
+              const [ctx, persistedOrganization, branding] = await Promise.all([
+                services.organization.getBusinessContext(organizationId),
+                services.organization.getOrganization(organizationId),
+                services.organization.getOrganizationBranding(organizationId),
+              ]);
+
+              // The card must be branded by the subscription's own
+              // organization. Never fall back to the currently selected
+              // business here because setActiveBusiness changes when a card
+              // is opened and would otherwise relabel every other card.
+              const organizationName =
+                persistedOrganization?.displayName?.trim() ||
+                persistedOrganization?.name?.trim() ||
+                ctx?.organization.displayName?.trim() ||
+                ctx?.organization.name?.trim() ||
+                `Business ${organizationId}`;
+
+              group = {
+                organizationId,
+                organizationName,
+                logoUrl: branding?.logoUrl,
+                theme: buildTheme(ctx?.configuration.branding),
+                cardStyle:
+                  ctx?.configuration.customerExperience.cardStyle ??
+                  configuration.customerExperience.cardStyle,
+                cards: [],
+              };
+
+              grouped.push(group);
+            }
+
+            group.cards.push({
+              subscription,
+              organizationUser,
+              product,
+              benefits,
+            });
+          }
+        } else {
+          /**
+           * Real customer path.
+           * Everything below comes from the canonical service/repository
+           * boundary, which currently persists to AsyncStorage.
+           */
+          const organizationUsers =
+            await services.organization.listOrganizationUsersByUser(
+              selected.id,
+            );
+
+          const subscriptionLists = await Promise.all(
+            organizationUsers.map((organizationUser) =>
+              services.subscription.listByOrganizationUser(organizationUser.id),
+            ),
+          );
+
+          const subscriptions = subscriptionLists.flat();
+
+          for (const subscription of subscriptions) {
+            if (subscription.isDeleted) continue;
+
+            const organizationUser = organizationUsers.find(
+              (item: OrganizationUser) =>
+                item.id === subscription.organizationUserId,
+            );
+            if (!organizationUser) continue;
+
+            const organizationId = organizationUser.organizationId;
+
+            /**
+             * Canonical relationship:
+             * Subscription.subscriptionPlanId
+             *   -> MembershipProduct.plans[].id
+             */
+            const products =
+              await services.membershipProduct.listProducts(organizationId);
+
+            const product = products.find((item) =>
+              item.plans.some(
+                (plan) => plan.id === subscription.subscriptionPlanId,
+              ),
+            );
+
+            if (!product) continue;
+
+            const plan = product.plans.find(
+              (item) => item.id === subscription.subscriptionPlanId,
+            );
+
+            if (!plan) continue;
+
+            // Subscription records use the canonical EntityStatus ID. Resolve
+            // through EntityStatus first, then support persisted records that
+            // already contain the canonical Status ID.
+            const entityStatus = await services.status.getEntityStatus(
+              subscription.subscriptionStatusId,
+            );
+            const subscriptionStatus =
+              (entityStatus
+                ? await services.status.getStatus(entityStatus.statusId)
+                : await services.status.getStatus(
+                    subscription.subscriptionStatusId,
+                  )) ?? undefined;
+
+            /**
+             * Benefits belong to the organization and are linked from the
+             * membership product through benefitIds.
+             */
+            const allBenefits =
+              await services.benefit.listByOrganization(organizationId);
+
+            const benefits = allBenefits.filter((benefit) =>
+              product.benefitIds.includes(benefit.id),
+            );
+
+            let group = grouped.find(
+              (item) => item.organizationId === organizationId,
+            );
+
+            if (!group) {
+              const [ctx, persistedOrganization, branding] = await Promise.all([
+                services.organization.getBusinessContext(organizationId),
+                services.organization.getOrganization(organizationId),
+                services.organization.getOrganizationBranding(organizationId),
+              ]);
+
+              // Resolve the business from this card's OrganizationUser, not
+              // from the globally active business context. Opening one
+              // membership must never rename the other membership cards.
+              const organizationName =
+                persistedOrganization?.displayName?.trim() ||
+                persistedOrganization?.name?.trim() ||
+                ctx?.organization.displayName?.trim() ||
+                ctx?.organization.name?.trim() ||
+                `Business ${organizationId}`;
+
+              group = {
+                organizationId,
+                organizationName,
+                logoUrl: branding?.logoUrl,
+                theme: buildTheme(ctx?.configuration.branding),
+                cardStyle:
+                  ctx?.configuration.customerExperience.cardStyle ??
+                  configuration.customerExperience.cardStyle,
+                cards: [],
+              };
+
+              grouped.push(group);
+            }
+
+            group.cards.push({
+              subscription,
+              subscriptionStatus,
+              organizationUser,
+              product,
+              benefits,
+            });
+          }
+        }
+
+        setGroups(grouped);
+        setStatus("ready");
+      } catch (error) {
+        console.error("[CustomerCards] failed to load customer wallet", error);
+        setGroups([]);
+        setStatus("error");
+      }
+    },
+    [configuration.customerExperience.cardStyle, customerOptions],
+  );
 
   useEffect(() => {
-    load();
-  }, [load]);
+    let mounted = true;
 
-  /**
-   * Enter the selected business membership experience.
-   */
+    const initialize = async () => {
+      try {
+        setStatus("loading");
+        const selected = await loadCustomers();
+        if (mounted && selected) {
+          await load(selected.id);
+        }
+      } catch (error) {
+        console.error("[CustomerCards] failed to load customers", error);
+        if (mounted) {
+          setStatus("error");
+        }
+      }
+    };
+
+    void initialize();
+
+    return () => {
+      mounted = false;
+    };
+  }, [loadCustomers]);
+
+  useEffect(() => {
+    if (!selectedCustomerId) return;
+    if (!customerOptions.some((item) => item.id === selectedCustomerId)) return;
+
+    setActiveCustomer(selectedCustomerId);
+    void load(selectedCustomerId);
+  }, [selectedCustomerId, customerOptions, setActiveCustomer, load]);
+
+  const handleCustomerChange = useCallback(
+    (id: string) => {
+      setSelectedCustomerId(id);
+      setActiveCustomer(id);
+      // Changing the customer must not leave the previous business/subscription
+      // active while the new wallet is loading.
+      clearActiveContext();
+    },
+    [clearActiveContext, setActiveCustomer],
+  );
+
+  const hasCards = groups.some((group) => group.cards.length > 0);
+
+  const customerSelectItems = useMemo(
+    () =>
+      customerOptions.map((item) => ({
+        id: item.id,
+        name: item.name,
+      })),
+    [customerOptions],
+  );
+
   const openBusiness = (vm: CardVM) => {
     const organizationId = vm.organizationUser.organizationId;
 
-    /**
-     * Switch active business first so the business experience
-     * gets the correct branding/configuration.
-     */
     setActiveBusiness(organizationId);
-
-    /**
-     * Customer context contains:
-     * organization + subscription
-     */
     setActiveContext(organizationId, vm.subscription.id);
 
     router.push(APP_ROUTES.business.subscription(vm.subscription.id) as never);
   };
-
-  const hasCards = groups.some((group) => group.cards.length > 0);
 
   return (
     <Screen
@@ -259,6 +482,25 @@ export default function MyCards() {
         />
       }
     >
+      {customerOptions.length > 0 ? (
+        <Card padding="md">
+          <ReferenceSelect
+            label="Customer (temporary test selector)"
+            value={selectedCustomerId}
+            items={customerSelectItems}
+            onChange={handleCustomerChange}
+            placeholder="Select customer"
+            testID="customer-selector"
+          />
+          <View style={{ marginTop: 8 }}>
+            <Text variant="caption" color="textMuted">
+              In production this will come from the authenticated customer
+              phone/User ID.
+            </Text>
+          </View>
+        </Card>
+      ) : null}
+
       {status === "loading" ? (
         <StateView
           kind="loading"
@@ -270,7 +512,11 @@ export default function MyCards() {
           kind="error"
           title={t("common.error")}
           actionLabel={t("common.retry")}
-          onAction={load}
+          onAction={() => {
+            if (selectedCustomerId) {
+              void load(selectedCustomerId);
+            }
+          }}
           testID="cards-state"
         />
       ) : !hasCards ? (
@@ -288,16 +534,12 @@ export default function MyCards() {
               testID={`cards-group-${group.organizationId}`}
             >
               {group.cards.map((vm) => {
-                /**
-                 * The final Subscription model uses:
-                 *
-                 * startDate
-                 * endDate
-                 * subscriptionStatusId
-                 */
                 const isActive =
-                  vm.subscription.subscriptionStatusId ===
-                  "subscription-status-active";
+                  vm.subscriptionStatus?.statusCode?.trim().toUpperCase() ===
+                    "ACTIVE" ||
+                  (!vm.subscriptionStatus &&
+                    !!vm.subscription.endDate &&
+                    new Date(vm.subscription.endDate).getTime() > Date.now());
 
                 return (
                   <Pressable
@@ -308,9 +550,20 @@ export default function MyCards() {
                     <Card padding="md">
                       <MembershipCard
                         organizationName={group.organizationName}
+                        logoUrl={group.logoUrl}
                         tier={
-                          vm.product.displayName ??
-                          vm.product.membershipProductName
+                          [
+                            vm.product.plans.find(
+                              (plan) =>
+                                plan.id === vm.subscription.subscriptionPlanId,
+                            )?.subscriptionPlanName ??
+                              vm.product.plans[0]?.subscriptionPlanName,
+                            vm.product.membershipProductName,
+                          ]
+                            .filter(Boolean)
+                            .join(" ") ||
+                          vm.product.displayName ||
+                          "Membership"
                         }
                         validUntil={
                           vm.subscription.endDate

@@ -113,6 +113,16 @@ type Props = {
    * When specified, only this customer-facing section is rendered.
    */
   previewSection?: CustomerExperiencePreviewSection;
+
+  /**
+   * Canonical logo for the currently selected membership's business.
+   *
+   * The landing wallet resolves this from the subscription's
+   * OrganizationUser -> OrganizationBranding relationship and passes it
+   * through so the same MembershipCard renders the same business identity
+   * inside the Business Experience.
+   */
+  membershipLogoUrl?: string;
 };
 
 export function BusinessExperience({
@@ -140,6 +150,7 @@ export function BusinessExperience({
   hideTabBar = false,
   onPreviewTab,
   previewSection,
+  membershipLogoUrl,
 }: Props) {
   const {
     organization: contextOrganization,
@@ -491,6 +502,9 @@ export function BusinessExperience({
             validUntil={exp.membership.validUntilLabel}
             active={exp.membership.active}
             cardStyle={cardStyle}
+            logoUrl={
+              membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl
+            }
           />
         </Section>
       ) : previewMode ? (
@@ -506,6 +520,9 @@ export function BusinessExperience({
             validUntil="—"
             active={previewDefinition?.membership.enabled ?? true}
             cardStyle={cardStyle}
+            logoUrl={
+              membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl
+            }
           />
         </Section>
       ) : null}
@@ -1561,6 +1578,9 @@ export function BusinessExperience({
                   true
                 }
                 cardStyle={cardStyle}
+                logoUrl={
+                  membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl
+                }
               />
             </Section>
           </View>
@@ -1809,6 +1829,7 @@ export function BusinessExperience({
           logoUrl={resolvedConfiguration.branding.logoUrl}
           monogram={exp.monogram}
           size={46}
+          fit="cover"
           testID="experience-brand-logo"
         />
 
