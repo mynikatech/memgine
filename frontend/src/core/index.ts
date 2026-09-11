@@ -9,6 +9,7 @@
 export * from "./domain/common";
 export * from "./domain/entities";
 export * from "./domain/qr";
+export * from "./qr/qr-payload";
 
 export * from "./permissions/permissions";
 

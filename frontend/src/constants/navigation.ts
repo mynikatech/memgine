@@ -92,6 +92,11 @@ export const APP_ROUTES = {
     organization: (organizationId: string) => `/discover/${organizationId}`,
   },
 
+  qr: {
+    /** Public QR entry point. The token is the only QR-specific URL value. */
+    resolve: (token: string) => `/qr/${encodeURIComponent(token)}`,
+  },
+
   join: {
     root: "/join",
 
