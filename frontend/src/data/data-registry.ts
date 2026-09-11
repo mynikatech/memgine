@@ -15,6 +15,7 @@ import { QRScanHistoryApi } from "./api/qr-scan-history-api";
 import { QRMembershipAcquisitionAttributionApi } from "./api/qr-membership-acquisition-attribution-api";
 import { BenefitRedemptionQRContextApi } from "./api/benefit-redemption-qr-context-api";
 import { OfferRedemptionQRContextApi } from "./api/offer-redemption-qr-context-api";
+import { OfferRedemptionApi } from "./api/offer-redemption-api";
 
 import { LocalBrandingRepository } from "./repositories/branding/branding-repository.local";
 import { LocalBenefitRepository } from "./repositories/benefit/benefit-repository.local";
@@ -34,6 +35,7 @@ import { LocalQRScanHistoryRepository } from "./repositories/qr-scan-history/qr-
 import { LocalQRMembershipAcquisitionAttributionRepository } from "./repositories/qr-membership-acquisition-attribution/qr-membership-acquisition-attribution-repository.local";
 import { LocalBenefitRedemptionQRContextRepository } from "./repositories/benefit-redemption-qr-context/benefit-redemption-qr-context-repository.local";
 import { LocalOfferRedemptionQRContextRepository } from "./repositories/offer-redemption-qr-context/offer-redemption-qr-context-repository.local";
+import { LocalOfferRedemptionRepository } from "./repositories/offer-redemption/offer-redemption-repository.local";
 
 const organizationRepository = new LocalOrganizationRepository();
 const brandingRepository = new LocalBrandingRepository();
@@ -44,6 +46,7 @@ const benefitRepository = new LocalBenefitRepository();
 const offerRepository = new LocalOfferRepository();
 const subscriptionRepository = new LocalSubscriptionRepository();
 const redemptionRepository = new LocalRedemptionRepository();
+const offerRedemptionRepository = new LocalOfferRedemptionRepository();
 const benefitUsageRuleRepository = new LocalBenefitUsageRuleRepository();
 const customerPreferenceRepository = new LocalCustomerPreferenceRepository();
 const referralRepository = new LocalReferralRepository();
@@ -68,6 +71,7 @@ export const data = {
   offerRepository,
   subscriptionRepository,
   redemptionRepository,
+  offerRedemptionRepository,
   benefitUsageRuleRepository,
   customerPreferenceRepository,
   referralRepository,
@@ -88,6 +92,7 @@ export const apis = {
   offer: new OfferApi(offerRepository),
   subscription: new SubscriptionApi(subscriptionRepository),
   redemption: new RedemptionApi(redemptionRepository),
+  offerRedemption: new OfferRedemptionApi(offerRedemptionRepository),
   benefitUsageRule: new BenefitUsageRuleApi(benefitUsageRuleRepository),
   customerPreference: new CustomerPreferenceApi(customerPreferenceRepository),
   referral: new ReferralApi(referralRepository),

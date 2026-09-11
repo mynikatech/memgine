@@ -529,11 +529,23 @@ export function BusinessExperience({
     createdAt: string;
   };
 
+  type OfferRedemptionToken = {
+    token: string;
+    qrCodeId: string;
+    qrPath: string;
+    userId: string;
+    organizationId: string;
+    offerId: string;
+    createdAt: string;
+  };
   const [selectedBenefitIds, setSelectedBenefitIds] = useState<Set<string>>(
     new Set(),
   );
 
   const [redeemToken, setRedeemToken] = useState<RedemptionToken | null>(null);
+
+  const [offerRedeemToken, setOfferRedeemToken] =
+    useState<OfferRedemptionToken | null>(null);
 
   useEffect(() => {
     setSelectedBenefitIds(
@@ -616,6 +628,49 @@ export function BusinessExperience({
     }
   };
 
+  const redeemOffer = async (offer: Offer) => {
+    if (previewMode) return;
+
+    let userId = profileUserId;
+
+    if (!userId && subscription) {
+      const organizationUser = await services.organization.getOrganizationUser(
+        subscription.organizationUserId,
+      );
+
+      if (organizationUser) {
+        userId = organizationUser.userId;
+      }
+    }
+
+    if (!userId) {
+      console.warn(
+        "OFFER REDEMPTION QR CREATION FAILED: CUSTOMER USER COULD NOT BE RESOLVED",
+      );
+      return;
+    }
+
+    try {
+      const result = await services.offerRedemptionQR.createQR({
+        organizationId: organization.id,
+        userId,
+        offerId: offer.id,
+        createdBy: userId,
+      });
+
+      setOfferRedeemToken({
+        token: result.qrCode.qrCodeToken,
+        qrCodeId: result.qrCode.id,
+        qrPath: result.qrPath,
+        userId: result.context.userId,
+        organizationId: result.context.organizationId,
+        offerId: result.context.offerId,
+        createdAt: result.context.createdAt,
+      });
+    } catch (error) {
+      console.warn("OFFER REDEMPTION QR CREATION FAILED", error);
+    }
+  };
   const benefitTitleById = useMemo(
     () =>
       new Map(exp.benefits.map((b) => [b.id, b.displayName ?? b.benefitName])),
@@ -1039,6 +1094,9 @@ export function BusinessExperience({
                 availabilityText={offer.availabilityText}
                 discountPercentage={offer.discountPercentage}
                 ctaLabel={offer.ctaLabel}
+                onPress={() => {
+                  void redeemOffer(offer);
+                }}
               />
             ))}
 
@@ -2400,6 +2458,43 @@ export function BusinessExperience({
               {referralProgram?.referrerRewardValue != null
                 ? `Referral reward: ${referralProgram.referrerRewardValue}`
                 : exp.referral?.rewardLabel}
+            </Text>
+          </View>
+        ) : null}
+      </Modal>
+      <Modal
+        visible={!!offerRedeemToken}
+        onClose={() => setOfferRedeemToken(null)}
+        title="Redeem Offer"
+        testID="experience-offer-redeem-token-modal"
+      >
+        {offerRedeemToken ? (
+          <View
+            style={{
+              alignItems: "center",
+              gap: theme.spacing.md,
+            }}
+          >
+            <QrPlaceholder size={200} testID="experience-offer-redemption-qr" />
+
+            <View style={{ alignItems: "center" }}>
+              <Text variant="caption" color="textMuted">
+                Redemption Code
+              </Text>
+
+              <Text variant="title" color="text">
+                {offerRedeemToken.token}
+              </Text>
+            </View>
+
+            <Text
+              variant="bodySmall"
+              color="textMuted"
+              style={{
+                textAlign: "center",
+              }}
+            >
+              Show this QR code at the counter to redeem this offer.
             </Text>
           </View>
         ) : null}

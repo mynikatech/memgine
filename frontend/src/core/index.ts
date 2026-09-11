@@ -9,6 +9,7 @@
 export * from "./domain/common";
 export * from "./domain/entities";
 export * from "./domain/qr";
+export * from "./domain/offer-redemption";
 export * from "./qr/qr-payload";
 export * from "./qr/qr-resolution";
 export * from "./domain/qr-membership-acquisition-attribution";
@@ -38,6 +39,7 @@ export * from "./services/service-contracts";
 export * from "./services/reference-data";
 
 export * from "./redemption/redemption-engine";
+export * from "./redemption/offer-redemption-engine";
 
 export * from "./defaults/sunrise-bakery";
 export * from "./defaults/f-and-b-default-content";

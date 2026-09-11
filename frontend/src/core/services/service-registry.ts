@@ -16,6 +16,7 @@ import { LocalPaymentService } from "./payment-service.local";
 import { CachedStatusService } from "./status-cache";
 import { LocalStatusService } from "./status-service.local";
 import { LocalRedemptionService } from "./redemption-service.local";
+import { LocalOfferRedemptionService } from "./offer-redemption-service.local";
 import { LocalCustomerPreferenceService } from "./customer-preference-service.local";
 import { LocalReferralService } from "./referral-service.local";
 import { ReferralEngine } from "./referral-engine";
@@ -50,6 +51,7 @@ import type {
   OfferService,
   UserAcquisitionService,
   RedemptionService,
+  OfferRedemptionService,
   CustomerAuthService,
   ProductService,
   PaymentService,
@@ -139,6 +141,9 @@ const paymentService: PaymentService = new LocalPaymentService(
 
 const redemptionService: RedemptionService = new LocalRedemptionService();
 
+const offerRedemptionService: OfferRedemptionService =
+  new LocalOfferRedemptionService(apis.offerRedemption);
+
 const customerPreferenceService = new LocalCustomerPreferenceService(
   apis.customerPreference,
 );
@@ -162,6 +167,7 @@ export type MemgineServices = {
   offer: OfferService;
   userAcquisition: UserAcquisitionService;
   redemption: RedemptionService;
+  offerRedemption: OfferRedemptionService;
   status: StatusService;
   auth: CustomerAuthService;
   payment: PaymentService;
@@ -193,6 +199,7 @@ export const services: MemgineServices = {
   offer: offerService,
   userAcquisition: userAcquisitionService,
   redemption: redemptionService,
+  offerRedemption: offerRedemptionService,
   status: statusService,
   auth: mockServices.auth,
   payment: paymentService,

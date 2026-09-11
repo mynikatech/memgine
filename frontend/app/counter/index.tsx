@@ -19,11 +19,13 @@ import type {
   Staff,
   Store,
   User,
+  OfferRedemptionResult,
 } from "@/src/core";
 
 import {
   redeemBenefits,
   redeemFromToken,
+  redeemOffer,
   RedemptionContext,
   RedemptionMethod,
   RedemptionResult,
@@ -56,27 +58,43 @@ const normalizePhone = (value: string): string =>
 const normalizeOtp = (value: string): string =>
   value.replace(/\D/g, "").slice(0, OTP_LENGTH);
 
-const RESULT_STYLE: Record<
-  RedemptionResult["kind"],
-  { fg: string; bg: string }
-> = {
-  SUCCESS: {
-    fg: "#15803D",
-    bg: "#DCFCE7",
-  },
-  PARTIAL: {
-    fg: "#B45309",
-    bg: "#FEF3C7",
-  },
-  FAILED: {
-    fg: "#B91C1C",
-    bg: "#FEE2E2",
-  },
-  INVALID: {
-    fg: "#B91C1C",
-    bg: "#FEE2E2",
-  },
-};
+type CounterResult = RedemptionResult | OfferRedemptionResult;
+
+const RESULT_STYLE: Record<CounterResult["kind"], { fg: string; bg: string }> =
+  {
+    SUCCESS: {
+      fg: "#15803D",
+      bg: "#DCFCE7",
+    },
+    PARTIAL: {
+      fg: "#B45309",
+      bg: "#FEF3C7",
+    },
+    FAILED: {
+      fg: "#B91C1C",
+      bg: "#FEE2E2",
+    },
+    INVALID: {
+      fg: "#B91C1C",
+      bg: "#FEE2E2",
+    },
+    ALREADY_USED: {
+      fg: "#B45309",
+      bg: "#FEF3C7",
+    },
+    INELIGIBLE: {
+      fg: "#B91C1C",
+      bg: "#FEE2E2",
+    },
+    USAGE_LIMIT_REACHED: {
+      fg: "#B45309",
+      bg: "#FEF3C7",
+    },
+    OUTSIDE_VALIDITY: {
+      fg: "#B91C1C",
+      bg: "#FEE2E2",
+    },
+  };
 
 export default function StaffCounter() {
   const { organization, principal } = useBusiness();
@@ -145,7 +163,7 @@ export default function StaffCounter() {
   /*
    * Redemption result
    */
-  const [result, setResult] = useState<RedemptionResult | null>(null);
+  const [result, setResult] = useState<CounterResult | null>(null);
 
   const [error, setError] = useState("");
 
@@ -1068,15 +1086,84 @@ export default function StaffCounter() {
 
     setResult(null);
 
-    const res = await redeemFromToken(
-      services,
-      ctx(RedemptionMethod.QR),
-      tokenText,
-    );
+    try {
+      const token = tokenText.trim();
 
-    setResult(res);
+      if (!token) {
+        setResult({
+          kind: "INVALID",
+          message: "Enter a redemption QR token.",
+          outcomes: [],
+        });
+        return;
+      }
 
-    setBusy(false);
+      /*
+       * Route the QR by its persisted QR Code type.
+       *
+       * Benefit QR -> existing Benefit redemption engine.
+       * Offer QR   -> independent Offer redemption engine.
+       *
+       * This lookup must happen before calling redeemFromToken(), otherwise
+       * every QR is incorrectly treated as a Benefit Redemption QR.
+       */
+      const qrCode = await services.qrCode.getByToken(token);
+
+      if (!qrCode || qrCode.isDeleted) {
+        setResult({
+          kind: "INVALID",
+          message: "The redemption QR could not be found.",
+          outcomes: [],
+        });
+        return;
+      }
+
+      if (qrCode.qrCodeTypeId === QRCodeType.OFFER_REDEMPTION) {
+        const offerResult = await redeemOffer(
+          services,
+          {
+            organizationId: orgId,
+            storeId,
+            staffId,
+            method: RedemptionMethod.QR,
+          },
+          { token },
+        );
+
+        setResult(offerResult);
+        return;
+      }
+
+      if (qrCode.qrCodeTypeId === QRCodeType.BENEFIT_REDEMPTION) {
+        const benefitResult = await redeemFromToken(
+          services,
+          ctx(RedemptionMethod.QR),
+          token,
+        );
+
+        setResult(benefitResult);
+        return;
+      }
+
+      setResult({
+        kind: "INVALID",
+        message: "This QR code is not a supported redemption QR.",
+        outcomes: [],
+      });
+    } catch (error) {
+      console.error("COUNTER QR REDEMPTION ERROR", error);
+
+      setResult({
+        kind: "FAILED",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Unable to process the redemption QR.",
+        outcomes: [],
+      });
+    } finally {
+      setBusy(false);
+    }
   };
 
   /*
@@ -2023,19 +2110,38 @@ export default function StaffCounter() {
 
           <Text style={styles.resultMsg}>{result.message}</Text>
 
-          {result.customer ? (
-            <Text style={styles.tiny}>
-              {result.customer.fullName}
+          {"outcomes" in result ? (
+            <>
+              {result.customer ? (
+                <Text style={styles.tiny}>
+                  {result.customer.fullName}
 
-              {result.subscription ? ` · ${result.subscription.id}` : ""}
-            </Text>
-          ) : null}
+                  {result.subscription ? ` · ${result.subscription.id}` : ""}
+                </Text>
+              ) : null}
 
-          {result.outcomes.map((outcome) => (
-            <Text key={outcome.benefitId} style={styles.outcome}>
-              • {outcome.title} — {outcome.status}
-            </Text>
-          ))}
+              {result.outcomes.map((outcome) => (
+                <Text key={outcome.benefitId} style={styles.outcome}>
+                  • {outcome.title} — {outcome.status}
+                </Text>
+              ))}
+            </>
+          ) : (
+            <>
+              {result.offer ? (
+                <Text style={styles.tiny}>
+                  {result.offer.offerName}
+                  {result.userId ? ` · ${result.userId}` : ""}
+                </Text>
+              ) : null}
+
+              {result.redemption ? (
+                <Text style={styles.tiny}>
+                  Redemption: {result.redemption.redemptionNumber}
+                </Text>
+              ) : null}
+            </>
+          )}
         </View>
       ) : null}
     </ScrollView>

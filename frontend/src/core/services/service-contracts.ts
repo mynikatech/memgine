@@ -30,6 +30,8 @@ import {
   SubscriptionPlan,
 } from "../domain/entities";
 
+import type { OfferRedemption } from "../domain/offer-redemption";
+
 /**
  * Typed service contracts for the FUTURE service layer. These define expected
  * operations and types only — no database, no external backend. Mock in-memory
@@ -372,6 +374,30 @@ export interface SubscriptionPlanService {
 export interface RedemptionService {
   performRedemption(input: PerformRedemptionInput): Promise<Redemption>;
   listBySubscription(subscriptionId: ID): Promise<Redemption[]>;
+}
+
+/**
+ * Offer Redemption service.
+ *
+ * Deliberately separate from RedemptionService because Redemption
+ * represents Benefit Redemption and contains subscription/benefit semantics.
+ */
+export interface OfferRedemptionService {
+  listAll(): Promise<OfferRedemption[]>;
+
+  listByOffer(offerId: ID): Promise<OfferRedemption[]>;
+
+  listByUser(userId: ID): Promise<OfferRedemption[]>;
+
+  listByStore(storeId: ID): Promise<OfferRedemption[]>;
+
+  getById(id: ID): Promise<OfferRedemption | null>;
+
+  getByRedemptionNumber(
+    redemptionNumber: string,
+  ): Promise<OfferRedemption | null>;
+
+  create(redemption: OfferRedemption): Promise<OfferRedemption>;
 }
 
 /* ------------------------------------------------------------------ *

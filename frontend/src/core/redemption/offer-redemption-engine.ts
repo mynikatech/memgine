@@ -563,7 +563,7 @@ export async function redeemOffer(
   }
 
   const activeRedemptionStatus =
-    await services.status.getStatusByCode("REDEEMED");
+    await services.status.getStatusByCode("SUCCESS");
 
   if (!activeRedemptionStatus) {
     return {
