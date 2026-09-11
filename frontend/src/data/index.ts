@@ -38,6 +38,9 @@ export { LocalRedemptionRepository } from "./repositories/redemption/redemption-
 export type { IntegrationConfigurationRepository } from "./repositories/integration-configuration/integration-configuration-repository";
 export { LocalIntegrationConfigurationRepository } from "./repositories/integration-configuration/integration-configuration-repository.local";
 
+export type { OfferUsageRuleRepository } from "./repositories/offer-usage-rule/offer-usage-rule-repository";
+export { LocalOfferUsageRuleRepository } from "./repositories/offer-usage-rule/offer-usage-rule-repository.local";
+
 export { asyncStorageStore } from "./persistence/local/async-storage-store";
 export type { LocalStore } from "./persistence/local/local-store";
 export { LOCAL_DATA_KEYS } from "./persistence/local/keys";

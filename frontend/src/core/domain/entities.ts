@@ -854,6 +854,42 @@ export interface UserAcquisition {
   versionNo: number;
 }
 
+export enum OfferFrequencyType {
+  DAILY = "DAILY",
+  WEEKLY = "WEEKLY",
+  MONTHLY = "MONTHLY",
+  YEARLY = "YEARLY",
+  ONE_TIME = "ONE_TIME",
+}
+
+export interface OfferUsageRule {
+  id: ID;
+  offerId: ID;
+
+  ruleName: string;
+  frequencyType: OfferFrequencyType;
+  frequencyInterval: number;
+  usageLimit: number;
+
+  windowStartTime?: string;
+  windowEndTime?: string;
+  applicableDays?: string[];
+  timeZone?: string;
+
+  effectiveDate: string;
+  expiryDate?: string;
+
+  offerUsageRuleStatusId: ID;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt: ISODateString;
+  updatedBy: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
+}
+
 /* ------------------------------------------------------------------ *
  * Subscription
  * ------------------------------------------------------------------ */

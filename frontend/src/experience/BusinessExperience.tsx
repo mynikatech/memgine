@@ -1001,6 +1001,7 @@ export function BusinessExperience({
             {visibleOffers.map((offer) => (
               <OfferCard
                 key={offer.id}
+                offerId={offer.id}
                 testID={`experience-offer-${offer.id}`}
                 title={offer.offerName}
                 description={offer.description}

@@ -9,6 +9,7 @@ import { RedemptionApi } from "./api/redemption-api";
 import { CustomerPreferenceApi } from "./api/customer-preference-api";
 import { ReferralApi } from "./api/referral-api";
 import { BenefitUsageRuleApi } from "./api/benefit-usage-rule-api";
+import { OfferUsageRuleApi } from "./api/offer-usage-rule-api";
 
 import { LocalBrandingRepository } from "./repositories/branding/branding-repository.local";
 import { LocalBenefitRepository } from "./repositories/benefit/benefit-repository.local";
@@ -22,6 +23,7 @@ import { LocalRedemptionRepository } from "./repositories/redemption/redemption-
 import { LocalCustomerPreferenceRepository } from "./repositories/customer-preference/customer-preference-repository.local";
 import { LocalReferralRepository } from "./repositories/referral/referral-repository.local";
 import { LocalBenefitUsageRuleRepository } from "./repositories/benefit-usage-rule/benefit-usage-rule-repository.local";
+import { LocalOfferUsageRuleRepository } from "./repositories/offer-usage-rule/offer-usage-rule-repository.local";
 
 const organizationRepository = new LocalOrganizationRepository();
 const brandingRepository = new LocalBrandingRepository();
@@ -35,6 +37,7 @@ const redemptionRepository = new LocalRedemptionRepository();
 const benefitUsageRuleRepository = new LocalBenefitUsageRuleRepository();
 const customerPreferenceRepository = new LocalCustomerPreferenceRepository();
 const referralRepository = new LocalReferralRepository();
+const offerUsageRuleRepository = new LocalOfferUsageRuleRepository();
 
 export const data = {
   organizationRepository,
@@ -49,6 +52,7 @@ export const data = {
   benefitUsageRuleRepository,
   customerPreferenceRepository,
   referralRepository,
+  offerUsageRuleRepository,
 } as const;
 
 export const apis = {
@@ -63,4 +67,5 @@ export const apis = {
   benefitUsageRule: new BenefitUsageRuleApi(benefitUsageRuleRepository),
   customerPreference: new CustomerPreferenceApi(customerPreferenceRepository),
   referral: new ReferralApi(referralRepository),
+  offerUsageRule: new OfferUsageRuleApi(offerUsageRuleRepository),
 } as const;

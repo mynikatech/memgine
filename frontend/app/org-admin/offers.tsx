@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
-import type { MembershipProduct, Offer, Status, Store } from "@/src/core";
+import type {
+  MembershipProduct,
+  Offer,
+  OfferUsageRule,
+  Status,
+  Store,
+} from "@/src/core";
 
 import { OfferCtaType, services } from "@/src/core";
 
@@ -17,6 +23,12 @@ export default function OrgAdminOffers() {
 
   const [committedOffers, setCommittedOffers] = useState<Offer[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
+
+  const [committedUsageRules, setCommittedUsageRules] = useState<
+    OfferUsageRule[]
+  >([]);
+  const [usageRules, setUsageRules] = useState<OfferUsageRule[]>([]);
+
   const [products, setProducts] = useState<MembershipProduct[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [offerStatuses, setOfferStatuses] = useState<Status[]>([]);
@@ -53,11 +65,28 @@ export default function OrgAdminOffers() {
 
         const activeOffers = offerList.filter((item) => !item.isDeleted);
 
+        const offerIds = activeOffers.map((item) => item.id);
+
+        const ruleList =
+          offerIds.length > 0
+            ? await services.offerUsageRule.listByOffers(offerIds)
+            : [];
+
+        if (!mounted) {
+          return;
+        }
+
         setCommittedOffers(activeOffers);
         setOffers(activeOffers);
+
+        setCommittedUsageRules(ruleList.filter((item) => !item.isDeleted));
+
+        setUsageRules(ruleList.filter((item) => !item.isDeleted));
+
         setProducts(productList);
         setStores(storeList);
         setOfferStatuses(statusList);
+
         setIsEditing(false);
         setSaveMessageVisible(false);
         setFormVisible(false);
@@ -87,8 +116,10 @@ export default function OrgAdminOffers() {
   }, [organization.id]);
 
   const hasChanges = useMemo(
-    () => JSON.stringify(offers) !== JSON.stringify(committedOffers),
-    [offers, committedOffers],
+    () =>
+      JSON.stringify(offers) !== JSON.stringify(committedOffers) ||
+      JSON.stringify(usageRules) !== JSON.stringify(committedUsageRules),
+    [offers, committedOffers, usageRules, committedUsageRules],
   );
 
   const getProductName = (productId?: string) => {
@@ -205,6 +236,7 @@ export default function OrgAdminOffers() {
 
   const createEmptyOffer = (): Offer => {
     const now = new Date().toISOString();
+
     const offerCode = generateOfferCode();
 
     const activeStatus =
@@ -218,27 +250,47 @@ export default function OrgAdminOffers() {
 
     return {
       id: `offer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+
       organizationId: organization.id,
+
       offerCode,
       offerName: "",
       description: undefined,
+
       promotionImageUrl: "",
+
       badgeText: undefined,
+
       availabilityText: undefined,
+
       membershipProductId: undefined,
+
       storeId: undefined,
+
       discountPercentage: undefined,
+
       effectiveDate: now.substring(0, 10),
+
       expiryDate: undefined,
+
       ctaLabel: "",
+
       ctaType: OfferCtaType.REDEEM_OFFER,
+
       ctaTarget: undefined,
+
       statusId: activeStatus?.id ?? "",
+
       createdAt: now,
+
       createdBy: "user-system",
+
       updatedAt: now,
+
       updatedBy: "user-system",
+
       isDeleted: false,
+
       versionNo: 1,
     };
   };
@@ -249,7 +301,9 @@ export default function OrgAdminOffers() {
     }
 
     setViewingOffer(false);
+
     setEditingOffer(createEmptyOffer());
+
     setFormVisible(true);
   };
 
@@ -259,7 +313,11 @@ export default function OrgAdminOffers() {
     }
 
     setViewingOffer(false);
-    setEditingOffer({ ...offer });
+
+    setEditingOffer({
+      ...offer,
+    });
+
     setFormVisible(true);
   };
 
@@ -269,11 +327,18 @@ export default function OrgAdminOffers() {
     }
 
     setViewingOffer(true);
-    setEditingOffer({ ...offer });
+
+    setEditingOffer({
+      ...offer,
+    });
+
     setFormVisible(true);
   };
 
-  const handleSaveDraft = async (updatedOffer: Offer) => {
+  const handleSaveDraft = async (
+    updatedOffer: Offer,
+    updatedRules: OfferUsageRule[],
+  ) => {
     setOffers((current) => {
       const exists = current.some((item) => item.id === updatedOffer.id);
 
@@ -284,6 +349,14 @@ export default function OrgAdminOffers() {
       }
 
       return [...current, updatedOffer];
+    });
+
+    setUsageRules((current) => {
+      const otherRules = current.filter(
+        (rule) => rule.offerId !== updatedOffer.id,
+      );
+
+      return [...otherRules, ...updatedRules];
     });
 
     setFormVisible(false);
@@ -298,7 +371,9 @@ export default function OrgAdminOffers() {
 
     Alert.alert(
       "Delete Offer",
-      `Delete "${offer.offerName || offer.offerCode}"? The offer will be removed when you save the changes.`,
+      `Delete "${
+        offer.offerName || offer.offerCode
+      }"? The offer will be removed when you save the changes.`,
       [
         {
           text: "Cancel",
@@ -310,6 +385,10 @@ export default function OrgAdminOffers() {
           onPress: () => {
             setOffers((current) =>
               current.filter((item) => item.id !== offer.id),
+            );
+
+            setUsageRules((current) =>
+              current.filter((rule) => rule.offerId !== offer.id),
             );
           },
         },
@@ -328,7 +407,14 @@ export default function OrgAdminOffers() {
       const committedById = new Map(
         committedOffers.map((offer) => [offer.id, offer]),
       );
+
       const workingById = new Map(offers.map((offer) => [offer.id, offer]));
+
+      /*
+       * ------------------------------------------------------------
+       * Persist Offers
+       * ------------------------------------------------------------
+       */
 
       for (const offer of offers) {
         const existing = committedById.get(offer.id);
@@ -354,13 +440,74 @@ export default function OrgAdminOffers() {
         }
       }
 
-      const persisted = await services.offer.listByOrganization(
+      /*
+       * ------------------------------------------------------------
+       * Persist Offer Usage Rules
+       * ------------------------------------------------------------
+       *
+       * These are deliberately persisted through the independent
+       * Offer Usage Rule service. They are NOT embedded in Offer.
+       */
+
+      const committedRulesById = new Map(
+        committedUsageRules.map((rule) => [rule.id, rule]),
+      );
+
+      const workingRulesById = new Map(
+        usageRules.map((rule) => [rule.id, rule]),
+      );
+
+      for (const rule of usageRules) {
+        const existing = committedRulesById.get(rule.id);
+
+        if (!existing) {
+          await services.offerUsageRule.createRule(rule);
+          continue;
+        }
+
+        if (JSON.stringify(existing) !== JSON.stringify(rule)) {
+          await services.offerUsageRule.updateRule(rule);
+        }
+      }
+
+      for (const committedRule of committedUsageRules) {
+        if (!workingRulesById.has(committedRule.id)) {
+          await services.offerUsageRule.deleteRule(committedRule.id);
+        }
+      }
+
+      /*
+       * ------------------------------------------------------------
+       * Reload persisted state
+       * ------------------------------------------------------------
+       */
+
+      const persistedOffers = await services.offer.listByOrganization(
         organization.id,
       );
-      const activePersisted = persisted.filter((item) => !item.isDeleted);
 
-      setCommittedOffers(activePersisted);
-      setOffers(activePersisted);
+      const activePersistedOffers = persistedOffers.filter(
+        (item) => !item.isDeleted,
+      );
+
+      const persistedOfferIds = activePersistedOffers.map((offer) => offer.id);
+
+      const persistedRules = persistedOfferIds.length
+        ? await services.offerUsageRule.listByOffers(persistedOfferIds)
+        : [];
+
+      const activePersistedRules = persistedRules.filter(
+        (rule) => !rule.isDeleted,
+      );
+
+      setCommittedOffers(activePersistedOffers);
+
+      setOffers(activePersistedOffers);
+
+      setCommittedUsageRules(activePersistedRules);
+
+      setUsageRules(activePersistedRules);
+
       setIsEditing(false);
       setFormVisible(false);
       setEditingOffer(null);
@@ -388,6 +535,9 @@ export default function OrgAdminOffers() {
     }
 
     setOffers(committedOffers);
+
+    setUsageRules(committedUsageRules);
+
     setIsEditing(false);
     setFormVisible(false);
     setEditingOffer(null);
@@ -402,6 +552,10 @@ export default function OrgAdminOffers() {
     setSaveMessageVisible(false);
     setIsEditing(true);
   };
+
+  const editingOfferRules = editingOffer
+    ? usageRules.filter((rule) => rule.offerId === editingOffer.id)
+    : [];
 
   return (
     <ScrollView
@@ -595,6 +749,7 @@ export default function OrgAdminOffers() {
             stores={stores}
             offerStatuses={offerStatuses}
             existingOffers={offers}
+            usageRules={editingOfferRules}
             isNewOffer={
               !committedOffers.some((item) => item.id === editingOffer.id)
             }
