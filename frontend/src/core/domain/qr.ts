@@ -2,10 +2,6 @@ import type { ID, ISODateString } from "./common";
 
 /**
  * Supported business journeys initiated by a reusable QR Code.
- *
- * The persisted QR Code Type reference data owns the database identifier;
- * these codes provide the application-level vocabulary for the supported
- * journeys.
  */
 export enum QRCodeType {
   BUSINESS_MEMBERSHIPS = "QR_BUSINESS_MEMBERSHIPS",
@@ -28,12 +24,6 @@ export enum QRScanResult {
   ACCESS_DENIED = "ACCESS_DENIED",
 }
 
-/**
- * Persisted reusable QR Code definition.
- *
- * A QR Code identifies a supported Memgine journey and may optionally
- * identify a target entity such as a Membership Product, Offer or Benefit.
- */
 export interface QRCode {
   id: ID;
   organizationId: ID;
@@ -88,6 +78,12 @@ export interface QRScanHistory {
 
   /** Channel through which the QR scan was initiated. */
   scanSource: string;
+
+  /**
+   * Snapshot of the business-facing placement at scan time.
+   * This prevents later QR configuration changes from erasing attribution.
+   */
+  placementName?: string;
 
   /** Target context resolved at scan time, preserved for historical analysis. */
   targetEntityType?: string;

@@ -1,4 +1,4 @@
-import type { ID, QRCode } from "@/src/core";
+import type { ID, QRCode, QRScanHistory } from "@/src/core";
 import { QRScanResult } from "@/src/core/domain/qr";
 import type {
   QRBusinessMembershipResolution,
@@ -31,15 +31,9 @@ export interface QRResolutionService {
     result: QRScanResult,
     context: QRScanContext,
     failureReason?: string,
-  ): Promise<void>;
+  ): Promise<QRScanHistory | null>;
 }
 
-/**
- * Application service for QR resolution.
- *
- * This service coordinates the persisted QR Code and scan-history
- * services, while keeping navigation/UI concerns outside the core.
- */
 export class LocalQRResolutionService implements QRResolutionService {
   constructor(
     private readonly qrCodeService: QRCodeService,
@@ -78,19 +72,19 @@ export class LocalQRResolutionService implements QRResolutionService {
     result: QRScanResult,
     context: QRScanContext,
     failureReason?: string,
-  ): Promise<void> {
+  ): Promise<QRScanHistory | null> {
     /*
      * There is no QR Code to reference when token parsing itself fails.
-     * Scan history currently requires qrCodeId, so there is nothing
-     * safe to persist in that case.
+     * QR Scan History requires qrCodeId, so unresolved/unknown tokens
+     * cannot be persisted as an entity-specific scan event.
      */
     if (!qrCode) {
-      return;
+      return null;
     }
 
     const now = new Date().toISOString();
 
-    await this.qrScanHistoryService.recordScan({
+    return this.qrScanHistoryService.recordScan({
       id: `qr-scan-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       qrCodeId: qrCode.id,
       customerId: context.customerId,
@@ -99,6 +93,7 @@ export class LocalQRResolutionService implements QRResolutionService {
       storeId: context.storeId ?? qrCode.storeId,
       staffId: context.staffId,
       scanSource: context.scanSource,
+      placementName: qrCode.placementName,
       targetEntityType: qrCode.targetEntityType,
       targetEntityId: qrCode.targetEntityId,
       failureReason,

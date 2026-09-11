@@ -61,6 +61,8 @@ export const LOCAL_DATA_KEYS = {
   // QR Scan History is an immutable cross-organization event collection.
   // Organization context is resolved through the QR Code relationship.
   qrScanHistory: () => `memgine:qr-scan-history`,
+  qrMembershipAcquisitionAttributions: () =>
+    `memgine:qr-membership-acquisition-attributions`,
 
   statusStatuses: () => "memgine.status.statuses",
   statusEntityTypes: () => "memgine.status.entity-types",

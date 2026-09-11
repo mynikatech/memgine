@@ -12,6 +12,7 @@ import { BenefitUsageRuleApi } from "./api/benefit-usage-rule-api";
 import { OfferUsageRuleApi } from "./api/offer-usage-rule-api";
 import { QRCodeApi } from "./api/qr-code-api";
 import { QRScanHistoryApi } from "./api/qr-scan-history-api";
+import { QRMembershipAcquisitionAttributionApi } from "./api/qr-membership-acquisition-attribution-api";
 
 import { LocalBrandingRepository } from "./repositories/branding/branding-repository.local";
 import { LocalBenefitRepository } from "./repositories/benefit/benefit-repository.local";
@@ -28,6 +29,7 @@ import { LocalBenefitUsageRuleRepository } from "./repositories/benefit-usage-ru
 import { LocalOfferUsageRuleRepository } from "./repositories/offer-usage-rule/offer-usage-rule-repository.local";
 import { LocalQRCodeRepository } from "./repositories/qr-code/qr-code-repository.local";
 import { LocalQRScanHistoryRepository } from "./repositories/qr-scan-history/qr-scan-history-repository.local";
+import { LocalQRMembershipAcquisitionAttributionRepository } from "./repositories/qr-membership-acquisition-attribution/qr-membership-acquisition-attribution-repository.local";
 
 const organizationRepository = new LocalOrganizationRepository();
 const brandingRepository = new LocalBrandingRepository();
@@ -44,6 +46,8 @@ const referralRepository = new LocalReferralRepository();
 const offerUsageRuleRepository = new LocalOfferUsageRuleRepository();
 const qrCodeRepository = new LocalQRCodeRepository();
 const qrScanHistoryRepository = new LocalQRScanHistoryRepository();
+const qrMembershipAcquisitionAttributionRepository =
+  new LocalQRMembershipAcquisitionAttributionRepository();
 
 export const data = {
   organizationRepository,
@@ -61,6 +65,7 @@ export const data = {
   offerUsageRuleRepository,
   qrCodeRepository,
   qrScanHistoryRepository,
+  qrMembershipAcquisitionAttributionRepository,
 } as const;
 
 export const apis = {
@@ -78,4 +83,7 @@ export const apis = {
   offerUsageRule: new OfferUsageRuleApi(offerUsageRuleRepository),
   qrCode: new QRCodeApi(qrCodeRepository),
   qrScanHistory: new QRScanHistoryApi(qrScanHistoryRepository),
+  qrMembershipAcquisitionAttribution: new QRMembershipAcquisitionAttributionApi(
+    qrMembershipAcquisitionAttributionRepository,
+  ),
 } as const;

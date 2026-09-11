@@ -6,6 +6,7 @@ import type {
 } from "@/src/core";
 
 import { apis } from "@/src/data";
+import type { QRMembershipAcquisitionAttributionService } from "./qr-membership-acquisition-attribution-service";
 
 const SUBSCRIPTION_NUMBER_PREFIX = "SUB";
 
@@ -37,6 +38,7 @@ export class LocalSubscriptionService implements SubscriptionService {
   constructor(
     private readonly fallback: SubscriptionService,
     private readonly organizationService: OrganizationService,
+    private readonly qrMembershipAcquisitionAttributionService?: QRMembershipAcquisitionAttributionService,
   ) {}
 
   private async getPersistedSubscriptions(): Promise<Subscription[]> {
@@ -244,6 +246,22 @@ export class LocalSubscriptionService implements SubscriptionService {
 
     if (!result.success) {
       throw new Error(result.error.message);
+    }
+
+    /*
+     * QR attribution is deliberately best-effort.
+     *
+     * The subscription is already persisted successfully. If attribution
+     * cannot be resolved, the purchase must still succeed.
+     */
+    if (this.qrMembershipAcquisitionAttributionService) {
+      try {
+        await this.qrMembershipAcquisitionAttributionService.attributeSubscription(
+          result.data,
+        );
+      } catch (error) {
+        console.warn("QR MEMBERSHIP ACQUISITION ATTRIBUTION FAILED", error);
+      }
     }
 
     return result.data;

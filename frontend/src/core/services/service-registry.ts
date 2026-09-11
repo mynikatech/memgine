@@ -28,6 +28,7 @@ import { LocalQRCodeService } from "./qr-code-service";
 import type { QRCodeService } from "./qr-code-service";
 import { LocalQRScanHistoryService } from "./qr-scan-history-service";
 import type { QRScanHistoryService } from "./qr-scan-history-service";
+import { LocalQRMembershipAcquisitionAttributionService } from "./qr-membership-acquisition-attribution-service";
 
 import { apis } from "@/src/data/data-registry";
 
@@ -113,6 +114,15 @@ const qrCodeService: QRCodeService = new LocalQRCodeService(apis.qrCode);
 const qrScanHistoryService: QRScanHistoryService =
   new LocalQRScanHistoryService(apis.qrScanHistory);
 
+const qrMembershipAcquisitionAttributionService =
+  new LocalQRMembershipAcquisitionAttributionService(
+    organizationService,
+    membershipProductService,
+    qrCodeService,
+    qrScanHistoryService,
+    apis.qrMembershipAcquisitionAttribution,
+  );
+
 export type MemgineServices = {
   organization: OrganizationService;
   customer: CustomerService;
@@ -138,6 +148,7 @@ export type MemgineServices = {
   offerUsageRule: OfferUsageRuleService;
   qrCode: QRCodeService;
   qrScanHistory: QRScanHistoryService;
+  qrMembershipAcquisitionAttribution: import("./qr-membership-acquisition-attribution-service").QRMembershipAcquisitionAttributionService;
 };
 
 export const services: MemgineServices = {
@@ -165,4 +176,5 @@ export const services: MemgineServices = {
   offerUsageRule: offerUsageRuleService,
   qrCode: qrCodeService,
   qrScanHistory: qrScanHistoryService,
+  qrMembershipAcquisitionAttribution: qrMembershipAcquisitionAttributionService,
 };
