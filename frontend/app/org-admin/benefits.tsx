@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
-import type { Benefit, Product, ReferenceDataItem, Status } from "@/src/core";
+import type {
+  Benefit,
+  BenefitUsageRule,
+  Product,
+  ReferenceDataItem,
+  Status,
+} from "@/src/core";
 
 import { services } from "@/src/core";
 
@@ -44,6 +50,108 @@ function benefitsEqual(first: Benefit[], second: Benefit[]): boolean {
   return JSON.stringify(first) === JSON.stringify(second);
 }
 
+function cloneRules(rules: BenefitUsageRule[]): BenefitUsageRule[] {
+  return rules.map((rule) => ({
+    ...rule,
+    applicableDays: rule.applicableDays ? [...rule.applicableDays] : undefined,
+  }));
+}
+
+function rulesEqual(
+  first: BenefitUsageRule[],
+  second: BenefitUsageRule[],
+): boolean {
+  return JSON.stringify(first) === JSON.stringify(second);
+}
+
+const DAY_LABELS: Record<string, string> = {
+  MON: "Mon",
+  TUE: "Tue",
+  WED: "Wed",
+  THU: "Thu",
+  FRI: "Fri",
+  SAT: "Sat",
+  SUN: "Sun",
+};
+
+function formatFrequency(rule: BenefitUsageRule): string {
+  switch (rule.frequencyType) {
+    case "ONE_TIME":
+      return "One-time benefit";
+    case "DAILY":
+      return rule.frequencyInterval === 1
+        ? "Once per day"
+        : `Every ${rule.frequencyInterval} days`;
+    case "WEEKLY":
+      return rule.frequencyInterval === 1
+        ? "Once per week"
+        : `Every ${rule.frequencyInterval} weeks`;
+    case "MONTHLY":
+      return rule.frequencyInterval === 1
+        ? "Once per month"
+        : `Every ${rule.frequencyInterval} months`;
+    case "YEARLY":
+      return rule.frequencyInterval === 1
+        ? "Once per year"
+        : `Every ${rule.frequencyInterval} years`;
+    default:
+      return "Usage restricted";
+  }
+}
+
+function formatTime(value?: string): string {
+  if (!value) return "";
+  const match = value.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return value;
+  const hour = Number(match[1]);
+  const minute = match[2];
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minute} ${suffix}`;
+}
+
+function formatRuleSummary(rule: BenefitUsageRule): string {
+  const parts: string[] = [formatFrequency(rule)];
+
+  if (rule.frequencyType !== "ONE_TIME") {
+    parts.push(
+      `Up to ${rule.usageLimit} redemption${rule.usageLimit === 1 ? "" : "s"} per ${rule.frequencyType.toLowerCase()}`,
+    );
+  } else {
+    parts.push(
+      `Up to ${rule.usageLimit} redemption${rule.usageLimit === 1 ? "" : "s"}`,
+    );
+  }
+
+  if (rule.applicableDays?.length && rule.applicableDays.length < 7) {
+    parts.push(
+      `Available ${rule.applicableDays
+        .map((day) => DAY_LABELS[day] ?? day)
+        .join(", ")}`,
+    );
+  }
+
+  if (rule.windowStartTime || rule.windowEndTime) {
+    const start = formatTime(rule.windowStartTime) || "any time";
+    const end = formatTime(rule.windowEndTime) || "any time";
+    parts.push(`Available ${start}–${end}`);
+  }
+
+  if (rule.timeZone && (rule.windowStartTime || rule.windowEndTime)) {
+    parts.push(`(${rule.timeZone})`);
+  }
+
+  if (rule.effectiveDate) {
+    parts.push(`From ${rule.effectiveDate}`);
+  }
+
+  if (rule.expiryDate) {
+    parts.push(`until ${rule.expiryDate}`);
+  }
+
+  return parts.join(" • ");
+}
+
 /* -------------------------------------------------------------------------- */
 /* MAIN                                                                       */
 /* -------------------------------------------------------------------------- */
@@ -67,12 +175,16 @@ export default function OrgAdminBenefits() {
    */
   const [committedBenefits, setCommittedBenefits] = useState<Benefit[]>([]);
 
+  const [committedRules, setCommittedRules] = useState<BenefitUsageRule[]>([]);
+
   /*
    * Working state.
    *
    * This is the "Proposed" state while Edit mode is active.
    */
   const [benefits, setBenefits] = useState<Benefit[]>([]);
+
+  const [rules, setRules] = useState<BenefitUsageRule[]>([]);
 
   const [benefitCategories, setBenefitCategories] = useState<
     ReferenceDataItem[]
@@ -91,6 +203,8 @@ export default function OrgAdminBenefits() {
   const [formVisible, setFormVisible] = useState(false);
 
   const [editingBenefit, setEditingBenefit] = useState<Benefit | null>(null);
+
+  const [viewingBenefit, setViewingBenefit] = useState<Benefit | null>(null);
 
   /* ---------------------------------------------------------------------- */
   /* LOAD                                                                   */
@@ -121,6 +235,10 @@ export default function OrgAdminBenefits() {
           services.product.listProducts(organization.id),
         ]);
 
+        const loadedRules = await services.benefitUsageRule.listByBenefits(
+          persistedBenefits.map((item) => item.id),
+        );
+
         if (!mounted) {
           return;
         }
@@ -138,7 +256,11 @@ export default function OrgAdminBenefits() {
 
         setCommittedBenefits(cloneBenefits(persistedSnapshot));
 
+        setCommittedRules(cloneRules(loadedRules));
+
         setBenefits(workingSnapshot);
+
+        setRules(cloneRules(loadedRules));
 
         setBenefitCategories(categoryList);
 
@@ -180,8 +302,10 @@ export default function OrgAdminBenefits() {
   /* ---------------------------------------------------------------------- */
 
   const hasChanges = useMemo(
-    () => !benefitsEqual(committedBenefits, benefits),
-    [committedBenefits, benefits],
+    () =>
+      !benefitsEqual(committedBenefits, benefits) ||
+      !rulesEqual(committedRules, rules),
+    [committedBenefits, benefits, committedRules, rules],
   );
 
   const visibleBenefits = useMemo(
@@ -313,6 +437,14 @@ export default function OrgAdminBenefits() {
   };
 
   /* ---------------------------------------------------------------------- */
+  /* VIEW                                                                   */
+  /* ---------------------------------------------------------------------- */
+
+  const handleView = (benefit: Benefit) => {
+    setViewingBenefit(cloneBenefits([benefit])[0]);
+  };
+
+  /* ---------------------------------------------------------------------- */
   /* EDIT                                                                   */
   /* ---------------------------------------------------------------------- */
 
@@ -330,7 +462,10 @@ export default function OrgAdminBenefits() {
   /* POPUP SAVE — DRAFT ONLY                                                */
   /* ---------------------------------------------------------------------- */
 
-  const handleSaveDraft = async (benefit: Benefit) => {
+  const handleSaveDraft = async (
+    benefit: Benefit,
+    benefitRules: BenefitUsageRule[],
+  ) => {
     setBenefits((current) => {
       const next = [...current];
 
@@ -352,6 +487,11 @@ export default function OrgAdminBenefits() {
 
       return next;
     });
+
+    setRules((current) => [
+      ...current.filter((rule) => rule.benefitId !== benefit.id),
+      ...cloneRules(benefitRules),
+    ]);
 
     setFormVisible(false);
 
@@ -465,6 +605,38 @@ export default function OrgAdminBenefits() {
       }
 
       /* -------------------------------------------------------------- */
+      /* USAGE RULES                                                   */
+      /* -------------------------------------------------------------- */
+
+      const committedRulesById = new Map(
+        committedRules.map((rule) => [rule.id, rule]),
+      );
+
+      const workingRulesById = new Map(rules.map((rule) => [rule.id, rule]));
+
+      for (const rule of rules) {
+        const committed = committedRulesById.get(rule.id);
+
+        if (!committed) {
+          if (!rule.isDeleted) {
+            await services.benefitUsageRule.createRule(rule);
+          }
+        } else if (!rulesEqual([committed], [rule])) {
+          if (rule.isDeleted) {
+            await services.benefitUsageRule.deleteRule(rule.id);
+          } else {
+            await services.benefitUsageRule.updateRule(rule);
+          }
+        }
+      }
+
+      for (const committed of committedRules) {
+        if (!workingRulesById.has(committed.id)) {
+          await services.benefitUsageRule.deleteRule(committed.id);
+        }
+      }
+
+      /* -------------------------------------------------------------- */
       /* RELOAD PERSISTED STATE                                         */
       /* -------------------------------------------------------------- */
 
@@ -472,11 +644,19 @@ export default function OrgAdminBenefits() {
         organization.id,
       );
 
+      const refreshedRules = await services.benefitUsageRule.listByBenefits(
+        refreshed.map((item) => item.id),
+      );
+
       const snapshot = cloneBenefits(refreshed);
 
       setCommittedBenefits(cloneBenefits(snapshot));
 
+      setCommittedRules(cloneRules(refreshedRules));
+
       setBenefits(cloneBenefits(snapshot));
+
+      setRules(cloneRules(refreshedRules));
 
       benefitDraftStore.clear(organization.id);
 
@@ -522,6 +702,8 @@ export default function OrgAdminBenefits() {
 
     setBenefits(restored);
 
+    setRules(cloneRules(committedRules));
+
     benefitDraftStore.clear(organization.id);
   };
 
@@ -555,6 +737,8 @@ export default function OrgAdminBenefits() {
       const restored = cloneBenefits(committedBenefits);
 
       setBenefits(restored);
+
+      setRules(cloneRules(committedRules));
 
       benefitDraftStore.clear(organization.id);
     }
@@ -681,6 +865,24 @@ export default function OrgAdminBenefits() {
       },
 
       {
+        key: "usageRules",
+
+        title: "Usage Rules",
+
+        width: 120,
+
+        render: (item) => (
+          <Text variant="body" color="text">
+            {
+              rules.filter(
+                (rule) => rule.benefitId === item.id && !rule.isDeleted,
+              ).length
+            }
+          </Text>
+        ),
+      },
+
+      {
         key: "benefitStatusId",
 
         title: "Status",
@@ -695,7 +897,7 @@ export default function OrgAdminBenefits() {
       },
     ],
 
-    [benefitCategories, benefitTypes, benefitStatuses, products],
+    [benefitCategories, benefitTypes, benefitStatuses, products, rules],
   );
 
   /* ---------------------------------------------------------------------- */
@@ -831,16 +1033,96 @@ export default function OrgAdminBenefits() {
                     label: "Edit",
                     onPress: handleEdit,
                   },
-
                   {
                     label: "Delete",
                     onPress: handleDelete,
                   },
                 ]
-              : undefined
+              : [
+                  {
+                    label: "View",
+                    onPress: handleView,
+                  },
+                ]
           }
         />
       )}
+
+      {/* ================================================================ */}
+      {/* VIEW                                                             */}
+      {/* ================================================================ */}
+
+      <Modal
+        visible={Boolean(viewingBenefit)}
+        onClose={() => setViewingBenefit(null)}
+        title="View Benefit"
+        scrollable
+        testID="benefit-view-modal"
+      >
+        {viewingBenefit ? (
+          <View style={styles.viewDetails}>
+            <View style={styles.viewGrid}>
+              {[
+                ["Benefit Code", viewingBenefit.benefitCode],
+                ["Benefit Name", getDisplayName(viewingBenefit)],
+                ["Category", getCategoryName(viewingBenefit.benefitCategoryId)],
+                ["Type", getTypeName(viewingBenefit.benefitTypeId)],
+                ["Product", getProductName(viewingBenefit.productId)],
+                ["Status", getStatusName(viewingBenefit.benefitStatusId)],
+                ["Effective Date", viewingBenefit.effectiveDate],
+                ["Expiry Date", viewingBenefit.expiryDate ?? "—"],
+              ].map(([label, value]) => (
+                <View key={label} style={styles.viewField}>
+                  <Text variant="bodySmall" color="textMuted">
+                    {label}
+                  </Text>
+                  <Text variant="body" color="text">
+                    {value}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.viewSection}>
+              <Text variant="bodySmall" color="textMuted">
+                Description
+              </Text>
+              <Text variant="body" color="text">
+                {viewingBenefit.description ?? "—"}
+              </Text>
+            </View>
+
+            <View style={styles.viewSection}>
+              <Text variant="bodySmall" color="textMuted">
+                Usage Rules
+              </Text>
+              {(() => {
+                const benefitRules = rules.filter(
+                  (rule) =>
+                    rule.benefitId === viewingBenefit.id && !rule.isDeleted,
+                );
+
+                return benefitRules.length ? (
+                  benefitRules.map((rule) => (
+                    <View key={rule.id} style={styles.viewRule}>
+                      <Text variant="body" color="text">
+                        {rule.ruleName}
+                      </Text>
+                      <Text variant="bodySmall" color="textMuted">
+                        {formatRuleSummary(rule)}
+                      </Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text variant="body" color="text">
+                    No usage rules configured.
+                  </Text>
+                );
+              })()}
+            </View>
+          </View>
+        ) : null}
+      </Modal>
 
       {/* ================================================================ */}
       {/* FORM                                                             */}
@@ -876,6 +1158,9 @@ export default function OrgAdminBenefits() {
             benefitTypes={benefitTypes}
             benefitStatuses={benefitStatuses}
             products={products}
+            usageRules={rules.filter(
+              (rule) => rule.benefitId === editingBenefit.id && !rule.isDeleted,
+            )}
             onSave={handleSaveDraft}
             onCancel={() => {
               setFormVisible(false);
@@ -948,6 +1233,31 @@ const styles = StyleSheet.create({
     backgroundColor: "#F1F5F9",
     borderWidth: 1,
     borderColor: "#CBD5E1",
+  },
+
+  viewDetails: {
+    gap: 20,
+  },
+
+  viewGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 16,
+  },
+
+  viewField: {
+    width: "48%",
+    minWidth: 220,
+    gap: 4,
+  },
+
+  viewSection: {
+    gap: 8,
+  },
+
+  viewRule: {
+    gap: 2,
+    paddingVertical: 8,
   },
 
   center: {

@@ -615,6 +615,51 @@ export interface Benefit {
   versionNo: number;
 }
 
+/**
+ * Controlled frequency vocabulary for Benefit Usage Rules.
+ * Persisted as the enum string value.
+ */
+export enum BenefitFrequencyType {
+  DAILY = "DAILY",
+  WEEKLY = "WEEKLY",
+  MONTHLY = "MONTHLY",
+  YEARLY = "YEARLY",
+  ONE_TIME = "ONE_TIME",
+}
+
+/**
+ * Defines when/how often a Benefit may be redeemed.
+ *
+ * Physical relationship: Benefit 1:N BenefitUsageRule.
+ */
+export interface BenefitUsageRule {
+  id: ID;
+  benefitId: ID;
+
+  ruleName: string;
+  frequencyType: BenefitFrequencyType;
+  frequencyInterval: number;
+  usageLimit: number;
+
+  windowStartTime?: string;
+  windowEndTime?: string;
+  applicableDays?: string[];
+  timeZone?: string;
+
+  effectiveDate: string;
+  expiryDate?: string;
+
+  benefitUsageRuleStatusId: ID;
+
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt: ISODateString;
+  updatedBy: ID;
+
+  isDeleted: boolean;
+  versionNo: number;
+}
+
 /* ------------------------------------------------------------------ *
  * Offer
  * ------------------------------------------------------------------ */

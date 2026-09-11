@@ -19,6 +19,8 @@ import { LocalRedemptionService } from "./redemption-service.local";
 import { LocalCustomerPreferenceService } from "./customer-preference-service.local";
 import { LocalReferralService } from "./referral-service.local";
 import { ReferralEngine } from "./referral-engine";
+import { LocalBenefitUsageRuleService } from "./benefit-usage-rule-service";
+import type { BenefitUsageRuleService } from "./service-contracts.benefit-usage-rule.additions";
 
 import { apis } from "@/src/data/data-registry";
 
@@ -92,6 +94,8 @@ const redemptionService: RedemptionService = new LocalRedemptionService();
 const customerPreferenceService = new LocalCustomerPreferenceService(
   apis.customerPreference,
 );
+const benefitUsageRuleService: BenefitUsageRuleService =
+  new LocalBenefitUsageRuleService(apis.benefitUsageRule);
 
 const referralService = new LocalReferralService(apis.referral);
 const referralEngine = new ReferralEngine(referralService);
@@ -117,6 +121,7 @@ export type MemgineServices = {
   customerPreference: import("./service-contracts.profile-referral.additions").CustomerPreferenceService;
   referral: import("./service-contracts.profile-referral.additions").ReferralService;
   referralEngine: ReferralEngine;
+  benefitUsageRule: BenefitUsageRuleService;
 };
 
 export const services: MemgineServices = {
@@ -140,4 +145,5 @@ export const services: MemgineServices = {
   customerPreference: customerPreferenceService,
   referral: referralService,
   referralEngine,
+  benefitUsageRule: benefitUsageRuleService,
 };

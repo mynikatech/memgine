@@ -33,6 +33,7 @@ export const LOCAL_DATA_KEYS = {
   membershipOrganizations: () => `memgine:membership-organizations`,
   benefits: (organizationId: string) =>
     `memgine:organization:${organizationId}:benefits`,
+  benefitUsageRules: () => "memgine:benefit-usage-rules",
   benefitOrganizations: () => `memgine:benefit-organizations`,
   subscriptions: () => `memgine:subscriptions`,
   redemptions: () => `memgine:redemptions`,
