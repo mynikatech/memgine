@@ -12,6 +12,8 @@ export const LOCAL_DATA_KEYS = {
     `memgine.organization.${organizationId}.branding`,
   organizationCustomerExperience: (organizationId: string) =>
     `memgine.organization.${organizationId}.customer-experience`,
+  customerExperienceReleases: (organizationId: string) =>
+    `memgine.organization.${organizationId}.customer-experience-releases`,
   organizationStores: (organizationId: string) =>
     `memgine:organization:${organizationId}:stores`,
   notificationConfiguration: (organizationId: string) =>

@@ -15,32 +15,22 @@ export * from "./qr/qr-resolution";
 export * from "./domain/qr-membership-acquisition-attribution";
 export * from "./qr/benefit-redemption-qr";
 export * from "./qr/offer-redemption-qr";
-
 export * from "./permissions/permissions";
-
 export * from "./localization/localization";
-
 export * from "./template/template-definition";
 export * from "./template/salon-template-definition";
-
 export * from "./services/template";
 export * from "./services/template-cache";
 export * from "./template/template-content";
-
 export * from "./services/customer-experience";
+export * from "./services/customer-experience-release";
 export * from "./services/notification";
-
 export * from "./config/business-configuration";
-
 export * from "./context/business-context";
-
 export * from "./services/service-contracts";
-
 export * from "./services/reference-data";
-
 export * from "./redemption/redemption-engine";
 export * from "./redemption/offer-redemption-engine";
-
 export * from "./defaults/sunrise-bakery";
 export * from "./defaults/f-and-b-default-content";
 export * from "./defaults/sunrise-bakery-content";
@@ -51,11 +41,8 @@ export * from "./defaults/business-registry";
 export * from "./defaults/business-content";
 export * from "./customer/customer-registration";
 export * from "./defaults/default-business-template";
-
 export * from "./organization/organization-onboarding";
-
 export * from "./services/service-registry";
-
 export * from "./errors";
 export * from "./logging";
 export * from "./configuration/draft";

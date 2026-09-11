@@ -6,6 +6,7 @@ import { mockNotificationService } from "../mocks/mock-notification";
 
 import { LocalOrganizationService } from "./organization-service.local";
 import { LocalCustomerExperienceService } from "./customer-experience.local";
+import { LocalCustomerExperienceReleaseService } from "./customer-experience-release.local";
 import { LocalUserAcquisitionService } from "./user-acquisition-service.local";
 import { LocalProductService } from "./product-service.local";
 import { LocalMembershipProductService } from "./membership-product-service.local";
@@ -24,23 +25,16 @@ import { LocalBenefitUsageRuleService } from "./benefit-usage-rule-service";
 import type { BenefitUsageRuleService } from "./service-contracts.benefit-usage-rule.additions";
 import { LocalOfferUsageRuleService } from "./offer-usage-rule-service";
 import type { OfferUsageRuleService } from "./offer-usage-rule-service";
-
 import { LocalQRCodeService } from "./qr-code-service";
 import type { QRCodeService } from "./qr-code-service";
 import { LocalQRScanHistoryService } from "./qr-scan-history-service";
 import type { QRScanHistoryService } from "./qr-scan-history-service";
 import { LocalQRMembershipAcquisitionAttributionService } from "./qr-membership-acquisition-attribution-service";
-
 import { LocalBenefitRedemptionQRService } from "./benefit-redemption-qr-service";
-
 import type { BenefitRedemptionQRService } from "./benefit-redemption-qr-service";
-
 import { LocalOfferRedemptionQRService } from "./offer-redemption-qr-service";
-
 import type { OfferRedemptionQRService } from "./offer-redemption-qr-service";
-
 import { apis } from "@/src/data/data-registry";
-
 import type {
   OrganizationService,
   CustomerService,
@@ -56,43 +50,35 @@ import type {
   ProductService,
   PaymentService,
 } from "./service-contracts";
-
 import type { ReferenceDataService } from "./reference-data";
 import type { StatusService } from "./status";
 import type { TemplateService } from "./template";
 import type { CustomerExperienceService } from "./customer-experience";
+import type { CustomerExperienceReleaseService } from "./customer-experience-release";
 import type { NotificationService } from "./notification";
 
 const organizationService: OrganizationService = new LocalOrganizationService(
   mockServices.organization,
 );
-
 const productService: ProductService = new LocalProductService();
-
 const membershipProductService: MembershipProductService =
   new LocalMembershipProductService(
     mockServices.membershipProduct,
     organizationService,
   );
-
 const benefitService: BenefitService = new LocalBenefitService(
   mockServices.benefit,
 );
-
 const offerService: OfferService = new LocalOfferService(mockServices.offer);
-
 const userAcquisitionService: UserAcquisitionService =
   new LocalUserAcquisitionService(mockServices.userAcquisition);
-
 const localStatusService = new LocalStatusService();
-
 const statusService: StatusService = new CachedStatusService(
   localStatusService,
 );
 const qrCodeService: QRCodeService = new LocalQRCodeService(apis.qrCode);
 const qrScanHistoryService: QRScanHistoryService =
   new LocalQRScanHistoryService(apis.qrScanHistory);
-
 const qrMembershipAcquisitionAttributionService =
   new LocalQRMembershipAcquisitionAttributionService(
     organizationService,
@@ -101,13 +87,11 @@ const qrMembershipAcquisitionAttributionService =
     qrScanHistoryService,
     apis.qrMembershipAcquisitionAttribution,
   );
-
 const subscriptionService: SubscriptionService = new LocalSubscriptionService(
   mockServices.subscription,
   organizationService,
   qrMembershipAcquisitionAttributionService,
 );
-
 const benefitRedemptionQRService: BenefitRedemptionQRService =
   new LocalBenefitRedemptionQRService(
     organizationService,
@@ -117,7 +101,6 @@ const benefitRedemptionQRService: BenefitRedemptionQRService =
     qrCodeService,
     apis.benefitRedemptionQRContext,
   );
-
 const offerRedemptionQRService: OfferRedemptionQRService =
   new LocalOfferRedemptionQRService(
     organizationService,
@@ -126,24 +109,26 @@ const offerRedemptionQRService: OfferRedemptionQRService =
     qrCodeService,
     apis.offerRedemptionQRContext,
   );
-
 const mockCustomerExperienceService = new InMemoryCustomerExperienceService(
   organizationService,
   mockTemplateService,
 );
-
 const customerExperienceService: CustomerExperienceService =
   new LocalCustomerExperienceService(mockCustomerExperienceService);
-
+const customerExperienceReleaseService: CustomerExperienceReleaseService =
+  new LocalCustomerExperienceReleaseService(
+    organizationService,
+    membershipProductService,
+    benefitService,
+    offerService,
+    statusService,
+  );
 const paymentService: PaymentService = new LocalPaymentService(
   mockServices.payment,
 );
-
 const redemptionService: RedemptionService = new LocalRedemptionService();
-
 const offerRedemptionService: OfferRedemptionService =
   new LocalOfferRedemptionService(apis.offerRedemption);
-
 const customerPreferenceService = new LocalCustomerPreferenceService(
   apis.customerPreference,
 );
@@ -151,7 +136,6 @@ const benefitUsageRuleService: BenefitUsageRuleService =
   new LocalBenefitUsageRuleService(apis.benefitUsageRule);
 const offerUsageRuleService: OfferUsageRuleService =
   new LocalOfferUsageRuleService(apis.offerUsageRule);
-
 const referralService = new LocalReferralService(apis.referral);
 const referralEngine = new ReferralEngine(referralService);
 
@@ -162,7 +146,6 @@ export type MemgineServices = {
   qrMembershipAcquisitionAttribution: import("./qr-membership-acquisition-attribution-service").QRMembershipAcquisitionAttributionService;
   subscription: SubscriptionService;
   subscriptionPlan: SubscriptionPlanService;
-
   benefit: BenefitService;
   offer: OfferService;
   userAcquisition: UserAcquisitionService;
@@ -174,6 +157,7 @@ export type MemgineServices = {
   referenceData: ReferenceDataService;
   template: TemplateService;
   customerExperience: CustomerExperienceService;
+  customerExperienceRelease: CustomerExperienceReleaseService;
   notification: NotificationService;
   product: ProductService;
   customerPreference: import("./service-contracts.profile-referral.additions").CustomerPreferenceService;
@@ -206,6 +190,7 @@ export const services: MemgineServices = {
   referenceData: mockReferenceDataService,
   template: mockTemplateService,
   customerExperience: customerExperienceService,
+  customerExperienceRelease: customerExperienceReleaseService,
   notification: mockNotificationService,
   product: productService,
   customerPreference: customerPreferenceService,

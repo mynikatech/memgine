@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import type {
   CustomerExperience,
+  Organization,
+  OrganizationDetails,
   Store,
   Subscription,
   TemplateDefaultContent,
@@ -13,7 +15,15 @@ import { services } from "@/src/core";
 
 import type { PreviewDomainData } from "@/src/experience/customer-experience-preview-data";
 import type { ExperienceTabKey } from "@/src/experience/resolve-experience";
-import { loadPreviewData } from "@/src/experience/customer-experience-preview-data";
+import {
+  loadPreviewData,
+  loadPreviewDataFromRelease,
+} from "@/src/experience/customer-experience-preview-data";
+import type {
+  CustomerExperienceRelease,
+  CustomerExperienceReleaseSnapshot,
+} from "@/src/core";
+import { diffCustomerExperience } from "@/src/experience/customer-experience-diff";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 
@@ -47,6 +57,11 @@ type PreviewPanelProps = {
   onSelectMembership: (membershipId: string) => void;
   activeTab: ExperienceTabKey;
   onTabChange: (tab: ExperienceTabKey) => void;
+  organizationOverride?: Organization;
+  detailsOverride?: OrganizationDetails | null;
+  membershipLogoUrl?: string;
+  tagline?: string;
+  heroImageUrl?: string;
 };
 
 export default function CustomerExperiencePreview() {
@@ -70,6 +85,15 @@ export default function CustomerExperiencePreview() {
   const [proposedExperience, setProposedExperience] =
     useState<CustomerExperience | null>(null);
 
+  const [publishedRelease, setPublishedRelease] =
+    useState<CustomerExperienceRelease | null>(null);
+
+  const [publishedSnapshot, setPublishedSnapshot] =
+    useState<CustomerExperienceReleaseSnapshot | null>(null);
+
+  const [proposedSnapshot, setProposedSnapshot] =
+    useState<CustomerExperienceReleaseSnapshot | null>(null);
+
   /**
    * Domain data used by the customer renderer.
    *
@@ -81,6 +105,9 @@ export default function CustomerExperiencePreview() {
   const [previewData, setPreviewData] = useState<PreviewDomainData | null>(
     null,
   );
+
+  const [currentPreviewData, setCurrentPreviewData] =
+    useState<PreviewDomainData | null>(null);
 
   const [selectedPreviewMembershipId, setSelectedPreviewMembershipId] =
     useState("");
@@ -138,33 +165,38 @@ export default function CustomerExperiencePreview() {
        * mutable/local organization configuration and therefore cause the
        * Current side to change together with Proposed.
        */
-      const published =
-        await services.customerExperience.getPublishedCustomerExperience(
+      const publishedRelease =
+        await services.customerExperienceRelease.getPublishedRelease(
           organization.id,
         );
 
-      /*
-       * --------------------------------------------------------------------
-       * 3. Load customer-facing domain data
-       * --------------------------------------------------------------------
-       */
-      const domainData = await loadPreviewData(organization.id);
+      const proposedReleaseSnapshot =
+        await services.customerExperienceRelease.createProposedSnapshot(draft);
+
+      const currentReleaseSnapshot = publishedRelease?.snapshot ?? null;
+      const currentDomainData = currentReleaseSnapshot
+        ? await loadPreviewDataFromRelease(currentReleaseSnapshot)
+        : await loadPreviewData(organization.id);
 
       setProposedExperience(draft);
-      setCurrentExperience(published);
-      setPreviewData(domainData);
+      setPublishedRelease(publishedRelease);
+      setCurrentExperience(currentReleaseSnapshot?.customerExperience ?? null);
+      setPublishedSnapshot(currentReleaseSnapshot);
+      setProposedSnapshot(proposedReleaseSnapshot);
+      setCurrentPreviewData(currentDomainData);
+      setPreviewData(await loadPreviewDataFromRelease(proposedReleaseSnapshot));
 
       setSelectedPreviewMembershipId((current) => {
         if (
           current &&
-          domainData.memberships.some(
-            (membership) => membership.product.id === current,
+          proposedReleaseSnapshot.membershipProducts.some(
+            (membership) => membership.id === current,
           )
         ) {
           return current;
         }
 
-        return domainData.memberships[0]?.product.id ?? "";
+        return proposedReleaseSnapshot.membershipProducts[0]?.id ?? "";
       });
 
       setStatus("ready");
@@ -195,42 +227,43 @@ export default function CustomerExperiencePreview() {
        *
        * After this succeeds the newly published experience becomes Current.
        */
-      const published =
-        await services.customerExperience.publishCustomerExperience(
+      const publishedRelease =
+        await services.customerExperienceRelease.publishRelease(
           organization.id,
+          proposedExperience,
           organization.updatedBy,
         );
 
-      setCurrentExperience(published);
+      const nextProposedSnapshot =
+        await services.customerExperienceRelease.createProposedSnapshot(
+          proposedExperience,
+        );
 
-      /*
-       * Reload the draft because publishing may create/reset/update the
-       * draft lifecycle state.
-       */
-      const draft = await services.customerExperience.getCustomerExperience(
-        organization.id,
+      setCurrentExperience(publishedRelease.snapshot.customerExperience);
+      setPublishedRelease(publishedRelease);
+      setPublishedSnapshot(publishedRelease.snapshot);
+      setProposedSnapshot(nextProposedSnapshot);
+
+      const refreshedCurrentDomainData = await loadPreviewDataFromRelease(
+        publishedRelease.snapshot,
       );
+      const refreshedProposedDomainData =
+        await loadPreviewDataFromRelease(nextProposedSnapshot);
 
-      setProposedExperience(draft);
-
-      /*
-       * Refresh customer-facing domain data.
-       */
-      const refreshedDomainData = await loadPreviewData(organization.id);
-
-      setPreviewData(refreshedDomainData);
+      setCurrentPreviewData(refreshedCurrentDomainData);
+      setPreviewData(refreshedProposedDomainData);
 
       setSelectedPreviewMembershipId((current) => {
         if (
           current &&
-          refreshedDomainData.memberships.some(
+          refreshedProposedDomainData.memberships.some(
             (membership) => membership.product.id === current,
           )
         ) {
           return current;
         }
 
-        return refreshedDomainData.memberships[0]?.product.id ?? "";
+        return refreshedProposedDomainData.memberships[0]?.product.id ?? "";
       });
     } catch (error) {
       console.error("[CustomerExperiencePreview] publish failed:", error);
@@ -276,7 +309,12 @@ export default function CustomerExperiencePreview() {
   /* ERROR                                                                  */
   /* ---------------------------------------------------------------------- */
 
-  if (status === "error" || !proposedExperience || !previewData) {
+  if (
+    status === "error" ||
+    !proposedExperience ||
+    !previewData ||
+    !currentPreviewData
+  ) {
     return (
       <Screen edges={["top"]}>
         <StateView
@@ -316,6 +354,10 @@ export default function CustomerExperiencePreview() {
    */
   const proposedContent: TemplateDefaultContent =
     proposedExperience.experienceDefinition.content;
+
+  const diff = proposedSnapshot
+    ? diffCustomerExperience(publishedSnapshot, proposedSnapshot)
+    : { items: [], added: 0, modified: 0, removed: 0 };
 
   return (
     <Screen edges={["top"]}>
@@ -393,12 +435,25 @@ export default function CustomerExperiencePreview() {
             }
             experience={currentExperience}
             mode="current"
-            domainData={previewData}
+            domainData={currentPreviewData}
             content={currentContent}
             selectedMembershipId={selectedPreviewMembershipId}
             onSelectMembership={setSelectedPreviewMembershipId}
             activeTab={currentPreviewTab}
             onTabChange={setCurrentPreviewTab}
+            organizationOverride={
+              publishedSnapshot?.organization ?? organization
+            }
+            detailsOverride={publishedSnapshot?.organizationDetails ?? null}
+            membershipLogoUrl={
+              publishedSnapshot?.organizationBranding?.logoUrl ?? undefined
+            }
+            tagline={
+              publishedSnapshot?.organizationBranding?.tagline ?? undefined
+            }
+            heroImageUrl={
+              publishedSnapshot?.organizationBranding?.heroImageUrl ?? undefined
+            }
           />
 
           <PreviewPanel
@@ -412,8 +467,84 @@ export default function CustomerExperiencePreview() {
             onSelectMembership={setSelectedPreviewMembershipId}
             activeTab={proposedPreviewTab}
             onTabChange={setProposedPreviewTab}
+            organizationOverride={
+              proposedSnapshot?.organization ?? organization
+            }
+            detailsOverride={proposedSnapshot?.organizationDetails ?? null}
+            membershipLogoUrl={
+              proposedSnapshot?.organizationBranding?.logoUrl ?? undefined
+            }
+            tagline={
+              proposedSnapshot?.organizationBranding?.tagline ?? undefined
+            }
+            heroImageUrl={
+              proposedSnapshot?.organizationBranding?.heroImageUrl ?? undefined
+            }
           />
         </View>
+
+        <Card padding="md">
+          <Section title="Changes in This Release">
+            <Text variant="bodySmall" color="textMuted">
+              These are the customer-facing changes between the last published
+              release and the proposed release.
+            </Text>
+
+            <View style={styles.diffSummary}>
+              <Badge label={`${diff.added} Added`} tone="brand" />
+              <Badge label={`${diff.modified} Modified`} tone="brand" />
+              <Badge label={`${diff.removed} Removed`} tone="brand" />
+            </View>
+
+            {diff.items.length === 0 ? (
+              <Text
+                variant="bodySmall"
+                color="textMuted"
+                style={styles.diffEmpty}
+              >
+                No customer-facing changes are waiting to be published.
+              </Text>
+            ) : (
+              <View style={styles.diffList}>
+                {diff.items.map((item, index) => (
+                  <View
+                    key={`${item.area}-${item.label}-${index}`}
+                    style={styles.diffItem}
+                  >
+                    <View style={styles.diffItemHeader}>
+                      <Text variant="bodySmall" color="textMuted">
+                        {item.area}
+                      </Text>
+                      <Badge label={item.kind} tone="brand" />
+                    </View>
+                    <Text variant="body" color="text">
+                      {item.label}
+                    </Text>
+                    {item.beforeValue !== undefined ||
+                    item.afterValue !== undefined ? (
+                      <View style={styles.diffVisualRow}>
+                        <DiffVisualValue
+                          label="Current"
+                          value={item.beforeValue}
+                        />
+                        <Text variant="bodySmall" color="textMuted">
+                          →
+                        </Text>
+                        <DiffVisualValue
+                          label="Proposed"
+                          value={item.afterValue}
+                        />
+                      </View>
+                    ) : null}
+                    <Text variant="bodySmall" color="textSecondary">
+                      {item.detail}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </Section>
+        </Card>
 
         {/* ================================================================== */}
         {/* INDIVIDUAL PREVIEWS                                                */}
@@ -473,8 +604,8 @@ export default function CustomerExperiencePreview() {
         <Card padding="md">
           <Section title="Customer Notification">
             <Text variant="bodySmall" color="textMuted">
-              After an offer is published, the notification service can notify
-              subscribed customers using their configured channels.
+              After the Customer Experience is published, the notification
+              service can notify customers using their configured channels.
             </Text>
 
             <View style={styles.notificationButton}>
@@ -506,31 +637,41 @@ export default function CustomerExperiencePreview() {
           </Section>
         </Card>
 
-        {/* ================================================================== */}
-        {/* EXPERIENCE DETAILS                                                 */}
-        {/* ================================================================== */}
-
         <Card padding="md">
-          <Section title="Experience Details">
-            <DetailRow label="Template" value={proposedExperience.templateId} />
-
+          <Section title="Release Information">
             <DetailRow
-              label="Version"
-              value={String(proposedExperience.versionNo)}
-            />
-
-            <DetailRow
-              label="Status"
-              value={proposedExperience.lifecycleStatus}
-            />
-
-            <DetailRow
-              label="Published"
+              label="Current Release"
               value={
-                currentExperience
-                  ? "Yes"
-                  : "No — no Customer Experience has been published yet"
+                publishedRelease
+                  ? `Release ${publishedRelease.releaseNumber}`
+                  : "None — initial publication"
               }
+            />
+            <DetailRow
+              label="Proposed State"
+              value={
+                diff.items.length === 0
+                  ? "No pending customer-facing changes"
+                  : `${diff.items.length} change${diff.items.length === 1 ? "" : "s"} pending`
+              }
+            />
+            <DetailRow label="Added" value={String(diff.added)} />
+            <DetailRow label="Modified" value={String(diff.modified)} />
+            <DetailRow label="Removed" value={String(diff.removed)} />
+            <DetailRow
+              label="Last Published"
+              value={
+                publishedSnapshot
+                  ? new Date(
+                      publishedSnapshot.customerExperience.publishedAt ??
+                        publishedSnapshot.customerExperience.updatedAt,
+                    ).toLocaleString()
+                  : "Not published yet"
+              }
+            />
+            <DetailRow
+              label="Published By"
+              value={publishedSnapshot?.customerExperience.publishedBy ?? "—"}
             />
           </Section>
         </Card>
@@ -594,6 +735,11 @@ function PreviewPanel({
   onSelectMembership,
   activeTab,
   onTabChange,
+  organizationOverride,
+  detailsOverride,
+  membershipLogoUrl,
+  tagline,
+  heroImageUrl,
 }: PreviewPanelProps) {
   const selectedMembership =
     domainData.memberships.find(
@@ -659,9 +805,44 @@ function PreviewPanel({
           initialTab="card"
           activeTab={activeTab}
           onTabChange={onTabChange}
+          organizationOverride={organizationOverride}
+          detailsOverride={detailsOverride}
+          membershipLogoUrl={membershipLogoUrl}
+          tagline={tagline}
+          heroImageUrl={heroImageUrl}
           previewMode
         />
       </View>
+    </View>
+  );
+}
+
+/* ========================================================================== */
+/* DIFF VISUAL VALUE                                                          */
+/* ========================================================================== */
+
+function DiffVisualValue({ label, value }: { label: string; value?: unknown }) {
+  const uri = typeof value === "string" && value.trim() ? value.trim() : null;
+
+  return (
+    <View style={styles.diffVisualValue}>
+      <Text variant="caption" color="textMuted">
+        {label}
+      </Text>
+      {uri ? (
+        <Image
+          source={{ uri }}
+          resizeMode="cover"
+          style={styles.diffImage}
+          accessibilityLabel={`${label} ${label === "Current" ? "image" : "image"}`}
+        />
+      ) : (
+        <View style={styles.diffImageEmpty}>
+          <Text variant="caption" color="textMuted">
+            No image
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -768,6 +949,69 @@ const styles = StyleSheet.create({
   notificationButton: {
     marginTop: 14,
     marginBottom: 10,
+  },
+
+  diffSummary: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 14,
+  },
+
+  diffList: {
+    gap: 10,
+    marginTop: 14,
+  },
+
+  diffItem: {
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 12,
+    padding: 12,
+    gap: 4,
+  },
+
+  diffVisualRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 6,
+  },
+
+  diffVisualValue: {
+    flex: 1,
+    gap: 6,
+  },
+
+  diffImage: {
+    width: "100%",
+    height: 96,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#F3F4F6",
+  },
+
+  diffImageEmpty: {
+    width: "100%",
+    height: 96,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  diffItemHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  diffEmpty: {
+    marginTop: 14,
   },
 
   detailRow: {
