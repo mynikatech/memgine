@@ -64,6 +64,10 @@ export const LOCAL_DATA_KEYS = {
   qrMembershipAcquisitionAttributions: () =>
     `memgine:qr-membership-acquisition-attributions`,
 
+  benefitRedemptionQRContexts: () => `memgine:benefit-redemption-qr-contexts`,
+
+  offerRedemptionQRContexts: () => `memgine:offer-redemption-qr-contexts`,
+
   statusStatuses: () => "memgine.status.statuses",
   statusEntityTypes: () => "memgine.status.entity-types",
   statusEntityStatuses: () => "memgine.status.entity-statuses",

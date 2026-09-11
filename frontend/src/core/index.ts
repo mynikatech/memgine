@@ -12,6 +12,8 @@ export * from "./domain/qr";
 export * from "./qr/qr-payload";
 export * from "./qr/qr-resolution";
 export * from "./domain/qr-membership-acquisition-attribution";
+export * from "./qr/benefit-redemption-qr";
+export * from "./qr/offer-redemption-qr";
 
 export * from "./permissions/permissions";
 

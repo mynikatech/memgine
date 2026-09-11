@@ -30,6 +30,14 @@ import { LocalQRScanHistoryService } from "./qr-scan-history-service";
 import type { QRScanHistoryService } from "./qr-scan-history-service";
 import { LocalQRMembershipAcquisitionAttributionService } from "./qr-membership-acquisition-attribution-service";
 
+import { LocalBenefitRedemptionQRService } from "./benefit-redemption-qr-service";
+
+import type { BenefitRedemptionQRService } from "./benefit-redemption-qr-service";
+
+import { LocalOfferRedemptionQRService } from "./offer-redemption-qr-service";
+
+import type { OfferRedemptionQRService } from "./offer-redemption-qr-service";
+
 import { apis } from "@/src/data/data-registry";
 
 import type {
@@ -98,6 +106,25 @@ const subscriptionService: SubscriptionService = new LocalSubscriptionService(
   qrMembershipAcquisitionAttributionService,
 );
 
+const benefitRedemptionQRService: BenefitRedemptionQRService =
+  new LocalBenefitRedemptionQRService(
+    organizationService,
+    subscriptionService,
+    benefitService,
+    statusService,
+    qrCodeService,
+    apis.benefitRedemptionQRContext,
+  );
+
+const offerRedemptionQRService: OfferRedemptionQRService =
+  new LocalOfferRedemptionQRService(
+    organizationService,
+    offerService,
+    statusService,
+    qrCodeService,
+    apis.offerRedemptionQRContext,
+  );
+
 const mockCustomerExperienceService = new InMemoryCustomerExperienceService(
   organizationService,
   mockTemplateService,
@@ -130,6 +157,7 @@ export type MemgineServices = {
   qrMembershipAcquisitionAttribution: import("./qr-membership-acquisition-attribution-service").QRMembershipAcquisitionAttributionService;
   subscription: SubscriptionService;
   subscriptionPlan: SubscriptionPlanService;
+
   benefit: BenefitService;
   offer: OfferService;
   userAcquisition: UserAcquisitionService;
@@ -149,6 +177,8 @@ export type MemgineServices = {
   offerUsageRule: OfferUsageRuleService;
   qrCode: QRCodeService;
   qrScanHistory: QRScanHistoryService;
+  benefitRedemptionQR: BenefitRedemptionQRService;
+  offerRedemptionQR: OfferRedemptionQRService;
 };
 
 export const services: MemgineServices = {
@@ -158,6 +188,8 @@ export const services: MemgineServices = {
   subscription: subscriptionService,
   subscriptionPlan: mockServices.subscriptionPlan,
   benefit: benefitService,
+  benefitRedemptionQR: benefitRedemptionQRService,
+  offerRedemptionQR: offerRedemptionQRService,
   offer: offerService,
   userAcquisition: userAcquisitionService,
   redemption: redemptionService,

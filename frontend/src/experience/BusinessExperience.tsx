@@ -520,7 +520,9 @@ export function BusinessExperience({
 
   type RedemptionToken = {
     token: string;
-    customerId: string;
+    qrCodeId: string;
+    qrPath: string;
+    userId: string;
     organizationId: string;
     subscriptionId: string;
     benefitIds: string[];
@@ -575,16 +577,43 @@ export function BusinessExperience({
       return;
     }
 
-    setRedeemToken({
-      token: `RDM-${subscription.id
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/g, "")}-${Date.now().toString(36).toUpperCase()}`,
-      customerId: organizationUser.userId,
-      organizationId: organizationUser.organizationId,
-      subscriptionId: subscription.id,
-      benefitIds: ids,
-      createdAt: new Date().toISOString(),
-    });
+    try {
+      const result = await services.benefitRedemptionQR.createQR({
+        organizationId: organizationUser.organizationId,
+
+        /*
+         * User is the canonical identity.
+         * Do NOT call this customerId.
+         */
+        userId: organizationUser.userId,
+
+        subscriptionId: subscription.id,
+
+        benefitIds: ids,
+
+        createdBy: organizationUser.userId,
+      });
+
+      setRedeemToken({
+        token: result.qrCode.qrCodeToken,
+
+        qrCodeId: result.qrCode.id,
+
+        qrPath: result.qrPath,
+
+        userId: result.context.userId,
+
+        organizationId: result.context.organizationId,
+
+        subscriptionId: result.context.subscriptionId,
+
+        benefitIds: result.context.benefitIds,
+
+        createdAt: result.context.createdAt,
+      });
+    } catch (error) {
+      console.warn("BENEFIT REDEMPTION QR CREATION FAILED", error);
+    }
   };
 
   const benefitTitleById = useMemo(
@@ -2390,7 +2419,7 @@ export function BusinessExperience({
                 gap: theme.spacing.md,
               }}
             >
-              <QrPlaceholder size={200} />
+              <QrPlaceholder size={200} testID="experience-redemption-qr" />
 
               <View style={{ alignItems: "center" }}>
                 <Text variant="caption" color="textMuted">

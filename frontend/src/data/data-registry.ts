@@ -13,6 +13,8 @@ import { OfferUsageRuleApi } from "./api/offer-usage-rule-api";
 import { QRCodeApi } from "./api/qr-code-api";
 import { QRScanHistoryApi } from "./api/qr-scan-history-api";
 import { QRMembershipAcquisitionAttributionApi } from "./api/qr-membership-acquisition-attribution-api";
+import { BenefitRedemptionQRContextApi } from "./api/benefit-redemption-qr-context-api";
+import { OfferRedemptionQRContextApi } from "./api/offer-redemption-qr-context-api";
 
 import { LocalBrandingRepository } from "./repositories/branding/branding-repository.local";
 import { LocalBenefitRepository } from "./repositories/benefit/benefit-repository.local";
@@ -30,6 +32,8 @@ import { LocalOfferUsageRuleRepository } from "./repositories/offer-usage-rule/o
 import { LocalQRCodeRepository } from "./repositories/qr-code/qr-code-repository.local";
 import { LocalQRScanHistoryRepository } from "./repositories/qr-scan-history/qr-scan-history-repository.local";
 import { LocalQRMembershipAcquisitionAttributionRepository } from "./repositories/qr-membership-acquisition-attribution/qr-membership-acquisition-attribution-repository.local";
+import { LocalBenefitRedemptionQRContextRepository } from "./repositories/benefit-redemption-qr-context/benefit-redemption-qr-context-repository.local";
+import { LocalOfferRedemptionQRContextRepository } from "./repositories/offer-redemption-qr-context/offer-redemption-qr-context-repository.local";
 
 const organizationRepository = new LocalOrganizationRepository();
 const brandingRepository = new LocalBrandingRepository();
@@ -48,6 +52,11 @@ const qrCodeRepository = new LocalQRCodeRepository();
 const qrScanHistoryRepository = new LocalQRScanHistoryRepository();
 const qrMembershipAcquisitionAttributionRepository =
   new LocalQRMembershipAcquisitionAttributionRepository();
+const benefitRedemptionQRContextRepository =
+  new LocalBenefitRedemptionQRContextRepository();
+
+const offerRedemptionQRContextRepository =
+  new LocalOfferRedemptionQRContextRepository();
 
 export const data = {
   organizationRepository,
@@ -66,6 +75,8 @@ export const data = {
   qrCodeRepository,
   qrScanHistoryRepository,
   qrMembershipAcquisitionAttributionRepository,
+  benefitRedemptionQRContextRepository,
+  offerRedemptionQRContextRepository,
 } as const;
 
 export const apis = {
@@ -85,5 +96,12 @@ export const apis = {
   qrScanHistory: new QRScanHistoryApi(qrScanHistoryRepository),
   qrMembershipAcquisitionAttribution: new QRMembershipAcquisitionAttributionApi(
     qrMembershipAcquisitionAttributionRepository,
+  ),
+  benefitRedemptionQRContext: new BenefitRedemptionQRContextApi(
+    benefitRedemptionQRContextRepository,
+  ),
+
+  offerRedemptionQRContext: new OfferRedemptionQRContextApi(
+    offerRedemptionQRContextRepository,
   ),
 } as const;
