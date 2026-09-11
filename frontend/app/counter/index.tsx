@@ -22,12 +22,12 @@ import type {
 } from "@/src/core";
 
 import {
-  encodeRedemptionToken,
   redeemBenefits,
   redeemFromToken,
   RedemptionContext,
   RedemptionMethod,
   RedemptionResult,
+  QRCodeType,
   services,
 } from "@/src/core";
 
@@ -351,6 +351,7 @@ export default function StaffCounter() {
           catalog,
           subscriptionStatuses,
           organizationBenefits,
+          qrCodes,
         ] = await Promise.all([
           services.organization.listStores(orgId),
           services.organization.listStaff(orgId),
@@ -361,6 +362,7 @@ export default function StaffCounter() {
           services.membershipProduct.listProducts(orgId),
           services.status.listStatusesByEntityTypeCode("SUBSCRIPTION"),
           services.benefit.listByOrganization(orgId),
+          services.qrCode.listByOrganization(orgId),
         ]);
 
         const activeSubscriptionStatusIds = new Set(
@@ -466,18 +468,20 @@ export default function StaffCounter() {
             : planProduct.displayName?.trim() ||
               planProduct.membershipProductName.trim();
 
-          built.push({
-            label: `${customerName} · ${membershipLabel}`,
-            raw: encodeRedemptionToken({
-              version: 1,
-              code: `RDM-${subscription.id.toUpperCase()}`,
-              customerId: organizationUser.userId,
-              organizationId: orgId,
-              subscriptionId: subscription.id,
-              benefitIds: benefits.map((benefit) => benefit.id),
-              createdAt: new Date().toISOString(),
-            }),
-          });
+          const redemptionQr = qrCodes.find(
+            (qr) =>
+              !qr.isDeleted &&
+              qr.qrCodeTypeId === QRCodeType.BENEFIT_REDEMPTION &&
+              qr.organizationId === orgId &&
+              qr.targetEntityId === subscription.id,
+          );
+
+          if (redemptionQr) {
+            built.push({
+              label: `${customerName} · ${membershipLabel}`,
+              raw: redemptionQr.qrCodeToken,
+            });
+          }
         }
 
         if (!active) {
