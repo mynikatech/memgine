@@ -15,6 +15,7 @@ import { services } from "@/src/core";
 import { useTheme } from "@/src/providers";
 
 import { Input } from "../Input";
+import { Modal } from "../Modal";
 import { ReferenceSelect } from "../ReferenceSelect";
 import { Text } from "../Text";
 import { TextArea } from "../TextArea";
@@ -150,6 +151,124 @@ function getTimeZoneOptions(): Array<{ id: string; name: string }> {
       : FALLBACK_TIME_ZONES;
 
   return zones.map((zone) => ({ id: zone, name: zone }));
+}
+
+type TimeZoneSelectProps = {
+  value: string;
+  items: Array<{ id: string; name: string }>;
+  onChange: (value: string) => void;
+  placeholder?: string;
+};
+
+function TimeZoneSelect({
+  value,
+  items,
+  onChange,
+  placeholder = "Select time zone",
+}: TimeZoneSelectProps) {
+  const theme = useTheme();
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const selected = items.find((item) => item.id === value);
+  const filteredItems = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return items;
+
+    return items.filter((item) => item.name.toLowerCase().includes(query));
+  }, [items, search]);
+
+  const openPicker = () => {
+    setSearch("");
+    setOpen(true);
+  };
+
+  const closePicker = () => {
+    setSearch("");
+    setOpen(false);
+  };
+
+  return (
+    <View style={{ gap: theme.spacing.xs }}>
+      <Text variant="bodySmall" color="text">
+        Time Zone
+      </Text>
+
+      <Pressable
+        onPress={openPicker}
+        style={({ pressed }) => ({
+          minHeight: 48,
+          borderWidth: 1,
+          borderColor: theme.colors.border,
+          borderRadius: theme.radius.md,
+          paddingHorizontal: theme.spacing.md,
+          backgroundColor: theme.colors.background,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          opacity: pressed ? theme.states.pressedOpacity : 1,
+        })}
+      >
+        <Text variant="body" color={selected ? "text" : "textMuted"}>
+          {selected?.name ?? placeholder}
+        </Text>
+        <Text variant="bodySmall" color="textMuted">
+          ▾
+        </Text>
+      </Pressable>
+
+      <Modal visible={open} onClose={closePicker} title="Time Zone" scrollable>
+        <View style={{ gap: theme.spacing.sm }}>
+          <Input
+            label="Search time zones"
+            value={search}
+            placeholder="e.g. Toronto, America/Toronto"
+            onChangeText={setSearch}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          {filteredItems.length === 0 ? (
+            <Text variant="bodySmall" color="textMuted">
+              No time zones found.
+            </Text>
+          ) : (
+            filteredItems.map((item) => {
+              const selectedItem = item.id === value;
+
+              return (
+                <Pressable
+                  key={item.id}
+                  onPress={() => {
+                    onChange(item.id);
+                    closePicker();
+                  }}
+                  style={({ pressed }) => ({
+                    minHeight: 48,
+                    paddingHorizontal: theme.spacing.md,
+                    borderRadius: theme.radius.md,
+                    backgroundColor: selectedItem
+                      ? theme.colors.primarySoft
+                      : pressed
+                        ? theme.colors.surfaceAlt
+                        : "transparent",
+                    justifyContent: "center",
+                  })}
+                >
+                  <Text
+                    variant="body"
+                    color={selectedItem ? "primary" : "text"}
+                  >
+                    {item.name}
+                  </Text>
+                </Pressable>
+              );
+            })
+          )}
+        </View>
+      </Modal>
+    </View>
+  );
 }
 
 function createUsageRule(benefit: Benefit): BenefitUsageRule {
@@ -808,13 +927,9 @@ export function BenefitForm({
                   />
                 </View>
                 <View style={styles.field}>
-                  <ReferenceSelect
-                    label="Time Zone"
+                  <TimeZoneSelect
                     value={rule.timeZone ?? ""}
                     items={timeZoneOptions}
-                    placeholder="Select time zone"
-                    allowClear
-                    renderItemLabel={(item) => item.name}
                     onChange={(value) =>
                       setRules((current) =>
                         current.map((item) =>
