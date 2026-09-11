@@ -38,6 +38,7 @@ export const LOCAL_DATA_KEYS = {
   offerUsageRules: () => "memgine:offer-usage-rules",
   subscriptions: () => `memgine:subscriptions`,
   redemptions: () => `memgine:redemptions`,
+  offerRedemptions: () => `memgine:offer-redemptions`,
   offers: (organizationId: string) =>
     `memgine:organization:${organizationId}:offers`,
 
