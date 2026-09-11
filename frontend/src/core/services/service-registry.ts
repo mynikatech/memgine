@@ -79,10 +79,23 @@ const localStatusService = new LocalStatusService();
 const statusService: StatusService = new CachedStatusService(
   localStatusService,
 );
+const qrCodeService: QRCodeService = new LocalQRCodeService(apis.qrCode);
+const qrScanHistoryService: QRScanHistoryService =
+  new LocalQRScanHistoryService(apis.qrScanHistory);
+
+const qrMembershipAcquisitionAttributionService =
+  new LocalQRMembershipAcquisitionAttributionService(
+    organizationService,
+    membershipProductService,
+    qrCodeService,
+    qrScanHistoryService,
+    apis.qrMembershipAcquisitionAttribution,
+  );
 
 const subscriptionService: SubscriptionService = new LocalSubscriptionService(
   mockServices.subscription,
   organizationService,
+  qrMembershipAcquisitionAttributionService,
 );
 
 const mockCustomerExperienceService = new InMemoryCustomerExperienceService(
@@ -110,23 +123,11 @@ const offerUsageRuleService: OfferUsageRuleService =
 const referralService = new LocalReferralService(apis.referral);
 const referralEngine = new ReferralEngine(referralService);
 
-const qrCodeService: QRCodeService = new LocalQRCodeService(apis.qrCode);
-const qrScanHistoryService: QRScanHistoryService =
-  new LocalQRScanHistoryService(apis.qrScanHistory);
-
-const qrMembershipAcquisitionAttributionService =
-  new LocalQRMembershipAcquisitionAttributionService(
-    organizationService,
-    membershipProductService,
-    qrCodeService,
-    qrScanHistoryService,
-    apis.qrMembershipAcquisitionAttribution,
-  );
-
 export type MemgineServices = {
   organization: OrganizationService;
   customer: CustomerService;
   membershipProduct: MembershipProductService;
+  qrMembershipAcquisitionAttribution: import("./qr-membership-acquisition-attribution-service").QRMembershipAcquisitionAttributionService;
   subscription: SubscriptionService;
   subscriptionPlan: SubscriptionPlanService;
   benefit: BenefitService;
@@ -148,7 +149,6 @@ export type MemgineServices = {
   offerUsageRule: OfferUsageRuleService;
   qrCode: QRCodeService;
   qrScanHistory: QRScanHistoryService;
-  qrMembershipAcquisitionAttribution: import("./qr-membership-acquisition-attribution-service").QRMembershipAcquisitionAttributionService;
 };
 
 export const services: MemgineServices = {
