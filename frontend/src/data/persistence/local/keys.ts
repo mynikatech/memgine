@@ -54,6 +54,14 @@ export const LOCAL_DATA_KEYS = {
   referrals: (organizationId: string) =>
     `memgine:organization:${organizationId}:referrals`,
 
+  // QR Code definitions are organization-owned, but stored in one local
+  // collection so token resolution can remain independent of the active org.
+  qrCodes: () => `memgine:qr-codes`,
+
+  // QR Scan History is an immutable cross-organization event collection.
+  // Organization context is resolved through the QR Code relationship.
+  qrScanHistory: () => `memgine:qr-scan-history`,
+
   statusStatuses: () => "memgine.status.statuses",
   statusEntityTypes: () => "memgine.status.entity-types",
   statusEntityStatuses: () => "memgine.status.entity-statuses",

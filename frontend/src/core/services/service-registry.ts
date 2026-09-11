@@ -24,6 +24,11 @@ import type { BenefitUsageRuleService } from "./service-contracts.benefit-usage-
 import { LocalOfferUsageRuleService } from "./offer-usage-rule-service";
 import type { OfferUsageRuleService } from "./offer-usage-rule-service";
 
+import { LocalQRCodeService } from "./qr-code-service";
+import type { QRCodeService } from "./qr-code-service";
+import { LocalQRScanHistoryService } from "./qr-scan-history-service";
+import type { QRScanHistoryService } from "./qr-scan-history-service";
+
 import { apis } from "@/src/data/data-registry";
 
 import type {
@@ -104,6 +109,10 @@ const offerUsageRuleService: OfferUsageRuleService =
 const referralService = new LocalReferralService(apis.referral);
 const referralEngine = new ReferralEngine(referralService);
 
+const qrCodeService: QRCodeService = new LocalQRCodeService(apis.qrCode);
+const qrScanHistoryService: QRScanHistoryService =
+  new LocalQRScanHistoryService(apis.qrScanHistory);
+
 export type MemgineServices = {
   organization: OrganizationService;
   customer: CustomerService;
@@ -127,6 +136,8 @@ export type MemgineServices = {
   referralEngine: ReferralEngine;
   benefitUsageRule: BenefitUsageRuleService;
   offerUsageRule: OfferUsageRuleService;
+  qrCode: QRCodeService;
+  qrScanHistory: QRScanHistoryService;
 };
 
 export const services: MemgineServices = {
@@ -152,4 +163,6 @@ export const services: MemgineServices = {
   referralEngine,
   benefitUsageRule: benefitUsageRuleService,
   offerUsageRule: offerUsageRuleService,
+  qrCode: qrCodeService,
+  qrScanHistory: qrScanHistoryService,
 };

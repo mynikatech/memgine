@@ -10,6 +10,8 @@ import { CustomerPreferenceApi } from "./api/customer-preference-api";
 import { ReferralApi } from "./api/referral-api";
 import { BenefitUsageRuleApi } from "./api/benefit-usage-rule-api";
 import { OfferUsageRuleApi } from "./api/offer-usage-rule-api";
+import { QRCodeApi } from "./api/qr-code-api";
+import { QRScanHistoryApi } from "./api/qr-scan-history-api";
 
 import { LocalBrandingRepository } from "./repositories/branding/branding-repository.local";
 import { LocalBenefitRepository } from "./repositories/benefit/benefit-repository.local";
@@ -24,6 +26,8 @@ import { LocalCustomerPreferenceRepository } from "./repositories/customer-prefe
 import { LocalReferralRepository } from "./repositories/referral/referral-repository.local";
 import { LocalBenefitUsageRuleRepository } from "./repositories/benefit-usage-rule/benefit-usage-rule-repository.local";
 import { LocalOfferUsageRuleRepository } from "./repositories/offer-usage-rule/offer-usage-rule-repository.local";
+import { LocalQRCodeRepository } from "./repositories/qr-code/qr-code-repository.local";
+import { LocalQRScanHistoryRepository } from "./repositories/qr-scan-history/qr-scan-history-repository.local";
 
 const organizationRepository = new LocalOrganizationRepository();
 const brandingRepository = new LocalBrandingRepository();
@@ -38,6 +42,8 @@ const benefitUsageRuleRepository = new LocalBenefitUsageRuleRepository();
 const customerPreferenceRepository = new LocalCustomerPreferenceRepository();
 const referralRepository = new LocalReferralRepository();
 const offerUsageRuleRepository = new LocalOfferUsageRuleRepository();
+const qrCodeRepository = new LocalQRCodeRepository();
+const qrScanHistoryRepository = new LocalQRScanHistoryRepository();
 
 export const data = {
   organizationRepository,
@@ -53,6 +59,8 @@ export const data = {
   customerPreferenceRepository,
   referralRepository,
   offerUsageRuleRepository,
+  qrCodeRepository,
+  qrScanHistoryRepository,
 } as const;
 
 export const apis = {
@@ -68,4 +76,6 @@ export const apis = {
   customerPreference: new CustomerPreferenceApi(customerPreferenceRepository),
   referral: new ReferralApi(referralRepository),
   offerUsageRule: new OfferUsageRuleApi(offerUsageRuleRepository),
+  qrCode: new QRCodeApi(qrCodeRepository),
+  qrScanHistory: new QRScanHistoryApi(qrScanHistoryRepository),
 } as const;
