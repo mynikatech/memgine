@@ -80,6 +80,8 @@ export interface Organization {
   primaryPhone: PhoneNumber;
   website?: string;
 
+  publishedCustomerExperienceReleaseId?: ID;
+
   createdAt: ISODateString;
   createdBy: ID;
   updatedAt: ISODateString;
@@ -94,12 +96,12 @@ export interface OrganizationDetails {
   id: ID;
   organizationId: ID;
 
-  registrationNumber: string;
-  gstNumber: string;
-  supportEmail: string;
-  supportPhone: PhoneNumber;
+  registrationNumber?: string;
+  gstNumber?: string;
+  supportEmail?: string;
+  supportPhone?: PhoneNumber;
 
-  aboutOrganization: string;
+  aboutOrganization?: string;
   address: Address;
 
   createdAt: ISODateString;
