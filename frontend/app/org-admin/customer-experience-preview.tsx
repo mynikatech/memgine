@@ -3,9 +3,11 @@ import { useRouter } from "expo-router";
 import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import type {
+  BusinessConfiguration,
   CustomerExperience,
   Organization,
   OrganizationDetails,
+  ReferralProgram,
   Store,
   Subscription,
   TemplateDefaultContent,
@@ -30,7 +32,8 @@ import {
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 
-import { useBusiness } from "@/src/providers";
+import { BusinessPreviewScope, useBusiness } from "@/src/providers";
+import type { TemplateDefinition } from "@/src/core/template/template-definition";
 import { Screen } from "@/src/layout";
 
 import {
@@ -65,12 +68,15 @@ type PreviewPanelProps = {
   membershipLogoUrl?: string;
   tagline?: string;
   heroImageUrl?: string;
+  referralProgramOverride?: ReferralProgram | null;
+  configuration?: BusinessConfiguration;
+  template?: TemplateDefinition;
 };
 
 export default function CustomerExperiencePreview() {
   const router = useRouter();
 
-  const { organization } = useBusiness();
+  const { organization, configuration, template } = useBusiness();
 
   const [status, setStatus] = useState<LoadStatus>("loading");
 
@@ -112,8 +118,15 @@ export default function CustomerExperiencePreview() {
   const [currentPreviewData, setCurrentPreviewData] =
     useState<PreviewDomainData | null>(null);
 
-  const [selectedPreviewMembershipId, setSelectedPreviewMembershipId] =
-    useState("");
+  const [
+    currentSelectedPreviewMembershipId,
+    setCurrentSelectedPreviewMembershipId,
+  ] = useState("");
+
+  const [
+    proposedSelectedPreviewMembershipId,
+    setProposedSelectedPreviewMembershipId,
+  ] = useState("");
 
   /**
    * Keep Current and Proposed navigation independent.
@@ -174,7 +187,10 @@ export default function CustomerExperiencePreview() {
         );
 
       const proposedReleaseSnapshot =
-        await services.customerExperienceRelease.createProposedSnapshot(draft);
+        await services.customerExperienceRelease.createProposedSnapshot(draft, {
+          configuration,
+          template,
+        });
 
       const currentReleaseSnapshot = publishedRelease?.snapshot ?? null;
       const currentDomainData = currentReleaseSnapshot
@@ -189,7 +205,20 @@ export default function CustomerExperiencePreview() {
       setCurrentPreviewData(currentDomainData);
       setPreviewData(await loadPreviewDataFromRelease(proposedReleaseSnapshot));
 
-      setSelectedPreviewMembershipId((current) => {
+      setCurrentSelectedPreviewMembershipId((current) => {
+        if (
+          current &&
+          currentReleaseSnapshot?.membershipProducts.some(
+            (membership) => membership.id === current,
+          )
+        ) {
+          return current;
+        }
+
+        return currentReleaseSnapshot?.membershipProducts[0]?.id ?? "";
+      });
+
+      setProposedSelectedPreviewMembershipId((current) => {
         if (
           current &&
           proposedReleaseSnapshot.membershipProducts.some(
@@ -207,7 +236,7 @@ export default function CustomerExperiencePreview() {
       console.error("[CustomerExperiencePreview] load failed:", error);
       setStatus("error");
     }
-  }, [organization.id]);
+  }, [organization.id, configuration, template]);
 
   useEffect(() => {
     void load();
@@ -235,11 +264,13 @@ export default function CustomerExperiencePreview() {
           organization.id,
           proposedExperience,
           organization.updatedBy,
+          { configuration, template },
         );
 
       const nextProposedSnapshot =
         await services.customerExperienceRelease.createProposedSnapshot(
           proposedExperience,
+          { configuration, template },
         );
 
       setCurrentExperience(publishedRelease.snapshot.customerExperience);
@@ -256,7 +287,20 @@ export default function CustomerExperiencePreview() {
       setCurrentPreviewData(refreshedCurrentDomainData);
       setPreviewData(refreshedProposedDomainData);
 
-      setSelectedPreviewMembershipId((current) => {
+      setCurrentSelectedPreviewMembershipId((current) => {
+        if (
+          current &&
+          refreshedCurrentDomainData.memberships.some(
+            (membership) => membership.product.id === current,
+          )
+        ) {
+          return current;
+        }
+
+        return refreshedCurrentDomainData.memberships[0]?.product.id ?? "";
+      });
+
+      setProposedSelectedPreviewMembershipId((current) => {
         if (
           current &&
           refreshedProposedDomainData.memberships.some(
@@ -273,7 +317,13 @@ export default function CustomerExperiencePreview() {
     } finally {
       setPublishing(false);
     }
-  }, [organization.id, organization.updatedBy, proposedExperience]);
+  }, [
+    organization.id,
+    organization.updatedBy,
+    proposedExperience,
+    configuration,
+    template,
+  ]);
 
   /* ---------------------------------------------------------------------- */
   /* NOTIFICATION                                                           */
@@ -453,8 +503,8 @@ export default function CustomerExperiencePreview() {
               mode="current"
               domainData={currentPreviewData}
               content={currentContent}
-              selectedMembershipId={selectedPreviewMembershipId}
-              onSelectMembership={setSelectedPreviewMembershipId}
+              selectedMembershipId={currentSelectedPreviewMembershipId}
+              onSelectMembership={setCurrentSelectedPreviewMembershipId}
               activeTab={currentPreviewTab}
               onTabChange={setCurrentPreviewTab}
               organizationOverride={
@@ -471,6 +521,11 @@ export default function CustomerExperiencePreview() {
                 publishedSnapshot?.organizationBranding?.heroImageUrl ??
                 undefined
               }
+              referralProgramOverride={
+                publishedSnapshot?.referralProgram ?? null
+              }
+              configuration={publishedSnapshot?.configuration}
+              template={publishedSnapshot?.template}
             />
 
             <PreviewPanel
@@ -480,8 +535,8 @@ export default function CustomerExperiencePreview() {
               mode="proposed"
               domainData={previewData}
               content={proposedContent}
-              selectedMembershipId={selectedPreviewMembershipId}
-              onSelectMembership={setSelectedPreviewMembershipId}
+              selectedMembershipId={proposedSelectedPreviewMembershipId}
+              onSelectMembership={setProposedSelectedPreviewMembershipId}
               activeTab={proposedPreviewTab}
               onTabChange={setProposedPreviewTab}
               organizationOverride={
@@ -498,6 +553,11 @@ export default function CustomerExperiencePreview() {
                 proposedSnapshot?.organizationBranding?.heroImageUrl ??
                 undefined
               }
+              referralProgramOverride={
+                proposedSnapshot?.referralProgram ?? null
+              }
+              configuration={proposedSnapshot?.configuration ?? configuration}
+              template={proposedSnapshot?.template ?? template}
             />
           </View>
         ) : (
@@ -508,8 +568,8 @@ export default function CustomerExperiencePreview() {
             mode="proposed"
             domainData={previewData}
             content={proposedContent}
-            selectedMembershipId={selectedPreviewMembershipId}
-            onSelectMembership={setSelectedPreviewMembershipId}
+            selectedMembershipId={proposedSelectedPreviewMembershipId}
+            onSelectMembership={setProposedSelectedPreviewMembershipId}
             activeTab={proposedPreviewTab}
             onTabChange={setProposedPreviewTab}
             organizationOverride={
@@ -525,6 +585,9 @@ export default function CustomerExperiencePreview() {
             heroImageUrl={
               proposedSnapshot?.organizationBranding?.heroImageUrl ?? undefined
             }
+            referralProgramOverride={proposedSnapshot?.referralProgram ?? null}
+            configuration={proposedSnapshot?.configuration ?? configuration}
+            template={proposedSnapshot?.template ?? template}
           />
         )}
 
@@ -841,6 +904,9 @@ function PreviewPanel({
   membershipLogoUrl,
   tagline,
   heroImageUrl,
+  referralProgramOverride,
+  configuration,
+  template,
 }: PreviewPanelProps) {
   const selectedMembership =
     domainData.memberships.find(
@@ -864,55 +930,68 @@ function PreviewPanel({
       </View>
 
       <View style={styles.customerPreviewFrame}>
-        <BusinessExperience
-          content={content}
-          subscription={selectedMembership?.subscription}
-          subscriptionStatus={selectedMembership?.subscriptionStatus}
-          product={selectedMembership?.product}
-          benefits={selectedMembership?.benefits ?? []}
-          offers={domainData.offers}
-          stores={domainData.stores}
-          redemptions={selectedMembership?.redemptions ?? []}
-          memberships={domainData.memberships
-            .filter((membership) => membership.subscription)
-            .map((membership) => ({
-              subscription: membership.subscription as Subscription,
-              product: membership.product,
-            }))}
-          selectedSubscriptionId={selectedMembership?.subscription?.id ?? ""}
-          onSelectSubscription={(subscriptionId) => {
-            const membership = domainData.memberships.find(
-              (candidate) => candidate.subscription?.id === subscriptionId,
-            );
-
-            if (membership) {
-              onSelectMembership(membership.product.id);
-            }
-          }}
-          availableMemberships={domainData.availableMemberships}
-          onJoin={() => {
-            /*
-             * Read-only admin preview.
-             */
-          }}
-          onExit={() => {
-            /*
-             * Read-only admin preview.
-             */
-          }}
-          previewDefinition={
-            mode === "proposed" ? experience?.experienceDefinition : undefined
+        <BusinessPreviewScope
+          organizationId={
+            organizationOverride?.id ?? domainData.product?.organizationId ?? ""
           }
-          initialTab="card"
-          activeTab={activeTab}
-          onTabChange={onTabChange}
-          organizationOverride={organizationOverride}
-          detailsOverride={detailsOverride}
-          membershipLogoUrl={membershipLogoUrl}
-          tagline={tagline}
-          heroImageUrl={heroImageUrl}
-          previewMode
-        />
+          configuration={configuration}
+          template={template}
+        >
+          <BusinessExperience
+            content={content}
+            subscription={selectedMembership?.subscription}
+            subscriptionStatus={selectedMembership?.subscriptionStatus}
+            product={selectedMembership?.product}
+            benefits={selectedMembership?.benefits ?? []}
+            offers={domainData.offers}
+            stores={domainData.stores}
+            redemptions={selectedMembership?.redemptions ?? []}
+            benefitUsageRules={domainData.benefitUsageRules}
+            offerUsageRules={domainData.offerUsageRules}
+            memberships={domainData.memberships
+              .filter((membership) => membership.subscription)
+              .map((membership) => ({
+                subscription: membership.subscription as Subscription,
+                product: membership.product,
+              }))}
+            selectedSubscriptionId={selectedMembership?.subscription?.id ?? ""}
+            onSelectSubscription={(subscriptionId) => {
+              const membership = domainData.memberships.find(
+                (candidate) => candidate.subscription?.id === subscriptionId,
+              );
+
+              if (membership) {
+                onSelectMembership(membership.product.id);
+              }
+            }}
+            availableMemberships={domainData.availableMemberships}
+            onJoin={() => {
+              /*
+               * Read-only admin preview.
+               */
+            }}
+            onExit={() => {
+              /*
+               * Read-only admin preview.
+               */
+            }}
+            previewDefinition={
+              mode === "proposed" ? experience?.experienceDefinition : undefined
+            }
+            initialTab="card"
+            activeTab={activeTab}
+            onTabChange={onTabChange}
+            organizationOverride={organizationOverride}
+            detailsOverride={detailsOverride}
+            membershipLogoUrl={membershipLogoUrl}
+            tagline={tagline}
+            heroImageUrl={heroImageUrl}
+            referralProgramOverride={referralProgramOverride}
+            renderMode={
+              mode === "current" ? "current-preview" : "proposed-preview"
+            }
+          />
+        </BusinessPreviewScope>
       </View>
     </View>
   );

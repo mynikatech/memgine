@@ -9,6 +9,7 @@ import type { StatusService } from "./status";
 import type { CustomerExperience } from "./customer-experience";
 import type {
   CustomerExperienceRelease,
+  CustomerExperienceReleaseContext,
   CustomerExperienceReleaseService,
   CustomerExperienceReleaseSnapshot,
 } from "./customer-experience-release";
@@ -16,6 +17,7 @@ import type { BenefitUsageRuleService } from "./service-contracts.benefit-usage-
 import type { OfferUsageRuleService } from "./offer-usage-rule-service";
 import { asyncStorageStore } from "@/src/data/persistence/local/async-storage-store";
 import { LOCAL_DATA_KEYS } from "@/src/data/persistence/local/keys";
+import type { ReferralService } from "./service-contracts.profile-referral.additions";
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -29,6 +31,7 @@ export class LocalCustomerExperienceReleaseService implements CustomerExperience
     private readonly benefitUsageRuleService: BenefitUsageRuleService,
     private readonly offerService: OfferService,
     private readonly offerUsageRuleService: OfferUsageRuleService,
+    private readonly referralService: ReferralService,
     private readonly statusService: StatusService,
   ) {}
 
@@ -49,14 +52,16 @@ export class LocalCustomerExperienceReleaseService implements CustomerExperience
 
   async createProposedSnapshot(
     customerExperience: CustomerExperience,
+    context: CustomerExperienceReleaseContext,
   ): Promise<CustomerExperienceReleaseSnapshot> {
-    return this.createSnapshot(customerExperience);
+    return this.createSnapshot(customerExperience, context);
   }
 
   async publishRelease(
     organizationId: ID,
     customerExperience: CustomerExperience,
     publishedBy: ID,
+    context: CustomerExperienceReleaseContext,
   ): Promise<CustomerExperienceRelease> {
     if (
       !customerExperience.experienceDefinition.businessIdentity.displayName.trim()
@@ -70,7 +75,7 @@ export class LocalCustomerExperienceReleaseService implements CustomerExperience
       );
     }
 
-    const snapshot = await this.createSnapshot(customerExperience);
+    const snapshot = await this.createSnapshot(customerExperience, context);
     const existing =
       (await asyncStorageStore.get<CustomerExperienceRelease[]>(
         LOCAL_DATA_KEYS.customerExperienceReleases(organizationId),
@@ -121,6 +126,7 @@ export class LocalCustomerExperienceReleaseService implements CustomerExperience
 
   private async createSnapshot(
     customerExperience: CustomerExperience,
+    context: CustomerExperienceReleaseContext,
   ): Promise<CustomerExperienceReleaseSnapshot> {
     const organizationId = customerExperience.organizationId;
 
@@ -132,6 +138,7 @@ export class LocalCustomerExperienceReleaseService implements CustomerExperience
       organization,
       organizationBranding,
       organizationDetails,
+      referralProgram,
       productStatuses,
       benefitStatuses,
       offerStatuses,
@@ -144,6 +151,7 @@ export class LocalCustomerExperienceReleaseService implements CustomerExperience
       this.organizationService.getOrganization(organizationId),
       this.organizationService.getOrganizationBranding(organizationId),
       this.organizationService.getOrganizationDetails(organizationId),
+      this.referralService.getProgram(organizationId),
       this.statusService.listMembershipProductStatuses(),
       this.statusService.listBenefitStatuses(),
       this.statusService.listOfferStatuses(),
@@ -206,6 +214,8 @@ export class LocalCustomerExperienceReleaseService implements CustomerExperience
     }
 
     return {
+      configuration: clone(context.configuration),
+      template: clone(context.template),
       customerExperience: clone(customerExperience),
       organization: clone(organization),
       membershipProducts: clone(activeProducts),
@@ -214,6 +224,7 @@ export class LocalCustomerExperienceReleaseService implements CustomerExperience
       offers: clone(activeOffers),
       offerUsageRules: clone(offerUsageRules),
       stores: clone(activeStores),
+      referralProgram: clone(referralProgram),
       organizationBranding: clone(organizationBranding),
       organizationDetails: clone(organizationDetails),
     };

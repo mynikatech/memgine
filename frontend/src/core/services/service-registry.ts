@@ -119,6 +119,8 @@ const benefitUsageRuleService: BenefitUsageRuleService =
   new LocalBenefitUsageRuleService(apis.benefitUsageRule);
 const offerUsageRuleService: OfferUsageRuleService =
   new LocalOfferUsageRuleService(apis.offerUsageRule);
+const referralService = new LocalReferralService(apis.referral);
+const referralEngine = new ReferralEngine(referralService);
 const customerExperienceReleaseService: CustomerExperienceReleaseService =
   new LocalCustomerExperienceReleaseService(
     organizationService,
@@ -127,6 +129,7 @@ const customerExperienceReleaseService: CustomerExperienceReleaseService =
     benefitUsageRuleService,
     offerService,
     offerUsageRuleService,
+    referralService,
     statusService,
   );
 const paymentService: PaymentService = new LocalPaymentService(
@@ -138,8 +141,6 @@ const offerRedemptionService: OfferRedemptionService =
 const customerPreferenceService = new LocalCustomerPreferenceService(
   apis.customerPreference,
 );
-const referralService = new LocalReferralService(apis.referral);
-const referralEngine = new ReferralEngine(referralService);
 
 export type MemgineServices = {
   organization: OrganizationService;

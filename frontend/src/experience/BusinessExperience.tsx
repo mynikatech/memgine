@@ -63,6 +63,11 @@ export type CustomerExperiencePreviewSection =
   | "referral"
   | "profile";
 
+export type ExperienceRenderMode =
+  | "customer"
+  | "current-preview"
+  | "proposed-preview";
+
 type Props = {
   content: TemplateDefaultContent;
 
@@ -115,7 +120,21 @@ type Props = {
   activeTab?: ExperienceTabKey;
   onTabChange?: (tab: ExperienceTabKey) => void;
 
-  previewMode?: boolean;
+  /**
+   * Explicitly identifies the rendering source.
+   *
+   * customer         = published/live business state + real customer data
+   * current-preview  = published/live business state + preview data
+   * proposed-preview = draft/proposed business state + preview data
+   */
+  renderMode?: ExperienceRenderMode;
+
+  /**
+   * Published/proposed referral program supplied by the release snapshot.
+   * When supplied, BusinessExperience must not replace it with mutable
+   * organization-level referral configuration.
+   */
+  referralProgramOverride?: ReferralProgram | null;
 
   hideTabBar?: boolean;
 
@@ -166,7 +185,8 @@ export function BusinessExperience({
   initialTab = "card",
   activeTab,
   onTabChange,
-  previewMode = false,
+  renderMode = "customer",
+  referralProgramOverride,
   hideTabBar = false,
   onPreviewTab,
   previewSection,
@@ -174,6 +194,8 @@ export function BusinessExperience({
   tagline,
   heroImageUrl,
 }: Props) {
+  const isPreviewMode = renderMode !== "customer";
+
   const {
     organization: contextOrganization,
     configuration,
@@ -297,7 +319,7 @@ export function BusinessExperience({
     let cancelled = false;
 
     const loadProfileData = async () => {
-      if (!subscription || previewMode) {
+      if (!subscription || isPreviewMode) {
         if (!cancelled) {
           setProfileUserId(null);
           setReferralProgram(null);
@@ -310,14 +332,22 @@ export function BusinessExperience({
       }
 
       try {
-        const [organizationUser, persistedOrganization, persistedDetails] =
-          await Promise.all([
-            services.organization.getOrganizationUser(
-              subscription.organizationUserId,
-            ),
-            services.organization.getOrganization(organization.id),
-            services.organization.getOrganizationDetails(organization.id),
-          ]);
+        const [organizationUser, persistedOrganization] = await Promise.all([
+          services.organization.getOrganizationUser(
+            subscription.organizationUserId,
+          ),
+          services.organization.getOrganization(organization.id),
+        ]);
+
+        // A supplied release snapshot is authoritative for business details.
+        // Only read mutable persisted details for legacy callers that do not
+        // supply an override.
+        const persistedDetails =
+          detailsOverride === undefined
+            ? await services.organization.getOrganizationDetails(
+                organization.id,
+              )
+            : null;
 
         let resolvedOrganizationUser = organizationUser;
 
@@ -337,7 +367,7 @@ export function BusinessExperience({
 
         setProfileUserId(userId);
         setProfileOrganizationDetails(
-          persistedDetails ?? detailsOverride ?? null,
+          detailsOverride !== undefined ? detailsOverride : persistedDetails,
         );
         setProfileOrganizationWebsite(
           persistedOrganization?.website ?? organization.website ?? "",
@@ -353,7 +383,9 @@ export function BusinessExperience({
         const [notifications, marketingEmails, program] = await Promise.all([
           services.customerPreference.getValue(userId, "NOTIFICATIONS"),
           services.customerPreference.getValue(userId, "MARKETING_EMAILS"),
-          services.referral.getProgram(organization.id),
+          referralProgramOverride !== undefined
+            ? Promise.resolve(referralProgramOverride)
+            : services.referral.getProgram(organization.id),
         ]);
 
         if (cancelled) return;
@@ -386,7 +418,7 @@ export function BusinessExperience({
     };
   }, [
     subscription,
-    previewMode,
+    isPreviewMode,
     organization.id,
     detailsOverride,
     organization.website,
@@ -580,7 +612,7 @@ export function BusinessExperience({
     });
 
   const redeemSelected = async () => {
-    if (!subscription || previewMode) return;
+    if (!subscription || isPreviewMode) return;
 
     const ids = exp.redeemableBenefits
       .filter((b) => b.available && selectedBenefitIds.has(b.id))
@@ -636,7 +668,7 @@ export function BusinessExperience({
   };
 
   const redeemOffer = async (offer: Offer) => {
-    if (previewMode || offerRedeemLoading) return;
+    if (isPreviewMode || offerRedeemLoading) return;
 
     setOfferRedeemLoading(true);
 
@@ -788,7 +820,7 @@ export function BusinessExperience({
   };
 
   const renderTabPreviewLink = (tabKey: ExperienceTabKey) => {
-    if (!previewMode || !onPreviewTab || previewSection) {
+    if (!isPreviewMode || !onPreviewTab || previewSection) {
       return null;
     }
 
@@ -890,7 +922,7 @@ export function BusinessExperience({
             }
           />
         </Section>
-      ) : previewMode ? (
+      ) : isPreviewMode ? (
         <Section title={t("experience.yourMemberships")}>
           <MembershipCard
             testID="experience-preview-membership-card"
@@ -943,7 +975,7 @@ export function BusinessExperience({
                   <Pressable
                     key={b.id}
                     testID={`experience-redeem-benefit-${b.id}`}
-                    disabled={!b.available || previewMode}
+                    disabled={!b.available || isPreviewMode}
                     onPress={() => toggleBenefit(b.id)}
                     style={({ pressed }) => ({
                       flexDirection: "row",
@@ -1003,7 +1035,7 @@ export function BusinessExperience({
                 </Text>
               ) : null}
 
-              {!previewMode ? (
+              {!isPreviewMode ? (
                 <View
                   style={{
                     flexDirection: "row",
@@ -1033,7 +1065,7 @@ export function BusinessExperience({
         </Section>
       ) : null}
 
-      {!previewMode && availableMemberships.length ? (
+      {!isPreviewMode && availableMemberships.length ? (
         <Section title={t("experience.availableMemberships")}>
           <View style={{ gap: theme.spacing.md }}>
             {availableMemberships.map((p) => (
@@ -1131,7 +1163,7 @@ export function BusinessExperience({
                   (rule) => rule.offerId === offer.id,
                 )}
                 onPress={
-                  previewMode
+                  isPreviewMode
                     ? undefined
                     : () => {
                         void redeemOffer(offer);
@@ -1818,7 +1850,7 @@ export function BusinessExperience({
    * individual-section preview. This prevents the admin preview from
    * drifting away from the actual customer experience.
    */
-  const profileDetails = profileOrganizationDetails ?? detailsOverride;
+  const profileDetails = profileOrganizationDetails;
   const businessAbout = profileDetails?.aboutOrganization?.trim() || "";
   const businessSupportEmail = profileDetails?.supportEmail?.trim() || "";
   const businessSupportPhone = formatPhoneNumber(profileDetails?.supportPhone);
@@ -2222,7 +2254,7 @@ export function BusinessExperience({
                       variant="secondary"
                       onPress={() => setReferralOpen(true)}
                       testID="experience-preview-referral"
-                      disabled={previewMode}
+                      disabled={isPreviewMode}
                     />
                   </View>
                 </Card>
@@ -2257,7 +2289,7 @@ export function BusinessExperience({
         paddingTop: insets.top,
       }}
     >
-      {previewMode ? (
+      {isPreviewMode ? (
         <View
           style={{
             paddingHorizontal: theme.spacing.lg,
@@ -2302,6 +2334,7 @@ export function BusinessExperience({
           logoUrl={membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl}
           monogram={exp.monogram}
           size={46}
+          fit="cover"
           testID="experience-brand-logo"
         />
 
@@ -2437,7 +2470,7 @@ export function BusinessExperience({
         </View>
       ) : null}
 
-      {!previewMode ? (
+      {!isPreviewMode ? (
         <View
           style={{
             alignItems: "center",
@@ -2506,7 +2539,7 @@ export function BusinessExperience({
         ) : null}
       </Modal>
 
-      {!previewMode ? (
+      {!isPreviewMode ? (
         <>
           <Modal
             visible={!!redeemToken}

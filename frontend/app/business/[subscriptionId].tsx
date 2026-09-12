@@ -7,6 +7,7 @@ import { APP_ROUTES } from "@/src/constants/navigation";
 
 import type {
   Benefit,
+  CustomerExperienceRelease,
   MembershipProduct,
   Offer,
   Redemption,
@@ -15,15 +16,12 @@ import type {
   Status as DomainStatus,
 } from "@/src/core";
 
-import {
-  F_AND_B_DEFAULT_CONTENT,
-  SALON_DEFAULT_CONTENT,
-  getBusinessContent,
-  services,
-} from "@/src/core";
+import { services } from "@/src/core";
 import { BusinessExperience } from "@/src/experience";
+import { loadPreviewDataFromRelease } from "@/src/experience/customer-experience-preview-data";
 
 import {
+  BusinessPreviewScope,
   useBusiness,
   useCustomerContext,
   useTheme,
@@ -74,6 +72,8 @@ export default function BusinessExperienceRoute() {
   const theme = useTheme();
 
   const [status, setStatus] = useState<Status>("loading");
+  const [publishedRelease, setPublishedRelease] =
+    useState<CustomerExperienceRelease | null>(null);
   const [memberships, setMemberships] = useState<MembershipBundle[]>([]);
   const [availableMemberships, setAvailableMemberships] = useState<
     MembershipProduct[]
@@ -126,27 +126,34 @@ export default function BusinessExperienceRoute() {
       const organizationId = initialOrganizationUser.organizationId;
       const customerId = initialOrganizationUser.userId;
 
+      const release =
+        await services.customerExperienceRelease.getPublishedRelease(
+          organizationId,
+        );
+
+      if (!release) {
+        console.warn(
+          `[BusinessExperience] No published Customer Experience Release exists for '${organizationId}'.`,
+        );
+        setStatus("error");
+        return;
+      }
+
+      setPublishedRelease(release);
       setActiveOrganizationId(organizationId);
 
-      // The membership card must use the selected subscription's own business
-      // branding, not whichever business happens to be active in the global
-      // provider. This is the same canonical branding source used by the
-      // Customer Wallet.
-      const [organizationBranding, organizationDetails] = await Promise.all([
-        services.organization.getOrganizationBranding(organizationId),
-        services.organization.getOrganizationDetails(organizationId),
-      ]);
+      const snapshot = release.snapshot;
 
-      setActiveOrganizationDetails(organizationDetails ?? null);
+      setActiveOrganizationDetails(snapshot.organizationDetails ?? null);
 
       setActiveOrganizationLogoUrl(
-        organizationBranding?.logoUrl?.trim() || undefined,
+        snapshot.organizationBranding?.logoUrl?.trim() || undefined,
       );
       setActiveOrganizationTagline(
-        organizationBranding?.tagline?.trim() || undefined,
+        snapshot.organizationBranding?.tagline?.trim() || undefined,
       );
       setActiveOrganizationHeroImageUrl(
-        organizationBranding?.heroImageUrl?.trim() || undefined,
+        snapshot.organizationBranding?.heroImageUrl?.trim() || undefined,
       );
 
       setActiveBusiness(organizationId);
@@ -186,8 +193,7 @@ export default function BusinessExperienceRoute() {
       // resolve the plan through the old standalone/mock subscription-plan
       // lookup because the canonical product model stores plans inside
       // MembershipProduct.plans[].
-      const catalog =
-        await services.membershipProduct.listProducts(organizationId);
+      const catalog = snapshot.membershipProducts;
 
       // 5. Resolve each subscription through:
       //
@@ -220,10 +226,7 @@ export default function BusinessExperienceRoute() {
             return null;
           }
 
-          const organizationBenefits =
-            await services.benefit.listByOrganization(organizationId);
-
-          const benefits = organizationBenefits.filter(
+          const benefits = snapshot.benefits.filter(
             (benefit) =>
               !benefit.isDeleted && product.benefitIds.includes(benefit.id),
           );
@@ -286,10 +289,8 @@ export default function BusinessExperienceRoute() {
       //
       // These services are AsyncStorage-first through the local service
       // registry, with the temporary mock fallback retained underneath.
-      const [orgOffers, orgStores] = await Promise.all([
-        services.offer.listByOrganization(organizationId),
-        services.organization.listStores(organizationId),
-      ]);
+      const orgOffers = snapshot.offers;
+      const orgStores = snapshot.stores;
 
       const ownedProductIds = new Set(
         bundles.map((bundle) => bundle.product.id),
@@ -371,52 +372,53 @@ export default function BusinessExperienceRoute() {
     }
   };
 
-  if (status === "ready" && current && activeOrganizationId) {
-    /*
-     * Organization-owned content is still being migrated to the persisted
-     * configuration/content layer. Known legacy organizations continue to
-     * use their registered organization content. For a newly onboarded
-     * organization whose content has not yet been persisted, fall back to
-     * the platform starter content that matches the active template.
-     *
-     * This prevents a newly-created Glow Studio (or another new business)
-     * from crashing simply because its dynamic organization ID is not in the
-     * legacy static business-content registry.
-     */
-    let businessContent;
-    try {
-      businessContent = getBusinessContent(activeOrganizationId);
-    } catch {
-      const templateCategory = String(template?.category ?? "").toLowerCase();
-      businessContent = templateCategory.includes("beauty")
-        ? SALON_DEFAULT_CONTENT
-        : F_AND_B_DEFAULT_CONTENT;
-    }
+  if (
+    status === "ready" &&
+    current &&
+    activeOrganizationId &&
+    publishedRelease
+  ) {
+    const snapshot = publishedRelease.snapshot;
 
     return (
-      <BusinessExperience
-        content={businessContent}
-        subscription={current.subscription}
-        subscriptionStatus={current.subscriptionStatus}
-        product={current.product}
-        benefits={current.benefits}
-        offers={offers}
-        stores={stores}
-        redemptions={current.redemptions}
-        memberships={memberships.map((membership) => ({
-          subscription: membership.subscription,
-          product: membership.product,
-        }))}
-        selectedSubscriptionId={current.subscription.id}
-        onSelectSubscription={selectSubscription}
-        availableMemberships={availableMemberships}
-        onJoin={joinMembership}
-        onExit={exit}
-        membershipLogoUrl={activeOrganizationLogoUrl}
-        tagline={activeOrganizationTagline}
-        heroImageUrl={activeOrganizationHeroImageUrl}
-        detailsOverride={activeOrganizationDetails}
-      />
+      <BusinessPreviewScope
+        organizationId={activeOrganizationId}
+        configuration={snapshot.configuration}
+        template={snapshot.template}
+      >
+        <BusinessExperience
+          content={snapshot.customerExperience.experienceDefinition.content}
+          subscription={current.subscription}
+          subscriptionStatus={current.subscriptionStatus}
+          product={current.product}
+          benefits={current.benefits}
+          offers={snapshot.offers}
+          stores={snapshot.stores}
+          redemptions={current.redemptions}
+          benefitUsageRules={snapshot.benefitUsageRules}
+          offerUsageRules={snapshot.offerUsageRules}
+          memberships={memberships.map((membership) => ({
+            subscription: membership.subscription,
+            product: membership.product,
+          }))}
+          selectedSubscriptionId={current.subscription.id}
+          onSelectSubscription={selectSubscription}
+          availableMemberships={availableMemberships}
+          onJoin={joinMembership}
+          onExit={exit}
+          organizationOverride={snapshot.organization}
+          detailsOverride={snapshot.organizationDetails ?? null}
+          membershipLogoUrl={
+            snapshot.organizationBranding?.logoUrl ?? undefined
+          }
+          tagline={snapshot.organizationBranding?.tagline ?? undefined}
+          heroImageUrl={
+            snapshot.organizationBranding?.heroImageUrl ?? undefined
+          }
+          referralProgramOverride={snapshot.referralProgram ?? null}
+          renderMode="customer"
+        />
+      </BusinessPreviewScope>
     );
   }
 

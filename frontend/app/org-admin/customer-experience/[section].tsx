@@ -329,7 +329,7 @@ export default function CustomerExperienceSectionPreview() {
                 onExit={() => router.back()}
                 previewDefinition={publishedExperience?.experienceDefinition}
                 initialTab="card"
-                previewMode
+                renderMode="current-preview"
                 previewSection={section}
               />
             </View>
@@ -368,7 +368,7 @@ export default function CustomerExperienceSectionPreview() {
                 onExit={() => router.back()}
                 previewDefinition={experience.experienceDefinition}
                 initialTab="card"
-                previewMode
+                renderMode="proposed-preview"
                 previewSection={section}
               />
             </View>

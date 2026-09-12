@@ -49,6 +49,11 @@ export function BrandLogo({
           style={{
             width: "100%",
             height: "100%",
+            ...(fit === "contain"
+              ? {
+                  transform: [{ scale: 0.88 }],
+                }
+              : undefined),
           }}
         />
       </View>

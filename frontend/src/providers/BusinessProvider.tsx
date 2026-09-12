@@ -159,27 +159,30 @@ export function BusinessProvider({
    * BUSINESS_CONTEXTS remains a fallback for legacy/demo
    * organizations that do not have a persisted organization
    * context.
+   *
+   * IMPORTANT:
+   * Explicit BusinessPreviewScope providers also resolve their
+   * supplied organizationId here. Previously this effect returned
+   * immediately whenever organizationId was supplied, leaving
+   * resolvedContext null for persisted organizations and causing
+   * the preview/customer renderer to remain blank.
    */
   useEffect(() => {
-    if (organizationId) {
-      return;
-    }
-
     let cancelled = false;
+
+    const targetOrganizationId = organizationId ?? activeOrgId;
 
     const resolve = async () => {
       setResolving(true);
 
       try {
         /*
-         * IMPORTANT:
          * Resolve persisted organization data FIRST.
          *
-         * Previously BUSINESS_CONTEXTS was checked first, which
-         * meant an organization present in the legacy registry
-         * could bypass its persisted branding configuration.
+         * This applies both to the normal provider and to an
+         * explicit preview provider with organizationId.
          */
-        const context = await resolveOrganizationContext(activeOrgId);
+        const context = await resolveOrganizationContext(targetOrganizationId);
 
         if (cancelled) {
           return;
@@ -194,7 +197,7 @@ export function BusinessProvider({
         /*
          * Legacy fallback.
          */
-        const legacy = BUSINESS_CONTEXTS[activeOrgId];
+        const legacy = BUSINESS_CONTEXTS[targetOrganizationId];
 
         if (legacy) {
           setResolvedContext(legacy);
@@ -203,19 +206,13 @@ export function BusinessProvider({
         }
 
         /*
-         * The persisted active organization may no longer exist.
-         *
-         * This can happen during development when local organization
-         * data is reset, and in production if an organization is
-         * deactivated/deleted while a user still has it as their
-         * active organization.
-         *
-         * Fall back to the default valid organization instead of
-         * crashing the entire application.
+         * Only the normal provider may change the active organization
+         * as a recovery mechanism. An explicit preview provider must
+         * never change application-wide active-organization state.
          */
-        if (activeOrgId !== DEFAULT_ACTIVE_ORG_ID) {
+        if (!organizationId && targetOrganizationId !== DEFAULT_ACTIVE_ORG_ID) {
           console.warn(
-            `[BusinessProvider] active organization '${activeOrgId}' could not be resolved. ` +
+            `[BusinessProvider] active organization '${targetOrganizationId}' could not be resolved. ` +
               `Falling back to '${DEFAULT_ACTIVE_ORG_ID}'.`,
           );
 
@@ -234,7 +231,7 @@ export function BusinessProvider({
         }
 
         throw new Error(
-          `Default active organization '${DEFAULT_ACTIVE_ORG_ID}' could not be resolved.`,
+          `Organization '${targetOrganizationId}' could not be resolved.`,
         );
       } catch (error) {
         if (cancelled) {
@@ -247,12 +244,13 @@ export function BusinessProvider({
         );
 
         /*
-         * If persisted resolution fails for a non-default active
-         * organization, recover using the default organization.
+         * Only the normal provider may recover by changing the
+         * application active organization. Preview providers must
+         * remain isolated from session state.
          */
-        if (activeOrgId !== DEFAULT_ACTIVE_ORG_ID) {
+        if (!organizationId && targetOrganizationId !== DEFAULT_ACTIVE_ORG_ID) {
           console.warn(
-            `[BusinessProvider] recovering from invalid active organization '${activeOrgId}'. ` +
+            `[BusinessProvider] recovering from invalid active organization '${targetOrganizationId}'. ` +
               `Using '${DEFAULT_ACTIVE_ORG_ID}'.`,
           );
 
@@ -271,10 +269,9 @@ export function BusinessProvider({
         }
 
         /*
-         * If the default persisted organization cannot be resolved,
-         * retain the legacy registry as a final emergency fallback.
+         * Final legacy fallback for the default/explicit organization.
          */
-        const legacy = BUSINESS_CONTEXTS[activeOrgId];
+        const legacy = BUSINESS_CONTEXTS[targetOrganizationId];
 
         if (legacy) {
           setResolvedContext(legacy);
