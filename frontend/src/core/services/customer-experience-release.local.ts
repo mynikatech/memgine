@@ -12,6 +12,8 @@ import type {
   CustomerExperienceReleaseService,
   CustomerExperienceReleaseSnapshot,
 } from "./customer-experience-release";
+import type { BenefitUsageRuleService } from "./service-contracts.benefit-usage-rule.additions";
+import type { OfferUsageRuleService } from "./offer-usage-rule-service";
 import { asyncStorageStore } from "@/src/data/persistence/local/async-storage-store";
 import { LOCAL_DATA_KEYS } from "@/src/data/persistence/local/keys";
 
@@ -24,7 +26,9 @@ export class LocalCustomerExperienceReleaseService implements CustomerExperience
     private readonly organizationService: OrganizationService,
     private readonly membershipProductService: MembershipProductService,
     private readonly benefitService: BenefitService,
+    private readonly benefitUsageRuleService: BenefitUsageRuleService,
     private readonly offerService: OfferService,
+    private readonly offerUsageRuleService: OfferUsageRuleService,
     private readonly statusService: StatusService,
   ) {}
 
@@ -178,6 +182,19 @@ export class LocalCustomerExperienceReleaseService implements CustomerExperience
         !store.isDeleted && isActiveStatus(store.storeStatusId, storeStatuses),
     );
 
+    const [benefitUsageRules, offerUsageRules] = await Promise.all([
+      Promise.all(
+        activeBenefits.map((benefit) =>
+          this.benefitUsageRuleService.listByBenefit(benefit.id),
+        ),
+      ).then((rules) => rules.flat().filter((rule) => !rule.isDeleted)),
+      Promise.all(
+        activeOffers.map((offer) =>
+          this.offerUsageRuleService.listByOffer(offer.id),
+        ),
+      ).then((rules) => rules.flat().filter((rule) => !rule.isDeleted)),
+    ]);
+
     const activeProducts = products.filter((product) =>
       activeProductIds.has(product.id),
     );
@@ -193,7 +210,9 @@ export class LocalCustomerExperienceReleaseService implements CustomerExperience
       organization: clone(organization),
       membershipProducts: clone(activeProducts),
       benefits: clone(activeBenefits),
+      benefitUsageRules: clone(benefitUsageRules),
       offers: clone(activeOffers),
+      offerUsageRules: clone(offerUsageRules),
       stores: clone(activeStores),
       organizationBranding: clone(organizationBranding),
       organizationDetails: clone(organizationDetails),

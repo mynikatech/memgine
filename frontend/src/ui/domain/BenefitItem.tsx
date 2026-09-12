@@ -44,6 +44,7 @@ type BenefitItemProps = {
   title: string;
   subtitle?: string;
   icon?: IoniconName;
+  usageRules?: BenefitUsageRule[];
   testID?: string;
 };
 
@@ -245,6 +246,7 @@ export function BenefitItem({
   title,
   subtitle,
   icon = "gift-outline",
+  usageRules: usageRulesOverride,
   testID,
 }: BenefitItemProps) {
   const theme = useTheme();
@@ -254,6 +256,13 @@ export function BenefitItem({
 
   useEffect(() => {
     let cancelled = false;
+
+    if (usageRulesOverride !== undefined) {
+      setRules(usageRulesOverride.filter((rule) => !rule.isDeleted));
+      return () => {
+        cancelled = true;
+      };
+    }
 
     const loadRules = async () => {
       if (!benefitId) {
@@ -279,7 +288,7 @@ export function BenefitItem({
     return () => {
       cancelled = true;
     };
-  }, [benefitId]);
+  }, [benefitId, usageRulesOverride]);
 
   const primaryRule = rules[0];
   const ruleSummary = primaryRule ? formatUsage(primaryRule) : "";

@@ -115,12 +115,18 @@ const mockCustomerExperienceService = new InMemoryCustomerExperienceService(
 );
 const customerExperienceService: CustomerExperienceService =
   new LocalCustomerExperienceService(mockCustomerExperienceService);
+const benefitUsageRuleService: BenefitUsageRuleService =
+  new LocalBenefitUsageRuleService(apis.benefitUsageRule);
+const offerUsageRuleService: OfferUsageRuleService =
+  new LocalOfferUsageRuleService(apis.offerUsageRule);
 const customerExperienceReleaseService: CustomerExperienceReleaseService =
   new LocalCustomerExperienceReleaseService(
     organizationService,
     membershipProductService,
     benefitService,
+    benefitUsageRuleService,
     offerService,
+    offerUsageRuleService,
     statusService,
   );
 const paymentService: PaymentService = new LocalPaymentService(
@@ -132,10 +138,6 @@ const offerRedemptionService: OfferRedemptionService =
 const customerPreferenceService = new LocalCustomerPreferenceService(
   apis.customerPreference,
 );
-const benefitUsageRuleService: BenefitUsageRuleService =
-  new LocalBenefitUsageRuleService(apis.benefitUsageRule);
-const offerUsageRuleService: OfferUsageRuleService =
-  new LocalOfferUsageRuleService(apis.offerUsageRule);
 const referralService = new LocalReferralService(apis.referral);
 const referralEngine = new ReferralEngine(referralService);
 

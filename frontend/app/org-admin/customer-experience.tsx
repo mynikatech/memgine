@@ -274,23 +274,6 @@ export default function CustomerExperienceConfiguration() {
       {/* FINAL REVIEW                                                      */}
       {/* ================================================================= */}
 
-      <Card padding="lg" elevation="sm">
-        <Section title="Overall Customer Experience">
-          <Text variant="bodySmall" color="textSecondary">
-            Review the complete customer experience side by side, including the
-            membership card, offers, history and profile, before publishing.
-          </Text>
-
-          <View style={styles.finalReviewRow}>
-            <Pressable onPress={openFinalReview} accessibilityRole="link">
-              <Text variant="body" color="primary" style={styles.previewLink}>
-                Preview
-              </Text>
-            </Pressable>
-          </View>
-        </Section>
-      </Card>
-
       {/* ================================================================= */}
       {/* SECTION CONFIGURATION                                             */}
       {/* ================================================================= */}

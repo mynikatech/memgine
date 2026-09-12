@@ -12,9 +12,11 @@ import type {
 
 import type {
   Benefit,
+  BenefitUsageRule,
   CustomerExperienceDefinition,
   MembershipProduct,
   Offer,
+  OfferUsageRule,
   Organization,
   OrganizationDetails,
   Redemption,
@@ -72,6 +74,8 @@ type Props = {
   offers: Offer[];
   stores: Store[];
   redemptions: Redemption[];
+  benefitUsageRules?: BenefitUsageRule[];
+  offerUsageRules?: OfferUsageRule[];
 
   memberships: {
     subscription: Subscription;
@@ -148,6 +152,8 @@ export function BusinessExperience({
   offers,
   stores,
   redemptions,
+  benefitUsageRules,
+  offerUsageRules,
   memberships,
   selectedSubscriptionId,
   onSelectSubscription,
@@ -538,14 +544,15 @@ export function BusinessExperience({
     offerId: string;
     createdAt: string;
   };
+
   const [selectedBenefitIds, setSelectedBenefitIds] = useState<Set<string>>(
     new Set(),
   );
 
   const [redeemToken, setRedeemToken] = useState<RedemptionToken | null>(null);
-
   const [offerRedeemToken, setOfferRedeemToken] =
     useState<OfferRedemptionToken | null>(null);
+  const [offerRedeemLoading, setOfferRedeemLoading] = useState(false);
 
   useEffect(() => {
     setSelectedBenefitIds(
@@ -629,28 +636,48 @@ export function BusinessExperience({
   };
 
   const redeemOffer = async (offer: Offer) => {
-    if (previewMode) return;
+    if (previewMode || offerRedeemLoading) return;
 
-    let userId = profileUserId;
-
-    if (!userId && subscription) {
-      const organizationUser = await services.organization.getOrganizationUser(
-        subscription.organizationUserId,
-      );
-
-      if (organizationUser) {
-        userId = organizationUser.userId;
-      }
-    }
-
-    if (!userId) {
-      console.warn(
-        "OFFER REDEMPTION QR CREATION FAILED: CUSTOMER USER COULD NOT BE RESOLVED",
-      );
-      return;
-    }
+    setOfferRedeemLoading(true);
 
     try {
+      let userId = profileUserId;
+
+      /*
+       * The canonical identity is User. For the current customer experience,
+       * profileUserId is resolved from OrganizationUser. If it has not loaded
+       * yet, resolve it directly from the selected subscription.
+       *
+       * An Offer QR does not require a subscription because an Offer may be
+       * standalone. The QR service itself verifies that the User belongs to
+       * the organization.
+       */
+      if (!userId && subscription) {
+        const organizationUser =
+          await services.organization.getOrganizationUser(
+            subscription.organizationUserId,
+          );
+
+        if (organizationUser) {
+          userId = organizationUser.userId;
+        } else {
+          const organizationUsers =
+            await services.organization.listOrganizationUsers(organization.id);
+
+          userId =
+            organizationUsers.find(
+              (item) => item.id === subscription.organizationUserId,
+            )?.userId ?? null;
+        }
+      }
+
+      if (!userId) {
+        console.warn(
+          "OFFER REDEMPTION QR CREATION FAILED: CUSTOMER USER COULD NOT BE RESOLVED",
+        );
+        return;
+      }
+
       const result = await services.offerRedemptionQR.createQR({
         organizationId: organization.id,
         userId,
@@ -669,8 +696,11 @@ export function BusinessExperience({
       });
     } catch (error) {
       console.warn("OFFER REDEMPTION QR CREATION FAILED", error);
+    } finally {
+      setOfferRedeemLoading(false);
     }
   };
+
   const benefitTitleById = useMemo(
     () =>
       new Map(exp.benefits.map((b) => [b.id, b.displayName ?? b.benefitName])),
@@ -892,6 +922,9 @@ export function BusinessExperience({
                   title={b.displayName ?? b.benefitName}
                   subtitle={b.description}
                   icon={benefitIconForType(b.benefitTypeId)}
+                  usageRules={benefitUsageRules?.filter(
+                    (rule) => rule.benefitId === b.id,
+                  )}
                 />
               ))}
             </View>
@@ -1094,9 +1127,16 @@ export function BusinessExperience({
                 availabilityText={offer.availabilityText}
                 discountPercentage={offer.discountPercentage}
                 ctaLabel={offer.ctaLabel}
-                onPress={() => {
-                  void redeemOffer(offer);
-                }}
+                usageRules={offerUsageRules?.filter(
+                  (rule) => rule.offerId === offer.id,
+                )}
+                onPress={
+                  previewMode
+                    ? undefined
+                    : () => {
+                        void redeemOffer(offer);
+                      }
+                }
               />
             ))}
 
@@ -2033,6 +2073,9 @@ export function BusinessExperience({
                         title={b.displayName ?? b.benefitName}
                         subtitle={b.description}
                         icon={benefitIconForType(b.benefitTypeId)}
+                        usageRules={benefitUsageRules?.filter(
+                          (rule) => rule.benefitId === b.id,
+                        )}
                       />
                     ))}
                   </View>
@@ -2462,116 +2505,122 @@ export function BusinessExperience({
           </View>
         ) : null}
       </Modal>
-      <Modal
-        visible={!!offerRedeemToken}
-        onClose={() => setOfferRedeemToken(null)}
-        title="Redeem Offer"
-        testID="experience-offer-redeem-token-modal"
-      >
-        {offerRedeemToken ? (
-          <View
-            style={{
-              alignItems: "center",
-              gap: theme.spacing.md,
-            }}
-          >
-            <QrPlaceholder size={200} testID="experience-offer-redemption-qr" />
-
-            <View style={{ alignItems: "center" }}>
-              <Text variant="caption" color="textMuted">
-                Redemption Code
-              </Text>
-
-              <Text variant="title" color="text">
-                {offerRedeemToken.token}
-              </Text>
-            </View>
-
-            <Text
-              variant="bodySmall"
-              color="textMuted"
-              style={{
-                textAlign: "center",
-              }}
-            >
-              Show this QR code at the counter to redeem this offer.
-            </Text>
-          </View>
-        ) : null}
-      </Modal>
 
       {!previewMode ? (
-        <Modal
-          visible={!!redeemToken}
-          onClose={() => setRedeemToken(null)}
-          title={t("experience.redeemBenefits")}
-          testID="experience-redeem-token-modal"
-        >
-          {redeemToken ? (
-            <View
-              style={{
-                alignItems: "center",
-                gap: theme.spacing.md,
-              }}
-            >
-              <QrPlaceholder size={200} testID="experience-redemption-qr" />
-
-              <View style={{ alignItems: "center" }}>
-                <Text variant="caption" color="textMuted">
-                  {t("experience.redemptionCode")}
-                </Text>
-
-                <Text variant="title" color="text">
-                  {redeemToken.token}
-                </Text>
-              </View>
-
+        <>
+          <Modal
+            visible={!!redeemToken}
+            onClose={() => setRedeemToken(null)}
+            title={t("experience.redeemBenefits")}
+            testID="experience-redeem-token-modal"
+          >
+            {redeemToken ? (
               <View
                 style={{
-                  alignSelf: "stretch",
-                  gap: 6,
+                  alignItems: "center",
+                  gap: theme.spacing.md,
                 }}
               >
-                {redeemToken.benefitIds.map((id) => (
-                  <View
-                    key={id}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: theme.spacing.sm,
-                    }}
-                  >
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={16}
-                      color={theme.colors.primary}
-                    />
+                <QrPlaceholder size={200} testID="experience-redemption-qr" />
 
-                    <Text variant="bodySmall" color="text">
-                      {benefitTitleById.get(id) ?? id}
-                    </Text>
-                  </View>
-                ))}
+                <View style={{ alignItems: "center" }}>
+                  <Text variant="caption" color="textMuted">
+                    {t("experience.redemptionCode")}
+                  </Text>
+
+                  <Text variant="title" color="text">
+                    {redeemToken.token}
+                  </Text>
+                </View>
+
+                <View
+                  style={{
+                    alignSelf: "stretch",
+                    gap: 6,
+                  }}
+                >
+                  {redeemToken.benefitIds.map((id) => (
+                    <View
+                      key={id}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: theme.spacing.sm,
+                      }}
+                    >
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={16}
+                        color={theme.colors.primary}
+                      />
+
+                      <Text variant="bodySmall" color="text">
+                        {benefitTitleById.get(id) ?? id}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+
+                <Text variant="caption" color="textMuted">
+                  {t("experience.benefitsCount", {
+                    count: redeemToken.benefitIds.length,
+                  })}
+                </Text>
+
+                <Text
+                  variant="bodySmall"
+                  color="textMuted"
+                  style={{
+                    textAlign: "center",
+                  }}
+                >
+                  {t("experience.redeemTokenHint")}
+                </Text>
               </View>
+            ) : null}
+          </Modal>
 
-              <Text variant="caption" color="textMuted">
-                {t("experience.benefitsCount", {
-                  count: redeemToken.benefitIds.length,
-                })}
-              </Text>
-
-              <Text
-                variant="bodySmall"
-                color="textMuted"
+          <Modal
+            visible={!!offerRedeemToken}
+            onClose={() => setOfferRedeemToken(null)}
+            title="Redeem Offer"
+            testID="experience-offer-redeem-token-modal"
+          >
+            {offerRedeemToken ? (
+              <View
                 style={{
-                  textAlign: "center",
+                  alignItems: "center",
+                  gap: theme.spacing.md,
                 }}
               >
-                {t("experience.redeemTokenHint")}
-              </Text>
-            </View>
-          ) : null}
-        </Modal>
+                <QrPlaceholder
+                  size={200}
+                  testID="experience-offer-redemption-qr"
+                />
+
+                <View style={{ alignItems: "center" }}>
+                  <Text variant="caption" color="textMuted">
+                    Redemption Code
+                  </Text>
+
+                  <Text variant="title" color="text">
+                    {offerRedeemToken.token}
+                  </Text>
+                </View>
+
+                <Text
+                  variant="bodySmall"
+                  color="textMuted"
+                  style={{
+                    textAlign: "center",
+                  }}
+                >
+                  Show this QR code at the counter to redeem this offer.
+                </Text>
+              </View>
+            ) : null}
+          </Modal>
+        </>
       ) : null}
     </View>
   );

@@ -1,7 +1,9 @@
 import type {
   Benefit,
+  BenefitUsageRule,
   MembershipProduct,
   Offer,
+  OfferUsageRule,
   Organization,
   OrganizationBranding,
   OrganizationDetails,
@@ -16,13 +18,17 @@ import type { CustomerExperience } from "./customer-experience";
  *
  * This is a publication artifact, not a replacement for the individual
  * domain entities. Each source entity remains independently editable.
+ * Usage rules are included because the production renderer resolves them
+ * independently from Benefit/Offer records.
  */
 export interface CustomerExperienceReleaseSnapshot {
   customerExperience: CustomerExperience;
   organization: Organization;
   membershipProducts: MembershipProduct[];
   benefits: Benefit[];
+  benefitUsageRules: BenefitUsageRule[];
   offers: Offer[];
+  offerUsageRules: OfferUsageRule[];
   stores: Store[];
   organizationBranding?: OrganizationBranding | null;
   organizationDetails?: OrganizationDetails | null;

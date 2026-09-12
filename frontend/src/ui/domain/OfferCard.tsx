@@ -20,6 +20,7 @@ type OfferCardProps = {
   discountPercentage?: number;
   ctaLabel?: string;
   onPress?: () => void;
+  usageRules?: OfferUsageRule[];
   testID?: string;
 };
 
@@ -144,6 +145,7 @@ export function OfferCard({
   discountPercentage,
   ctaLabel,
   onPress,
+  usageRules: usageRulesOverride,
   testID,
 }: OfferCardProps) {
   const theme = useTheme();
@@ -151,6 +153,13 @@ export function OfferCard({
 
   useEffect(() => {
     let cancelled = false;
+
+    if (usageRulesOverride !== undefined) {
+      setUsageRules(usageRulesOverride.filter((rule) => !rule.isDeleted));
+      return () => {
+        cancelled = true;
+      };
+    }
 
     const loadUsageRules = async () => {
       if (!offerId) {
@@ -176,7 +185,7 @@ export function OfferCard({
     return () => {
       cancelled = true;
     };
-  }, [offerId]);
+  }, [offerId, usageRulesOverride]);
 
   const usageLines = usageRules.flatMap(formatUsageRule);
 

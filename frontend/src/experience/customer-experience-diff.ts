@@ -1,8 +1,10 @@
 import type {
   Benefit,
+  BenefitUsageRule,
   CustomerExperienceReleaseSnapshot,
   MembershipProduct,
   Offer,
+  OfferUsageRule,
   Store,
 } from "@/src/core";
 
@@ -27,6 +29,14 @@ export type ExperienceDiff = {
   added: number;
   modified: number;
   removed: number;
+};
+
+export type ExperienceDiffSummary = {
+  area: string;
+  added: number;
+  modified: number;
+  removed: number;
+  items: ExperienceDiffItem[];
 };
 
 export function diffCustomerExperience(
@@ -67,12 +77,40 @@ export function diffCustomerExperience(
     items,
     offerLabel,
   );
+  const offerNames = new Map(
+    [...(current?.offers ?? []), ...proposed.offers].map((offer) => [
+      offer.id,
+      offerLabel(offer),
+    ]),
+  );
+  compareUsageRules(
+    current?.offerUsageRules ?? [],
+    proposed.offerUsageRules ?? [],
+    "Offers",
+    items,
+    (rule) => rule.offerId,
+    (rule) => `${offerNames.get(rule.offerId) ?? "Offer"} — usage rule`,
+  );
   compareCollection(
     current?.stores ?? [],
     proposed.stores,
     "Stores",
     items,
     storeLabel,
+  );
+  const benefitNames = new Map(
+    [...(current?.benefits ?? []), ...proposed.benefits].map((benefit) => [
+      benefit.id,
+      benefitLabel(benefit),
+    ]),
+  );
+  compareUsageRules(
+    current?.benefitUsageRules ?? [],
+    proposed.benefitUsageRules ?? [],
+    "Benefits",
+    items,
+    (rule) => rule.benefitId,
+    (rule) => `${benefitNames.get(rule.benefitId) ?? "Benefit"} — usage rule`,
   );
 
   return {
@@ -83,6 +121,28 @@ export function diffCustomerExperience(
     ).length,
     removed: items.filter((item) => item.kind === "REMOVED").length,
   };
+}
+
+export function summarizeCustomerExperienceDiff(
+  diff: ExperienceDiff,
+): ExperienceDiffSummary[] {
+  const groups = new Map<string, ExperienceDiffSummary>();
+
+  for (const item of diff.items) {
+    let group = groups.get(item.area);
+    if (!group) {
+      group = { area: item.area, added: 0, modified: 0, removed: 0, items: [] };
+      groups.set(item.area, group);
+    }
+
+    if (item.kind === "ADDED") group.added += 1;
+    else if (item.kind === "REMOVED") group.removed += 1;
+    else group.modified += 1;
+
+    group.items.push(item);
+  }
+
+  return Array.from(groups.values());
 }
 
 function compareDefinition(
@@ -200,6 +260,88 @@ function compareBranding(
       });
     }
   }
+}
+
+function compareUsageRules<T extends { id: string; isDeleted: boolean }>(
+  current: T[],
+  proposed: T[],
+  area: string,
+  items: ExperienceDiffItem[],
+  ownerId: (rule: T) => string,
+  ownerLabel: (rule: T) => string,
+) {
+  const currentByOwner = new Map<string, T[]>();
+  const proposedByOwner = new Map<string, T[]>();
+
+  for (const rule of current) {
+    if (!rule.isDeleted) {
+      const list = currentByOwner.get(ownerId(rule)) ?? [];
+      list.push(rule);
+      currentByOwner.set(ownerId(rule), list);
+    }
+  }
+
+  for (const rule of proposed) {
+    if (!rule.isDeleted) {
+      const list = proposedByOwner.get(ownerId(rule)) ?? [];
+      list.push(rule);
+      proposedByOwner.set(ownerId(rule), list);
+    }
+  }
+
+  const ownerIds = new Set([
+    ...currentByOwner.keys(),
+    ...proposedByOwner.keys(),
+  ]);
+
+  for (const id of ownerIds) {
+    const before = currentByOwner.get(id) ?? [];
+    const after = proposedByOwner.get(id) ?? [];
+
+    if (stable(before) === stable(after)) continue;
+
+    const representative = after[0] ?? before[0];
+    if (!representative) continue;
+
+    items.push({
+      kind:
+        before.length && after.length
+          ? "MODIFIED"
+          : before.length
+            ? "REMOVED"
+            : "ADDED",
+      area,
+      label: ownerLabel(representative),
+      detail: describeUsageRuleModification(before, after),
+    });
+  }
+}
+
+function describeUsageRuleModification(before: any[], after: any[]): string {
+  if (!before.length) return "Usage rule added.";
+  if (!after.length) return "Usage rule removed.";
+
+  const beforeDays = usageDays(before);
+  const afterDays = usageDays(after);
+  if (beforeDays !== afterDays) {
+    return `Usage days: ${beforeDays} → ${afterDays}`;
+  }
+
+  if (stable(before) !== stable(after)) {
+    return "Usage rule changed.";
+  }
+
+  return "Usage rule changed.";
+}
+
+function usageDays(rules: any[]): string {
+  const days = Array.from(
+    new Set(rules.flatMap((rule) => rule.applicableDays ?? [])),
+  );
+  const order = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+  const ordered = order.filter((day) => days.includes(day));
+  if (ordered.length === 7) return "Every day";
+  return ordered.length ? ordered.join("–") : "Any day";
 }
 
 function compareCollection<T extends { id: string; isDeleted: boolean }>(

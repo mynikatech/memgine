@@ -23,7 +23,10 @@ import type {
   CustomerExperienceRelease,
   CustomerExperienceReleaseSnapshot,
 } from "@/src/core";
-import { diffCustomerExperience } from "@/src/experience/customer-experience-diff";
+import {
+  diffCustomerExperience,
+  summarizeCustomerExperienceDiff,
+} from "@/src/experience/customer-experience-diff";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 
@@ -355,9 +358,18 @@ export default function CustomerExperiencePreview() {
   const proposedContent: TemplateDefaultContent =
     proposedExperience.experienceDefinition.content;
 
+  const hasPublishedRelease = !!publishedRelease && !!publishedSnapshot;
   const diff = proposedSnapshot
     ? diffCustomerExperience(publishedSnapshot, proposedSnapshot)
     : { items: [], added: 0, modified: 0, removed: 0 };
+  const diffSummary = summarizeCustomerExperienceDiff(diff);
+
+  const initialPublicationCounts = {
+    memberships: proposedSnapshot?.membershipProducts.length ?? 0,
+    benefits: proposedSnapshot?.benefits.length ?? 0,
+    offers: proposedSnapshot?.offers.length ?? 0,
+    stores: proposedSnapshot?.stores.length ?? 0,
+  };
 
   return (
     <Screen edges={["top"]}>
@@ -401,7 +413,13 @@ export default function CustomerExperiencePreview() {
             />
 
             <Button
-              label={publishing ? "Publishing..." : "Accept & Publish"}
+              label={
+                publishing
+                  ? "Publishing..."
+                  : hasPublishedRelease
+                    ? "Accept & Publish"
+                    : "Publish Customer Experience"
+              }
               onPress={() => {
                 void publish();
               }}
@@ -420,45 +438,72 @@ export default function CustomerExperiencePreview() {
           </Text>
 
           <Text variant="bodySmall" color="textMuted">
-            The same customer-facing experience is rendered on both sides.
-            Current shows the live experience; Proposed shows the draft.
+            {hasPublishedRelease
+              ? "Compare the last published customer experience with the proposed experience."
+              : "This is the first publication for this organization. Review what customers will see after publishing."}
           </Text>
         </View>
 
-        <View style={styles.compareContainer}>
-          <PreviewPanel
-            title="Current"
-            subtitle={
-              currentExperience
-                ? "Currently live"
-                : "No published experience yet"
-            }
-            experience={currentExperience}
-            mode="current"
-            domainData={currentPreviewData}
-            content={currentContent}
-            selectedMembershipId={selectedPreviewMembershipId}
-            onSelectMembership={setSelectedPreviewMembershipId}
-            activeTab={currentPreviewTab}
-            onTabChange={setCurrentPreviewTab}
-            organizationOverride={
-              publishedSnapshot?.organization ?? organization
-            }
-            detailsOverride={publishedSnapshot?.organizationDetails ?? null}
-            membershipLogoUrl={
-              publishedSnapshot?.organizationBranding?.logoUrl ?? undefined
-            }
-            tagline={
-              publishedSnapshot?.organizationBranding?.tagline ?? undefined
-            }
-            heroImageUrl={
-              publishedSnapshot?.organizationBranding?.heroImageUrl ?? undefined
-            }
-          />
+        {hasPublishedRelease ? (
+          <View style={styles.compareContainer}>
+            <PreviewPanel
+              title="Current"
+              subtitle="Currently live"
+              experience={currentExperience}
+              mode="current"
+              domainData={currentPreviewData}
+              content={currentContent}
+              selectedMembershipId={selectedPreviewMembershipId}
+              onSelectMembership={setSelectedPreviewMembershipId}
+              activeTab={currentPreviewTab}
+              onTabChange={setCurrentPreviewTab}
+              organizationOverride={
+                publishedSnapshot?.organization ?? organization
+              }
+              detailsOverride={publishedSnapshot?.organizationDetails ?? null}
+              membershipLogoUrl={
+                publishedSnapshot?.organizationBranding?.logoUrl ?? undefined
+              }
+              tagline={
+                publishedSnapshot?.organizationBranding?.tagline ?? undefined
+              }
+              heroImageUrl={
+                publishedSnapshot?.organizationBranding?.heroImageUrl ??
+                undefined
+              }
+            />
 
+            <PreviewPanel
+              title="Proposed"
+              subtitle="Current draft"
+              experience={proposedExperience}
+              mode="proposed"
+              domainData={previewData}
+              content={proposedContent}
+              selectedMembershipId={selectedPreviewMembershipId}
+              onSelectMembership={setSelectedPreviewMembershipId}
+              activeTab={proposedPreviewTab}
+              onTabChange={setProposedPreviewTab}
+              organizationOverride={
+                proposedSnapshot?.organization ?? organization
+              }
+              detailsOverride={proposedSnapshot?.organizationDetails ?? null}
+              membershipLogoUrl={
+                proposedSnapshot?.organizationBranding?.logoUrl ?? undefined
+              }
+              tagline={
+                proposedSnapshot?.organizationBranding?.tagline ?? undefined
+              }
+              heroImageUrl={
+                proposedSnapshot?.organizationBranding?.heroImageUrl ??
+                undefined
+              }
+            />
+          </View>
+        ) : (
           <PreviewPanel
-            title="Proposed"
-            subtitle="Current draft"
+            title="Proposed Customer Experience"
+            subtitle="Initial publication"
             experience={proposedExperience}
             mode="proposed"
             domainData={previewData}
@@ -481,66 +526,109 @@ export default function CustomerExperiencePreview() {
               proposedSnapshot?.organizationBranding?.heroImageUrl ?? undefined
             }
           />
-        </View>
+        )}
 
         <Card padding="md">
-          <Section title="Changes in This Release">
+          <Section
+            title={
+              hasPublishedRelease
+                ? "Changes in This Release"
+                : "What Will Be Published"
+            }
+          >
             <Text variant="bodySmall" color="textMuted">
-              These are the customer-facing changes between the last published
-              release and the proposed release.
+              {hasPublishedRelease
+                ? "A concise summary of customer-facing changes since the last published release."
+                : "This is the initial customer-facing configuration that will be published."}
             </Text>
 
-            <View style={styles.diffSummary}>
-              <Badge label={`${diff.added} Added`} tone="brand" />
-              <Badge label={`${diff.modified} Modified`} tone="brand" />
-              <Badge label={`${diff.removed} Removed`} tone="brand" />
-            </View>
+            {hasPublishedRelease ? (
+              <>
+                <View style={styles.diffSummary}>
+                  <Badge label={`${diff.added} Added`} tone="brand" />
+                  <Badge label={`${diff.modified} Modified`} tone="brand" />
+                  <Badge label={`${diff.removed} Removed`} tone="brand" />
+                </View>
 
-            {diff.items.length === 0 ? (
-              <Text
-                variant="bodySmall"
-                color="textMuted"
-                style={styles.diffEmpty}
-              >
-                No customer-facing changes are waiting to be published.
-              </Text>
+                {diffSummary.length === 0 ? (
+                  <Text
+                    variant="bodySmall"
+                    color="textMuted"
+                    style={styles.diffEmpty}
+                  >
+                    No customer-facing changes are waiting to be published.
+                  </Text>
+                ) : (
+                  <View style={styles.diffList}>
+                    {diffSummary.map((group) => (
+                      <View key={group.area} style={styles.diffItem}>
+                        <View style={styles.diffItemHeader}>
+                          <Text variant="body" color="text">
+                            {group.area}
+                          </Text>
+                          <View style={styles.diffSummary}>
+                            {group.added ? (
+                              <Badge
+                                label={`${group.added} Added`}
+                                tone="brand"
+                              />
+                            ) : null}
+                            {group.modified ? (
+                              <Badge
+                                label={`${group.modified} Modified`}
+                                tone="brand"
+                              />
+                            ) : null}
+                            {group.removed ? (
+                              <Badge
+                                label={`${group.removed} Removed`}
+                                tone="brand"
+                              />
+                            ) : null}
+                          </View>
+                        </View>
+                        <Text variant="bodySmall" color="textSecondary">
+                          {group.items
+                            .slice(0, 3)
+                            .map((item) => item.label)
+                            .join(" · ")}
+                          {group.items.length > 3
+                            ? ` · +${group.items.length - 3} more`
+                            : ""}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
             ) : (
               <View style={styles.diffList}>
-                {diff.items.map((item, index) => (
-                  <View
-                    key={`${item.area}-${item.label}-${index}`}
-                    style={styles.diffItem}
-                  >
-                    <View style={styles.diffItemHeader}>
-                      <Text variant="bodySmall" color="textMuted">
-                        {item.area}
-                      </Text>
-                      <Badge label={item.kind} tone="brand" />
-                    </View>
-                    <Text variant="body" color="text">
-                      {item.label}
-                    </Text>
-                    {item.beforeValue !== undefined ||
-                    item.afterValue !== undefined ? (
-                      <View style={styles.diffVisualRow}>
-                        <DiffVisualValue
-                          label="Current"
-                          value={item.beforeValue}
-                        />
-                        <Text variant="bodySmall" color="textMuted">
-                          →
-                        </Text>
-                        <DiffVisualValue
-                          label="Proposed"
-                          value={item.afterValue}
-                        />
-                      </View>
-                    ) : null}
-                    <Text variant="bodySmall" color="textSecondary">
-                      {item.detail}
-                    </Text>
-                  </View>
-                ))}
+                <View style={styles.diffItem}>
+                  <Text variant="body" color="text">
+                    Customer Experience
+                  </Text>
+                  <Text variant="bodySmall" color="textSecondary">
+                    Initial configuration and branding will be published.
+                  </Text>
+                </View>
+                <View style={styles.initialPublicationGrid}>
+                  <DetailRow
+                    label="Memberships"
+                    value={String(initialPublicationCounts.memberships)}
+                  />
+                  <DetailRow
+                    label="Benefits"
+                    value={String(initialPublicationCounts.benefits)}
+                  />
+                  <DetailRow
+                    label="Offers"
+                    value={String(initialPublicationCounts.offers)}
+                  />
+                  <DetailRow
+                    label="Stores"
+                    value={String(initialPublicationCounts.stores)}
+                  />
+                </View>
               </View>
             )}
           </Section>
@@ -650,14 +738,27 @@ export default function CustomerExperiencePreview() {
             <DetailRow
               label="Proposed State"
               value={
-                diff.items.length === 0
-                  ? "No pending customer-facing changes"
-                  : `${diff.items.length} change${diff.items.length === 1 ? "" : "s"} pending`
+                hasPublishedRelease
+                  ? diff.items.length === 0
+                    ? "No pending customer-facing changes"
+                    : `${diff.items.length} change${diff.items.length === 1 ? "" : "s"} pending`
+                  : "Initial publication"
               }
             />
-            <DetailRow label="Added" value={String(diff.added)} />
-            <DetailRow label="Modified" value={String(diff.modified)} />
-            <DetailRow label="Removed" value={String(diff.removed)} />
+            {hasPublishedRelease ? (
+              <>
+                <DetailRow label="Added" value={String(diff.added)} />
+                <DetailRow label="Modified" value={String(diff.modified)} />
+                <DetailRow label="Removed" value={String(diff.removed)} />
+              </>
+            ) : (
+              <>
+                <DetailRow
+                  label="Initial Content"
+                  value={`${initialPublicationCounts.memberships} memberships · ${initialPublicationCounts.benefits} benefits · ${initialPublicationCounts.offers} offers · ${initialPublicationCounts.stores} stores`}
+                />
+              </>
+            )}
             <DetailRow
               label="Last Published"
               value={
@@ -961,6 +1062,11 @@ const styles = StyleSheet.create({
   diffList: {
     gap: 10,
     marginTop: 14,
+  },
+
+  initialPublicationGrid: {
+    marginTop: 8,
+    gap: 2,
   },
 
   diffItem: {

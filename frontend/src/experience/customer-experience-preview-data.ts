@@ -5,6 +5,8 @@ import type {
   Redemption,
   Status,
   Store,
+  BenefitUsageRule,
+  OfferUsageRule,
   Subscription,
 } from "@/src/core";
 
@@ -31,6 +33,8 @@ export type PreviewDomainData = {
   memberships: PreviewMembership[];
   selectedSubscriptionId: string;
   availableMemberships: MembershipProduct[];
+  benefitUsageRules: BenefitUsageRule[];
+  offerUsageRules: OfferUsageRule[];
 };
 
 /**
@@ -96,12 +100,27 @@ export async function loadPreviewData(
       !store.isDeleted && isActiveStatus(store.storeStatusId, storeStatuses),
   );
 
+  const [benefitUsageRules, offerUsageRules] = await Promise.all([
+    Promise.all(
+      activeBenefits.map((benefit) =>
+        services.benefitUsageRule.listByBenefit(benefit.id),
+      ),
+    ).then((rules) => rules.flat().filter((rule) => !rule.isDeleted)),
+    Promise.all(
+      activeOffers.map((offer) =>
+        services.offerUsageRule.listByOffer(offer.id),
+      ),
+    ).then((rules) => rules.flat().filter((rule) => !rule.isDeleted)),
+  ]);
+
   return buildPreviewDomainData(
     activeProducts,
     activeBenefits,
     activeOffers,
     activeStores,
     previewSubscriptionStatus ?? undefined,
+    benefitUsageRules,
+    offerUsageRules,
   );
 }
 
@@ -117,6 +136,8 @@ export async function loadPreviewDataFromRelease(
     snapshot.offers,
     snapshot.stores,
     previewSubscriptionStatus ?? undefined,
+    snapshot.benefitUsageRules,
+    snapshot.offerUsageRules,
   );
 }
 
@@ -126,6 +147,8 @@ function buildPreviewDomainData(
   offers: Offer[],
   stores: Store[],
   previewSubscriptionStatus?: Status,
+  benefitUsageRules: BenefitUsageRule[] = [],
+  offerUsageRules: OfferUsageRule[] = [],
 ): PreviewDomainData {
   // The customer renderer displays MembershipProduct.displayName.
   // Build the preview display name using the exact same plan + product
@@ -166,6 +189,8 @@ function buildPreviewDomainData(
     memberships,
     selectedSubscriptionId: selected?.subscription.id ?? "",
     availableMemberships: previewProducts,
+    benefitUsageRules,
+    offerUsageRules,
   };
 }
 
