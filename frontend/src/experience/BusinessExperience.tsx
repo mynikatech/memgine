@@ -1173,9 +1173,45 @@ export function BusinessExperience({
             ))}
 
             {!visibleOffers.length ? (
-              <Card padding="lg">
-                <Text variant="bodySmall" color="textMuted">
-                  No offers are currently available for this membership.
+              <Card
+                padding="lg"
+                style={{
+                  alignItems: "center",
+                  paddingVertical: 32,
+                }}
+              >
+                <View
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 28,
+                    backgroundColor: theme.colors.primarySoft,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: theme.spacing.sm,
+                  }}
+                >
+                  <Ionicons
+                    name="pricetag-outline"
+                    size={28}
+                    color={theme.colors.primary}
+                  />
+                </View>
+
+                <Text variant="bodyStrong" color="text">
+                  No offers available
+                </Text>
+
+                <Text
+                  variant="bodySmall"
+                  color="textMuted"
+                  style={{
+                    textAlign: "center",
+                    marginTop: 4,
+                  }}
+                >
+                  There are no special offers available for you right now. Check
+                  back later for something new.
                 </Text>
               </Card>
             ) : null}
