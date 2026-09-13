@@ -1,0 +1,88 @@
+[versions]
+kotlin = "2.0.21"
+ktor = "3.0.1"
+kotlinx-serialization = "1.7.1"
+logback = "1.5.6"
+
+postgres = "42.7.3"
+hikari = "5.1.0"
+jdbi = "3.49.5"
+
+liquibase = "4.29.2"
+liquibase-gradle = "2.2.0"
+
+aws-sdk = "2.25.47"
+
+[libraries]
+
+# -------------------------
+# Ktor Server
+# -------------------------
+
+ktor-server-netty = { module = "io.ktor:ktor-server-netty", version.ref = "ktor" }
+ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
+ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation", version.ref = "ktor" }
+ktor-server-hsts = { module = "io.ktor:ktor-server-hsts", version.ref = "ktor" }
+ktor-server-forwarded-header = { module = "io.ktor:ktor-server-forwarded-header", version.ref = "ktor" }
+ktor-server-call-logging = { module = "io.ktor:ktor-server-call-logging", version.ref = "ktor" }
+ktor-server-call-id = { module = "io.ktor:ktor-server-call-id", version.ref = "ktor" }
+ktor-server-status-pages = { module = "io.ktor:ktor-server-status-pages", version.ref = "ktor" }
+
+# -------------------------
+# Ktor Serialization
+# -------------------------
+
+ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+
+# -------------------------
+# Ktor Client
+# -------------------------
+
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
+ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
+
+# -------------------------
+# Logging
+# -------------------------
+
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+
+# -------------------------
+# PostgreSQL / Connection Pool
+# -------------------------
+
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgres" }
+hikari = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
+
+# -------------------------
+# JDBI
+# -------------------------
+
+jdbi-core = { module = "org.jdbi:jdbi3-core", version.ref = "jdbi" }
+jdbi-kotlin = { module = "org.jdbi:jdbi3-kotlin", version.ref = "jdbi" }
+jdbi-sqlobject = { module = "org.jdbi:jdbi3-sqlobject", version.ref = "jdbi" }
+jdbi-kotlin-sqlobject = { module = "org.jdbi:jdbi3-kotlin-sqlobject", version.ref = "jdbi" }
+
+# -------------------------
+# Liquibase
+# -------------------------
+
+liquibase = { module = "org.liquibase:liquibase-core", version.ref = "liquibase" }
+
+# -------------------------
+# AWS
+# Keep because Memgine will need AWS services later
+# -------------------------
+
+aws-sns = { module = "software.amazon.awssdk:sns", version.ref = "aws-sdk" }
+aws-sqs = { module = "software.amazon.awssdk:sqs", version.ref = "aws-sdk" }
+aws-ses = { module = "software.amazon.awssdk:ses", version.ref = "aws-sdk" }
+
+[plugins]
+
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+ktor-io = { id = "io.ktor.plugin", version.ref = "ktor" }
+liquibase-gradle = { id = "org.liquibase.gradle", version.ref = "liquibase-gradle" }
