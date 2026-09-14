@@ -1,0 +1,110 @@
+databaseChangeLog:
+  # 0. Schema creation is idempotent. The environment bootstrap normally
+  # creates the schema owned by the deployment role. If it already exists,
+  # this changeset is marked ran so Liquibase does not need database CREATE.
+  - changeSet:
+      id: 000-create-schema
+      author: memgine
+      labels: baselineSchema
+      preConditions:
+        - sqlCheck:
+            expectedResult: "0"
+            sql: "SELECT COUNT(*) FROM pg_namespace WHERE nspname = '${schemaName}'"
+          onFail: MARK_RAN
+      changes:
+        - sql:
+            sql: |
+              CREATE SCHEMA IF NOT EXISTS "${schemaName}";
+            splitStatements: true
+            endDelimiter: ";"
+
+  - changeSet:
+      id: 001-schema-search-path
+      author: memgine
+      labels: baselineSchema
+      changes:
+        - sql:
+            sql: |
+              SET search_path TO "${schemaName}", pg_catalog;
+            splitStatements: true
+            endDelimiter: ";"
+
+  - changeSet:
+      id: 010-tables
+      author: memgine
+      labels: baseline
+      changes:
+        - sqlFile:
+            path: sql/010-tables.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: false
+            endDelimiter: ";"
+            expandExpressions: true
+
+  - changeSet:
+      id: 020-indexes
+      author: memgine
+      labels: baseline
+      changes:
+        - sqlFile:
+            path: sql/020-indexes.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: false
+            endDelimiter: ";"
+            expandExpressions: true
+
+  - changeSet:
+      id: 030-foreign-keys
+      author: memgine
+      labels: baseline
+      changes:
+        - sqlFile:
+            path: sql/030-foreign-keys.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            endDelimiter: ";"
+            expandExpressions: true
+
+  - changeSet:
+      id: 040-validation-constraints
+      author: memgine
+      labels: baseline
+      changes:
+        - sqlFile:
+            path: sql/040-validation-constraints.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            endDelimiter: ";"
+            expandExpressions: true
+
+  - changeSet:
+      id: 050-reference-data
+      author: memgine
+      labels: baseline
+      changes:
+        - sqlFile:
+            path: sql/050-reference-data.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: false
+            endDelimiter: ";"
+            expandExpressions: true
+
+  # Liquibase creates these tables in the application schema. Runtime does
+  # not need to modify Liquibase metadata, so remove the blanket default DML
+  # grant from these two tables after they exist.
+  - changeSet:
+      id: 060-lock-liquibase-history-tables
+      author: memgine
+      labels: baselineSecurity
+      changes:
+        - sql:
+            sql: |
+              REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE "${schemaName}".databasechangelog FROM ${appRole};
+              REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE "${schemaName}".databasechangeloglock FROM ${appRole};
+            splitStatements: true
+            endDelimiter: ";"

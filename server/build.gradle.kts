@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
@@ -50,12 +52,6 @@ dependencies {
     implementation(libs.jdbi.kotlin.sqlobject)
 
     // -------------------------
-    // Liquibase
-    // -------------------------
-
-    implementation(libs.liquibase)
-
-    // -------------------------
     // AWS
     // -------------------------
 
@@ -86,3 +82,4 @@ tasks.shadowJar {
     archiveFileName.set("memgine-server.jar")
     mergeServiceFiles()
 }
+

@@ -1,0 +1,17 @@
+databaseChangeLog:
+
+  - property:
+      name: schemaName
+      value: memgine
+
+  - property:
+      name: appRole
+      value: memgine_app_prod
+
+  - include:
+      file: ../../liquibase/baseline/000-initial-baseline.yaml
+      relativeToChangelogFile: true
+
+  - includeAll:
+      path: ../../liquibase/changes
+      relativeToChangelogFile: true

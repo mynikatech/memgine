@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 rootProject.name = "Memgine"
 
 include(":server")
+include(":DB")

@@ -1,0 +1,55 @@
+-- Memgine PostgreSQL environment bootstrap reference.
+-- PostgreSQL 17.
+--
+-- Security model (locked):
+--   database owner -> postgres / infrastructure administrator
+--   schema owner   -> environment deployment role
+--   Liquibase      -> environment deployment role (LOGIN)
+--   Ktor runtime   -> environment application role (NOLOGIN; DML only)
+--
+-- LOCAL / DEV
+--   database = memgine_dev
+--   schema   = memginedev
+--   app role = memgine_app_dev
+--   deploy   = memgine_dev_user
+--
+-- PROD
+--   database = memgine
+--   schema   = memgine
+--   app role = memgine_app_prod
+--   deploy   = memgine_prod_user
+--
+-- This is the reference process. AWS database/instance provisioning belongs
+-- to Terraform. Run the database/role/schema bootstrap with a privileged
+-- PostgreSQL administrator. Never commit passwords.
+--
+-- 1) Database (run while connected to postgres):
+--    CREATE DATABASE memgine_dev OWNER postgres ENCODING 'UTF8' TEMPLATE template0;
+--    -- or PROD: CREATE DATABASE memgine OWNER postgres ENCODING 'UTF8' TEMPLATE template0;
+--
+-- 2) Roles:
+--    CREATE ROLE memgine_app_dev NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+--    CREATE ROLE memgine_dev_user LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+--    -- PROD uses memgine_app_prod / memgine_prod_user.
+--
+-- 3) Connect to the target database and create the schema owned by the deploy role:
+--    CREATE SCHEMA memginedev AUTHORIZATION memgine_dev_user;
+--    -- PROD: CREATE SCHEMA memgine AUTHORIZATION memgine_prod_user;
+--
+-- 4) Lock down PUBLIC and grant schema access:
+--    REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+--    GRANT USAGE, CREATE ON SCHEMA memginedev TO memgine_dev_user;
+--    GRANT USAGE ON SCHEMA memginedev TO memgine_app_dev;
+--
+-- 5) Default privileges for future Liquibase-created objects:
+--    ALTER DEFAULT PRIVILEGES FOR ROLE memgine_dev_user IN SCHEMA memginedev
+--      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO memgine_app_dev;
+--    ALTER DEFAULT PRIVILEGES FOR ROLE memgine_dev_user IN SCHEMA memginedev
+--      GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO memgine_app_dev;
+--
+-- 6) Role search paths:
+--    ALTER ROLE memgine_dev_user SET search_path TO memginedev, pg_catalog;
+--    ALTER ROLE memgine_app_dev SET search_path TO memginedev, pg_catalog;
+--
+-- The runtime role never receives schema CREATE, database CREATE, role creation,
+-- SUPERUSER, or Liquibase/deployment credentials.

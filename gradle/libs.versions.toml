@@ -10,6 +10,7 @@ jdbi = "3.49.5"
 
 liquibase = "4.29.2"
 liquibase-gradle = "2.2.0"
+picocli="4.6.1"
 
 aws-sdk = "2.25.47"
 
@@ -56,6 +57,7 @@ logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "lo
 postgresql = { module = "org.postgresql:postgresql", version.ref = "postgres" }
 hikari = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
 
+
 # -------------------------
 # JDBI
 # -------------------------
@@ -70,6 +72,7 @@ jdbi-kotlin-sqlobject = { module = "org.jdbi:jdbi3-kotlin-sqlobject", version.re
 # -------------------------
 
 liquibase = { module = "org.liquibase:liquibase-core", version.ref = "liquibase" }
+picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
 
 # -------------------------
 # AWS

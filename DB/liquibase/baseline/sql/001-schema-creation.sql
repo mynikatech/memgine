@@ -1,0 +1,2 @@
+-- Schema creation is handled by the environment bootstrap.
+-- This file is intentionally retained as a reference placeholder.

@@ -86,3 +86,15 @@ android-sdk/
 credentials.json
 *.key
 .credentials
+
+# Gradle
+.gradle/
+**/.gradle/
+**/build/
+
+# Local Liquibase configuration containing credentials
+DB/env/local/liquibase.local.properties
+
+# Microsoft Office temporary files
+~$*
+**/~$*
