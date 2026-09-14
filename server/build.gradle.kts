@@ -1,10 +1,7 @@
-import java.util.Properties
-
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ktor.io)
-    alias(libs.plugins.liquibase.gradle)
 }
 
 dependencies {
@@ -23,6 +20,7 @@ dependencies {
     implementation(libs.ktor.server.forwarded.header)
     implementation(libs.ktor.server.call.id)
     implementation(libs.ktor.server.status.pages)
+    implementation(libs.ktor.server.https.redirect)
 
     // Ktor client
     implementation(libs.ktor.client.core)
@@ -71,7 +69,7 @@ kotlin {
 }
 
 application {
-    mainClass.set("com.mynikatech.memgine.server.ApplicationKt")
+    mainClass.set("com.mynikatech.memgine.ApplicationKt")
 
     applicationDefaultJvmArgs = listOf(
         "-Dio.ktor.development=true"
@@ -82,4 +80,3 @@ tasks.shadowJar {
     archiveFileName.set("memgine-server.jar")
     mergeServiceFiles()
 }
-

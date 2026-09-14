@@ -1,12 +1,12 @@
 [versions]
-kotlin = "2.0.21"
-ktor = "3.0.1"
-kotlinx-serialization = "1.7.1"
-logback = "1.5.6"
+kotlin = "2.4.20"
+ktor = "3.5.2"
+kotlinx-serialization = "1.11.0"
+logback = "1.5.34"
 
-postgres = "42.7.3"
-hikari = "5.1.0"
-jdbi = "3.49.5"
+postgres = "42.7.8"
+hikari = "6.3.3"
+jdbi = "3.54.0"
 
 liquibase = "4.29.2"
 liquibase-gradle = "2.2.0"
@@ -28,6 +28,7 @@ ktor-server-forwarded-header = { module = "io.ktor:ktor-server-forwarded-header"
 ktor-server-call-logging = { module = "io.ktor:ktor-server-call-logging", version.ref = "ktor" }
 ktor-server-call-id = { module = "io.ktor:ktor-server-call-id", version.ref = "ktor" }
 ktor-server-status-pages = { module = "io.ktor:ktor-server-status-pages", version.ref = "ktor" }
+ktor-server-https-redirect = { module = "io.ktor:ktor-server-http-redirect", version.ref = "ktor" }
 
 # -------------------------
 # Ktor Serialization
