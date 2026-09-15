@@ -21,6 +21,7 @@ dependencies {
     implementation(libs.ktor.server.call.id)
     implementation(libs.ktor.server.status.pages)
     implementation(libs.ktor.server.https.redirect)
+    implementation(libs.ktor.server.cors)
 
     // Ktor client
     implementation(libs.ktor.client.core)

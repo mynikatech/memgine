@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 020-organization-functions
+      author: memgine
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/020-organization-functions.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

@@ -11,6 +11,11 @@ import {
   LocalizationProvider,
 } from "@/src/providers";
 
+import { runPdmStatusIdMigrationV1 } from "../src/data/migrations/pdm-status-id-migration-v1";
+import { runOrganizationStatusIdMigrationV2 } from "../src/data/migrations/organization-status-id-migration-v2";
+
+runPdmStatusIdMigrationV1();
+runOrganizationStatusIdMigrationV2();
 // Disable logbox errors etc so that users can see the app
 // and agent works as expected.
 LogBox.ignoreAllLogs(true);

@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 030-expand-identifier-columns
+      author: memgine
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/030-expand-identifier-columns.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

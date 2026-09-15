@@ -1,7 +1,14 @@
 package com.mynikatech.memgine
 
+import com.mynikatech.memgine.component.entitystatus.EntityStatusCache
+import com.mynikatech.memgine.component.entitystatus.EntityStatusService
+import com.mynikatech.memgine.component.entitystatus.EntityStatusSql
+import com.mynikatech.memgine.component.referencedata.ReferenceDataCache
+import com.mynikatech.memgine.component.referencedata.ReferenceDataService
+import com.mynikatech.memgine.component.referencedata.ReferenceDataSql
 import com.mynikatech.memgine.config.AppConfig
 import com.mynikatech.memgine.database.DatabaseFactory
+import com.mynikatech.memgine.plugins.configureCors
 import com.mynikatech.memgine.plugins.configureMonitoring
 import com.mynikatech.memgine.plugins.configureRouting
 import com.mynikatech.memgine.plugins.configureSecurity
@@ -34,5 +41,39 @@ fun Application.module() {
     configureMonitoring()
     configureSecurity(config.server)
     configureStatusPages()
-    configureRouting(database)
+    configureCors()
+
+    val referenceDataSql =
+        database.jdbi.onDemand(ReferenceDataSql::class.java)
+
+    val referenceDataCache =
+        ReferenceDataCache()
+
+    val referenceDataService =
+        ReferenceDataService(
+            referenceDataSql,
+            referenceDataCache
+        )
+
+    val entityStatusSql =
+        database.jdbi.onDemand(EntityStatusSql::class.java)
+
+    val entityStatusCache =
+        EntityStatusCache()
+
+    val entityStatusService =
+        EntityStatusService(
+            entityStatusSql,
+            entityStatusCache
+        )
+
+    // Populate server caches from PostgreSQL during startup.
+    referenceDataService.refresh()
+    entityStatusService.refresh()
+
+    configureRouting(
+        database,
+        referenceDataService,
+        entityStatusService
+    )
 }

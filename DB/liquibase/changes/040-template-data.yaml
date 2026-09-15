@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 040-template-data
+      author: memgine
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/040-template-data.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

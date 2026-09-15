@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 010-platform-admin-bootstrap
+      author: memgine
+      changes:
+        - sqlFile:
+            path: ../sql/010-platform-admin-bootstrap.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: false

@@ -336,13 +336,13 @@ export function BusinessForm({
         {
           ...detailForm,
 
-          registrationNumber: detailForm.registrationNumber.trim(),
+          registrationNumber: detailForm.registrationNumber?.trim() ?? "",
 
-          gstNumber: detailForm.gstNumber.trim(),
+          gstNumber: detailForm.gstNumber?.trim() ?? "",
 
-          supportEmail: detailForm.supportEmail.trim(),
+          supportEmail: detailForm.supportEmail?.trim() ?? "",
 
-          aboutOrganization: detailForm.aboutOrganization.trim(),
+          aboutOrganization: detailForm.aboutOrganization?.trim() ?? "",
 
           address: {
             ...detailForm.address,
@@ -361,8 +361,8 @@ export function BusinessForm({
           },
 
           supportPhone: {
-            ...detailForm.supportPhone,
-            number: detailForm.supportPhone.number.trim(),
+            ...(detailForm.supportPhone ?? EMPTY_PHONE()),
+            number: detailForm.supportPhone?.number.trim() ?? "",
           },
         },
       );
@@ -691,7 +691,7 @@ export function BusinessForm({
               <View style={compact ? styles.fullWidth : styles.halfWidth}>
                 <Input
                   label="Registration Number"
-                  value={detailForm.registrationNumber}
+                  value={detailForm.registrationNumber ?? ""}
                   onChangeText={(value) =>
                     updateDetails("registrationNumber", value)
                   }
@@ -704,7 +704,7 @@ export function BusinessForm({
               <View style={compact ? styles.fullWidth : styles.halfWidth}>
                 <Input
                   label="GST / Tax Number"
-                  value={detailForm.gstNumber}
+                  value={detailForm.gstNumber ?? ""}
                   onChangeText={(value) => updateDetails("gstNumber", value)}
                   placeholder="GST / tax number"
                   maxLength={20}
@@ -715,7 +715,7 @@ export function BusinessForm({
               <View style={compact ? styles.fullWidth : styles.halfWidth}>
                 <Input
                   label="Support Email"
-                  value={detailForm.supportEmail}
+                  value={detailForm.supportEmail ?? ""}
                   onChangeText={(value) => updateDetails("supportEmail", value)}
                   keyboardType="email-address"
                   placeholder="support@example.com"
@@ -727,7 +727,7 @@ export function BusinessForm({
               <View style={styles.fullWidth}>
                 {phoneField(
                   "Support Phone",
-                  detailForm.supportPhone,
+                  detailForm.supportPhone ?? EMPTY_PHONE(),
                   (phone) => updatePhone("supportPhone", phone),
                   "business-support-phone",
                 )}
@@ -802,7 +802,7 @@ export function BusinessForm({
 
             <TextArea
               label="About Organization"
-              value={detailForm.aboutOrganization}
+              value={detailForm.aboutOrganization ?? ""}
               onChangeText={(value) =>
                 updateDetails("aboutOrganization", value)
               }

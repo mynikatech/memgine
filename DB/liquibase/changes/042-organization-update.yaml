@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 042-organization-update
+      author: memgine
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/042-organization-update.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
