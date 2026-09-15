@@ -142,7 +142,7 @@ export class OrganizationApi {
     const serverResult = await httpClient.put<
       UpdateOrganizationApiRequest,
       UpdateOrganizationServerResponse
-    >(`/api/v1/organizations/${organizationId}`, request);
+    >(`/api/v1/organizations/update/${organizationId}`, request);
 
     if (!serverResult.success) {
       return apiFailure(serverResult.error.code, serverResult.error.message);

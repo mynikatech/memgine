@@ -1,6 +1,7 @@
 import type { ID } from "../domain/common";
 import type { EntityStatus, EntityType, Status } from "../domain/entities";
 import type { StatusService } from "./status";
+import { httpClient } from "@/src/data/api/http-client";
 
 type EntityStatusSnapshot = {
   statuses: Status[];
@@ -8,40 +9,23 @@ type EntityStatusSnapshot = {
   entityStatuses: EntityStatus[];
 };
 
-type ApiResponse<T> = {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-  };
-};
-
 export class ServerStatusService implements StatusService {
   private snapshot: EntityStatusSnapshot | null = null;
-
-  constructor(private readonly baseUrl: string) {}
 
   async refresh(): Promise<void> {
     this.snapshot = await this.load();
   }
 
   private async load(): Promise<EntityStatusSnapshot> {
-    const response = await fetch(`${this.baseUrl}/api/v1/entity-status`);
+    const result = await httpClient.get<EntityStatusSnapshot>(
+      "/api/v1/entity-status",
+    );
 
-    if (!response.ok) {
-      throw new Error(`Entity status request failed: ${response.status}`);
+    if (!result.success) {
+      throw new Error(result.error.message);
     }
 
-    const body = (await response.json()) as ApiResponse<EntityStatusSnapshot>;
-
-    if (!body.success || !body.data) {
-      throw new Error(
-        body.error?.message ?? "Unable to load entity status data",
-      );
-    }
-
-    return body.data;
+    return result.data;
   }
 
   private async getSnapshot(): Promise<EntityStatusSnapshot> {

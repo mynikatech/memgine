@@ -24,7 +24,7 @@ type BusinessPreviewProps = {
   proposedDetails: OrganizationDetails;
 
   organizationTypes: ReferenceDataItem[];
-  organizationStatuses: Status[];
+  organizationStatuses: ReferenceDataItem[];
   countries: {
     id: string;
     name: string;
@@ -80,8 +80,8 @@ function typeName(id: string, items: ReferenceDataItem[]): string {
   return items.find((item) => item.id === id)?.name ?? id ?? "—";
 }
 
-function statusName(id: string, items: Status[]): string {
-  return items.find((item) => item.id === id)?.statusName ?? id ?? "—";
+function statusName(id: string, items: ReferenceDataItem[]): string {
+  return items.find((item) => item.id === id)?.name ?? id ?? "—";
 }
 
 function addDiff(

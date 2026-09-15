@@ -22,9 +22,10 @@ export default function OrgAdminBusiness() {
   >([]);
 
   const [organizationStatuses, setOrganizationStatuses] = useState<
-    Awaited<ReturnType<typeof services.status.listOrganizationStatuses>>
+    Awaited<
+      ReturnType<typeof services.status.listEntityStatusesByEntityTypeCode>
+    >
   >([]);
-
   const [countries, setCountries] = useState<
     Awaited<ReturnType<typeof services.referenceData.listCountries>>
   >([]);
@@ -96,7 +97,7 @@ export default function OrgAdminBusiness() {
           services.organization.getOrganization(organization.id),
           services.organization.getOrganizationDetails(organization.id),
           services.referenceData.listOrganizationTypes(),
-          services.status.listOrganizationStatuses(),
+          services.status.listEntityStatusesByEntityTypeCode("ORGANIZATION"),
           services.referenceData.listCountries(),
         ]);
 

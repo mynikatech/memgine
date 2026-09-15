@@ -15,7 +15,7 @@ import { LocalOfferService } from "./offer-service.local";
 import { LocalSubscriptionService } from "./subscription-service.local";
 import { LocalPaymentService } from "./payment-service.local";
 import { CachedStatusService } from "./status-cache";
-import { LocalStatusService } from "./status-service.local";
+import { ServerStatusService } from "./status-service.server";
 import { LocalRedemptionService } from "./redemption-service.local";
 import { LocalOfferRedemptionService } from "./offer-redemption-service.local";
 import { LocalCustomerPreferenceService } from "./customer-preference-service.local";
@@ -72,9 +72,10 @@ const benefitService: BenefitService = new LocalBenefitService(
 const offerService: OfferService = new LocalOfferService(mockServices.offer);
 const userAcquisitionService: UserAcquisitionService =
   new LocalUserAcquisitionService(mockServices.userAcquisition);
-const localStatusService = new LocalStatusService();
+const serverStatusService = new ServerStatusService();
+
 const statusService: StatusService = new CachedStatusService(
-  localStatusService,
+  serverStatusService,
 );
 const qrCodeService: QRCodeService = new LocalQRCodeService(apis.qrCode);
 const qrScanHistoryService: QRScanHistoryService =

@@ -17,6 +17,8 @@ import {
   ReferenceDataItem,
   RegionReference,
   Status,
+  EntityStatus,
+  services,
 } from "@/src/core";
 
 import { useTheme } from "@/src/providers";
@@ -42,7 +44,7 @@ type BusinessFormProps = {
   regions: RegionReference[];
   cities: CityReference[];
   organizationTypes: ReferenceDataItem[];
-  organizationStatuses: Status[];
+  organizationStatuses: EntityStatus[];
 
   onCountryChange?: (countryCode: string) => void;
   onRegionChange?: (countryCode: string, regionCode: string) => void;
@@ -193,6 +195,48 @@ export function BusinessForm({
     primaryPhone: false,
     address: false,
   });
+  const [resolvedOrganizationStatuses, setResolvedOrganizationStatuses] =
+    useState<ReferenceDataItem[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function resolveOrganizationStatuses() {
+      const items = await Promise.all(
+        organizationStatuses.map(async (entityStatus) => {
+          const status = await services.status.getStatus(entityStatus.statusId);
+
+          if (!status) {
+            return null;
+          }
+
+          const item: ReferenceDataItem = {
+            id: entityStatus.id,
+            code: status.statusCode,
+            name: status.statusName,
+            displayOrder: entityStatus.displayOrder,
+            active: entityStatus.isActive && status.isActive,
+          };
+
+          return item;
+        }),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setResolvedOrganizationStatuses(
+        items.filter((item): item is ReferenceDataItem => item !== null),
+      );
+    }
+
+    void resolveOrganizationStatuses();
+
+    return () => {
+      mounted = false;
+    };
+  }, [organizationStatuses]);
 
   useEffect(() => {
     setForm(organization);
@@ -638,9 +682,11 @@ export function BusinessForm({
                   label="Status"
                   value={form.organizationStatusId}
                   items={organizationStatuses}
-                  onChange={() => undefined}
+                  onChange={(value) =>
+                    updateOrganization("organizationStatusId", value)
+                  }
                   placeholder="Select status"
-                  disabled
+                  disabled={!isEditing}
                 />
               </View>
 
@@ -835,7 +881,7 @@ export function BusinessForm({
           proposedOrganization={form}
           proposedDetails={detailForm}
           organizationTypes={organizationTypes}
-          organizationStatuses={organizationStatuses}
+          organizationStatuses={resolvedOrganizationStatuses}
           countries={countries}
         />
       </View>

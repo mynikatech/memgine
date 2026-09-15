@@ -17,6 +17,34 @@ const API_BASE_URL =
     : "http://10.0.2.2:8082");
 
 export class HttpClient {
+  async get<TResponse>(path: string): Promise<ApiResult<TResponse>> {
+    try {
+      const response = await fetch(`${API_BASE_URL}${path}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      const payload = (await response.json()) as ServerApiResponse<TResponse>;
+
+      if (!response.ok || !payload.success || payload.data == null) {
+        return apiFailure(
+          payload.error?.code ?? `HTTP_${response.status}`,
+          payload.error?.message ?? "Server request failed.",
+        );
+      }
+
+      return apiSuccess(payload.data);
+    } catch (error) {
+      return apiFailure(
+        "NETWORK_ERROR",
+        error instanceof Error
+          ? error.message
+          : "Unable to reach Memgine server.",
+      );
+    }
+  }
   async post<TRequest, TResponse>(
     path: string,
     body: TRequest,

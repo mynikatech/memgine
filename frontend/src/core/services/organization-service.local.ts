@@ -329,15 +329,26 @@ export class LocalOrganizationService implements OrganizationService {
   }
 
   async getOrganizationBranding(organizationId: ID) {
-    const local = await this.brandingRepository.getCurrent(organizationId);
-    return local ?? this.fallback.getOrganizationBranding(organizationId);
+    const result = await apis.branding.get(organizationId);
+
+    if (!result.success) {
+      throw new Error(result.error.message);
+    }
+
+    return result.data ?? this.fallback.getOrganizationBranding(organizationId);
   }
 
   async updateOrganizationBranding(
     organizationId: ID,
     branding: Parameters<OrganizationService["updateOrganizationBranding"]>[1],
   ) {
-    return this.brandingRepository.save(organizationId, branding);
+    const result = await apis.branding.update(organizationId, branding);
+
+    if (!result.success) {
+      throw new Error(result.error.message);
+    }
+
+    return result.data;
   }
 
   async getNotificationConfiguration(organizationId: ID) {
