@@ -438,6 +438,16 @@ export class InMemoryStatusService implements StatusService {
     return this.listEntityStatusesByEntityType(entityType.id);
   }
 
+  async getEntityStatusByEntityTypeAndStatus(
+    entityTypeCode: string,
+    statusId: ID,
+  ): Promise<EntityStatus | null> {
+    const mappings =
+      await this.listEntityStatusesByEntityTypeCode(entityTypeCode);
+
+    return mappings.find((mapping) => mapping.statusId === statusId) ?? null;
+  }
+
   async listStatusesByEntityType(entityTypeId: ID): Promise<Status[]> {
     const mappings = await this.listEntityStatusesByEntityType(entityTypeId);
 

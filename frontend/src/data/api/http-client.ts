@@ -10,7 +10,7 @@ type ServerApiResponse<T> = {
   requestId?: string | null;
 };
 
-const API_BASE_URL =
+export const API_BASE_URL =
   process.env.EXPO_PUBLIC_MEMGINE_API_BASE_URL ??
   (typeof window !== "undefined"
     ? "http://localhost:8082"

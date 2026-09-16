@@ -1,5 +1,7 @@
 package com.mynikatech.memgine
 
+import com.mynikatech.memgine.component.asset.BrandingAssetService
+import com.mynikatech.memgine.component.asset.LocalAssetStorageService
 import com.mynikatech.memgine.component.entitystatus.EntityStatusCache
 import com.mynikatech.memgine.component.entitystatus.EntityStatusService
 import com.mynikatech.memgine.component.entitystatus.EntityStatusSql
@@ -17,6 +19,7 @@ import com.mynikatech.memgine.plugins.configureStatusPages
 import io.ktor.server.application.Application
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
+import java.nio.file.Paths
 
 fun main() {
     val config = AppConfig.load()
@@ -71,9 +74,24 @@ fun Application.module() {
     referenceDataService.refresh()
     entityStatusService.refresh()
 
+    val assetStorageService =
+        LocalAssetStorageService(
+            rootDirectory =
+                Paths.get(
+                    "server-data",
+                    "uploads"
+                )
+        )
+
+    val brandingAssetService =
+        BrandingAssetService(
+            assetStorageService
+        )
+
     configureRouting(
         database,
         referenceDataService,
-        entityStatusService
+        entityStatusService,
+        brandingAssetService
     )
 }

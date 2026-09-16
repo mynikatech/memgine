@@ -1,5 +1,6 @@
 package com.mynikatech.memgine.plugins
-
+import com.mynikatech.memgine.component.asset.BrandingAssetService
+import com.mynikatech.memgine.component.asset.brandingAssetRoutes
 import com.mynikatech.memgine.component.entitystatus.EntityStatusService
 import com.mynikatech.memgine.component.entitystatus.entityStatusRoutes
 import com.mynikatech.memgine.component.organization.OrganizationService
@@ -26,7 +27,8 @@ import io.ktor.server.routing.routing
 fun Application.configureRouting(
     database: DatabaseContext,
     referenceDataService: ReferenceDataService,
-    entityStatusService: EntityStatusService
+    entityStatusService: EntityStatusService,
+    brandingAssetService: BrandingAssetService
 ) {
     val organizationService =
         OrganizationService(
@@ -59,7 +61,7 @@ fun Application.configureRouting(
 
             // Batch 2A
             storeRoutes(storeService)
-
+            brandingAssetRoutes(brandingAssetService)
             referenceDataRoutes(referenceDataService)
             entityStatusRoutes(entityStatusService)
         }

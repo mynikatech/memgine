@@ -15,7 +15,14 @@ import type {
   TemplateCatalogueItem,
 } from "@/src/core";
 
-import { pickBrandingAsset } from "@/src/core/brandingAssetPicker";
+import {
+  pickBrandingAsset,
+  type PickedBrandingAsset,
+} from "@/src/core/brandingAssetPicker";
+
+import { brandingAssetApi } from "@/src/data/api/branding-asset-api";
+
+import { API_BASE_URL } from "@/src/data/api/http-client";
 
 import { useTheme } from "@/src/providers";
 
@@ -100,9 +107,31 @@ function hasImage(value?: string): boolean {
     return false;
   }
 
+  const normalizedValue = value.trim().toLowerCase();
+
   return (
-    /^https?:\/\//i.test(value.trim()) || /^data:image\//i.test(value.trim())
+    normalizedValue.startsWith("http://") ||
+    normalizedValue.startsWith("https://") ||
+    normalizedValue.startsWith("data:image/") ||
+    normalizedValue.startsWith("file://") ||
+    normalizedValue.startsWith("content://") ||
+    normalizedValue.startsWith("blob:") ||
+    normalizedValue.startsWith("/api/v1/assets/")
   );
+}
+
+function getImageUri(value?: string): string | undefined {
+  if (!value?.trim()) {
+    return undefined;
+  }
+
+  const normalizedValue = value.trim();
+
+  if (normalizedValue.startsWith("/api/v1/assets/")) {
+    return `${API_BASE_URL}${normalizedValue}`;
+  }
+
+  return normalizedValue;
 }
 
 function getMonogram(value?: string): string {
@@ -215,7 +244,9 @@ function AssetPreview({
       >
         {configured ? (
           <Image
-            source={{ uri: value }}
+            source={{
+              uri: getImageUri(value),
+            }}
             resizeMode="contain"
             style={styles.image}
           />
@@ -298,6 +329,10 @@ export function BrandingForm({
 
   const [saving, setSaving] = useState(false);
 
+  const [pendingAssets, setPendingAssets] = useState<
+    Partial<Record<BrandingAssetField, PickedBrandingAsset>>
+  >({});
+
   const [error, setError] = useState<string | null>(null);
 
   const [dirty, setDirty] = useState(false);
@@ -314,6 +349,7 @@ export function BrandingForm({
         ),
     );
 
+    setPendingAssets({});
     setDirty(false);
     setError(null);
     setIsEditing(false);
@@ -386,38 +422,72 @@ export function BrandingForm({
     setError(null);
 
     try {
-      const updated: OrganizationBranding = {
+      const uploadedAssetPaths: Partial<Record<BrandingAssetField, string>> =
+        {};
+
+      const pendingAssetFields = Object.keys(
+        pendingAssets,
+      ) as BrandingAssetField[];
+
+      for (const field of pendingAssetFields) {
+        const asset = pendingAssets[field];
+
+        if (!asset) {
+          continue;
+        }
+
+        const uploaded = await brandingAssetApi.upload(
+          organization.id,
+          getAssetType(field),
+          asset,
+        );
+
+        uploadedAssetPaths[field] = uploaded.path;
+      }
+
+      /*
+       * Replace temporary device-local preview URIs with the permanent
+       * server asset paths before OrganizationBranding is persisted.
+       */
+      const persistedForm: OrganizationBranding = {
         ...form,
+        ...uploadedAssetPaths,
+      };
 
-        brandingName: form.brandingName.trim(),
+      const updated: OrganizationBranding = {
+        ...persistedForm,
 
-        logoUrl: form.logoUrl?.trim() || undefined,
+        brandingName: persistedForm.brandingName.trim(),
 
-        darkThemeLogoUrl: form.darkThemeLogoUrl?.trim() || undefined,
+        logoUrl: persistedForm.logoUrl?.trim() || undefined,
 
-        faviconUrl: form.faviconUrl?.trim() || undefined,
+        darkThemeLogoUrl: persistedForm.darkThemeLogoUrl?.trim() || undefined,
 
-        splashScreenImageUrl: form.splashScreenImageUrl?.trim() || undefined,
+        faviconUrl: persistedForm.faviconUrl?.trim() || undefined,
 
-        tagline: form.tagline?.trim() || undefined,
+        splashScreenImageUrl:
+          persistedForm.splashScreenImageUrl?.trim() || undefined,
 
-        heroImageUrl: form.heroImageUrl?.trim() || undefined,
+        tagline: persistedForm.tagline?.trim() || undefined,
 
-        primaryColor: form.primaryColor?.trim() || undefined,
+        heroImageUrl: persistedForm.heroImageUrl?.trim() || undefined,
 
-        secondaryColor: form.secondaryColor?.trim() || undefined,
+        primaryColor: persistedForm.primaryColor?.trim() || undefined,
 
-        accentColor: form.accentColor?.trim() || undefined,
+        secondaryColor: persistedForm.secondaryColor?.trim() || undefined,
+
+        accentColor: persistedForm.accentColor?.trim() || undefined,
 
         updatedAt: new Date().toISOString(),
 
         updatedBy: organization.updatedBy,
 
-        versionNo: form.versionNo + 1,
+        versionNo: persistedForm.versionNo + 1,
       };
 
       await onSave(updated);
 
+      setPendingAssets({});
       setForm(updated);
       setDirty(false);
       setIsEditing(false);
@@ -441,7 +511,7 @@ export function BrandingForm({
           defaultTemplateId,
         ),
     );
-
+    setPendingAssets({});
     setDirty(false);
     setError(null);
     setIsEditing(false);
@@ -468,9 +538,20 @@ export function BrandingForm({
         return;
       }
 
-      setForm((current) => ({
+      setPendingAssets((current) => ({
         ...current,
         [field]: selectedAsset,
+      }));
+
+      /*
+       * Keep the local URI in the form temporarily so that the selected
+       * image can be previewed before Save Changes is pressed.
+       *
+       * This URI is replaced with the server path before persistence.
+       */
+      setForm((current) => ({
+        ...current,
+        [field]: selectedAsset.uri,
       }));
 
       setDirty(true);
@@ -487,6 +568,16 @@ export function BrandingForm({
     if (!isEditing || saving) {
       return;
     }
+
+    setPendingAssets((current) => {
+      const updated = {
+        ...current,
+      };
+
+      delete updated[field];
+
+      return updated;
+    });
 
     setForm((current) => ({
       ...current,

@@ -11,6 +11,12 @@ export type PickBrandingAssetOptions = {
   assetType: BrandingAssetType;
 };
 
+export type PickedBrandingAsset = {
+  uri: string;
+  fileName: string;
+  mimeType: string;
+};
+
 function getPickerOptions(
   assetType: BrandingAssetType,
 ): ImagePicker.ImagePickerOptions {
@@ -22,24 +28,28 @@ function getPickerOptions(
     allowsEditing: isFavicon,
     aspect: isFavicon ? [1, 1] : undefined,
     quality: 0.8,
-    base64: true,
+    base64: false,
   };
 }
 
-/**
- * Temporary local asset implementation.
- *
- * The selected image is converted into a data URI so that the existing
- * OrganizationBranding URL fields can continue to hold the asset value
- * without changing the physical data model.
- *
- * This is intentionally temporary. Once the server/S3 upload service
- * exists, this function becomes the boundary where the selected image
- * is uploaded and the returned remote URL/object reference is stored.
- */
+function getDefaultExtension(mimeType: string): string {
+  switch (mimeType.toLowerCase()) {
+    case "image/png":
+      return "png";
+
+    case "image/webp":
+      return "webp";
+
+    case "image/jpeg":
+    case "image/jpg":
+    default:
+      return "jpg";
+  }
+}
+
 export async function pickBrandingAsset(
   options: PickBrandingAssetOptions,
-): Promise<string | undefined> {
+): Promise<PickedBrandingAsset | undefined> {
   const result = await ImagePicker.launchImageLibraryAsync(
     getPickerOptions(options.assetType),
   );
@@ -50,11 +60,19 @@ export async function pickBrandingAsset(
 
   const asset = result.assets[0];
 
-  if (!asset.base64) {
+  if (!asset.uri) {
     throw new Error("Unable to read the selected image.");
   }
 
   const mimeType = asset.mimeType || "image/jpeg";
 
-  return `data:${mimeType};base64,${asset.base64}`;
+  const fileName =
+    asset.fileName ||
+    `${options.assetType}-${Date.now()}.${getDefaultExtension(mimeType)}`;
+
+  return {
+    uri: asset.uri,
+    fileName,
+    mimeType,
+  };
 }
