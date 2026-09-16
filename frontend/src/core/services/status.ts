@@ -78,6 +78,11 @@ export interface StatusService {
     entityTypeCode: string,
   ): Promise<EntityStatus[]>;
 
+  getEntityStatusByEntityTypeAndStatus(
+    entityTypeCode: string,
+    statusId: ID,
+  ): Promise<EntityStatus | null>;
+
   /**
    * --------------------------------------------------------------------------
    * Generic resolved status lists

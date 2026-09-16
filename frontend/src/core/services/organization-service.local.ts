@@ -178,77 +178,41 @@ export class LocalOrganizationService implements OrganizationService {
   }
 
   async listStores(organizationId: ID): Promise<Store[]> {
-    return this.membersRepository.listStores(organizationId);
+    const result = await apis.store.list(organizationId);
+
+    if (!result.success) {
+      throw new Error(result.error.message);
+    }
+
+    return result.data;
   }
 
   async createStore(organizationId: ID, store: Store): Promise<Store> {
-    const stores = await this.membersRepository.listStores(organizationId);
-    const now = new Date().toISOString();
+    const result = await apis.store.create(organizationId, store);
 
-    const created: Store = {
-      ...store,
-      organizationId,
-      createdAt: now,
-      updatedAt: now,
-      isDeleted: false,
-      versionNo: 1,
-    };
+    if (!result.success) {
+      throw new Error(result.error.message);
+    }
 
-    await this.membersRepository.saveStores(organizationId, [
-      ...stores,
-      created,
-    ]);
-
-    return created;
+    return result.data;
   }
 
   async updateStore(organizationId: ID, store: Store): Promise<Store> {
-    const stores = await this.membersRepository.listStores(organizationId);
-    const index = stores.findIndex(
-      (item) =>
-        item.id === store.id &&
-        item.organizationId === organizationId &&
-        !item.isDeleted,
-    );
+    const result = await apis.store.update(organizationId, store);
 
-    if (index === -1) {
-      throw new Error("Store not found");
+    if (!result.success) {
+      throw new Error(result.error.message);
     }
 
-    const updated: Store = {
-      ...store,
-      organizationId,
-      updatedAt: new Date().toISOString(),
-      versionNo: stores[index].versionNo + 1,
-    };
-
-    stores[index] = updated;
-    await this.membersRepository.saveStores(organizationId, stores);
-
-    return updated;
+    return result.data;
   }
 
   async deleteStore(organizationId: ID, storeId: ID): Promise<void> {
-    const stores = await this.membersRepository.listStores(organizationId);
-    const index = stores.findIndex(
-      (item) =>
-        item.id === storeId &&
-        item.organizationId === organizationId &&
-        !item.isDeleted,
-    );
+    const result = await apis.store.delete(organizationId, storeId);
 
-    if (index === -1) {
-      throw new Error("Store not found");
+    if (!result.success) {
+      throw new Error(result.error.message);
     }
-
-    stores[index] = {
-      ...stores[index],
-      isDeleted: true,
-      updatedAt: new Date().toISOString(),
-      versionNo: stores[index].versionNo + 1,
-    };
-
-    await this.membersRepository.saveStores(organizationId, stores);
   }
 
   async listOrganizationUsersByUser(userId: ID): Promise<OrganizationUser[]> {

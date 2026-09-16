@@ -177,6 +177,16 @@ export class CachedStatusService implements StatusService {
     return this.listEntityStatusesByEntityType(entityType.id);
   }
 
+  async getEntityStatusByEntityTypeAndStatus(
+    entityTypeCode: string,
+    statusId: ID,
+  ): Promise<EntityStatus | null> {
+    const mappings =
+      await this.listEntityStatusesByEntityTypeCode(entityTypeCode);
+
+    return mappings.find((mapping) => mapping.statusId === statusId) ?? null;
+  }
+
   // ---------------------------------------------------------------------------
   // Resolved Status lists
   // ---------------------------------------------------------------------------

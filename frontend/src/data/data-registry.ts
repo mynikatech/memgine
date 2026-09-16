@@ -3,6 +3,7 @@ import { BenefitApi } from "./api/benefit-api";
 import { MembershipProductApi } from "./api/membership-product-api";
 import { OfferApi } from "./api/offer-api";
 import { OrganizationApi } from "./api/organization-api";
+import { StoreApi } from "./api/store-api";
 import { ProductApi } from "./api/product-api";
 import { SubscriptionApi } from "./api/subscription-api";
 import { RedemptionApi } from "./api/redemption-api";
@@ -87,6 +88,7 @@ export const data = {
 
 export const apis = {
   organization: new OrganizationApi(),
+  store: new StoreApi(),
   branding: new BrandingApi(),
   product: new ProductApi(productRepository),
   membershipProduct: new MembershipProductApi(membershipProductRepository),

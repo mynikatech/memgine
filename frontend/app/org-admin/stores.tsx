@@ -40,6 +40,42 @@ function cloneStores(stores: Store[]): Store[] {
   }));
 }
 
+function normalizeStorePhone(
+  store: Store,
+  countries: CountryReference[],
+): Store {
+  if (!store.phoneNumber) {
+    return store;
+  }
+
+  const country = countries.find(
+    (item) =>
+      item.countryCode.trim().toUpperCase() ===
+      store.address.countryCode.trim().toUpperCase(),
+  );
+
+  if (!country) {
+    return store;
+  }
+
+  const callingCode = country.callingCode;
+  const persistedNumber = store.phoneNumber.number.trim();
+
+  const number =
+    callingCode && persistedNumber.startsWith(callingCode)
+      ? persistedNumber.slice(callingCode.length)
+      : persistedNumber;
+
+  return {
+    ...store,
+    phoneNumber: {
+      countryId: country.id,
+      callingCode,
+      number,
+    },
+  };
+}
+
 export default function OrgAdminStores() {
   const router = useRouter();
   const { organization } = useBusiness();
@@ -110,7 +146,10 @@ export default function OrgAdminStores() {
           storeWorkingSession === null ||
           storeWorkingSession.organizationId !== organization.id
         ) {
-          const baseline = cloneStores(storeList);
+          const normalizedStores = storeList.map((store) =>
+            normalizeStorePhone(store, countryList),
+          );
+          const baseline = cloneStores(normalizedStores);
 
           storeWorkingSession = {
             organizationId: organization.id,
@@ -344,11 +383,7 @@ export default function OrgAdminStores() {
   /* EDIT STORE                                                             */
   /* ---------------------------------------------------------------------- */
 
-  const handleEdit = async (store: Store) => {
-    if (!isEditing) {
-      return;
-    }
-
+  const handleOpenStore = async (store: Store) => {
     setEditingStore(store);
 
     const countryCode = store.address.countryCode;
@@ -387,6 +422,18 @@ export default function OrgAdminStores() {
     }
 
     setFormVisible(true);
+  };
+
+  const handleView = async (store: Store) => {
+    await handleOpenStore(store);
+  };
+
+  const handleEdit = async (store: Store) => {
+    if (!isEditing) {
+      return;
+    }
+
+    await handleOpenStore(store);
   };
 
   /* ---------------------------------------------------------------------- */
@@ -856,7 +903,12 @@ export default function OrgAdminStores() {
                       onPress: handleEdit,
                     },
                   ]
-                : undefined
+                : [
+                    {
+                      label: "View",
+                      onPress: handleView,
+                    },
+                  ]
             }
           />
         </View>
@@ -869,7 +921,9 @@ export default function OrgAdminStores() {
       <Modal
         visible={formVisible}
         onClose={handleCloseForm}
-        title={isNewStore ? "Add Store" : "Edit Store"}
+        title={
+          isNewStore ? "Add Store" : isEditing ? "Edit Store" : "View Store"
+        }
         scrollable
         testID="store-form-modal"
       >
@@ -877,6 +931,7 @@ export default function OrgAdminStores() {
           <StoreForm
             store={editingStore}
             isNew={isNewStore}
+            readOnly={!isEditing}
             storeTypes={storeTypes}
             storeStatuses={storeStatuses}
             countries={countries}

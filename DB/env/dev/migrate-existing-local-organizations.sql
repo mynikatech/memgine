@@ -536,6 +536,8 @@ SELECT memginedev.ensure_default_organization_admin('org-steep-sip');
 
 SELECT memginedev.ensure_default_organization_admin('org-sunrise-bakery');
 
+SELECT memginedev.ensure_default_organization_admin('org-20260915-vawpee5r');
+
 COMMIT;
 
 -- Verification

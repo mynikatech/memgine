@@ -35,6 +35,7 @@ type StoreFormProps = {
    * - cannot have a Closing Date
    */
   isNew?: boolean;
+  readOnly?: boolean;
 
   storeTypes: ReferenceDataItem[];
   storeStatuses: Status[];
@@ -95,6 +96,7 @@ function createDefaultPhone(
 export function StoreForm({
   store,
   isNew = false,
+  readOnly = false,
   storeTypes,
   storeStatuses,
   countries,
@@ -320,6 +322,7 @@ export function StoreForm({
                 required
                 value={form.name}
                 placeholder="e.g. Toronto Mall"
+                editable={!readOnly}
                 error={errors.name}
                 onChangeText={(value) => update("name", value)}
               />
@@ -332,6 +335,7 @@ export function StoreForm({
                 value={form.storeTypeId}
                 items={storeTypes}
                 placeholder="Please select"
+                disabled={readOnly}
                 error={errors.storeTypeId}
                 onChange={(value) => update("storeTypeId", value)}
               />
@@ -345,9 +349,9 @@ export function StoreForm({
                 items={storeStatuses}
                 placeholder="Please select"
                 error={errors.storeStatusId}
-                disabled={isNew}
+                disabled={isNew || readOnly}
                 onChange={(value) => {
-                  if (!isNew) {
+                  if (!isNew && !readOnly) {
                     update("storeStatusId", value);
                   }
                 }}
@@ -386,6 +390,7 @@ export function StoreForm({
                     value={phone?.countryId ?? ""}
                     items={countries}
                     placeholder="Select country"
+                    disabled={readOnly}
                     onChange={(countryId) => {
                       const country = countries.find(
                         (item) => item.id === countryId,
@@ -417,6 +422,7 @@ export function StoreForm({
                     keyboardType="phone-pad"
                     maxLength={10}
                     error={errors.phoneNumber}
+                    editable={!readOnly}
                     onChangeText={(value) => {
                       const number = value.replace(/\D/g, "").slice(0, 10);
 
@@ -442,6 +448,7 @@ export function StoreForm({
                 error={errors.emailAddress}
                 keyboardType="email-address"
                 autoCapitalize="none"
+                editable={!readOnly}
                 autoCorrect={false}
                 onChangeText={(value) =>
                   update("emailAddress", value || undefined)
@@ -461,27 +468,29 @@ export function StoreForm({
           title="Store Address"
           description="This address is shown to customers in Profile → Locations."
         >
-          <AddressForm
-            value={form.address}
-            countries={countries}
-            regions={regions}
-            cities={cities}
-            requiredLine1
-            requiredCountry
-            requiredRegion
-            requiredCity
-            requiredPostalCode
-            errors={{
-              line1: errors.addressLine1,
-              countryCode: errors.countryCode,
-              region: errors.region,
-              city: errors.city,
-              postalCode: errors.postalCode,
-            }}
-            onChange={updateAddress}
-            onCountryChange={onCountryChange}
-            onRegionChange={onRegionChange}
-          />
+          <View pointerEvents={readOnly ? "none" : "auto"}>
+            <AddressForm
+              value={form.address}
+              countries={countries}
+              regions={regions}
+              cities={cities}
+              requiredLine1
+              requiredCountry
+              requiredRegion
+              requiredCity
+              requiredPostalCode
+              errors={{
+                line1: errors.addressLine1,
+                countryCode: errors.countryCode,
+                region: errors.region,
+                city: errors.city,
+                postalCode: errors.postalCode,
+              }}
+              onChange={updateAddress}
+              onCountryChange={onCountryChange}
+              onRegionChange={onRegionChange}
+            />
+          </View>
         </Section>
       </Card>
 
@@ -501,6 +510,7 @@ export function StoreForm({
                 required
                 value={form.timezone}
                 placeholder="e.g. America/Toronto"
+                editable={!readOnly}
                 error={errors.timezone}
                 onChangeText={(value) => update("timezone", value)}
               />
@@ -511,6 +521,7 @@ export function StoreForm({
                 label="Opening Date"
                 value={form.openingDate ?? ""}
                 placeholder="YYYY-MM-DD"
+                editable={!readOnly}
                 onChangeText={(value) =>
                   update("openingDate", value || undefined)
                 }
@@ -526,7 +537,7 @@ export function StoreForm({
                 }
                 editable={!isNew}
                 onChangeText={(value) => {
-                  if (!isNew) {
+                  if (!isNew && !readOnly) {
                     update("closingDate", value || undefined);
                   }
                 }}
@@ -565,27 +576,29 @@ export function StoreForm({
           })}
         >
           <Text variant="body" color="text">
-            Cancel
+            {readOnly ? "Close" : "Cancel"}
           </Text>
         </Pressable>
 
-        <Pressable
-          onPress={handleSave}
-          disabled={saving}
-          style={({ pressed }) => ({
-            ...styles.saveButton,
-            backgroundColor: theme.colors.primary,
-            opacity: saving
-              ? theme.states.disabledOpacity
-              : pressed
-                ? theme.states.pressedOpacity
-                : 1,
-          })}
-        >
-          <Text variant="body" color="background">
-            {saving ? "Saving..." : "Save Store"}
-          </Text>
-        </Pressable>
+        {!readOnly ? (
+          <Pressable
+            onPress={handleSave}
+            disabled={saving}
+            style={({ pressed }) => ({
+              ...styles.saveButton,
+              backgroundColor: theme.colors.primary,
+              opacity: saving
+                ? theme.states.disabledOpacity
+                : pressed
+                  ? theme.states.pressedOpacity
+                  : 1,
+            })}
+          >
+            <Text variant="body" color="background">
+              {saving ? "Saving..." : "Save Store"}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
