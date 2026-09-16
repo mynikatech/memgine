@@ -681,7 +681,7 @@ export function BusinessForm({
                 <ReferenceSelect
                   label="Status"
                   value={form.organizationStatusId}
-                  items={organizationStatuses}
+                  items={resolvedOrganizationStatuses}
                   onChange={(value) =>
                     updateOrganization("organizationStatusId", value)
                   }

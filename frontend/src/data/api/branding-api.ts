@@ -1,10 +1,6 @@
 import type { ID, OrganizationBranding } from "@/src/core";
-
-import type { BrandingRepository } from "@/src/data/repositories/branding/branding-repository";
-
-import { apiFailure, apiSuccess, type ApiResult } from "./result";
+import { apiFailure, type ApiResult } from "./result";
 import { httpClient } from "./http-client";
-
 import {
   OrganizationApiMapper,
   type UpdateOrganizationApiRequest,
@@ -15,21 +11,12 @@ type UpdateOrganizationServerResponse = {
 };
 
 export class BrandingApi {
-  constructor(private readonly repository: BrandingRepository) {}
-
   async get(
     organizationId: ID,
   ): Promise<ApiResult<OrganizationBranding | null>> {
-    try {
-      const branding = await this.repository.getCurrent(organizationId);
-
-      return apiSuccess(branding);
-    } catch (error) {
-      return apiFailure(
-        "BRANDING_LOAD_FAILED",
-        error instanceof Error ? error.message : "Unable to load branding.",
-      );
-    }
+    return httpClient.get<OrganizationBranding | null>(
+      `/api/v1/organizations/branding/${organizationId}`,
+    );
   }
 
   async update(
@@ -47,17 +34,25 @@ export class BrandingApi {
       return apiFailure(serverResult.error.code, serverResult.error.message);
     }
 
-    try {
-      const saved = await this.repository.save(organizationId, branding);
+    const refreshed = await this.get(organizationId);
 
-      return apiSuccess(saved);
-    } catch (error) {
-      return apiFailure(
-        "BRANDING_LOCAL_CACHE_UPDATE_FAILED",
-        error instanceof Error
-          ? error.message
-          : "Branding was updated on the server but local cache could not be updated.",
-      );
+    if (!refreshed.success) {
+      return refreshed;
     }
+
+    if (!refreshed.data) {
+      return {
+        success: false,
+        error: {
+          code: "BRANDING_NOT_FOUND",
+          message: "Organization branding could not be loaded from the server.",
+        },
+      };
+    }
+
+    return {
+      success: true,
+      data: refreshed.data,
+    };
   }
 }

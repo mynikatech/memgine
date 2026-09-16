@@ -87,3 +87,9 @@ data class UpdateOrganizationRequestDto(
 data class UpdateOrganizationResponseDto(
     val organizationId: String
 )
+
+@Serializable
+data class OrganizationLifecycleResponseDto(
+    val organizationId: String,
+    val organizationStatusId: String
+)

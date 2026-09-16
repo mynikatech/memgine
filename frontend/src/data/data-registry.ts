@@ -37,6 +37,9 @@ import { LocalBenefitRedemptionQRContextRepository } from "./repositories/benefi
 import { LocalOfferRedemptionQRContextRepository } from "./repositories/offer-redemption-qr-context/offer-redemption-qr-context-repository.local";
 import { LocalOfferRedemptionRepository } from "./repositories/offer-redemption/offer-redemption-repository.local";
 
+// Transitional repositories retained because non-Organization Batch-2 domains
+// still depend on local persistence. Organization/branding API reads and writes
+// are now server-authoritative.
 const organizationRepository = new LocalOrganizationRepository();
 const brandingRepository = new LocalBrandingRepository();
 const organizationMembersRepository = new LocalOrganizationMembersRepository();
@@ -57,7 +60,6 @@ const qrMembershipAcquisitionAttributionRepository =
   new LocalQRMembershipAcquisitionAttributionRepository();
 const benefitRedemptionQRContextRepository =
   new LocalBenefitRedemptionQRContextRepository();
-
 const offerRedemptionQRContextRepository =
   new LocalOfferRedemptionQRContextRepository();
 
@@ -84,8 +86,8 @@ export const data = {
 } as const;
 
 export const apis = {
-  organization: new OrganizationApi(organizationRepository),
-  branding: new BrandingApi(brandingRepository),
+  organization: new OrganizationApi(),
+  branding: new BrandingApi(),
   product: new ProductApi(productRepository),
   membershipProduct: new MembershipProductApi(membershipProductRepository),
   benefit: new BenefitApi(benefitRepository),
@@ -105,7 +107,6 @@ export const apis = {
   benefitRedemptionQRContext: new BenefitRedemptionQRContextApi(
     benefitRedemptionQRContextRepository,
   ),
-
   offerRedemptionQRContext: new OfferRedemptionQRContextApi(
     offerRedemptionQRContextRepository,
   ),

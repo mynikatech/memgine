@@ -5,6 +5,11 @@ import { apis } from "@/src/data";
 import { getDefaultBusinessTemplate } from "../defaults/default-business-template";
 
 import { CardStyle } from "../template/template-definition";
+import {
+  ManagementModel,
+  PlanTier,
+  type OrganizationAccount,
+} from "../domain/entities";
 
 export async function resolveOrganizationContext(
   organizationId: ID,
@@ -79,11 +84,14 @@ export async function resolveOrganizationContext(
     },
   };
 
+  const account: OrganizationAccount = {
+    organizationId: aggregate.organization.id,
+    planTier: PlanTier.BASIC,
+    managementModel: ManagementModel.MANAGED_SERVICE,
+  };
   return {
     organization: aggregate.organization,
-
-    account: aggregate.account,
-
+    account,
     configuration,
 
     template: template.template,

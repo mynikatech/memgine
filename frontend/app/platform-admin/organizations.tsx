@@ -12,6 +12,7 @@ import {
   DEFAULT_ACTIVE_ORG_ID,
   services,
   type ReferenceDataItem,
+  type EntityStatus,
   type Organization,
 } from "@/src/core";
 
@@ -41,6 +42,12 @@ export default function PlatformOrganizations() {
   const [organizationTypes, setOrganizationTypes] = useState<
     ReferenceDataItem[]
   >([]);
+  const [organizationStatuses, setOrganizationStatuses] = useState<
+    EntityStatus[]
+  >([]);
+  const [organizationStatusNames, setOrganizationStatusNames] = useState<
+    Record<string, string>
+  >({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -55,11 +62,12 @@ export default function PlatformOrganizations() {
       setLoading(true);
       setError("");
 
-      const [result, organizationTypeResult] = await Promise.all([
-        services.organization.listOrganizations(),
-        services.referenceData.listOrganizationTypes(),
-      ]);
-
+      const [result, organizationTypeResult, organizationStatusResult] =
+        await Promise.all([
+          services.organization.listOrganizations(),
+          services.referenceData.listOrganizationTypes(),
+          services.status.listEntityStatusesByEntityTypeCode("ORGANIZATION"),
+        ]);
       /*
        * Deleted organizations are soft-deleted and therefore excluded
        * from the normal Platform Admin organization catalogue.
@@ -68,6 +76,19 @@ export default function PlatformOrganizations() {
         result.filter((organization) => !organization.isDeleted),
       );
       setOrganizationTypes(organizationTypeResult);
+      setOrganizationStatuses(organizationStatusResult);
+      const statusEntries = await Promise.all(
+        organizationStatusResult.map(async (entityStatus) => {
+          const status = await services.status.getStatus(entityStatus.statusId);
+
+          return [
+            entityStatus.id,
+            status?.statusName ?? entityStatus.id,
+          ] as const;
+        }),
+      );
+
+      setOrganizationStatusNames(Object.fromEntries(statusEntries));
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Unable to load organizations.",
@@ -87,6 +108,15 @@ export default function PlatformOrganizations() {
       );
     },
     [organizationTypes],
+  );
+
+  const getOrganizationStatus = useCallback(
+    (organization: Organization): EntityStatus | undefined => {
+      return organizationStatuses.find(
+        (status) => status.id === organization.organizationStatusId,
+      );
+    },
+    [organizationStatuses],
   );
 
   useEffect(() => {
@@ -159,46 +189,23 @@ export default function PlatformOrganizations() {
         setBusyOrganizationId(organization.id);
         setError("");
 
-        const status = await services.status.getStatusByCode(statusCode);
+        const updatedOrganization =
+          statusCode === "ACTIVE"
+            ? await services.organization.activateOrganization(
+                organization.id,
+                organization,
+              )
+            : await services.organization.deactivateOrganization(
+                organization.id,
+                organization,
+              );
 
-        if (!status) {
-          throw new Error(
-            `Organization status '${statusCode}' could not be resolved.`,
-          );
-        }
-
-        const updatedOrganization: Organization = {
-          ...organization,
-          organizationStatusId: status.id,
-          updatedAt: new Date().toISOString(),
-          updatedBy: "user-system",
-          versionNo: organization.versionNo + 1,
-        };
-
-        /*
-         * Persist first.
-         */
-        await services.organization.updateOrganization(
-          organization.id,
-          updatedOrganization,
-        );
-
-        /*
-         * Then immediately update the screen's local state.
-         *
-         * This is important because the Current Organization card can
-         * otherwise continue rendering the old organization object from
-         * useBusiness() until a full reload.
-         */
         setOrganizations((previousOrganizations) =>
           previousOrganizations.map((item) =>
             item.id === organization.id ? updatedOrganization : item,
           ),
         );
 
-        /*
-         * Close the confirmation card after a successful update.
-         */
         setPendingAction(null);
       } catch (err) {
         setError(
@@ -479,10 +486,13 @@ export default function PlatformOrganizations() {
 
             <OrganizationCard
               organization={displayedCurrentOrganization}
+              organizationStatus={getOrganizationStatus(
+                displayedCurrentOrganization,
+              )}
               isCurrent
               busy={busyOrganizationId === displayedCurrentOrganization.id}
               organizationTypeName={getOrganizationTypeName(
-                currentOrganization,
+                displayedCurrentOrganization,
               )}
               onOpen={() => openOrganization(displayedCurrentOrganization.id)}
               onEdit={() => editOrganization(displayedCurrentOrganization.id)}
@@ -511,6 +521,7 @@ export default function PlatformOrganizations() {
                 <OrganizationCard
                   key={organization.id}
                   organization={organization}
+                  organizationStatus={getOrganizationStatus(organization)}
                   busy={busyOrganizationId === organization.id}
                   organizationTypeName={getOrganizationTypeName(organization)}
                   onOpen={() => openOrganization(organization.id)}
@@ -536,6 +547,7 @@ export default function PlatformOrganizations() {
 
 function OrganizationCard({
   organization,
+  organizationStatus,
   isCurrent = false,
   busy,
   organizationTypeName,
@@ -546,6 +558,7 @@ function OrganizationCard({
   onDelete,
 }: {
   organization: Organization;
+  organizationStatus?: EntityStatus;
   isCurrent?: boolean;
   busy: boolean;
   organizationTypeName: string;
@@ -555,8 +568,7 @@ function OrganizationCard({
   onDeactivate: () => void;
   onDelete: () => void;
 }) {
-  const isInactive = organization.organizationStatusId === "status-inactive";
-
+  const isInactive = organizationStatus?.statusId === "status-inactive";
   return (
     <View
       style={[

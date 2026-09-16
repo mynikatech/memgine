@@ -63,43 +63,29 @@ export class LocalOrganizationService implements OrganizationService {
       throw new Error(result.error.message);
     }
 
-    return result.data ?? this.fallback.getOrganization(organizationId);
+    return result.data;
   }
 
   async listOrganizations(): Promise<Organization[]> {
-    const localResult = await apis.organization.list();
-
-    if (!localResult.success) {
-      throw new Error(localResult.error.message);
-    }
-
-    const fallbackOrganizations = await this.fallback.listOrganizations();
-    const byId = new Map<string, Organization>();
-
-    for (const organization of fallbackOrganizations) {
-      byId.set(organization.id, organization);
-    }
-
-    for (const organization of localResult.data) {
-      byId.set(organization.id, organization);
-    }
-
-    return Array.from(byId.values());
-  }
-
-  async getOrganizationDetails(
-    organizationId: ID,
-  ): Promise<OrganizationDetails | null> {
-    const result = await apis.organization.getAggregate(organizationId);
+    const result = await apis.organization.list();
 
     if (!result.success) {
       throw new Error(result.error.message);
     }
 
-    return (
-      result.data?.details ??
-      this.fallback.getOrganizationDetails(organizationId)
-    );
+    return result.data;
+  }
+
+  async getOrganizationDetails(
+    organizationId: ID,
+  ): Promise<OrganizationDetails | null> {
+    const result = await apis.organization.getDetails(organizationId);
+
+    if (!result.success) {
+      throw new Error(result.error.message);
+    }
+
+    return result.data;
   }
 
   async updateOrganization(
@@ -143,6 +129,52 @@ export class LocalOrganizationService implements OrganizationService {
     input: Parameters<OrganizationService["onboardOrganization"]>[0],
   ) {
     return this.fallback.onboardOrganization(input);
+  }
+
+  async activateOrganization(
+    organizationId: ID,
+    _organization: Organization,
+  ): Promise<Organization> {
+    const result = await apis.organization.activate(organizationId);
+
+    if (!result.success) {
+      throw new Error(result.error.message);
+    }
+
+    const refreshed = await apis.organization.get(organizationId);
+
+    if (!refreshed.success) {
+      throw new Error(refreshed.error.message);
+    }
+
+    if (!refreshed.data) {
+      throw new Error("Organization not found after activation.");
+    }
+
+    return refreshed.data;
+  }
+
+  async deactivateOrganization(
+    organizationId: ID,
+    _organization: Organization,
+  ): Promise<Organization> {
+    const result = await apis.organization.deactivate(organizationId);
+
+    if (!result.success) {
+      throw new Error(result.error.message);
+    }
+
+    const refreshed = await apis.organization.get(organizationId);
+
+    if (!refreshed.success) {
+      throw new Error(refreshed.error.message);
+    }
+
+    if (!refreshed.data) {
+      throw new Error("Organization not found after deactivation.");
+    }
+
+    return refreshed.data;
   }
 
   async listStores(organizationId: ID): Promise<Store[]> {
@@ -335,7 +367,7 @@ export class LocalOrganizationService implements OrganizationService {
       throw new Error(result.error.message);
     }
 
-    return result.data ?? this.fallback.getOrganizationBranding(organizationId);
+    return result.data;
   }
 
   async updateOrganizationBranding(

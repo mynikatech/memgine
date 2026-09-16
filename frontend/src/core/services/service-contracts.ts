@@ -147,6 +147,16 @@ export interface OrganizationService {
 
   listOrganizations(): Promise<Organization[]>;
 
+  activateOrganization(
+    organizationId: ID,
+    organization: Organization,
+  ): Promise<Organization>;
+
+  deactivateOrganization(
+    organizationId: ID,
+    organization: Organization,
+  ): Promise<Organization>;
+
   getAccount(organizationId: ID): Promise<OrganizationAccount | null>;
 
   getBusinessContext(organizationId: ID): Promise<BusinessContext | null>;

@@ -47,4 +47,42 @@ interface OrganizationSql {
         @Bind("brandingJson") brandingJson: String?,
         @Bind("actorUserId") actorUserId: String
     ): Boolean
+    
+    @SqlQuery(
+        """
+        SELECT set_organization_lifecycle_status(
+            :organizationId,
+            :statusCode,
+            :actorUserId
+        )
+        """
+    )
+    fun setOrganizationLifecycleStatus(
+        @Bind("organizationId") organizationId: String,
+        @Bind("statusCode") statusCode: String,
+        @Bind("actorUserId") actorUserId: String
+    ): String
+    
+    @SqlQuery("SELECT get_organization(:organizationId)::text")
+        fun getOrganization(
+            @Bind("organizationId") organizationId: String
+        ): String?
+
+        @SqlQuery("SELECT get_organizations()::text")
+        fun getOrganizations(): String
+
+        @SqlQuery("SELECT get_organization_details(:organizationId)::text")
+        fun getOrganizationDetails(
+            @Bind("organizationId") organizationId: String
+        ): String?
+
+        @SqlQuery("SELECT get_organization_branding(:organizationId)::text")
+        fun getOrganizationBranding(
+            @Bind("organizationId") organizationId: String
+        ): String?
+
+        @SqlQuery("SELECT get_organization_aggregate(:organizationId)::text")
+        fun getOrganizationAggregate(
+            @Bind("organizationId") organizationId: String
+        ): String?
 }

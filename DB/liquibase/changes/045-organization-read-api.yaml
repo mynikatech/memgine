@@ -1,0 +1,9 @@
+databaseChangeLog:
+  - changeSet:
+      id: 045-organization-read-api
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/045-organization-read-api.sql
+            relativeToChangelogFile: true
+            splitStatements: false

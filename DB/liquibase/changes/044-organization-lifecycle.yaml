@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 044-organization-lifecycle
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/044-organization-lifecycle.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

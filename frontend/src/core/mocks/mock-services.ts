@@ -1822,6 +1822,20 @@ export class InMemoryOrganizationService implements OrganizationService {
   async getAccount(organizationId: ID): Promise<OrganizationAccount | null> {
     return ACCOUNTS.find((a) => a.organizationId === organizationId) ?? null;
   }
+
+  async activateOrganization(
+    organizationId: ID,
+    organization: Organization,
+  ): Promise<Organization> {
+    return this.updateOrganization(organizationId, organization);
+  }
+
+  async deactivateOrganization(
+    organizationId: ID,
+    organization: Organization,
+  ): Promise<Organization> {
+    return this.updateOrganization(organizationId, organization);
+  }
   async getBusinessContext(
     organizationId: ID,
   ): Promise<BusinessContext | null> {

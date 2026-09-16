@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 046-organization-phone-structure-and-read-api
+      author: memgine
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/046-organization-phone-structure-and-read-api.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
