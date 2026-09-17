@@ -24,6 +24,7 @@ import {
   EntityStatus,
   MembershipProduct,
   Offer,
+  OfferUsageRule,
   OfferCtaType,
   Organization,
   OrganizationDetails,
@@ -3044,6 +3045,10 @@ export class InMemoryPaymentService implements PaymentService {
 }
 
 export class InMemoryOfferService implements OfferService {
+  async saveOfferWithRules(organizationId: ID, offer: Offer, _rules: OfferUsageRule[], create: boolean): Promise<Offer> {
+    return create ? this.createOffer(organizationId, offer) : this.updateOffer(organizationId, offer);
+  }
+
   async listByOrganization(organizationId: ID): Promise<Offer[]> {
     return offers.filter(
       (offer) => offer.organizationId === organizationId && !offer.isDeleted,

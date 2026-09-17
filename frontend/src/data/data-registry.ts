@@ -21,7 +21,6 @@ import { OfferRedemptionApi } from "./api/offer-redemption-api";
 import { OrganizationUserApi } from "./api/organization-user-api";
 
 import { LocalBrandingRepository } from "./repositories/branding/branding-repository.local";
-import { LocalOfferRepository } from "./repositories/offer/offer-repository.local";
 import { LocalOrganizationMembersRepository } from "./repositories/organization/organization-members.repository.local";
 import { LocalOrganizationRepository } from "./repositories/organization/organization-repository.local";
 import { LocalProductRepository } from "./repositories/product/product-repository.local";
@@ -29,7 +28,6 @@ import { LocalSubscriptionRepository } from "./repositories/subscription/subscri
 import { LocalRedemptionRepository } from "./repositories/redemption/redemption-repository.local";
 import { LocalCustomerPreferenceRepository } from "./repositories/customer-preference/customer-preference-repository.local";
 import { LocalReferralRepository } from "./repositories/referral/referral-repository.local";
-import { LocalOfferUsageRuleRepository } from "./repositories/offer-usage-rule/offer-usage-rule-repository.local";
 import { LocalQRCodeRepository } from "./repositories/qr-code/qr-code-repository.local";
 import { LocalQRScanHistoryRepository } from "./repositories/qr-scan-history/qr-scan-history-repository.local";
 import { LocalQRMembershipAcquisitionAttributionRepository } from "./repositories/qr-membership-acquisition-attribution/qr-membership-acquisition-attribution-repository.local";
@@ -44,13 +42,11 @@ const organizationRepository = new LocalOrganizationRepository();
 const brandingRepository = new LocalBrandingRepository();
 const organizationMembersRepository = new LocalOrganizationMembersRepository();
 const productRepository = new LocalProductRepository();
-const offerRepository = new LocalOfferRepository();
 const subscriptionRepository = new LocalSubscriptionRepository();
 const redemptionRepository = new LocalRedemptionRepository();
 const offerRedemptionRepository = new LocalOfferRedemptionRepository();
 const customerPreferenceRepository = new LocalCustomerPreferenceRepository();
 const referralRepository = new LocalReferralRepository();
-const offerUsageRuleRepository = new LocalOfferUsageRuleRepository();
 const qrCodeRepository = new LocalQRCodeRepository();
 const qrScanHistoryRepository = new LocalQRScanHistoryRepository();
 const qrMembershipAcquisitionAttributionRepository =
@@ -65,13 +61,11 @@ export const data = {
   organizationMembersRepository,
   brandingRepository,
   productRepository,
-  offerRepository,
   subscriptionRepository,
   redemptionRepository,
   offerRedemptionRepository,
   customerPreferenceRepository,
   referralRepository,
-  offerUsageRuleRepository,
   qrCodeRepository,
   qrScanHistoryRepository,
   qrMembershipAcquisitionAttributionRepository,
@@ -80,6 +74,7 @@ export const data = {
 } as const;
 
 const benefitApi = new BenefitApi();
+const offerApi = new OfferApi();
 
 export const apis = {
   organization: new OrganizationApi(),
@@ -89,14 +84,14 @@ export const apis = {
   product: new ProductApi(productRepository),
   membershipProduct: new MembershipProductApi(),
   benefit: benefitApi,
-  offer: new OfferApi(offerRepository),
+  offer: offerApi,
   subscription: new SubscriptionApi(subscriptionRepository),
   redemption: new RedemptionApi(redemptionRepository),
   offerRedemption: new OfferRedemptionApi(offerRedemptionRepository),
   benefitUsageRule: new BenefitUsageRuleApi(benefitApi),
   customerPreference: new CustomerPreferenceApi(customerPreferenceRepository),
   referral: new ReferralApi(referralRepository),
-  offerUsageRule: new OfferUsageRuleApi(offerUsageRuleRepository),
+  offerUsageRule: new OfferUsageRuleApi(offerApi),
   qrCode: new QRCodeApi(qrCodeRepository),
   qrScanHistory: new QRScanHistoryApi(qrScanHistoryRepository),
   qrMembershipAcquisitionAttribution: new QRMembershipAcquisitionAttributionApi(

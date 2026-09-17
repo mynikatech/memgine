@@ -1,11 +1,9 @@
-import type { ID, Offer } from "@/src/core";
+import type { ID, Offer, OfferUsageRule } from "@/src/core";
 import { apis } from "@/src/data";
 
 import type { OfferService } from "./service-contracts";
 
 export class LocalOfferService implements OfferService {
-  constructor(private readonly fallback: OfferService) {}
-
   async listByOrganization(organizationId: ID): Promise<Offer[]> {
     const result = await apis.offer.list(organizationId);
 
@@ -13,20 +11,13 @@ export class LocalOfferService implements OfferService {
       throw new Error(result.error.message);
     }
 
-    const fallbackOffers =
-      await this.fallback.listByOrganization(organizationId);
+    return result.data.filter((offer) => !offer.isDeleted);
+  }
 
-    const byId = new Map<string, Offer>();
-
-    for (const offer of fallbackOffers) {
-      byId.set(offer.id, offer);
-    }
-
-    for (const offer of result.data) {
-      byId.set(offer.id, offer);
-    }
-
-    return Array.from(byId.values()).filter((offer) => !offer.isDeleted);
+  async saveOfferWithRules(organizationId: ID, offer: Offer, rules: OfferUsageRule[], create: boolean): Promise<Offer> {
+    const result = await apis.offer.save(organizationId, offer, rules, create);
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
   }
 
   async createOffer(organizationId: ID, offer: Offer): Promise<Offer> {

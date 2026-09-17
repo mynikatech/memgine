@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Image, Pressable, StyleSheet, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import type { PickedBrandingAsset } from "@/src/core/brandingAssetPicker";
+import { API_BASE_URL } from "@/src/data/api/http-client";
 
 import type {
   MembershipProduct,
@@ -28,7 +30,7 @@ type OfferFormProps = {
   isNewOffer?: boolean;
   readOnly?: boolean;
 
-  onSave: (offer: Offer, usageRules: OfferUsageRule[]) => Promise<void>;
+  onSave: (offer: Offer, usageRules: OfferUsageRule[], image?: PickedBrandingAsset) => Promise<void>;
   onCancel: () => void;
 };
 
@@ -272,6 +274,7 @@ export function OfferForm({
   onCancel,
 }: OfferFormProps) {
   const [draft, setDraft] = useState<Offer>(offer);
+  const [pendingImage, setPendingImage] = useState<PickedBrandingAsset | undefined>();
   const [rules, setRules] = useState<OfferUsageRule[]>(() =>
     cloneRules(usageRules),
   );
@@ -283,6 +286,7 @@ export function OfferForm({
 
   useEffect(() => {
     setDraft(offer);
+    setPendingImage(undefined);
     setRules(cloneRules(usageRules));
     setValidationError(null);
   }, [offer, usageRules]);
@@ -436,7 +440,7 @@ export function OfferForm({
         allowsEditing: true,
         aspect: [16, 9],
         quality: 0.7,
-        base64: true,
+        base64: false,
       });
 
       if (result.canceled || !result.assets[0]?.uri) {
@@ -445,27 +449,12 @@ export function OfferForm({
 
       const asset = result.assets[0];
 
-      /*
-       * Development storage: persist the selected image as a data URI so the
-       * image survives the picker session and an application refresh.
-       *
-       * Production storage will eventually replace this value with the S3
-       * object URL returned by the image-storage service. The Offer entity
-       * therefore continues to use promotionImageUrl without introducing a
-       * second image field or image entity.
-       */
-      if (!asset.base64) {
-        Alert.alert(
-          "Unable to save image",
-          "The selected image could not be converted to local storage format.",
-        );
-        return;
-      }
-
-      const mimeType = asset.mimeType ?? "image/jpeg";
-      const localImageDataUri = `data:${mimeType};base64,${asset.base64}`;
-
-      update("promotionImageUrl", localImageDataUri);
+      setPendingImage({
+        uri: asset.uri,
+        fileName: asset.fileName ?? `offer-promotion-${Date.now()}.jpg`,
+        mimeType: asset.mimeType ?? "image/jpeg",
+      });
+      update("promotionImageUrl", asset.uri);
     } catch (error) {
       Alert.alert(
         "Unable to select image",
@@ -490,7 +479,7 @@ export function OfferForm({
     );
 
     if (duplicateCode) {
-      return "Offer Code must be unique within the Organization.";
+      return "Offer Code must be unique.";
     }
 
     if (!draft.offerName.trim()) {
@@ -645,7 +634,7 @@ export function OfferForm({
             : undefined,
       }));
 
-      await onSave(normalizedOffer, normalizedRules);
+      await onSave(normalizedOffer, normalizedRules, pendingImage);
     } catch (error) {
       Alert.alert(
         "Unable to save offer",
@@ -695,7 +684,9 @@ export function OfferForm({
           {draft.promotionImageUrl ? (
             <Image
               source={{
-                uri: draft.promotionImageUrl,
+                uri: draft.promotionImageUrl.startsWith("/api/v1/assets/")
+                  ? `${API_BASE_URL}${draft.promotionImageUrl}`
+                  : draft.promotionImageUrl,
               }}
               style={styles.promotionImage}
               resizeMode="cover"

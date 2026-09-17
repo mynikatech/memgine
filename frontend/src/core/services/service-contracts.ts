@@ -14,6 +14,7 @@ import {
   EntityType,
   Status,
   Offer,
+  OfferUsageRule,
   Staff,
   StaffStoreAssignment,
   Organization,
@@ -505,7 +506,8 @@ export interface PaymentService {
 }
 
 export interface OfferService {
-  listByOrganization(organizationId: ID): Promise<Offer[]>;
+    listByOrganization(organizationId: ID): Promise<Offer[]>;
+    saveOfferWithRules(organizationId: ID, offer: Offer, rules: OfferUsageRule[], create: boolean): Promise<Offer>;
   createOffer(organizationId: ID, offer: Offer): Promise<Offer>;
   updateOffer(organizationId: ID, offer: Offer): Promise<Offer>;
   deleteOffer(organizationId: ID, offerId: ID): Promise<void>;

@@ -103,7 +103,8 @@ class BrandingAssetService(
                 "darkThemeLogo",
                 "favicon",
                 "splashScreen",
-                "heroImage"
+                "heroImage",
+                "offerPromotion"
             )
 
         val ALLOWED_CONTENT_TYPES =

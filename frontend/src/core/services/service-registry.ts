@@ -64,7 +64,7 @@ const productService: ProductService = new LocalProductService();
 const membershipProductService: MembershipProductService =
   new LocalMembershipProductService(organizationService);
 const benefitService: BenefitService = new LocalBenefitService();
-const offerService: OfferService = new LocalOfferService(mockServices.offer);
+const offerService: OfferService = new LocalOfferService();
 const userAcquisitionService: UserAcquisitionService =
   new LocalUserAcquisitionService(mockServices.userAcquisition);
 const serverStatusService = new ServerStatusService();

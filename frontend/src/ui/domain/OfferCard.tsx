@@ -1,4 +1,5 @@
 import { Image, Pressable, View } from "react-native";
+import { API_BASE_URL } from "@/src/data/api/http-client";
 import { useEffect, useState } from "react";
 
 import { OfferFrequencyType, type OfferUsageRule } from "@/src/core";
@@ -220,7 +221,8 @@ export function OfferCard({
             }}
           >
             <Image
-              source={{ uri: imageUrl }}
+              source={{ uri: imageUrl.startsWith("/api/v1/assets/")
+                ? `${API_BASE_URL}${imageUrl}` : imageUrl }}
               resizeMode="contain"
               style={{
                 width: "100%",

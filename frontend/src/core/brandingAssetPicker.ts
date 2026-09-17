@@ -5,7 +5,8 @@ export type BrandingAssetType =
   | "darkThemeLogo"
   | "favicon"
   | "splashScreen"
-  | "heroImage";
+  | "heroImage"
+  | "offerPromotion";
 
 export type PickBrandingAssetOptions = {
   assetType: BrandingAssetType;

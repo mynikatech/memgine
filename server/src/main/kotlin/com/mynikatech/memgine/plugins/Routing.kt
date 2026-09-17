@@ -5,6 +5,8 @@ import com.mynikatech.memgine.component.benefit.BenefitService
 import com.mynikatech.memgine.component.benefit.benefitRoutes
 import com.mynikatech.memgine.component.membership.MembershipProductService
 import com.mynikatech.memgine.component.membership.membershipProductRoutes
+import com.mynikatech.memgine.component.offer.OfferService
+import com.mynikatech.memgine.component.offer.offerRoutes
 import com.mynikatech.memgine.component.asset.brandingAssetRoutes
 import com.mynikatech.memgine.component.entitystatus.EntityStatusService
 import com.mynikatech.memgine.component.entitystatus.entityStatusRoutes
@@ -58,6 +60,7 @@ fun Application.configureRouting(
         )
     val benefitService = BenefitService(database.jdbi)
     val membershipProductService = MembershipProductService(database.jdbi)
+    val offerService = OfferService(database.jdbi)
 
     routing {
         get("/health") {
@@ -81,6 +84,7 @@ fun Application.configureRouting(
             staffRoutes(staffService)
             benefitRoutes(benefitService)
             membershipProductRoutes(membershipProductService)
+            offerRoutes(offerService)
 
             referenceDataRoutes(referenceDataService)
             entityStatusRoutes(entityStatusService)

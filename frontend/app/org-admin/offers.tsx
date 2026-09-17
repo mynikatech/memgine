@@ -17,6 +17,8 @@ import { DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
 import { OfferForm } from "@/src/ui/admin/OfferForm";
 import { useRouter } from "expo-router";
 import { APP_ROUTES } from "@/src/constants/navigation";
+import type { PickedBrandingAsset } from "@/src/core/brandingAssetPicker";
+import { brandingAssetApi } from "@/src/data/api/branding-asset-api";
 
 export default function OrgAdminOffers() {
   const { organization } = useBusiness();
@@ -28,6 +30,7 @@ export default function OrgAdminOffers() {
     OfferUsageRule[]
   >([]);
   const [usageRules, setUsageRules] = useState<OfferUsageRule[]>([]);
+  const [pendingImages, setPendingImages] = useState<Record<string, PickedBrandingAsset>>({});
 
   const [products, setProducts] = useState<MembershipProduct[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
@@ -82,6 +85,7 @@ export default function OrgAdminOffers() {
         setCommittedUsageRules(ruleList.filter((item) => !item.isDeleted));
 
         setUsageRules(ruleList.filter((item) => !item.isDeleted));
+        setPendingImages({});
 
         setProducts(productList);
         setStores(storeList);
@@ -338,7 +342,13 @@ export default function OrgAdminOffers() {
   const handleSaveDraft = async (
     updatedOffer: Offer,
     updatedRules: OfferUsageRule[],
+    image?: PickedBrandingAsset,
   ) => {
+    setPendingImages((current) => {
+      const next = { ...current };
+      if (image) next[updatedOffer.id] = image;
+      return next;
+    });
     setOffers((current) => {
       const exists = current.some((item) => item.id === updatedOffer.id);
 
@@ -383,6 +393,11 @@ export default function OrgAdminOffers() {
           text: "Delete",
           style: "destructive",
           onPress: () => {
+            setPendingImages((current) => {
+              const next = { ...current };
+              delete next[offer.id];
+              return next;
+            });
             setOffers((current) =>
               current.filter((item) => item.id !== offer.id),
             );
@@ -410,77 +425,52 @@ export default function OrgAdminOffers() {
 
       const workingById = new Map(offers.map((offer) => [offer.id, offer]));
 
-      /*
-       * ------------------------------------------------------------
-       * Persist Offers
-       * ------------------------------------------------------------
-       */
-
       for (const offer of offers) {
         const existing = committedById.get(offer.id);
-
-        if (!existing) {
-          await services.offer.createOffer(organization.id, offer);
-          continue;
-        }
-
-        if (JSON.stringify(existing) !== JSON.stringify(offer)) {
-          await services.offer.updateOffer(organization.id, offer);
+        const currentRules = usageRules.filter((rule) => rule.offerId === offer.id);
+        const previousRules = committedUsageRules.filter((rule) => rule.offerId === offer.id);
+        if (!existing || JSON.stringify(existing) !== JSON.stringify(offer) ||
+            JSON.stringify(currentRules) !== JSON.stringify(previousRules)) {
+          let offerToSave = offer;
+          const pendingImage = pendingImages[offer.id];
+          if (pendingImage) {
+            const uploaded = await brandingAssetApi.upload(
+              organization.id, "offerPromotion", pendingImage,
+            );
+            offerToSave = { ...offer, promotionImageUrl: uploaded.path };
+            setOffers((current) => current.map((item) =>
+              item.id === offer.id ? offerToSave : item));
+            setPendingImages((current) => {
+              const next = { ...current };
+              delete next[offer.id];
+              return next;
+            });
+          }
+          const savedOffer = await services.offer.saveOfferWithRules(
+            organization.id, offerToSave, currentRules, !existing,
+          );
+          setCommittedOffers((current) => [
+            ...current.filter((item) => item.id !== savedOffer.id), savedOffer,
+          ]);
+          setOffers((current) => current.map((item) =>
+            item.id === savedOffer.id ? savedOffer : item));
+          const savedRules = await services.offerUsageRule.listByOffer(savedOffer.id);
+          setCommittedUsageRules((current) => [
+            ...current.filter((rule) => rule.offerId !== savedOffer.id), ...savedRules,
+          ]);
+          setUsageRules((current) => [
+            ...current.filter((rule) => rule.offerId !== savedOffer.id), ...savedRules,
+          ]);
         }
       }
 
       for (const committed of committedOffers) {
         if (!workingById.has(committed.id)) {
-          await services.offer.updateOffer(organization.id, {
-            ...committed,
-            isDeleted: true,
-            updatedAt: new Date().toISOString(),
-            updatedBy: "user-system",
-          });
+          await services.offer.deleteOffer(organization.id, committed.id);
+          setCommittedOffers((current) => current.filter((item) => item.id !== committed.id));
+          setCommittedUsageRules((current) => current.filter((rule) => rule.offerId !== committed.id));
         }
       }
-
-      /*
-       * ------------------------------------------------------------
-       * Persist Offer Usage Rules
-       * ------------------------------------------------------------
-       *
-       * These are deliberately persisted through the independent
-       * Offer Usage Rule service. They are NOT embedded in Offer.
-       */
-
-      const committedRulesById = new Map(
-        committedUsageRules.map((rule) => [rule.id, rule]),
-      );
-
-      const workingRulesById = new Map(
-        usageRules.map((rule) => [rule.id, rule]),
-      );
-
-      for (const rule of usageRules) {
-        const existing = committedRulesById.get(rule.id);
-
-        if (!existing) {
-          await services.offerUsageRule.createRule(rule);
-          continue;
-        }
-
-        if (JSON.stringify(existing) !== JSON.stringify(rule)) {
-          await services.offerUsageRule.updateRule(rule);
-        }
-      }
-
-      for (const committedRule of committedUsageRules) {
-        if (!workingRulesById.has(committedRule.id)) {
-          await services.offerUsageRule.deleteRule(committedRule.id);
-        }
-      }
-
-      /*
-       * ------------------------------------------------------------
-       * Reload persisted state
-       * ------------------------------------------------------------
-       */
 
       const persistedOffers = await services.offer.listByOrganization(
         organization.id,
@@ -507,6 +497,7 @@ export default function OrgAdminOffers() {
       setCommittedUsageRules(activePersistedRules);
 
       setUsageRules(activePersistedRules);
+      setPendingImages({});
 
       setIsEditing(false);
       setFormVisible(false);
@@ -537,6 +528,7 @@ export default function OrgAdminOffers() {
     setOffers(committedOffers);
 
     setUsageRules(committedUsageRules);
+    setPendingImages({});
 
     setIsEditing(false);
     setFormVisible(false);

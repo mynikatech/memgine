@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 049-2e-offer-functions
+      author: mynikatech
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/049-2e-offer-functions.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
