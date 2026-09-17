@@ -14,10 +14,14 @@ import { services } from "@/src/core";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { membershipDraftStore } from "@/src/core/services/membership-draft-store";
+import { ServerReferenceDataService } from "@/src/core/services/reference-data-service.server";
+import { API_BASE_URL } from "@/src/data/api/http-client";
 import { useBusiness } from "@/src/providers";
 import { Button, DataTable, type DataTableColumn, Modal, Text } from "@/src/ui";
 
 import { MembershipForm } from "@/src/ui/admin/MembershipForm";
+
+const membershipReferenceData = new ServerReferenceDataService(API_BASE_URL);
 
 function cloneProducts(products: MembershipProduct[]): MembershipProduct[] {
   return products.map((product) => ({
@@ -58,6 +62,7 @@ export default function OrgAdminMemberships() {
     Status[]
   >([]);
   const [currencies, setCurrencies] = useState<ReferenceDataItem[]>([]);
+  const [preferredCurrencyCode, setPreferredCurrencyCode] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -89,15 +94,17 @@ export default function OrgAdminMemberships() {
           productStatusList,
           planStatusList,
           currencyList,
+          organizationDetails,
         ] = await Promise.all([
           services.membershipProduct.listProducts(organization.id),
           services.benefit.listByOrganization(organization.id),
           services.status.listBenefitStatuses(),
-          services.referenceData.listProductCategories(),
-          services.referenceData.listProductTypes(),
+          membershipReferenceData.listProductCategories(),
+          membershipReferenceData.listProductTypes(),
           services.status.listMembershipProductStatuses(),
           services.status.listSubscriptionPlanStatuses(),
-          services.referenceData.listCurrencies(),
+          membershipReferenceData.listCurrencies(),
+          services.organization.getOrganizationDetails(organization.id),
         ]);
 
         if (!mounted) {
@@ -121,6 +128,15 @@ export default function OrgAdminMemberships() {
         setProductStatuses(productStatusList);
         setSubscriptionPlanStatuses(planStatusList);
         setCurrencies(currencyList);
+        const currencyByCountry: Record<string, string> = {
+          CA: "CAD", US: "USD", GB: "GBP", UK: "GBP", IN: "INR",
+          AU: "AUD", SG: "SGD", AE: "AED", NZ: "NZD",
+        };
+        setPreferredCurrencyCode(
+          currencyByCountry[
+            organizationDetails?.address.countryCode?.trim().toUpperCase() ?? ""
+          ] ?? "",
+        );
       } catch (error) {
         if (!mounted) {
           return;
@@ -204,7 +220,7 @@ export default function OrgAdminMemberships() {
   /* ---------------------------------------------------------------------- */
 
   const generateMembershipProductCode = (): string => {
-    const prefix = `${organization.code}-MEMBERSHIP`;
+    const prefix = `${organization.code.slice(0, 15)}-MEMBERSHIP`;
 
     const usedCodes = new Set(
       products
@@ -225,7 +241,7 @@ export default function OrgAdminMemberships() {
     membershipProductCode: string,
     existingPlans: SubscriptionPlan[] = [],
   ): string => {
-    const prefix = `${membershipProductCode}-PLAN`;
+    const prefix = `${membershipProductCode.slice(0, 21)}-PLAN`;
 
     const usedCodes = new Set(
       existingPlans
@@ -254,12 +270,11 @@ export default function OrgAdminMemberships() {
         status.statusName?.trim().toLowerCase() === "active",
     );
 
-    const inrCurrency =
+    const defaultCurrency =
       currencies.find(
         (currency) =>
-          currency.code?.trim().toUpperCase() === "INR" ||
-          currency.name?.trim().toUpperCase() === "INR",
-      ) ?? currencies[0];
+          currency.code?.trim().toUpperCase() === preferredCurrencyCode,
+      );
 
     return {
       id: `membership-plan-${Date.now()}`,
@@ -270,13 +285,13 @@ export default function OrgAdminMemberships() {
       ),
       subscriptionPlanName: "Monthly",
       subscriptionPlanStatusId:
-        activeStatus?.id ?? "subscription-plan-status-active",
-      currencyId: inrCurrency?.id ?? "",
+        activeStatus?.id ?? "",
+      currencyId: defaultCurrency?.id ?? "",
       subscriptionPeriod: 1,
       subscriptionPeriodUnit: "MONTH",
       price: {
         amountMinor: 0,
-        currency: inrCurrency?.code ?? "CAD",
+        currency: defaultCurrency?.code ?? "CAD",
       },
       billingInterval: "MONTHLY",
       effectiveDate: now.substring(0, 10),
@@ -322,7 +337,7 @@ export default function OrgAdminMemberships() {
 
       productTypeId: "",
 
-      productStatusId: activeStatus?.id ?? "membership-product-status-active",
+      productStatusId: activeStatus?.id ?? "",
 
       description: undefined,
 
@@ -861,6 +876,7 @@ export default function OrgAdminMemberships() {
             productStatuses={productStatuses}
             subscriptionPlanStatuses={subscriptionPlanStatuses}
             currencies={currencies}
+            preferredCurrencyCode={preferredCurrencyCode}
             onSave={handleSaveDraft}
             onCancel={() => {
               setFormVisible(false);

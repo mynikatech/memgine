@@ -21,7 +21,6 @@ import { OfferRedemptionApi } from "./api/offer-redemption-api";
 import { OrganizationUserApi } from "./api/organization-user-api";
 
 import { LocalBrandingRepository } from "./repositories/branding/branding-repository.local";
-import { LocalMembershipProductRepository } from "./repositories/membership/membership-product-repository.local";
 import { LocalOfferRepository } from "./repositories/offer/offer-repository.local";
 import { LocalOrganizationMembersRepository } from "./repositories/organization/organization-members.repository.local";
 import { LocalOrganizationRepository } from "./repositories/organization/organization-repository.local";
@@ -45,7 +44,6 @@ const organizationRepository = new LocalOrganizationRepository();
 const brandingRepository = new LocalBrandingRepository();
 const organizationMembersRepository = new LocalOrganizationMembersRepository();
 const productRepository = new LocalProductRepository();
-const membershipProductRepository = new LocalMembershipProductRepository();
 const offerRepository = new LocalOfferRepository();
 const subscriptionRepository = new LocalSubscriptionRepository();
 const redemptionRepository = new LocalRedemptionRepository();
@@ -67,7 +65,6 @@ export const data = {
   organizationMembersRepository,
   brandingRepository,
   productRepository,
-  membershipProductRepository,
   offerRepository,
   subscriptionRepository,
   redemptionRepository,
@@ -90,7 +87,7 @@ export const apis = {
   staff: new StaffApi(),
   branding: new BrandingApi(),
   product: new ProductApi(productRepository),
-  membershipProduct: new MembershipProductApi(membershipProductRepository),
+  membershipProduct: new MembershipProductApi(),
   benefit: benefitApi,
   offer: new OfferApi(offerRepository),
   subscription: new SubscriptionApi(subscriptionRepository),

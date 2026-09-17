@@ -26,6 +26,7 @@ type MembershipFormProps = {
   productStatuses: Status[];
   subscriptionPlanStatuses: Status[];
   currencies: ReferenceDataItem[];
+  preferredCurrencyCode: string;
   onSave: (product: MembershipProduct) => Promise<void>;
   onCancel: () => void;
 };
@@ -49,6 +50,7 @@ export function MembershipForm({
   productStatuses,
   subscriptionPlanStatuses,
   currencies,
+  preferredCurrencyCode,
   onSave,
   onCancel,
 }: MembershipFormProps) {
@@ -100,7 +102,7 @@ export function MembershipForm({
     membershipProductCode: string,
     existingPlans: PlanDraft[],
   ): string => {
-    const prefix = `${membershipProductCode}-PLAN`;
+    const prefix = `${membershipProductCode.slice(0, 21)}-PLAN`;
 
     const usedCodes = new Set(
       existingPlans
@@ -121,8 +123,7 @@ export function MembershipForm({
     const now = new Date().toISOString();
     const activePlanStatus = subscriptionPlanStatuses.find(isActiveStatus);
     const defaultCurrency =
-      currencies.find((item) => item.code?.toUpperCase() === "INR") ??
-      currencies[0];
+      currencies.find((item) => item.code?.toUpperCase() === preferredCurrencyCode);
 
     return {
       id: `plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -137,7 +138,7 @@ export function MembershipForm({
       subscriptionPeriodUnit: "MONTH",
       price: {
         amountMinor: 0,
-        currency: defaultCurrency?.code ?? "INR",
+        currency: defaultCurrency?.code ?? "CAD",
       },
       currencyId: defaultCurrency?.id ?? "",
       subscriptionPlanStatusId: activePlanStatus?.id ?? "",
@@ -719,6 +720,7 @@ export function MembershipForm({
                 updatePlan(plan.id, "effectiveDate", value)
               }
               placeholder="YYYY-MM-DD"
+              editable={!readOnly}
             />
 
             <Input
@@ -732,6 +734,7 @@ export function MembershipForm({
                 )
               }
               placeholder="YYYY-MM-DD"
+              editable={!readOnly}
             />
           </View>
         ))}
