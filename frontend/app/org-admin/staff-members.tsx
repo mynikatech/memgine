@@ -504,8 +504,19 @@ export default function OrgAdminStaff() {
     updatedStaff: Staff,
     selectedStoreIds: string[],
   ) => {
+    console.log("[StaffPage] handleSave entered", {
+      staffId: updatedStaff.id,
+      organizationId: organization.id,
+      organizationUserId: updatedStaff.organizationUserId,
+      staffCode: updatedStaff.staffCode,
+      storeId: updatedStaff.storeId,
+      selectedStoreIds,
+    });
+
     try {
       const existing = staff.some((item) => item.id === updatedStaff.id);
+
+      console.log("[StaffPage] existing staff:", existing);
 
       let savedStaff: Staff;
 
@@ -521,10 +532,14 @@ export default function OrgAdminStaff() {
           ),
         );
       } else {
+        console.log("[StaffPage] calling createStaff");
+
         savedStaff = await services.organization.createStaff(
           organization.id,
           updatedStaff,
         );
+
+        console.log("[StaffPage] createStaff returned", savedStaff);
 
         setStaff((current) => [...current, savedStaff]);
       }

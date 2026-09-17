@@ -1,4 +1,5 @@
 package com.mynikatech.memgine.plugins
+
 import com.mynikatech.memgine.component.asset.BrandingAssetService
 import com.mynikatech.memgine.component.asset.brandingAssetRoutes
 import com.mynikatech.memgine.component.entitystatus.EntityStatusService
@@ -11,6 +12,9 @@ import com.mynikatech.memgine.component.organizationuser.OrganizationUserSql
 import com.mynikatech.memgine.component.organizationuser.organizationUserRoutes
 import com.mynikatech.memgine.component.referencedata.ReferenceDataService
 import com.mynikatech.memgine.component.referencedata.referenceDataRoutes
+import com.mynikatech.memgine.component.staff.StaffService
+import com.mynikatech.memgine.component.staff.StaffSql
+import com.mynikatech.memgine.component.staff.staffRoutes
 import com.mynikatech.memgine.component.store.StoreService
 import com.mynikatech.memgine.component.store.StoreSql
 import com.mynikatech.memgine.component.store.storeRoutes
@@ -45,6 +49,11 @@ fun Application.configureRouting(
             database.jdbi.onDemand(StoreSql::class.java)
         )
 
+    val staffService =
+        StaffService(
+            database.jdbi.onDemand(StaffSql::class.java)
+        )
+
     routing {
         get("/health") {
             call.respond(
@@ -62,6 +71,10 @@ fun Application.configureRouting(
             // Batch 2A
             storeRoutes(storeService)
             brandingAssetRoutes(brandingAssetService)
+
+            // Batch 2B
+            staffRoutes(staffService)
+
             referenceDataRoutes(referenceDataService)
             entityStatusRoutes(entityStatusService)
         }

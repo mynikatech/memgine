@@ -628,163 +628,98 @@ export class LocalOrganizationService implements OrganizationService {
   }
 
   async listStaff(organizationId: ID): Promise<Staff[]> {
-    return this.membersRepository.listStaff(organizationId);
+    const result = await apis.staff.list(organizationId);
+
+    if (!result.success) {
+      throw new Error(result.error.message);
+    }
+
+    return result.data;
   }
 
   async createStaff(organizationId: ID, staff: Staff): Promise<Staff> {
-    const staffList = await this.membersRepository.listStaff(organizationId);
-    const now = new Date().toISOString();
+    const result = await apis.staff.create(organizationId, staff);
 
-    const created: Staff = {
-      ...staff,
-      organizationId,
-      createdAt: now,
-      updatedAt: now,
-      isDeleted: false,
-      versionNo: 1,
-    };
+    if (!result.success) {
+      throw new Error(result.error.message);
+    }
 
-    await this.membersRepository.saveStaff(organizationId, [
-      ...staffList,
-      created,
-    ]);
-
-    return created;
+    return result.data;
   }
 
   async updateStaff(organizationId: ID, staff: Staff): Promise<Staff> {
-    const staffList = await this.membersRepository.listStaff(organizationId);
-    const index = staffList.findIndex(
-      (item) => item.id === staff.id && item.organizationId === organizationId,
-    );
+    const result = await apis.staff.update(organizationId, staff);
 
-    if (index === -1) {
-      throw new Error("Staff member not found.");
+    if (!result.success) {
+      throw new Error(result.error.message);
     }
 
-    const updated: Staff = {
-      ...staff,
-      organizationId,
-      updatedAt: new Date().toISOString(),
-      versionNo: staffList[index].versionNo + 1,
-    };
-
-    staffList[index] = updated;
-    await this.membersRepository.saveStaff(organizationId, staffList);
-
-    return updated;
+    return result.data;
   }
 
   async deleteStaff(organizationId: ID, staffId: ID): Promise<void> {
-    const staffList = await this.membersRepository.listStaff(organizationId);
-    const index = staffList.findIndex(
-      (item) => item.id === staffId && item.organizationId === organizationId,
-    );
+    const result = await apis.staff.delete(organizationId, staffId);
 
-    if (index === -1) {
-      throw new Error("Staff member not found.");
+    if (!result.success) {
+      throw new Error(result.error.message);
     }
-
-    staffList[index] = {
-      ...staffList[index],
-      isDeleted: true,
-      updatedAt: new Date().toISOString(),
-      versionNo: staffList[index].versionNo + 1,
-    };
-
-    await this.membersRepository.saveStaff(organizationId, staffList);
   }
 
   async listStaffStoreAssignments(
     organizationId: ID,
   ): Promise<StaffStoreAssignment[]> {
-    return this.membersRepository.listStaffStoreAssignments(organizationId);
+    const result = await apis.staff.listAssignments(organizationId);
+
+    if (!result.success) {
+      throw new Error(result.error.message);
+    }
+
+    return result.data;
   }
 
   async createStaffStoreAssignment(
     organizationId: ID,
     assignment: StaffStoreAssignment,
   ): Promise<StaffStoreAssignment> {
-    const assignments =
-      await this.membersRepository.listStaffStoreAssignments(organizationId);
-
-    const now = new Date().toISOString();
-
-    const created: StaffStoreAssignment = {
-      ...assignment,
+    const result = await apis.staff.createAssignment(
       organizationId,
-      createdAt: now,
-      updatedAt: now,
-      isDeleted: false,
-      versionNo: 1,
-    };
+      assignment,
+    );
 
-    await this.membersRepository.saveStaffStoreAssignments(organizationId, [
-      ...assignments,
-      created,
-    ]);
+    if (!result.success) {
+      throw new Error(result.error.message);
+    }
 
-    return created;
+    return result.data;
   }
 
   async updateStaffStoreAssignment(
     organizationId: ID,
     assignment: StaffStoreAssignment,
   ): Promise<StaffStoreAssignment> {
-    const assignments =
-      await this.membersRepository.listStaffStoreAssignments(organizationId);
-
-    const index = assignments.findIndex(
-      (item) =>
-        item.id === assignment.id && item.organizationId === organizationId,
+    const result = await apis.staff.updateAssignment(
+      organizationId,
+      assignment,
     );
 
-    if (index === -1) {
-      throw new Error("Staff store assignment not found.");
+    if (!result.success) {
+      throw new Error(result.error.message);
     }
 
-    const updated: StaffStoreAssignment = {
-      ...assignment,
-      organizationId,
-      updatedAt: new Date().toISOString(),
-      versionNo: assignments[index].versionNo + 1,
-    };
-
-    assignments[index] = updated;
-    await this.membersRepository.saveStaffStoreAssignments(
-      organizationId,
-      assignments,
-    );
-
-    return updated;
+    return result.data;
   }
 
   async deleteStaffStoreAssignment(
     organizationId: ID,
     assignmentId: ID,
   ): Promise<void> {
-    const assignments =
-      await this.membersRepository.listStaffStoreAssignments(organizationId);
-
-    const index = assignments.findIndex(
-      (item) =>
-        item.id === assignmentId && item.organizationId === organizationId,
-    );
-
-    if (index === -1) {
-      throw new Error("Staff store assignment not found.");
-    }
-
-    assignments[index] = {
-      ...assignments[index],
-      isDeleted: true,
-      updatedAt: new Date().toISOString(),
-      versionNo: assignments[index].versionNo + 1,
-    };
-
-    await this.membersRepository.saveStaffStoreAssignments(
+    const result = await apis.staff.deleteAssignment(
       organizationId,
-      assignments,
+      assignmentId,
     );
+
+    if (!result.success) {
+      throw new Error(result.error.message);
+    }
   }
 }

@@ -182,6 +182,7 @@ export function StaffForm({
   );
 
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   const [showNewUser, setShowNewUser] = useState(false);
 
@@ -216,6 +217,7 @@ export function StaffForm({
     setShowNewUser(false);
     setCreatingUser(false);
     setNewUserError("");
+    setSaveError("");
 
     setNewUser({
       firstName: "",
@@ -564,34 +566,31 @@ export function StaffForm({
   };
 
   const handleSave = async () => {
-    /*
-     * User is mandatory.
-     */
+    setSaveError("");
+
     if (!form.organizationUserId) {
+      setSaveError("Please select a User.");
       return;
     }
 
-    /*
-     * Primary Store is mandatory.
-     */
-    if (!form.storeId) {
-      return;
-    }
-
-    /*
-     * A selected User must exist.
-     */
     if (!selectedUser) {
+      setSaveError("The selected User could not be found.");
       return;
     }
 
-    /*
-     * Primary Store must be an
-     * associated store.
-     */
+    if (!form.storeId) {
+      setSaveError("Please select a Primary Store.");
+      return;
+    }
+
     const finalStoreIds = Array.from(
       new Set([form.storeId, ...selectedStoreIds]),
     );
+
+    if (finalStoreIds.length === 0) {
+      setSaveError("Please select at least one Associated Store.");
+      return;
+    }
 
     setSaving(true);
 
@@ -599,19 +598,11 @@ export function StaffForm({
       await onSave(
         {
           ...form,
-
           staffCode: form.staffCode,
-
-          /*
-           * Primary Store is the Staff.storeId.
-           */
           storeId: form.storeId,
-
           staffStatusId: isNew ? activeStaffStatusId : form.staffStatusId,
-
           relievingDate: isNew ? undefined : form.relievingDate,
         },
-
         finalStoreIds,
       );
     } finally {
@@ -619,12 +610,7 @@ export function StaffForm({
     }
   };
 
-  const canSave =
-    !saving &&
-    !!form.organizationUserId &&
-    !!selectedUser &&
-    !!form.storeId &&
-    selectedStoreIds.length > 0;
+  const canSave = !saving;
 
   return (
     <View style={styles.container}>
@@ -1160,7 +1146,13 @@ export function StaffForm({
       {/* ========================================================== */}
       {/* ACTIONS                                                      */}
       {/* ========================================================== */}
+      {!!saveError && (
+        <Text variant="bodySmall" color="danger">
+          {saveError}
+        </Text>
+      )}
 
+      <View style={styles.actions}></View>
       <View style={styles.actions}>
         <Pressable
           onPress={onCancel}
@@ -1180,7 +1172,19 @@ export function StaffForm({
         </Pressable>
 
         <Pressable
-          onPress={handleSave}
+          onPress={() => {
+            console.log("[StaffForm] Save Staff pressed", {
+              canSave,
+              saving,
+              organizationUserId: form.organizationUserId,
+              selectedUserId: selectedUser?.id,
+              storeId: form.storeId,
+              selectedStoreIds,
+              staffCode: form.staffCode,
+            });
+
+            void handleSave();
+          }}
           disabled={!canSave}
           style={[
             styles.button,
