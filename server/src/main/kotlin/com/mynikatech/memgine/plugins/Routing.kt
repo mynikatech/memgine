@@ -7,6 +7,12 @@ import com.mynikatech.memgine.component.membership.MembershipProductService
 import com.mynikatech.memgine.component.membership.membershipProductRoutes
 import com.mynikatech.memgine.component.offer.OfferService
 import com.mynikatech.memgine.component.offer.offerRoutes
+import com.mynikatech.memgine.component.subscription.SubscriptionService
+import com.mynikatech.memgine.component.subscription.SubscriptionSql
+import com.mynikatech.memgine.component.subscription.subscriptionRoutes
+import com.mynikatech.memgine.component.redemption.RedemptionService
+import com.mynikatech.memgine.component.redemption.RedemptionSql
+import com.mynikatech.memgine.component.redemption.redemptionRoutes
 import com.mynikatech.memgine.component.notificationconfiguration.NotificationConfigurationService
 import com.mynikatech.memgine.component.notificationconfiguration.notificationConfigurationRoutes
 import com.mynikatech.memgine.component.integrationconfiguration.IntegrationConfigurationService
@@ -65,6 +71,8 @@ fun Application.configureRouting(
     val benefitService = BenefitService(database.jdbi)
     val membershipProductService = MembershipProductService(database.jdbi)
     val offerService = OfferService(database.jdbi)
+    val subscriptionService = SubscriptionService(database.jdbi.onDemand(SubscriptionSql::class.java))
+    val redemptionService = RedemptionService(database.jdbi.onDemand(RedemptionSql::class.java))
     val notificationConfigurationService = NotificationConfigurationService(database.jdbi)
     val integrationConfigurationService = IntegrationConfigurationService(database.jdbi)
 
@@ -91,6 +99,8 @@ fun Application.configureRouting(
             benefitRoutes(benefitService)
             membershipProductRoutes(membershipProductService)
             offerRoutes(offerService)
+            subscriptionRoutes(subscriptionService)
+            redemptionRoutes(redemptionService)
             notificationConfigurationRoutes(notificationConfigurationService)
             integrationConfigurationRoutes(integrationConfigurationService)
 

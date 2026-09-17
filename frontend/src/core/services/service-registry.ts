@@ -17,6 +17,8 @@ import { LocalPaymentService } from "./payment-service.local";
 import { CachedStatusService } from "./status-cache";
 import { ServerStatusService } from "./status-service.server";
 import { LocalRedemptionService } from "./redemption-service.local";
+import { OrgAdminTransactionReadService } from "./org-admin-transaction-read-service";
+import { OrgAdminRedemptionApi, OrgAdminSubscriptionApi } from "@/src/data/api/org-admin-transaction-api";
 import { LocalOfferRedemptionService } from "./offer-redemption-service.local";
 import { LocalCustomerPreferenceService } from "./customer-preference-service.local";
 import { LocalReferralService } from "./referral-service.local";
@@ -132,6 +134,9 @@ const paymentService: PaymentService = new LocalPaymentService(
   mockServices.payment,
 );
 const redemptionService: RedemptionService = new LocalRedemptionService();
+const orgAdminTransactions = new OrgAdminTransactionReadService(
+  new OrgAdminSubscriptionApi(), new OrgAdminRedemptionApi(),
+);
 const offerRedemptionService: OfferRedemptionService =
   new LocalOfferRedemptionService(apis.offerRedemption);
 const customerPreferenceService = new LocalCustomerPreferenceService(
@@ -149,6 +154,7 @@ export type MemgineServices = {
   offer: OfferService;
   userAcquisition: UserAcquisitionService;
   redemption: RedemptionService;
+  orgAdminTransactions: OrgAdminTransactionReadService;
   offerRedemption: OfferRedemptionService;
   status: StatusService;
   auth: CustomerAuthService;
@@ -182,6 +188,7 @@ export const services: MemgineServices = {
   offer: offerService,
   userAcquisition: userAcquisitionService,
   redemption: redemptionService,
+  orgAdminTransactions,
   offerRedemption: offerRedemptionService,
   status: statusService,
   auth: mockServices.auth,

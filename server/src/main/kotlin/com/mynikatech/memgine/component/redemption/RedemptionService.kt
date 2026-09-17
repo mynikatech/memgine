@@ -1,0 +1,20 @@
+package com.mynikatech.memgine.component.redemption
+
+import com.mynikatech.memgine.exception.BadRequestException
+import com.mynikatech.memgine.exception.ForbiddenException
+import com.mynikatech.memgine.net.dto.OrgAdminRedemptionDto
+
+class RedemptionService(private val sql: RedemptionSql) {
+    // Current Org Admin components use the development actor until request auth is wired.
+    private val actorUserId = "user-org-admin"
+
+    fun listForOrganization(organizationId: String): List<OrgAdminRedemptionDto> {
+        if (organizationId.isBlank() || organizationId.length > 40) {
+            throw BadRequestException("Invalid organization id")
+        }
+        if (!sql.canAdminister(organizationId, actorUserId)) {
+            throw ForbiddenException("Organization administration is not permitted")
+        }
+        return sql.listForOrganization(organizationId, actorUserId)
+    }
+}

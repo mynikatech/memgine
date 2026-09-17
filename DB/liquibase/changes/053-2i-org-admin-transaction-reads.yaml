@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 053-2i-org-admin-transaction-reads
+      author: mynikatech
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/053-2i-org-admin-transaction-reads.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
