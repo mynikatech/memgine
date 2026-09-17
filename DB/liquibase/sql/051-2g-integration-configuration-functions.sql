@@ -1,4 +1,3 @@
--- Batch 2G: existing Integration Configuration records only.
 CREATE OR REPLACE FUNCTION "${schemaName}".get_organization_integration_configurations(
     p_organization_id varchar, p_actor_user_id varchar
 )

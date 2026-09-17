@@ -98,3 +98,5 @@ DB/env/local/liquibase.local.properties
 # Microsoft Office temporary files
 ~$*
 **/~$*
+DB/hs_err_pid5188.log
+DB/hs_err_pid19520.log
