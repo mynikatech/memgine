@@ -49,6 +49,7 @@ const CURRENCIES: Array<{
   { id: "INR" as MoneyValue["currency"], name: "INR — Indian Rupee" },
   { id: "SGD" as MoneyValue["currency"], name: "SGD — Singapore Dollar" },
   { id: "AED" as MoneyValue["currency"], name: "AED — UAE Dirham" },
+  { id: "NZD" as MoneyValue["currency"], name: "NZD — New Zealand Dollar" },
 ];
 
 const COUNTRY_CURRENCY: Record<string, MoneyValue["currency"]> = {
@@ -298,6 +299,13 @@ function cloneRules(rules: BenefitUsageRule[]): BenefitUsageRule[] {
     applicableDays: rule.applicableDays ? [...rule.applicableDays] : undefined,
   }));
 }
+function isValidTime(value?: string): boolean {
+  if (!value) {
+    return true;
+  }
+
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value.trim());
+}
 
 function moneyToInput(value?: MoneyValue): string {
   if (!value) {
@@ -334,8 +342,6 @@ export function BenefitForm({
     cloneRules(usageRules),
   );
 
-  const [productsLoading, setProductsLoading] = useState(false);
-
   const [defaultCurrency, setDefaultCurrency] = useState<
     MoneyValue["currency"]
   >(
@@ -351,6 +357,9 @@ export function BenefitForm({
   const [costInput, setCostInput] = useState(moneyToInput(benefit.cost));
 
   const [touched, setTouched] = useState<Set<string>>(new Set());
+
+  const [rulesValidationAttempted, setRulesValidationAttempted] =
+    useState(false);
 
   useEffect(() => {
     setForm({
@@ -371,42 +380,9 @@ export function BenefitForm({
     }
 
     setTouched(new Set());
+    setRulesValidationAttempted(false);
     setRules(cloneRules(usageRules));
   }, [benefit, benefitStatuses, usageRules]);
-
-  /*
-   * Product is a real organization-owned business entity.
-   *
-   * The screen normally supplies the list, but keeping this small fallback
-   * makes the form safe if a caller opens it before products have loaded.
-   */
-  useEffect(() => {
-    if (products.length || productsLoading) {
-      return;
-    }
-
-    let mounted = true;
-
-    async function loadProducts() {
-      setProductsLoading(true);
-
-      try {
-        await services.product.listProducts(benefit.organizationId);
-      } catch {
-        // The parent screen remains the source of the Product list.
-      } finally {
-        if (mounted) {
-          setProductsLoading(false);
-        }
-      }
-    }
-
-    void loadProducts();
-
-    return () => {
-      mounted = false;
-    };
-  }, [benefit.organizationId, products.length, productsLoading]);
 
   /*
    * Default currency comes from the organization's business country.
@@ -501,6 +477,42 @@ export function BenefitForm({
     touched,
   ]);
 
+  const getRuleStartTimeError = (
+    rule: BenefitUsageRule,
+  ): string | undefined => {
+    if (!rulesValidationAttempted) {
+      return undefined;
+    }
+
+    if (!isValidTime(rule.windowStartTime)) {
+      return "Enter time as HH:MM, for example 09:30.";
+    }
+
+    return undefined;
+  };
+
+  const getRuleEndTimeError = (rule: BenefitUsageRule): string | undefined => {
+    if (!rulesValidationAttempted) {
+      return undefined;
+    }
+
+    if (!isValidTime(rule.windowEndTime)) {
+      return "Enter time as HH:MM, for example 17:30.";
+    }
+
+    if (
+      rule.windowStartTime &&
+      rule.windowEndTime &&
+      isValidTime(rule.windowStartTime) &&
+      isValidTime(rule.windowEndTime) &&
+      rule.windowEndTime <= rule.windowStartTime
+    ) {
+      return "End Time must be later than Start Time.";
+    }
+
+    return undefined;
+  };
+
   const validate = () => {
     const requiredFields = [
       "benefitName",
@@ -510,11 +522,14 @@ export function BenefitForm({
     ];
 
     setTouched(new Set(requiredFields));
+    setRulesValidationAttempted(true);
 
     const validRules = rules.every(
       (rule) =>
         rule.frequencyInterval >= 1 &&
         rule.usageLimit >= 1 &&
+        isValidTime(rule.windowStartTime) &&
+        isValidTime(rule.windowEndTime) &&
         (!rule.windowStartTime ||
           !rule.windowEndTime ||
           rule.windowEndTime > rule.windowStartTime) &&
@@ -666,11 +681,8 @@ export function BenefitForm({
               label="Product"
               value={form.productId ?? ""}
               items={products}
-              placeholder={
-                productsLoading ? "Loading products..." : "Please select"
-              }
+              placeholder="Please select"
               allowClear
-              disabled={productsLoading}
               getItemId={(item) => item.id}
               renderItemLabel={(item) =>
                 item.productName
@@ -730,6 +742,7 @@ export function BenefitForm({
               label="Currency"
               value={defaultCurrency}
               items={CURRENCIES}
+              disabled
               renderItemLabel={(item) => item.name}
               onChange={(value) =>
                 handleCurrencyChange(value as MoneyValue["currency"])
@@ -899,6 +912,7 @@ export function BenefitForm({
                     label="Start Time"
                     value={rule.windowStartTime ?? ""}
                     placeholder="HH:MM (optional)"
+                    error={getRuleStartTimeError(rule)}
                     onChangeText={(value) =>
                       setRules((current) =>
                         current.map((item) =>
@@ -915,6 +929,7 @@ export function BenefitForm({
                     label="End Time"
                     value={rule.windowEndTime ?? ""}
                     placeholder="HH:MM (optional)"
+                    error={getRuleEndTimeError(rule)}
                     onChangeText={(value) =>
                       setRules((current) =>
                         current.map((item) =>

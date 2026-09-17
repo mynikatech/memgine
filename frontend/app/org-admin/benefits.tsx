@@ -225,14 +225,10 @@ export default function OrgAdminBenefits() {
           productList,
         ] = await Promise.all([
           services.benefit.listByOrganization(organization.id),
-
           services.referenceData.listBenefitCategories(),
-
           services.referenceData.listBenefitTypes(),
-
           services.status.listBenefitStatuses(),
-
-          services.product.listProducts(organization.id),
+          services.benefit.listCatalogProducts(organization.id),
         ]);
 
         const loadedRules = await services.benefitUsageRule.listByBenefits(
@@ -246,28 +242,20 @@ export default function OrgAdminBenefits() {
         const persistedSnapshot = cloneBenefits(persistedBenefits);
 
         /*
-         * Restore an existing unsaved draft if one exists.
+         * PostgreSQL is authoritative on every fresh load.
+         * Never replace server-loaded Benefits with a stale local draft.
          */
-        const existingDraft = benefitDraftStore.get(organization.id);
-
-        const workingSnapshot = existingDraft
-          ? cloneBenefits(existingDraft)
-          : cloneBenefits(persistedSnapshot);
+        benefitDraftStore.clear(organization.id);
 
         setCommittedBenefits(cloneBenefits(persistedSnapshot));
-
         setCommittedRules(cloneRules(loadedRules));
 
-        setBenefits(workingSnapshot);
-
+        setBenefits(cloneBenefits(persistedSnapshot));
         setRules(cloneRules(loadedRules));
 
         setBenefitCategories(categoryList);
-
         setBenefitTypes(typeList);
-
         setBenefitStatuses(statusList);
-
         setProducts(productList);
 
         /*
@@ -344,7 +332,7 @@ export default function OrgAdminBenefits() {
   /* ---------------------------------------------------------------------- */
 
   const generateBenefitCode = (): string => {
-    const prefix = `${organization.code}-BENEFIT`;
+    const prefix = `${organization.code.slice(0, 18)}-BENEFIT`;
 
     const usedCodes = new Set(
       benefits.map((benefit) => benefit.benefitCode.trim().toUpperCase()),
@@ -392,7 +380,7 @@ export default function OrgAdminBenefits() {
       /*
        * New Benefit defaults to Active.
        */
-      benefitStatusId: activeStatus?.id ?? "benefit-status-active",
+      benefitStatusId: activeStatus?.id ?? "",
 
       productId: undefined,
 
@@ -573,7 +561,13 @@ export default function OrgAdminBenefits() {
           continue;
         }
 
-        await services.benefit.createBenefit(organization.id, benefit);
+        await services.benefit.saveBenefitWithRules(
+          organization.id,
+          benefit,
+          rules.filter(
+            (rule) => rule.benefitId === benefit.id && !rule.isDeleted,
+          ),
+        );
       }
 
       /* -------------------------------------------------------------- */
@@ -587,8 +581,21 @@ export default function OrgAdminBenefits() {
           continue;
         }
 
-        if (JSON.stringify(committed) !== JSON.stringify(benefit)) {
-          await services.benefit.updateBenefit(organization.id, benefit);
+        const currentRules = rules.filter(
+          (rule) => rule.benefitId === benefit.id && !rule.isDeleted,
+        );
+        const previousRules = committedRules.filter(
+          (rule) => rule.benefitId === benefit.id && !rule.isDeleted,
+        );
+        if (
+          JSON.stringify(committed) !== JSON.stringify(benefit) ||
+          !rulesEqual(previousRules, currentRules)
+        ) {
+          await services.benefit.saveBenefitWithRules(
+            organization.id,
+            benefit,
+            currentRules,
+          );
         }
       }
 
@@ -601,38 +608,6 @@ export default function OrgAdminBenefits() {
 
         if (working?.isDeleted || !working) {
           await services.benefit.deleteBenefit(organization.id, committed.id);
-        }
-      }
-
-      /* -------------------------------------------------------------- */
-      /* USAGE RULES                                                   */
-      /* -------------------------------------------------------------- */
-
-      const committedRulesById = new Map(
-        committedRules.map((rule) => [rule.id, rule]),
-      );
-
-      const workingRulesById = new Map(rules.map((rule) => [rule.id, rule]));
-
-      for (const rule of rules) {
-        const committed = committedRulesById.get(rule.id);
-
-        if (!committed) {
-          if (!rule.isDeleted) {
-            await services.benefitUsageRule.createRule(rule);
-          }
-        } else if (!rulesEqual([committed], [rule])) {
-          if (rule.isDeleted) {
-            await services.benefitUsageRule.deleteRule(rule.id);
-          } else {
-            await services.benefitUsageRule.updateRule(rule);
-          }
-        }
-      }
-
-      for (const committed of committedRules) {
-        if (!workingRulesById.has(committed.id)) {
-          await services.benefitUsageRule.deleteRule(committed.id);
         }
       }
 

@@ -3,6 +3,7 @@ import { ID, Money, PhoneNumber } from "../domain/common";
 import { CurrencyCode } from "../localization/localization";
 import {
   Benefit,
+  BenefitUsageRule,
   Customer,
   User,
   Product,
@@ -395,6 +396,8 @@ export interface MembershipProductService {
 export interface BenefitService {
   listByOrganization(organizationId: ID): Promise<Benefit[]>;
   listByProduct(membershipProductId: ID): Promise<Benefit[]>;
+  listCatalogProducts(organizationId: ID): Promise<Product[]>;
+  saveBenefitWithRules(organizationId: ID, benefit: Benefit, rules: BenefitUsageRule[]): Promise<Benefit>;
 
   createBenefit(organizationId: ID, benefit: Benefit): Promise<Benefit>;
 

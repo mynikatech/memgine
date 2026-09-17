@@ -252,12 +252,14 @@ export function BenefitItem({
   const theme = useTheme();
   const benefitId = getBenefitId(testID);
   const [rules, setRules] = useState<BenefitUsageRule[]>([]);
+  const [ruleError, setRuleError] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
     if (usageRulesOverride !== undefined) {
+      setRuleError(null);
       setRules(usageRulesOverride.filter((rule) => !rule.isDeleted));
       return () => {
         cancelled = true;
@@ -267,6 +269,7 @@ export function BenefitItem({
     const loadRules = async () => {
       if (!benefitId) {
         setRules([]);
+        setRuleError(null);
         return;
       }
 
@@ -275,10 +278,12 @@ export function BenefitItem({
 
         if (!cancelled) {
           setRules(result);
+          setRuleError(null);
         }
-      } catch {
+      } catch (error) {
         if (!cancelled) {
           setRules([]);
+          setRuleError(error instanceof Error ? error.message : "Unable to load usage rules.");
         }
       }
     };
@@ -346,6 +351,9 @@ export function BenefitItem({
             <Text variant="caption" color="textMuted">
               {availability}
             </Text>
+          ) : null}
+          {ruleError ? (
+            <Text variant="caption" color="textMuted">{ruleError}</Text>
           ) : null}
         </View>
 

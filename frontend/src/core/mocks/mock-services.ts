@@ -18,6 +18,7 @@ import { CardStyle } from "../template/template-definition";
 import { TemplateCategory } from "../domain/common";
 import {
   Benefit,
+  BenefitUsageRule,
   Customer,
   EntityType,
   EntityStatus,
@@ -2811,6 +2812,12 @@ export class InMemorySubscriptionPlanService implements SubscriptionPlanService 
 }
 
 export class InMemoryBenefitService implements BenefitService {
+  async listCatalogProducts(_organizationId: ID) { return []; }
+  async saveBenefitWithRules(organizationId: ID, benefit: Benefit, _rules: BenefitUsageRule[]): Promise<Benefit> {
+    return benefits.some((item) => item.id === benefit.id)
+      ? this.updateBenefit(organizationId, benefit)
+      : this.createBenefit(organizationId, benefit);
+  }
   async listByOrganization(organizationId: ID): Promise<Benefit[]> {
     return benefits.filter(
       (benefit) =>

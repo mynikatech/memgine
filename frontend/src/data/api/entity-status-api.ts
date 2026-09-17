@@ -25,7 +25,6 @@ class EntityStatusApi {
     }
 
     this.snapshot = result.data;
-
     return this.snapshot;
   }
 
@@ -33,44 +32,60 @@ class EntityStatusApi {
     entityTypeCode: string,
     statusId: ID,
   ): Promise<ID> {
-    const snapshot = await this.getSnapshot();
-
     const normalizedEntityTypeCode = entityTypeCode.trim().toUpperCase();
 
-    const entityType = snapshot.entityTypes.find(
-      (item) =>
-        item.entityTypeCode.trim().toUpperCase() === normalizedEntityTypeCode &&
-        item.isActive,
-    );
-
-    if (!entityType) {
-      throw new Error(
-        `Entity type ${entityTypeCode} was not found or is inactive.`,
+    const resolve = (snapshot: EntityStatusSnapshot): ID | undefined => {
+      const entityType = snapshot.entityTypes.find(
+        (item) =>
+          item.entityTypeCode.trim().toUpperCase() ===
+            normalizedEntityTypeCode && item.isActive,
       );
+
+      if (!entityType) {
+        return undefined;
+      }
+
+      return snapshot.entityStatuses.find(
+        (item) =>
+          item.entityTypeId === entityType.id &&
+          item.statusId === statusId &&
+          item.isActive,
+      )?.id;
+    };
+
+    let snapshot = await this.getSnapshot();
+    let entityStatusId = resolve(snapshot);
+
+    if (!entityStatusId) {
+      this.clearCache();
+      snapshot = await this.getSnapshot();
+      entityStatusId = resolve(snapshot);
     }
 
-    const entityStatus = snapshot.entityStatuses.find(
-      (item) =>
-        item.entityTypeId === entityType.id &&
-        item.statusId === statusId &&
-        item.isActive,
-    );
-
-    if (!entityStatus) {
+    if (!entityStatusId) {
       throw new Error(
         `Status ${statusId} is not valid for entity type ${entityTypeCode}.`,
       );
     }
 
-    return entityStatus.id;
+    return entityStatusId;
   }
 
   async resolveStatusId(entityStatusId: ID): Promise<ID> {
-    const snapshot = await this.getSnapshot();
+    let snapshot = await this.getSnapshot();
 
-    const entityStatus = snapshot.entityStatuses.find(
+    let entityStatus = snapshot.entityStatuses.find(
       (item) => item.id === entityStatusId && item.isActive,
     );
+
+    if (!entityStatus) {
+      this.clearCache();
+      snapshot = await this.getSnapshot();
+
+      entityStatus = snapshot.entityStatuses.find(
+        (item) => item.id === entityStatusId && item.isActive,
+      );
+    }
 
     if (!entityStatus) {
       throw new Error(
