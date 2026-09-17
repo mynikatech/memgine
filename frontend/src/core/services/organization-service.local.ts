@@ -20,9 +20,7 @@ import type {
 } from "./service-contracts";
 
 import { LocalBrandingRepository } from "@/src/data/repositories/branding/branding-repository.local";
-import { LocalNotificationConfigurationRepository } from "@/src/data/repositories/notification-configuration/notification-configuration-repository.local";
 import { LocalOrganizationMembersRepository } from "@/src/data/repositories/organization/organization-members.repository.local";
-import { LocalIntegrationConfigurationRepository } from "@/src/data/repositories/integration-configuration/integration-configuration-repository.local";
 
 function getOrganizationUserTypeSegment(organizationUserTypeId: ID): string {
   const normalized = organizationUserTypeId.trim().toLowerCase();
@@ -46,16 +44,10 @@ function getOrganizationUserTypeSegment(organizationUserTypeId: ID): string {
 export class LocalOrganizationService implements OrganizationService {
   private readonly brandingRepository: LocalBrandingRepository;
   private readonly membersRepository: LocalOrganizationMembersRepository;
-  private readonly notificationConfigurationRepository: LocalNotificationConfigurationRepository;
-  private readonly integrationConfigurationRepository: LocalIntegrationConfigurationRepository;
 
   constructor(private readonly fallback: OrganizationService) {
     this.brandingRepository = new LocalBrandingRepository();
     this.membersRepository = new LocalOrganizationMembersRepository();
-    this.notificationConfigurationRepository =
-      new LocalNotificationConfigurationRepository();
-    this.integrationConfigurationRepository =
-      new LocalIntegrationConfigurationRepository();
   }
 
   async getOrganization(organizationId: ID): Promise<Organization | null> {
@@ -350,21 +342,15 @@ export class LocalOrganizationService implements OrganizationService {
   }
 
   async getNotificationConfiguration(organizationId: ID) {
-    const local =
-      await this.notificationConfigurationRepository.getCurrent(organizationId);
-
-    return local ?? this.fallback.getNotificationConfiguration(organizationId);
+    const result = await apis.notificationConfiguration.get(organizationId);
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
   }
 
   async listIntegrationConfigurations(organizationId: ID) {
-    const local =
-      await this.integrationConfigurationRepository.list(organizationId);
-
-    if (local.length > 0) {
-      return local.filter((item) => !item.isDeleted);
-    }
-
-    return this.fallback.listIntegrationConfigurations(organizationId);
+    const result = await apis.integrationConfiguration.list(organizationId);
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
   }
 
   async updateNotificationConfiguration(
@@ -373,10 +359,9 @@ export class LocalOrganizationService implements OrganizationService {
       OrganizationService["updateNotificationConfiguration"]
     >[1],
   ) {
-    return this.notificationConfigurationRepository.save(
-      organizationId,
-      configuration,
-    );
+    const result = await apis.notificationConfiguration.save(organizationId, configuration);
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
   }
 
   async updateIntegrationConfiguration(
@@ -385,35 +370,9 @@ export class LocalOrganizationService implements OrganizationService {
       OrganizationService["updateIntegrationConfiguration"]
     >[1],
   ) {
-    const configurations =
-      await this.integrationConfigurationRepository.list(organizationId);
-
-    const index = configurations.findIndex(
-      (item) =>
-        item.id === configuration.id &&
-        item.organizationId === organizationId &&
-        !item.isDeleted,
-    );
-
-    if (index === -1) {
-      throw new Error("Integration configuration not found.");
-    }
-
-    const updated = {
-      ...configuration,
-      organizationId,
-      updatedAt: new Date().toISOString(),
-      versionNo: configurations[index].versionNo + 1,
-    };
-
-    configurations[index] = updated;
-
-    await this.integrationConfigurationRepository.save(
-      organizationId,
-      configurations,
-    );
-
-    return updated;
+    const result = await apis.integrationConfiguration.update(organizationId, configuration);
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
   }
 
   async createIntegrationConfiguration(
@@ -422,40 +381,17 @@ export class LocalOrganizationService implements OrganizationService {
       OrganizationService["createIntegrationConfiguration"]
     >[1],
   ) {
-    const configurations =
-      await this.integrationConfigurationRepository.list(organizationId);
-
-    const now = new Date().toISOString();
-
-    const created = {
-      ...configuration,
-      organizationId,
-      createdAt: now,
-      updatedAt: now,
-      isDeleted: false,
-      versionNo: 1,
-    };
-
-    await this.integrationConfigurationRepository.save(organizationId, [
-      ...configurations,
-      created,
-    ]);
-    const verify =
-      await this.integrationConfigurationRepository.list(organizationId);
-
-    console.log("INTEGRATION PERSISTENCE VERIFY", organizationId, verify);
-
-    return created;
+    const result = await apis.integrationConfiguration.create(organizationId, configuration);
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
   }
 
   async deleteIntegrationConfiguration(
     organizationId: ID,
     configurationId: ID,
   ) {
-    await this.integrationConfigurationRepository.delete(
-      organizationId,
-      configurationId,
-    );
+    const result = await apis.integrationConfiguration.delete(organizationId, configurationId);
+    if (!result.success) throw new Error(result.error.message);
   }
 
   async listUsers(): Promise<User[]> {

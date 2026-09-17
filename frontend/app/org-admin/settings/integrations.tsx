@@ -260,18 +260,15 @@ export default function Integrations() {
 
       for (const configuration of integrations) {
         const existing = committedById.get(configuration.id);
-
-        if (existing) {
-          await services.organization.updateIntegrationConfiguration(
-            organization.id,
-            configuration,
-          );
-        } else {
-          await services.organization.createIntegrationConfiguration(
-            organization.id,
-            configuration,
-          );
-        }
+        if (existing && JSON.stringify(existing) === JSON.stringify(configuration)) continue;
+        const saved = existing
+          ? await services.organization.updateIntegrationConfiguration(organization.id, configuration)
+          : await services.organization.createIntegrationConfiguration(organization.id, configuration);
+        setCommittedIntegrations((current) => [
+          ...current.filter((item) => item.id !== saved.id), saved,
+        ]);
+        setIntegrations((current) => current.map((item) =>
+          item.id === saved.id ? saved : item));
       }
 
       for (const configuration of committedIntegrations) {
@@ -280,6 +277,8 @@ export default function Integrations() {
             organization.id,
             configuration.id,
           );
+          setCommittedIntegrations((current) =>
+            current.filter((item) => item.id !== configuration.id));
         }
       }
 

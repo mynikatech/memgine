@@ -19,6 +19,8 @@ import { BenefitRedemptionQRContextApi } from "./api/benefit-redemption-qr-conte
 import { OfferRedemptionQRContextApi } from "./api/offer-redemption-qr-context-api";
 import { OfferRedemptionApi } from "./api/offer-redemption-api";
 import { OrganizationUserApi } from "./api/organization-user-api";
+import { NotificationConfigurationApi } from "./api/notification-configuration-api";
+import { IntegrationConfigurationApi } from "./api/integration-configuration-api";
 
 import { LocalBrandingRepository } from "./repositories/branding/branding-repository.local";
 import { LocalOrganizationMembersRepository } from "./repositories/organization/organization-members.repository.local";
@@ -78,6 +80,8 @@ const offerApi = new OfferApi();
 
 export const apis = {
   organization: new OrganizationApi(),
+  notificationConfiguration: new NotificationConfigurationApi(),
+  integrationConfiguration: new IntegrationConfigurationApi(),
   store: new StoreApi(),
   staff: new StaffApi(),
   branding: new BrandingApi(),

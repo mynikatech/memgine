@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 051-2g-integration-configuration-functions
+      author: mynikatech
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/051-2g-integration-configuration-functions.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

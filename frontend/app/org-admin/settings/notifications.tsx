@@ -32,7 +32,7 @@ export default function OrgAdminNotifications() {
       try {
         const [notificationConfiguration, statuses] = await Promise.all([
           services.organization.getNotificationConfiguration(organization.id),
-          services.status.listOrganizationStatuses(),
+          services.status.listNotificationConfigurationStatuses(),
         ]);
 
         if (!mounted) {
