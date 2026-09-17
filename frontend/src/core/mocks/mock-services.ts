@@ -1,5 +1,6 @@
 import { BusinessContext } from "../context/business-context";
 import { ID } from "../domain/common";
+import type { StaffPersonInput } from "@/src/ui/admin/StaffForm";
 
 import { getDefaultBusinessTemplate } from "../defaults/default-business-template";
 import { BAKERY_V1 } from "../template/bakery-template-definition";
@@ -1821,6 +1822,27 @@ export class InMemoryOrganizationService implements OrganizationService {
   }
   async getAccount(organizationId: ID): Promise<OrganizationAccount | null> {
     return ACCOUNTS.find((a) => a.organizationId === organizationId) ?? null;
+  }
+  async getOrganizationUserSnapshot(organizationId: ID): Promise<{
+    organizationUsers: OrganizationUser[];
+    users: User[];
+  }> {
+    const organizationUsers = await this.listOrganizationUsers(organizationId);
+
+    const users = await this.listUsers();
+
+    return {
+      organizationUsers,
+      users,
+    };
+  }
+  async createStaffWithPerson(
+    organizationId: ID,
+    staff: Staff,
+    _person: StaffPersonInput,
+    _assignments: StaffStoreAssignment[],
+  ): Promise<Staff> {
+    return this.createStaff(organizationId, staff);
   }
 
   async activateOrganization(

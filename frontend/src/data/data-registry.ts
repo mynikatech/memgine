@@ -18,6 +18,7 @@ import { QRMembershipAcquisitionAttributionApi } from "./api/qr-membership-acqui
 import { BenefitRedemptionQRContextApi } from "./api/benefit-redemption-qr-context-api";
 import { OfferRedemptionQRContextApi } from "./api/offer-redemption-qr-context-api";
 import { OfferRedemptionApi } from "./api/offer-redemption-api";
+import { OrganizationUserApi } from "./api/organization-user-api";
 
 import { LocalBrandingRepository } from "./repositories/branding/branding-repository.local";
 import { LocalBenefitRepository } from "./repositories/benefit/benefit-repository.local";
@@ -114,4 +115,5 @@ export const apis = {
   offerRedemptionQRContext: new OfferRedemptionQRContextApi(
     offerRedemptionQRContextRepository,
   ),
+  organizationUser: new OrganizationUserApi(),
 } as const;

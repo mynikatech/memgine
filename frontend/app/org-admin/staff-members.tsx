@@ -4,7 +4,6 @@ import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import type {
   CountryReference,
-  CreateUserInput,
   OrganizationUser,
   StaffStoreAssignment,
   Status,
@@ -21,7 +20,7 @@ import { DataTable, Modal, Text } from "@/src/ui";
 
 import type { DataTableColumn } from "@/src/ui";
 
-import { StaffForm } from "@/src/ui/admin/StaffForm";
+import { StaffForm, type StaffPersonInput } from "@/src/ui/admin/StaffForm";
 
 function getStaffName(
   staff: Staff,
@@ -105,6 +104,7 @@ export default function OrgAdminStaff() {
 
   const [formVisible, setFormVisible] = useState(false);
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
+  const [formReadOnly, setFormReadOnly] = useState(false);
 
   /* ---------------------------------------------------------------------- */
   /* LOAD                                                                   */
@@ -119,17 +119,16 @@ export default function OrgAdminStaff() {
       try {
         const [
           staffList,
-          organizationUserList,
+          organizationUserSnapshot,
           storeList,
           staffStatusList,
           countryList,
-          userList,
           userStatusList,
           assignmentList,
         ] = await Promise.all([
           services.organization.listStaff(organization.id),
 
-          services.organization.listOrganizationUsers(organization.id),
+          services.organization.getOrganizationUserSnapshot(organization.id),
 
           services.organization.listStores(organization.id),
 
@@ -137,12 +136,13 @@ export default function OrgAdminStaff() {
 
           services.referenceData.listCountries(),
 
-          services.organization.listUsers(),
-
           services.status.listUserStatuses(),
 
           services.organization.listStaffStoreAssignments(organization.id),
         ]);
+
+        const organizationUserList = organizationUserSnapshot.organizationUsers;
+        const userList = organizationUserSnapshot.users;
 
         if (!mounted) {
           return;
@@ -372,32 +372,6 @@ export default function OrgAdminStaff() {
       versionNo: 1,
     };
   };
-
-  /* ---------------------------------------------------------------------- */
-  /* USER CREATION                                                           */
-  /* ---------------------------------------------------------------------- */
-
-  const handleCreateUser = async (input: CreateUserInput): Promise<User> => {
-    const created = await services.organization.createUser(input);
-
-    setUsers((current) => [...current, created]);
-
-    return created;
-  };
-
-  const handleCreateOrganizationUser = async (
-    organizationUser: OrganizationUser,
-  ): Promise<OrganizationUser> => {
-    const created = await services.organization.createOrganizationUser(
-      organization.id,
-      organizationUser,
-    );
-
-    setOrganizationUsers((current) => [...current, created]);
-
-    return created;
-  };
-
   /* ---------------------------------------------------------------------- */
   /* STAFF STORE ASSIGNMENTS                                                */
   /* ---------------------------------------------------------------------- */
@@ -502,25 +476,23 @@ export default function OrgAdminStaff() {
 
   const handleSave = async (
     updatedStaff: Staff,
+    person: StaffPersonInput,
     selectedStoreIds: string[],
   ) => {
-    console.log("[StaffPage] handleSave entered", {
-      staffId: updatedStaff.id,
-      organizationId: organization.id,
-      organizationUserId: updatedStaff.organizationUserId,
-      staffCode: updatedStaff.staffCode,
-      storeId: updatedStaff.storeId,
-      selectedStoreIds,
-    });
-
     try {
       const existing = staff.some((item) => item.id === updatedStaff.id);
-
-      console.log("[StaffPage] existing staff:", existing);
 
       let savedStaff: Staff;
 
       if (existing) {
+        /*
+         * Edit keeps the existing
+         * User/OrganizationUser relationship.
+         *
+         * Profile update will be performed
+         * through the DB-backed OrganizationUser
+         * API, never through local storage.
+         */
         savedStaff = await services.organization.updateStaff(
           organization.id,
           updatedStaff,
@@ -531,20 +503,64 @@ export default function OrgAdminStaff() {
             item.id === savedStaff.id ? savedStaff : item,
           ),
         );
-      } else {
-        console.log("[StaffPage] calling createStaff");
 
-        savedStaff = await services.organization.createStaff(
-          organization.id,
-          updatedStaff,
+        await saveStaffStoreAssignments(savedStaff, selectedStoreIds);
+      } else {
+        const now = new Date().toISOString();
+
+        const uniqueStoreIds = Array.from(
+          new Set(
+            [updatedStaff.storeId, ...selectedStoreIds].filter(
+              (id): id is string => Boolean(id),
+            ),
+          ),
         );
 
-        console.log("[StaffPage] createStaff returned", savedStaff);
+        const assignments: StaffStoreAssignment[] = uniqueStoreIds.map(
+          (storeId, index) => ({
+            id: `staff-store-${updatedStaff.id}-${index + 1}`,
+
+            organizationId: organization.id,
+
+            staffId: updatedStaff.id,
+
+            storeId,
+
+            assignmentStatusId: "status-active",
+
+            effectiveDate: updatedStaff.joiningDate,
+
+            endDate: undefined,
+
+            createdAt: now,
+
+            createdBy: organization.updatedBy ?? organization.id,
+
+            updatedAt: now,
+
+            updatedBy: organization.updatedBy,
+
+            isDeleted: false,
+
+            versionNo: 1,
+          }),
+        );
+
+        savedStaff = await services.organization.createStaffWithPerson(
+          organization.id,
+          updatedStaff,
+          person,
+          assignments,
+        );
 
         setStaff((current) => [...current, savedStaff]);
-      }
 
-      await saveStaffStoreAssignments(savedStaff, selectedStoreIds);
+        const refreshed = await services.organization.listStaffStoreAssignments(
+          organization.id,
+        );
+
+        setStaffAssignments(refreshed.filter((item) => !item.isDeleted));
+      }
 
       setFormVisible(false);
       setEditingStaff(null);
@@ -603,9 +619,19 @@ export default function OrgAdminStaff() {
     if (!isEditing) {
       return;
     }
-
+    setFormReadOnly(false);
     setEditingStaff(createEmptyStaff());
 
+    setFormVisible(true);
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* VIEW STAFF                                                              */
+  /* ---------------------------------------------------------------------- */
+
+  const handleView = (item: Staff) => {
+    setFormReadOnly(true);
+    setEditingStaff(item);
     setFormVisible(true);
   };
 
@@ -617,7 +643,7 @@ export default function OrgAdminStaff() {
     if (!isEditing) {
       return;
     }
-
+    setFormReadOnly(false);
     setEditingStaff(item);
 
     setFormVisible(true);
@@ -630,6 +656,7 @@ export default function OrgAdminStaff() {
   const closeForm = () => {
     setFormVisible(false);
     setEditingStaff(null);
+    setFormReadOnly(false);
   };
 
   /* ---------------------------------------------------------------------- */
@@ -822,7 +849,12 @@ export default function OrgAdminStaff() {
                       onPress: handleEdit,
                     },
                   ]
-                : undefined
+                : [
+                    {
+                      label: "View",
+                      onPress: handleView,
+                    },
+                  ]
             }
           />
         )}
@@ -836,9 +868,11 @@ export default function OrgAdminStaff() {
         visible={formVisible}
         onClose={closeForm}
         title={
-          editingStaff && staff.some((item) => item.id === editingStaff.id)
-            ? "Edit Staff"
-            : "Add Staff"
+          formReadOnly
+            ? "View Staff"
+            : editingStaff && staff.some((item) => item.id === editingStaff.id)
+              ? "Edit Staff"
+              : "Add Staff"
         }
         scrollable
         testID="staff-form-modal"
@@ -846,17 +880,29 @@ export default function OrgAdminStaff() {
         {editingStaff ? (
           <StaffForm
             staff={editingStaff}
-            organizationCode={organization.code}
-            users={users}
-            userStatuses={userStatuses}
-            organizationUsers={organizationUsers}
+            readOnly={formReadOnly}
             existingStaff={staff}
             stores={stores}
             staffStatuses={staffStatuses}
             countries={countries}
+            user={
+              editingStaff
+                ? (() => {
+                    const organizationUser = organizationUsers.find(
+                      (item) => item.id === editingStaff.organizationUserId,
+                    );
+
+                    if (!organizationUser) {
+                      return undefined;
+                    }
+
+                    return users.find(
+                      (item) => item.id === organizationUser.userId,
+                    );
+                  })()
+                : undefined
+            }
             associatedStoreIds={getAssociatedStoreIds(editingStaff.id)}
-            onCreateUser={handleCreateUser}
-            onCreateOrganizationUser={handleCreateOrganizationUser}
             onSave={handleSave}
             onCancel={closeForm}
           />

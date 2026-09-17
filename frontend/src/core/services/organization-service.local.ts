@@ -7,6 +7,7 @@ import type {
   StaffStoreAssignment,
   Store,
   User,
+  PhoneNumber,
 } from "@/src/core";
 
 import { apis } from "@/src/data";
@@ -14,6 +15,7 @@ import { apis } from "@/src/data";
 import type {
   CreateUserInput,
   OrganizationService,
+  StaffPersonInput,
   UserLookupQuery,
 } from "./service-contracts";
 
@@ -637,14 +639,59 @@ export class LocalOrganizationService implements OrganizationService {
     return result.data;
   }
 
-  async createStaff(organizationId: ID, staff: Staff): Promise<Staff> {
-    const result = await apis.staff.create(organizationId, staff);
+  async getOrganizationUserSnapshot(organizationId: ID): Promise<{
+    organizationUsers: OrganizationUser[];
+    users: User[];
+  }> {
+    const result = await apis.organizationUser.list(organizationId);
 
     if (!result.success) {
       throw new Error(result.error.message);
     }
 
     return result.data;
+  }
+
+  async createStaffWithPerson(
+    organizationId: ID,
+    staff: Staff,
+    person: {
+      firstName: string;
+      middleName?: string;
+      lastName: string;
+      displayName?: string;
+      primaryEmail?: string;
+      primaryPhone: PhoneNumber;
+      preferredLanguageId?: ID;
+    },
+    assignments: StaffStoreAssignment[],
+  ): Promise<Staff> {
+    const result = await apis.staff.createWithPerson(
+      organizationId,
+      staff,
+      person,
+      assignments,
+    );
+
+    if (!result.success) {
+      throw new Error(result.error.message);
+    }
+
+    return result.data.staff;
+  }
+
+  async createStaff(
+    organizationId: ID,
+    staff: Staff,
+    person: StaffPersonInput,
+    assignments: StaffStoreAssignment[],
+  ): Promise<Staff> {
+    return this.createStaffWithPerson(
+      organizationId,
+      staff,
+      person,
+      assignments,
+    );
   }
 
   async updateStaff(organizationId: ID, staff: Staff): Promise<Staff> {

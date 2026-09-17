@@ -92,3 +92,75 @@ data class DeleteStaffStoreAssignmentResponseDto(
     val assignmentId: String,
     val deleted: Boolean
 )
+
+/*
+ * User + OrganizationUser information required when a Staff member
+ * is created.
+ *
+ * The server passes this to the existing
+ * upsert_organization_user PostgreSQL function inside the same JDBI
+ * transaction that creates Staff and StaffStoreAssignment records.
+ */
+@Serializable
+data class StaffOrganizationUserRequestDto(
+    val userId: String,
+    val userCode: String,
+    val firstName: String,
+    val middleName: String? = null,
+    val lastName: String? = null,
+    val displayName: String? = null,
+    val primaryEmail: String? = null,
+    val primaryPhone: String,
+    val preferredLanguageId: String? = null,
+
+    val organizationUserId: String,
+
+    val organizationUserTypeId: String,
+
+    val joiningDate: String? = null
+)
+
+
+@Serializable
+data class StaffPersonRequestDto(
+    val userId: String,
+    val userCode: String,
+
+    val firstName: String,
+    val middleName: String? = null,
+    val lastName: String,
+    val displayName: String? = null,
+
+    val primaryEmail: String? = null,
+    val primaryPhone: String,
+    val preferredLanguageId: String? = null,
+
+    val organizationUserId: String,
+    val organizationUserTypeId: String,
+    val joiningDate: String
+)
+
+/*
+ * Atomic Staff-create request.
+ *
+ * organizationUser is optional so that the API can also create Staff
+ * for an OrganizationUser that is already persisted on the server.
+ */
+@Serializable
+data class CreateStaffTransactionRequestDto(
+    val staff: CreateStaffRequestDto,
+    val organizationUser: StaffOrganizationUserRequestDto,
+    val assignments: List<CreateStaffStoreAssignmentRequestDto> = emptyList()
+)
+
+@Serializable
+data class UpdateStaffTransactionRequestDto(
+    val staff: UpdateStaffRequestDto,
+    val person: StaffPersonRequestDto
+)
+
+@Serializable
+data class CreateStaffTransactionResponseDto(
+    val staff: StaffDto,
+    val assignments: List<StaffStoreAssignmentDto>
+)

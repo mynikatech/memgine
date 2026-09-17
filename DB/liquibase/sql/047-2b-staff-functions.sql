@@ -26,6 +26,25 @@ DROP FUNCTION IF EXISTS "${schemaName}".create_staff_store_assignment(varchar, v
 DROP FUNCTION IF EXISTS "${schemaName}".update_staff_store_assignment(varchar, varchar, varchar, varchar, date, date, varchar);
 DROP FUNCTION IF EXISTS "${schemaName}".delete_staff_store_assignment(varchar, varchar, varchar);
 
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'staff'
+          AND column_name = 'staff_code'
+          AND (
+              data_type <> 'character varying'
+              OR character_maximum_length IS DISTINCT FROM 64
+          )
+    ) THEN
+        ALTER TABLE staff
+            ALTER COLUMN staff_code TYPE VARCHAR(64);
+    END IF;
+END
+$$;
+
 CREATE OR REPLACE FUNCTION "${schemaName}".get_organization_staff(
     p_organization_id varchar(64)
 )

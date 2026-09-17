@@ -13,7 +13,6 @@ import com.mynikatech.memgine.component.organizationuser.organizationUserRoutes
 import com.mynikatech.memgine.component.referencedata.ReferenceDataService
 import com.mynikatech.memgine.component.referencedata.referenceDataRoutes
 import com.mynikatech.memgine.component.staff.StaffService
-import com.mynikatech.memgine.component.staff.StaffSql
 import com.mynikatech.memgine.component.staff.staffRoutes
 import com.mynikatech.memgine.component.store.StoreService
 import com.mynikatech.memgine.component.store.StoreSql
@@ -51,7 +50,7 @@ fun Application.configureRouting(
 
     val staffService =
         StaffService(
-            database.jdbi.onDemand(StaffSql::class.java)
+            database.jdbi
         )
 
     routing {

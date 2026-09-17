@@ -139,6 +139,29 @@ export interface CreateUserInput {
   createdBy: ID;
 }
 
+export interface OrganizationUserSnapshot {
+  organizationUsers: OrganizationUser[];
+  users: User[];
+}
+
+export interface StaffPersonInput {
+  userId: ID;
+  userCode: string;
+
+  firstName: string;
+  middleName?: string;
+  lastName: string;
+  displayName?: string;
+
+  primaryEmail?: string;
+  primaryPhone: PhoneNumber;
+  preferredLanguageId?: ID;
+
+  organizationUserId: ID;
+  organizationUserTypeId: ID;
+  joiningDate: string;
+}
+
 export interface OrganizationService {
   /**
    * Organization queries
@@ -187,6 +210,10 @@ export interface OrganizationService {
    * Organization user operations
    */
   listOrganizationUsersByUser(userId: ID): Promise<OrganizationUser[]>;
+
+  getOrganizationUserSnapshot(
+    organizationId: ID,
+  ): Promise<OrganizationUserSnapshot>;
 
   getOrganizationUser(id: ID): Promise<OrganizationUser | null>;
 
@@ -256,7 +283,27 @@ export interface OrganizationService {
    */
   listStaff(organizationId: ID): Promise<Staff[]>;
 
-  createStaff(organizationId: ID, staff: Staff): Promise<Staff>;
+  createStaff(
+    organizationId: ID,
+    staff: Staff,
+    person: StaffPersonInput,
+    assignments: StaffStoreAssignment[],
+  ): Promise<Staff>;
+
+  createStaffWithPerson(
+    organizationId: ID,
+    staff: Staff,
+    person: {
+      firstName: string;
+      middleName?: string;
+      lastName: string;
+      displayName?: string;
+      primaryEmail?: string;
+      primaryPhone: PhoneNumber;
+      preferredLanguageId?: ID;
+    },
+    assignments: StaffStoreAssignment[],
+  ): Promise<Staff>;
 
   updateStaff(organizationId: ID, staff: Staff): Promise<Staff>;
 

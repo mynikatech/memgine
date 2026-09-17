@@ -2,8 +2,10 @@ import {
   DEFAULT_ROLE_CAPABILITIES,
   StaffRole,
   type ID,
+  type OrganizationUser,
   type Staff,
   type StaffStoreAssignment,
+  type User,
 } from "@/src/core";
 
 export interface StaffServerDto {
@@ -71,6 +73,70 @@ export type UpdateStaffStoreAssignmentApiRequest = Omit<
   CreateStaffStoreAssignmentApiRequest,
   "id" | "staffId"
 >;
+export interface StaffPersonApiInput {
+  firstName: string;
+  middleName?: string;
+  lastName: string;
+  displayName?: string;
+  primaryEmail?: string;
+
+  primaryPhone: {
+    countryId: ID;
+    callingCode: string;
+    number: string;
+  };
+
+  preferredLanguageId?: ID;
+}
+
+export interface StaffPersonApiRequest {
+  userId: ID;
+  userCode: string;
+
+  firstName: string;
+  middleName?: string;
+  lastName: string;
+  displayName?: string;
+
+  primaryEmail?: string;
+  primaryPhone: string;
+  preferredLanguageId?: ID;
+
+  organizationUserId: ID;
+  organizationUserTypeId: ID;
+  joiningDate: string;
+}
+
+export interface StaffOrganizationUserApiRequest {
+  userId: ID;
+  userCode: string;
+  firstName: string;
+  middleName?: string;
+  lastName?: string;
+  displayName?: string;
+  primaryEmail?: string;
+  primaryPhone: string;
+  preferredLanguageId?: ID;
+
+  organizationUserId: ID;
+  organizationUserTypeId: ID;
+  joiningDate?: string;
+}
+
+export interface CreateStaffTransactionApiRequest {
+  staff: CreateStaffApiRequest;
+  organizationUser: StaffOrganizationUserApiRequest;
+  assignments: CreateStaffStoreAssignmentApiRequest[];
+}
+export interface UpdateStaffTransactionApiRequest {
+  staff: UpdateStaffApiRequest;
+  person: StaffPersonApiRequest;
+}
+
+export interface CreateStaffTransactionServerResponse {
+  staff: StaffServerDto;
+  assignments: StaffStoreAssignmentServerDto[];
+}
 
 export interface DeleteStaffServerResponse {
   staffId: ID;
@@ -84,14 +150,22 @@ export interface DeleteStaffStoreAssignmentServerResponse {
 
 function toStaffRole(roleCode: string): StaffRole {
   const normalized = roleCode.trim().toUpperCase();
-  if (normalized === StaffRole.OWNER) return StaffRole.OWNER;
-  if (normalized === StaffRole.MANAGER) return StaffRole.MANAGER;
+
+  if (normalized === StaffRole.OWNER) {
+    return StaffRole.OWNER;
+  }
+
+  if (normalized === StaffRole.MANAGER) {
+    return StaffRole.MANAGER;
+  }
+
   return StaffRole.STAFF;
 }
 
 export const StaffApiMapper = {
   fromServer(dto: StaffServerDto): Staff {
     const role = toStaffRole(dto.roleCode);
+
     return {
       id: dto.id,
       organizationId: dto.organizationId,
@@ -137,6 +211,46 @@ export const StaffApiMapper = {
       relievingDate: staff.relievingDate,
       staffStatusId: staff.staffStatusId,
       roleCode: staff.role,
+    };
+  },
+
+  personToRequest(person: {
+    userId: ID;
+    userCode: string;
+    firstName: string;
+    middleName?: string;
+    lastName: string;
+    displayName?: string;
+    primaryEmail?: string;
+    primaryPhone: {
+      callingCode: string;
+      number: string;
+    };
+    preferredLanguageId?: ID;
+    organizationUserId: ID;
+    organizationUserTypeId: ID;
+    joiningDate: string;
+  }): StaffPersonApiRequest {
+    return {
+      userId: person.userId,
+      userCode: person.userCode,
+
+      firstName: person.firstName,
+      middleName: person.middleName,
+      lastName: person.lastName,
+      displayName: person.displayName,
+
+      primaryEmail: person.primaryEmail,
+
+      primaryPhone:
+        `${person.primaryPhone.callingCode ?? ""}${person.primaryPhone.number ?? ""}`.trim(),
+
+      preferredLanguageId: person.preferredLanguageId,
+
+      organizationUserId: person.organizationUserId,
+      organizationUserTypeId: person.organizationUserTypeId,
+
+      joiningDate: person.joiningDate,
     };
   },
 
