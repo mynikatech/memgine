@@ -24,6 +24,9 @@ import com.mynikatech.memgine.component.notificationconfiguration.notificationCo
 import com.mynikatech.memgine.component.integrationconfiguration.IntegrationConfigurationService
 import com.mynikatech.memgine.component.integrationconfiguration.integrationConfigurationRoutes
 import com.mynikatech.memgine.component.asset.brandingAssetRoutes
+import com.mynikatech.memgine.component.customerexperience.customerExperienceReleaseRoutes
+import com.mynikatech.memgine.component.customerexperience.CustomerExperienceReleaseService
+import com.mynikatech.memgine.component.customerexperience.CustomerExperienceReleaseSql
 import com.mynikatech.memgine.component.entitystatus.EntityStatusService
 import com.mynikatech.memgine.component.entitystatus.entityStatusRoutes
 import com.mynikatech.memgine.component.organization.OrganizationService
@@ -85,6 +88,9 @@ fun Application.configureRouting(
     val counterService = CounterService(database.jdbi)
     val notificationConfigurationService = NotificationConfigurationService(database.jdbi)
     val integrationConfigurationService = IntegrationConfigurationService(database.jdbi)
+    val customerExperienceReleaseService =
+    CustomerExperienceReleaseService(database.jdbi.onDemand(CustomerExperienceReleaseSql::class.java)
+    )
 
     routing {
         get("/health") {
@@ -116,7 +122,9 @@ fun Application.configureRouting(
             counterRoutes(counterService)
             notificationConfigurationRoutes(notificationConfigurationService)
             integrationConfigurationRoutes(integrationConfigurationService)
-
+            customerExperienceReleaseRoutes(
+                customerExperienceReleaseService
+            )
             referenceDataRoutes(referenceDataService)
             entityStatusRoutes(entityStatusService)
         }

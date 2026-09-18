@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 058-customer-experience-release-functions
+      author: mynikatech
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/058-customer-experience-release-functions.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

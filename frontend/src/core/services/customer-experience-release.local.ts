@@ -1,22 +1,29 @@
 import type { ID } from "../domain/common";
+
 import type {
   BenefitService,
   MembershipProductService,
   OfferService,
   OrganizationService,
 } from "./service-contracts";
+
 import type { StatusService } from "./status";
+
 import type { CustomerExperience } from "./customer-experience";
+
 import type {
   CustomerExperienceRelease,
   CustomerExperienceReleaseContext,
   CustomerExperienceReleaseService,
   CustomerExperienceReleaseSnapshot,
 } from "./customer-experience-release";
+
+import { customerExperienceReleaseApi } from "@/src/data/api/customer-experience-release-api";
+
 import type { BenefitUsageRuleService } from "./service-contracts.benefit-usage-rule.additions";
+
 import type { OfferUsageRuleService } from "./offer-usage-rule-service";
-import { asyncStorageStore } from "@/src/data/persistence/local/async-storage-store";
-import { LOCAL_DATA_KEYS } from "@/src/data/persistence/local/keys";
+
 import type { ReferralService } from "./service-contracts.profile-referral.additions";
 
 function clone<T>(value: T): T {
@@ -38,16 +45,7 @@ export class LocalCustomerExperienceReleaseService implements CustomerExperience
   async getPublishedRelease(
     organizationId: ID,
   ): Promise<CustomerExperienceRelease | null> {
-    const releases =
-      (await asyncStorageStore.get<CustomerExperienceRelease[]>(
-        LOCAL_DATA_KEYS.customerExperienceReleases(organizationId),
-      )) ?? [];
-
-    const published = releases
-      .filter((release) => release.releaseStatus === "PUBLISHED")
-      .sort((a, b) => b.releaseNumber - a.releaseNumber)[0];
-
-    return published ? clone(published) : null;
+    return customerExperienceReleaseApi.getPublished(organizationId);
   }
 
   async createProposedSnapshot(
@@ -76,22 +74,18 @@ export class LocalCustomerExperienceReleaseService implements CustomerExperience
     }
 
     const snapshot = await this.createSnapshot(customerExperience, context);
-    const existing =
-      (await asyncStorageStore.get<CustomerExperienceRelease[]>(
-        LOCAL_DATA_KEYS.customerExperienceReleases(organizationId),
-      )) ?? [];
 
-    const nextNumber =
-      existing.reduce(
-        (max, release) => Math.max(max, release.releaseNumber),
-        0,
-      ) + 1;
+    /*
+     * Preserve the existing publish semantics.
+     *
+     * Previously the AsyncStorage implementation converted the Customer
+     * Experience inside the immutable release snapshot from DRAFT to
+     * PUBLISHED before persisting the release.
+     *
+     * We still do that here. The only change in this migration is where
+     * the completed release is persisted: PostgreSQL instead of AsyncStorage.
+     */
     const now = new Date().toISOString();
-
-    const archived = existing.map((release) => ({
-      ...release,
-      releaseStatus: "ARCHIVED" as const,
-    }));
 
     const publishedExperience: CustomerExperience = {
       ...clone(customerExperience),
@@ -103,25 +97,15 @@ export class LocalCustomerExperienceReleaseService implements CustomerExperience
       updatedBy: publishedBy,
     };
 
-    const release: CustomerExperienceRelease = {
-      id: `customer-experience-release-${organizationId}-${nextNumber}`,
-      organizationId,
-      releaseNumber: nextNumber,
-      releaseStatus: "PUBLISHED",
-      snapshot: { ...snapshot, customerExperience: publishedExperience },
-      publishedAt: now,
-      publishedBy,
-      createdAt: now,
-      createdBy: publishedBy,
-      versionNo: 1,
+    const publishedSnapshot: CustomerExperienceReleaseSnapshot = {
+      ...snapshot,
+      customerExperience: publishedExperience,
     };
 
-    await asyncStorageStore.set(
-      LOCAL_DATA_KEYS.customerExperienceReleases(organizationId),
-      [...archived, release],
-    );
-
-    return clone(release);
+    return customerExperienceReleaseApi.publish(organizationId, {
+      snapshot: publishedSnapshot,
+      publishedBy,
+    });
   }
 
   private async createSnapshot(
@@ -196,6 +180,7 @@ export class LocalCustomerExperienceReleaseService implements CustomerExperience
           this.benefitUsageRuleService.listByBenefit(benefit.id),
         ),
       ).then((rules) => rules.flat().filter((rule) => !rule.isDeleted)),
+
       Promise.all(
         activeOffers.map((offer) =>
           this.offerUsageRuleService.listByOffer(offer.id),
@@ -233,10 +218,18 @@ export class LocalCustomerExperienceReleaseService implements CustomerExperience
 
 function isActiveStatus(
   statusId: ID,
-  statuses: Array<{ id: ID; statusCode: string; statusName: string }>,
+  statuses: Array<{
+    id: ID;
+    statusCode: string;
+    statusName: string;
+  }>,
 ): boolean {
   const status = statuses.find((candidate) => candidate.id === statusId);
-  if (!status) return false;
+
+  if (!status) {
+    return false;
+  }
+
   return (
     status.statusCode.trim().toUpperCase() === "ACTIVE" ||
     status.statusName.trim().toUpperCase() === "ACTIVE"
@@ -248,10 +241,13 @@ function isCurrentlyEffective(
   expiryDate?: string,
 ): boolean {
   const now = Date.now();
+
   const start = effectiveDate
     ? Date.parse(effectiveDate)
     : Number.NEGATIVE_INFINITY;
+
   const end = expiryDate ? Date.parse(expiryDate) : Number.POSITIVE_INFINITY;
+
   return (
     !Number.isNaN(start) && !Number.isNaN(end) && now >= start && now <= end
   );

@@ -138,6 +138,7 @@ export default function CustomerExperiencePreview() {
     useState<ExperienceTabKey>("card");
 
   const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
 
   const [notificationStatus, setNotificationStatus] = useState<
     "idle" | "sending" | "success" | "error"
@@ -252,6 +253,7 @@ export default function CustomerExperiencePreview() {
     }
 
     setPublishing(true);
+    setPublishError(null);
 
     try {
       /*
@@ -314,6 +316,10 @@ export default function CustomerExperiencePreview() {
       });
     } catch (error) {
       console.error("[CustomerExperiencePreview] publish failed:", error);
+
+      setPublishError(
+        "Unable to publish the Customer Experience. Your changes have not been published. Please try again.",
+      );
     } finally {
       setPublishing(false);
     }
@@ -475,6 +481,11 @@ export default function CustomerExperiencePreview() {
               }}
               disabled={publishing}
             />
+            {publishError ? (
+              <Text variant="bodySmall" color="text">
+                {publishError}
+              </Text>
+            ) : null}
           </View>
         </Card>
 
