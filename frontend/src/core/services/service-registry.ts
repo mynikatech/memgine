@@ -19,6 +19,8 @@ import { ServerStatusService } from "./status-service.server";
 import { LocalRedemptionService } from "./redemption-service.local";
 import { OrgAdminTransactionReadService } from "./org-admin-transaction-read-service";
 import { OrgAdminRedemptionApi, OrgAdminSubscriptionApi } from "@/src/data/api/org-admin-transaction-api";
+import { OrgAdminCustomerApi } from "@/src/data/api/org-admin-customer-api";
+import { OrgAdminCustomerService } from "./org-admin-customer-service";
 import { LocalOfferRedemptionService } from "./offer-redemption-service.local";
 import { LocalCustomerPreferenceService } from "./customer-preference-service.local";
 import { LocalReferralService } from "./referral-service.local";
@@ -137,6 +139,7 @@ const redemptionService: RedemptionService = new LocalRedemptionService();
 const orgAdminTransactions = new OrgAdminTransactionReadService(
   new OrgAdminSubscriptionApi(), new OrgAdminRedemptionApi(),
 );
+const orgAdminCustomers = new OrgAdminCustomerService(new OrgAdminCustomerApi());
 const offerRedemptionService: OfferRedemptionService =
   new LocalOfferRedemptionService(apis.offerRedemption);
 const customerPreferenceService = new LocalCustomerPreferenceService(
@@ -155,6 +158,7 @@ export type MemgineServices = {
   userAcquisition: UserAcquisitionService;
   redemption: RedemptionService;
   orgAdminTransactions: OrgAdminTransactionReadService;
+  orgAdminCustomers: OrgAdminCustomerService;
   offerRedemption: OfferRedemptionService;
   status: StatusService;
   auth: CustomerAuthService;
@@ -189,6 +193,7 @@ export const services: MemgineServices = {
   userAcquisition: userAcquisitionService,
   redemption: redemptionService,
   orgAdminTransactions,
+  orgAdminCustomers,
   offerRedemption: offerRedemptionService,
   status: statusService,
   auth: mockServices.auth,

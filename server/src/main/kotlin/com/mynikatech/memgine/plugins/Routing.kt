@@ -13,6 +13,9 @@ import com.mynikatech.memgine.component.subscription.subscriptionRoutes
 import com.mynikatech.memgine.component.redemption.RedemptionService
 import com.mynikatech.memgine.component.redemption.RedemptionSql
 import com.mynikatech.memgine.component.redemption.redemptionRoutes
+import com.mynikatech.memgine.component.customer.CustomerService
+import com.mynikatech.memgine.component.customer.CustomerSql
+import com.mynikatech.memgine.component.customer.customerRoutes
 import com.mynikatech.memgine.component.notificationconfiguration.NotificationConfigurationService
 import com.mynikatech.memgine.component.notificationconfiguration.notificationConfigurationRoutes
 import com.mynikatech.memgine.component.integrationconfiguration.IntegrationConfigurationService
@@ -73,6 +76,7 @@ fun Application.configureRouting(
     val offerService = OfferService(database.jdbi)
     val subscriptionService = SubscriptionService(database.jdbi.onDemand(SubscriptionSql::class.java))
     val redemptionService = RedemptionService(database.jdbi.onDemand(RedemptionSql::class.java))
+    val customerService = CustomerService(database.jdbi.onDemand(CustomerSql::class.java))
     val notificationConfigurationService = NotificationConfigurationService(database.jdbi)
     val integrationConfigurationService = IntegrationConfigurationService(database.jdbi)
 
@@ -101,6 +105,7 @@ fun Application.configureRouting(
             offerRoutes(offerService)
             subscriptionRoutes(subscriptionService)
             redemptionRoutes(redemptionService)
+            customerRoutes(customerService)
             notificationConfigurationRoutes(notificationConfigurationService)
             integrationConfigurationRoutes(integrationConfigurationService)
 

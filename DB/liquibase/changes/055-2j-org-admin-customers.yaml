@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 055-2j-org-admin-customers
+      author: mynikatech
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/055-2j-org-admin-customers.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
