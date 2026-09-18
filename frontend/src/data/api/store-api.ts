@@ -37,6 +37,14 @@ export class StoreApi {
     return apiSuccess(stores);
   }
 
+  async listForCustomer(organizationId: ID, userId: ID): Promise<ApiResult<Store[]>> {
+    const result = await httpClient.get<StoreServerDto[]>(
+      `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/stores?userId=${encodeURIComponent(userId)}`,
+    );
+    if (!result.success) return apiFailure(result.error.code, result.error.message);
+    return apiSuccess(await Promise.all(result.data.map((dto) => this.fromServer(dto))));
+  }
+
   async get(organizationId: ID, storeId: ID): Promise<ApiResult<Store>> {
     const result = await httpClient.get<StoreServerDto>(
       `/api/v1/organizations/${organizationId}/stores/${storeId}`,

@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
+import { useEffect } from "react";
 
-import { useTheme, useTranslation } from "@/src/providers";
+import { useCustomerContext, useTheme, useTranslation } from "@/src/providers";
 
 /**
  * Customer shell — mobile-first bottom tabs. Frozen navigation: Home / My Cards
@@ -10,6 +11,9 @@ import { useTheme, useTranslation } from "@/src/providers";
 export default function CustomerLayout() {
   const theme = useTheme();
   const { t } = useTranslation();
+  const { refreshCustomers } = useCustomerContext();
+
+  useEffect(() => { void refreshCustomers(); }, [refreshCustomers]);
 
   return (
     <Tabs

@@ -36,7 +36,6 @@ import {
   ReceiptSummary,
 } from "@/src/ui/domain";
 
-import { registerCustomerForOrganization } from "@/src/core/customer/customer-registration";
 import { counterCheckout } from "@/src/core/services/counter-checkout";
 
 /**
@@ -73,7 +72,6 @@ type Step =
   | "processing"
   | "success";
 
-const DEFAULT_CUSTOMER_ID = "cust-1";
 
 /*
  * --------------------------------------------------------------
@@ -127,54 +125,6 @@ const PAYMENT_METHODS: PaymentMethod[] = [
   PaymentMethod.CASH,
 ];
 
-/*
- * --------------------------------------------------------------
- * Subscription helpers
- * --------------------------------------------------------------
- */
-
-const generateSubscriptionNumber = () => {
-  const timestamp = Date.now().toString().slice(-8);
-
-  return `SUB-${new Date().getFullYear()}-${timestamp}`;
-};
-
-const calculateEndDate = (
-  startDate: Date,
-  period: number,
-  unit: string,
-): Date => {
-  const endDate = new Date(startDate);
-
-  switch (unit.toUpperCase()) {
-    case "DAY":
-    case "DAYS":
-      endDate.setDate(endDate.getDate() + period);
-      break;
-
-    case "WEEK":
-    case "WEEKS":
-      endDate.setDate(endDate.getDate() + period * 7);
-      break;
-
-    case "MONTH":
-    case "MONTHS":
-      endDate.setMonth(endDate.getMonth() + period);
-      break;
-
-    case "YEAR":
-    case "YEARS":
-      endDate.setFullYear(endDate.getFullYear() + period);
-      break;
-
-    default:
-      endDate.setMonth(endDate.getMonth() + period);
-      break;
-  }
-
-  return endDate;
-};
-
 export default function JoinFlow() {
   const router = useRouter();
 
@@ -195,8 +145,7 @@ export default function JoinFlow() {
 
   const orgId = params.organizationId ?? organization.id;
 
-  const customerId = params.source === "STAFF_ASSISTED"
-    ? (params.customerId ?? "") : (params.customerId ?? DEFAULT_CUSTOMER_ID);
+  const customerId = params.customerId ?? "";
 
   /*
    * Staff-assisted purchase is identified only by the navigation
@@ -218,7 +167,8 @@ export default function JoinFlow() {
     null,
   );
 
-  const [step, setStep] = useState<Step>(isStaffSale ? "review" : "landing");
+  const [step, setStep] = useState<Step>(isStaffSale || customerId ? "review" : "landing");
+  const [phoneVerified, setPhoneVerified] = useState(false);
 
   const [firstName, setFirstName] = useState("");
 
@@ -273,9 +223,7 @@ export default function JoinFlow() {
    *
    * for this flow.
    *
-   * The local MembershipProduct service is organization-scoped for
-   * persisted/local data. getProduct(id) currently delegates only
-   * to its fallback implementation.
+   * The membership catalogue is loaded for the selected organization.
    *
    * Therefore we load the organization catalogue and resolve the
    * selected product from that catalogue.
@@ -300,8 +248,9 @@ export default function JoinFlow() {
          * 1. Load organization membership catalogue
          * --------------------------------------------------------
          */
-        const membershipProducts =
-          await services.membershipProduct.listProducts(orgId);
+        const membershipProducts = isStaffSale
+          ? await services.membershipProduct.listProducts(orgId)
+          : await services.customerData.membershipProducts(orgId);
 
         let pid = params.productId;
 
@@ -321,7 +270,7 @@ export default function JoinFlow() {
 
         /*
          * Resolve the product from the organization-scoped
-         * persisted/local catalogue.
+         * server-backed catalogue.
          */
         const prod = membershipProducts.find(
           (item) => item.id === pid && !item.isDeleted,
@@ -338,15 +287,15 @@ export default function JoinFlow() {
          *
          * Do not use services.benefit.listByProduct(pid) here.
          *
-         * The local implementation of listByProduct() currently
-         * falls back to the mock implementation because it does
-         * not receive organizationId.
+         * The organization-scoped list contains the Benefits assigned
+         * to the selected membership product.
          *
          * The organization-scoped method is the correct persisted
          * data path.
          */
-        const organizationBenefits =
-          await services.benefit.listByOrganization(orgId);
+        const organizationBenefits = isStaffSale
+          ? await services.benefit.listByOrganization(orgId)
+          : await services.customerData.benefits(orgId);
 
         const bens = organizationBenefits.filter(
           (benefit) =>
@@ -391,18 +340,16 @@ export default function JoinFlow() {
               createdAt: new Date().toISOString() };
           }
         } else {
-          const users = await services.organization.listUsers();
-          const user = users.find(item => !item.isDeleted && item.id === customerId);
-          if (user) {
-            cust = { id: user.id,
-              fullName: user.displayName?.trim() || [user.firstName, user.middleName, user.lastName].filter(Boolean).join(" "),
-              email: user.primaryEmail,
-              phone: (user.primaryPhone.callingCode ?? "") + (user.primaryPhone.number ?? ""),
-              createdAt: user.createdAt };
+          if (customerId) {
+            const profiles = await services.customerData.profiles(customerId);
+            const profile = profiles.find((item) => item.userId === customerId && item.organizationId === orgId);
+            if (!profile) throw new Error("Customer is not active in this organization.");
+            cust = { id: profile.userId,
+              fullName: profile.displayName?.trim() || [profile.firstName, profile.lastName].filter(Boolean).join(" "),
+              email: profile.primaryEmail ?? undefined, phone: profile.primaryPhone,
+              createdAt: profile.joiningDate };
+            resolvedOrganizationUserId = profile.organizationUserId;
           }
-          const orgUsers = await services.organization.listOrganizationUsersByUser(customerId);
-          resolvedOrganizationUserId = orgUsers.find(item => !item.isDeleted &&
-            item.organizationId === orgId && item.organizationUserTypeId === "org-user-type-customer")?.id ?? null;
         }
 
         if (!mounted) {
@@ -417,7 +364,6 @@ export default function JoinFlow() {
 
         setOrganizationUserId(resolvedOrganizationUserId);
       } catch (error) {
-        console.error("JOIN LOAD ERROR", error);
 
         if (!mounted) {
           return;
@@ -501,12 +447,6 @@ export default function JoinFlow() {
 
       const fullMobile = `${normalizedCountryCode}${normalizedMobile}`;
 
-      console.log("JOIN SEND OTP", {
-        countryCode: normalizedCountryCode,
-        mobile: normalizedMobile,
-        fullMobile,
-      });
-
       const res = await services.auth.sendOtp({
         mobile: fullMobile,
       });
@@ -519,7 +459,6 @@ export default function JoinFlow() {
 
       setStep("otp");
     } catch (error) {
-      console.error("SEND OTP ERROR", error);
 
       setOtpError(
         error instanceof Error
@@ -566,11 +505,6 @@ export default function JoinFlow() {
         return;
       }
 
-      console.log("JOIN VERIFY OTP", {
-        requestId,
-        codeLength: normalizedCode.length,
-      });
-
       const res = await services.auth.verifyOtp({
         requestId,
         code: normalizedCode,
@@ -589,54 +523,29 @@ export default function JoinFlow() {
         countryCode.trim() || DEFAULT_COUNTRY.code
       }${normalizePhone(mobile)}`;
 
-      /*
-       * OTP has authenticated the mobile.
-       *
-       * The registration helper now resolves/creates:
-       *
-       * Customer
-       *    ↓
-       * OrganizationUser
-       */
-      const registration = await registerCustomerForOrganization({
-        organizationId: orgId,
-        fullName: `${firstName.trim()} ${lastName.trim()}`.trim(),
-        mobile: fullMobile,
-        email: email.trim() || undefined,
-      });
-
-      setCustomer(registration.customer);
-
-      setOrganizationUserId(registration.organizationUser.id);
-
-      setActiveCustomer(registration.customer.id);
-
-      console.log("CUSTOMER REGISTRATION COMPLETE", {
-        organizationId: orgId,
-        customerId: registration.customer.id,
-        organizationUserId: registration.organizationUser.id,
-      });
+      // Keep verified details in memory until the server purchase succeeds.
+      setCustomer({ id: "", fullName: `${firstName.trim()} ${lastName.trim()}`.trim(),
+        phone: fullMobile, email: email.trim() || undefined,
+        createdAt: new Date().toISOString() });
+      setPhoneVerified(true);
 
       setStep("review");
     } catch (error) {
-      console.error("CUSTOMER REGISTRATION ERROR", error);
 
       setOtpError(
         error instanceof Error
           ? error.message
-          : "Unable to complete registration.",
+          : "Unable to verify the phone.",
       );
     }
   }, [
     requestId,
     code,
-    orgId,
     firstName,
     lastName,
     countryCode,
     mobile,
     email,
-    setActiveCustomer,
   ]);
 
   /*
@@ -661,7 +570,7 @@ export default function JoinFlow() {
    */
 
   const payAndSubscribe = useCallback(async () => {
-    if (!product || !plan || (!isStaffSale && !organizationUserId)) {
+    if (!product || !plan || (!isStaffSale && !organizationUserId && !phoneVerified)) {
       return;
     }
 
@@ -721,110 +630,36 @@ export default function JoinFlow() {
         } as Subscription;
         setSubscription(sub);
         setReference(payment.reference);
+        setActiveCustomer(saved.userId);
+        setActiveContext(orgId, sub.id);
         setStep("success");
         return;
       }
 
-      const subscriptionEntityStatuses =
-        await services.status.listStatusesByEntityTypeCode("SUBSCRIPTION");
-
-      let activeSubscriptionEntityStatus:
-        | (typeof subscriptionEntityStatuses)[number]
-        | undefined;
-
-      for (const status of subscriptionEntityStatuses) {
-        if (status?.statusCode?.trim().toUpperCase() === "ACTIVE") {
-          activeSubscriptionEntityStatus = status;
-
-          break;
-        }
+      if (!customerId && (!phoneVerified || !customer)) {
+        throw new Error("Verify the customer phone before purchasing.");
       }
-
-      if (!activeSubscriptionEntityStatus) {
-        throw new Error("ACTIVE status is not configured for Subscription.");
-      }
-
-      /*
-       * --------------------------------------------------------
-       * 3. CALCULATE SUBSCRIPTION DATES
-       * --------------------------------------------------------
-       */
-      const startDate = new Date();
-
-      const endDate = calculateEndDate(
-        startDate,
-        plan.subscriptionPeriod,
-        plan.subscriptionPeriodUnit,
-      );
-
-      const startDateString = startDate.toISOString().slice(0, 10);
-
-      const endDateString = endDate.toISOString().slice(0, 10);
-
-      const subscriptionDate = startDateString;
-
-      console.log("STAFF SUBSCRIPTION RELATIONSHIP", {
-        isStaffSale,
-        customerId,
-        organizationUserId,
-        organizationId: orgId,
+      const saved = await services.customerData.purchase(orgId, {
+        planId: plan.id,
+        ...(customerId ? { customerUserId: customerId } : {
+          firstName: firstName.trim(), lastName: lastName.trim(),
+          primaryEmail: email.trim() || undefined, primaryPhone: customer!.phone,
+        }),
       });
-
-      /*
-       * --------------------------------------------------------
-       * 4. CREATE SUBSCRIPTION
-       * --------------------------------------------------------
-       *
-       * This happens ONLY after successful payment.
-       */
-      const sub = await services.subscription.createSubscription({
-        subscriptionNumber: generateSubscriptionNumber(),
-
-        subscriptionPlanId: plan.id,
-
-        organizationUserId: organizationUserId!,
-
-        subscriptionDate,
-
-        startDate: startDateString,
-
-        endDate: endDateString,
-
-        subscriptionStatusId: activeSubscriptionEntityStatus.id,
-
-        totalAmount: {
-          amountMinor: plan.price.amountMinor,
-          currency: plan.price.currency,
-        },
-
-        createdBy:
-          isStaffSale && params.staffId ? params.staffId : "user-system",
-      });
-
-      console.log("SUBSCRIPTION CREATED", {
-        subscriptionId: sub.id,
-        subscriptionStatusId: sub.subscriptionStatusId,
-        paymentReference: payment.reference,
-      });
-
+      const sub = {
+        id: saved.subscriptionId, subscriptionNumber: saved.subscriptionNumber,
+        organizationUserId: saved.organizationUserId, subscriptionPlanId: saved.subscriptionPlanId,
+        subscriptionDate: saved.subscriptionDate, startDate: saved.startDate,
+        endDate: saved.endDate, subscriptionStatusId: saved.subscriptionStatusId,
+        totalAmount: { amountMinor: Math.round(saved.totalAmount * 100), currency: saved.currencyCode },
+        isDeleted: false,
+      } as Subscription;
       setSubscription(sub);
-
-      /*
-       * Payment reference comes from the PaymentService.
-       *
-       * JoinFlow does not generate it.
-       */
       setReference(payment.reference);
-
-      /*
-       * Make the newly created subscription the active context
-       * for the temporary customer-experience demo link.
-       */
+      setActiveCustomer(saved.userId);
       setActiveContext(orgId, sub.id);
-
       setStep("success");
     } catch (error) {
-      console.error("JOIN PURCHASE ERROR", error);
 
       setStep("review");
 
@@ -843,6 +678,12 @@ export default function JoinFlow() {
     orgId,
     customerId,
     setActiveContext,
+    setActiveCustomer,
+    phoneVerified,
+    customer,
+    firstName,
+    lastName,
+    email,
   ]);
 
   /*
@@ -1373,16 +1214,16 @@ export default function JoinFlow() {
             </Card>
           </Section>
 
-          {!organizationUserId ? (
+          {!organizationUserId && !phoneVerified && !isStaffSale ? (
             <Text variant="bodySmall" color="textMuted">
-              Complete customer registration to continue.
+              Verify the customer phone to continue.
             </Text>
           ) : null}
 
           <Button
             label={t("join.payAndSubscribe")}
             fullWidth
-            disabled={!isStaffSale && !organizationUserId}
+            disabled={!isStaffSale && !organizationUserId && !phoneVerified}
             onPress={payAndSubscribe}
             testID="join-pay"
           />

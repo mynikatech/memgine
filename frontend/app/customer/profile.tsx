@@ -1,49 +1,21 @@
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
 import { View } from "react-native";
-
-import type { Customer } from "@/src/core";
-import { services } from "@/src/core";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
-import { useBusiness, useTranslation } from "@/src/providers";
-import { Card, Header, ListRow, Section, Text } from "@/src/ui";
-
-const CUSTOMER_ID = "cust-1";
+import { useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
+import { Card, Header, ListRow, Section, StateView, Text } from "@/src/ui";
 
 export default function Profile() {
   const { theme } = useBusiness();
   const { t, locale, currency, timezone } = useTranslation();
   const router = useRouter();
-
-  const [customer, setCustomer] = useState<Customer | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadCustomer() {
-      try {
-        const result = await services.customer.getCustomer(CUSTOMER_ID);
-
-        if (mounted) {
-          setCustomer(result);
-        }
-      } catch {
-        if (mounted) {
-          setCustomer(null);
-        }
-      }
-    }
-
-    void loadCustomer();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const initial = (customer?.fullName ?? "?").trim().charAt(0).toUpperCase();
+  const { customerId, profiles, customersLoading, customersError, refreshCustomers } = useCustomerContext();
+  const relationships = profiles.filter((row) => row.userId === customerId);
+  const customer = relationships[0];
+  const name = customer?.displayName?.trim() ||
+    [customer?.firstName, customer?.lastName].filter(Boolean).join(" ").trim();
+  const initial = (name || "?").charAt(0).toUpperCase();
 
   const languageLabel = locale.toLowerCase().startsWith("en")
     ? t("profile.languageEnglish")
@@ -63,6 +35,10 @@ export default function Profile() {
         />
       }
     >
+      {customersLoading ? <StateView kind="loading" message={t("common.loading")} /> : null}
+      {customersError ? <StateView kind="error" title={t("common.error")}
+        message={customersError} actionLabel={t("common.retry")}
+        onAction={() => void refreshCustomers()} /> : null}
       <Card padding="lg" testID="profile-identity">
         <View
           style={{
@@ -88,17 +64,31 @@ export default function Profile() {
 
           <View style={{ flex: 1 }}>
             <Text variant="title" color="text">
-              {customer?.fullName ?? "—"}
+              {name || "—"}
             </Text>
 
-            {customer?.email ? (
+            {customer?.primaryEmail ? (
               <Text variant="bodySmall" color="textMuted">
-                {customer.email}
+                {customer.primaryEmail}
               </Text>
+            ) : null}
+            {customer?.primaryPhone ? (
+              <Text variant="bodySmall" color="textMuted">{customer.primaryPhone}</Text>
             ) : null}
           </View>
         </View>
       </Card>
+
+      {relationships.length > 0 ? (
+        <Section title="Businesses" testID="profile-businesses">
+          <Card padding="md">
+            {relationships.map((row) => (
+              <ListRow key={row.organizationUserId} label={row.organizationName}
+                value={row.relationshipStatusName} showChevron={false} />
+            ))}
+          </Card>
+        </Section>
+      ) : null}
 
       <Section title={t("profile.preferences")} testID="profile-preferences">
         <Card padding="md">

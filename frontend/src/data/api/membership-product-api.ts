@@ -86,6 +86,19 @@ export class MembershipProductApi {
     }
   }
 
+  async listForCustomer(organizationId: ID, userId?: ID): Promise<ApiResult<MembershipProduct[]>> {
+    try {
+      const result = await httpClient.get<ServerProduct[]>(
+        `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/membership-products${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
+      );
+      if (!result.success) return result;
+      return apiSuccess(await Promise.all(result.data.map((item) => this.fromServer(item))));
+    } catch (error) {
+      return apiFailure("CUSTOMER_MEMBERSHIP_LIST_FAILED",
+        error instanceof Error ? error.message : "Unable to load memberships.");
+    }
+  }
+
   async get(organizationId: ID, productId: ID): Promise<ApiResult<MembershipProduct>> {
     try {
       const result = await httpClient.get<ServerProduct>(

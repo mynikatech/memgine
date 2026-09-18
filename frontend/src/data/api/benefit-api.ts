@@ -83,6 +83,18 @@ export class BenefitApi {
     );
   }
 
+  async rulesForCustomer(organizationId: ID, userId: ID, benefitId: ID): Promise<BenefitUsageRule[]> {
+    const result = await httpClient.get<ServerRule[]>(
+      `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/benefits/${encodeURIComponent(benefitId)}/usage-rules?userId=${encodeURIComponent(userId)}`,
+    );
+    if (!result.success) throw new Error(result.error.message);
+    return Promise.all(result.data.map(async (rule) => ({
+      ...rule, frequencyType: rule.frequencyType as BenefitFrequencyType,
+      applicableDays: rule.applicableDays ? rule.applicableDays.split(",") : undefined,
+      benefitUsageRuleStatusId: await entityStatusApi.resolveStatusId(rule.benefitUsageRuleStatusId),
+    })));
+  }
+
   async products(organizationId: ID): Promise<Product[]> {
     const result = await httpClient.get<Product[]>(
       `/api/v1/organizations/${organizationId}/catalog-products`,
@@ -118,6 +130,19 @@ export class BenefitApi {
         "BENEFIT_LIST_FAILED",
         error instanceof Error ? error.message : "Unable to list benefits.",
       );
+    }
+  }
+
+  async listForCustomer(organizationId: ID, userId?: ID): Promise<ApiResult<Benefit[]>> {
+    try {
+      const result = await httpClient.get<ServerBenefit[]>(
+        `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/benefits${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
+      );
+      if (!result.success) return result;
+      return apiSuccess(await Promise.all(result.data.map((dto) => this.fromServer(dto))));
+    } catch (error) {
+      return apiFailure("CUSTOMER_BENEFIT_LIST_FAILED",
+        error instanceof Error ? error.message : "Unable to load benefits.");
     }
   }
 

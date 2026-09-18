@@ -16,6 +16,7 @@ import com.mynikatech.memgine.component.redemption.redemptionRoutes
 import com.mynikatech.memgine.component.customer.CustomerService
 import com.mynikatech.memgine.component.customer.CustomerSql
 import com.mynikatech.memgine.component.customer.customerRoutes
+import com.mynikatech.memgine.component.customer.customerSelfServiceRoutes
 import com.mynikatech.memgine.component.counter.CounterService
 import com.mynikatech.memgine.component.counter.counterRoutes
 import com.mynikatech.memgine.component.notificationconfiguration.NotificationConfigurationService
@@ -52,7 +53,8 @@ fun Application.configureRouting(
     database: DatabaseContext,
     referenceDataService: ReferenceDataService,
     entityStatusService: EntityStatusService,
-    brandingAssetService: BrandingAssetService
+    brandingAssetService: BrandingAssetService,
+    customerDevIdentityEnabled: Boolean
 ) {
     val organizationService =
         OrganizationService(
@@ -78,7 +80,8 @@ fun Application.configureRouting(
     val offerService = OfferService(database.jdbi)
     val subscriptionService = SubscriptionService(database.jdbi.onDemand(SubscriptionSql::class.java))
     val redemptionService = RedemptionService(database.jdbi.onDemand(RedemptionSql::class.java))
-    val customerService = CustomerService(database.jdbi.onDemand(CustomerSql::class.java))
+    val customerService = CustomerService(database.jdbi.onDemand(CustomerSql::class.java),
+        membershipProductService, benefitService, storeService, customerDevIdentityEnabled)
     val counterService = CounterService(database.jdbi)
     val notificationConfigurationService = NotificationConfigurationService(database.jdbi)
     val integrationConfigurationService = IntegrationConfigurationService(database.jdbi)
@@ -109,6 +112,7 @@ fun Application.configureRouting(
             subscriptionRoutes(subscriptionService)
             redemptionRoutes(redemptionService)
             customerRoutes(customerService)
+            customerSelfServiceRoutes(customerService)
             counterRoutes(counterService)
             notificationConfigurationRoutes(notificationConfigurationService)
             integrationConfigurationRoutes(integrationConfigurationService)

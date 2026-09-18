@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 057-4-customer-functions
+      author: mynikatech
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/057-4-customer-functions.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

@@ -1,3 +1,5 @@
+import Constants from "expo-constants";
+import { Platform } from "react-native";
 import { apiFailure, apiSuccess, type ApiResult } from "./result";
 
 type ServerApiResponse<T> = {
@@ -10,11 +12,17 @@ type ServerApiResponse<T> = {
   requestId?: string | null;
 };
 
-export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_MEMGINE_API_BASE_URL ??
-  (typeof window !== "undefined"
-    ? "http://localhost:8082"
-    : "http://10.0.2.2:8082");
+function resolveApiBaseUrl(): string {
+  const configuredUrl = process.env.EXPO_PUBLIC_MEMGINE_API_BASE_URL?.trim();
+
+  if (!configuredUrl) {
+    throw new Error("EXPO_PUBLIC_MEMGINE_API_BASE_URL is not configured.");
+  }
+
+  return configuredUrl.replace(/\/+$/, "");
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 export class HttpClient {
   async get<TResponse>(path: string): Promise<ApiResult<TResponse>> {

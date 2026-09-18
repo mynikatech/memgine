@@ -92,6 +92,7 @@ fun Application.module() {
         database,
         referenceDataService,
         entityStatusService,
-        brandingAssetService
+        brandingAssetService,
+        config.database.schema == "memginedev"
     )
 }

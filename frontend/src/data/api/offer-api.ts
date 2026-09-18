@@ -36,6 +36,19 @@ export class OfferApi {
     }
   }
 
+  async listForCustomer(organizationId: ID, userId: ID): Promise<ApiResult<Offer[]>> {
+    try {
+      const result = await httpClient.get<Offer[]>(
+        `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/offers?userId=${encodeURIComponent(userId)}`,
+      );
+      if (!result.success) return result;
+      return apiSuccess(await Promise.all(result.data.map((offer) => this.fromServer(offer))));
+    } catch (error) {
+      return apiFailure("CUSTOMER_OFFER_LIST_FAILED",
+        error instanceof Error ? error.message : "Unable to load offers.");
+    }
+  }
+
   async get(organizationId: ID, offerId: ID): Promise<ApiResult<Offer | null>> {
     try {
       const result = await httpClient.get<Offer>(`/api/v1/organizations/${organizationId}/offers/${offerId}`);

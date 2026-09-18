@@ -175,22 +175,27 @@ function migrateValue(value: unknown): {
 }
 
 export function runPdmStatusIdMigrationV1(): void {
-  if (typeof window === "undefined") {
+  if (
+    typeof window === "undefined" ||
+    typeof globalThis.localStorage === "undefined"
+  ) {
     return;
   }
 
-  if (localStorage.getItem(MIGRATION_KEY) === "complete") {
+  const storage = globalThis.localStorage;
+
+  if (storage.getItem(MIGRATION_KEY) === "complete") {
     return;
   }
 
-  const keys = Object.keys(localStorage).filter(
+  const keys = Object.keys(storage).filter(
     (key) => key.startsWith("memgine.") || key.startsWith("memgine:"),
   );
 
   let migratedEntries = 0;
 
   for (const key of keys) {
-    const rawValue = localStorage.getItem(key);
+    const rawValue = storage.getItem(key);
 
     if (rawValue === null) {
       continue;
@@ -201,7 +206,7 @@ export function runPdmStatusIdMigrationV1(): void {
       const result = migrateValue(parsed);
 
       if (result.changed) {
-        localStorage.setItem(key, JSON.stringify(result.value));
+        storage.setItem(key, JSON.stringify(result.value));
 
         migratedEntries += 1;
       }
@@ -210,7 +215,7 @@ export function runPdmStatusIdMigrationV1(): void {
     }
   }
 
-  localStorage.setItem(MIGRATION_KEY, "complete");
+  storage.setItem(MIGRATION_KEY, "complete");
 
   console.info(
     `[Memgine] PDM status ID migration V1 complete. Updated ${migratedEntries} LocalStorage entries.`,

@@ -160,6 +160,8 @@ type Props = {
 
   /** Organization-specific customer hero image. */
   heroImageUrl?: string;
+  /** Resolved by the customer self-service route; replaces local identity lookup. */
+  customerUserId?: string;
 };
 
 export function BusinessExperience({
@@ -193,6 +195,7 @@ export function BusinessExperience({
   membershipLogoUrl,
   tagline,
   heroImageUrl,
+  customerUserId,
 }: Props) {
   const isPreviewMode = renderMode !== "customer";
 
@@ -314,6 +317,7 @@ export function BusinessExperience({
   const [savingPreference, setSavingPreference] = useState<
     "NOTIFICATIONS" | "MARKETING_EMAILS" | null
   >(null);
+  const [customerActionError, setCustomerActionError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -327,6 +331,30 @@ export function BusinessExperience({
           setMarketingEmailsEnabled(false);
           setProfileOrganizationDetails(detailsOverride ?? null);
           setProfileOrganizationWebsite(organization.website ?? "");
+        }
+        return;
+      }
+
+      if (customerUserId) {
+        try {
+          const [details, persistedOrganization, notifications, marketingEmails] = await Promise.all([
+            detailsOverride === undefined
+              ? services.organization.getOrganizationDetails(organization.id)
+              : Promise.resolve(detailsOverride),
+            services.organization.getOrganization(organization.id),
+            services.customerData.preference(organization.id, customerUserId, "NOTIFICATIONS"),
+            services.customerData.preference(organization.id, customerUserId, "MARKETING_EMAILS"),
+          ]);
+          if (cancelled) return;
+          setProfileUserId(customerUserId);
+          setProfileOrganizationDetails(details ?? null);
+          setProfileOrganizationWebsite(persistedOrganization?.website ?? organization.website ?? "");
+          setNotificationsEnabled(notifications == null ? true : notifications === "true");
+          setMarketingEmailsEnabled(marketingEmails === "true");
+          setReferralProgram(null);
+          setCustomerActionError(null);
+        } catch (error) {
+          if (!cancelled) setCustomerActionError(error instanceof Error ? error.message : "Unable to load preferences.");
         }
         return;
       }
@@ -422,6 +450,7 @@ export function BusinessExperience({
     organization.id,
     detailsOverride,
     organization.website,
+    customerUserId,
   ]);
 
   const handlePreferenceToggle = async (
@@ -429,9 +458,9 @@ export function BusinessExperience({
   ) => {
     if (savingPreference) return;
 
-    let userId = profileUserId;
+    let userId = customerUserId ?? profileUserId;
 
-    if (!userId && subscription) {
+    if (!userId && subscription && !customerUserId) {
       const organizationUser =
         (await services.organization.getOrganizationUser(
           subscription.organizationUserId,
@@ -466,12 +495,13 @@ export function BusinessExperience({
     setSavingPreference(preferenceTypeCode);
 
     try {
-      await services.customerPreference.setValue(
-        userId,
-        preferenceTypeCode,
-        String(nextValue),
-      );
-    } catch {
+      if (customerUserId) await services.customerData.setPreference(
+        organization.id, customerUserId, preferenceTypeCode, String(nextValue));
+      else await services.customerPreference.setValue(
+        userId, preferenceTypeCode, String(nextValue));
+      setCustomerActionError(null);
+    } catch (error) {
+      setCustomerActionError(error instanceof Error ? error.message : "Unable to save preference.");
       if (preferenceTypeCode === "NOTIFICATIONS") {
         setNotificationsEnabled(previousValue);
       } else {
@@ -613,6 +643,10 @@ export function BusinessExperience({
 
   const redeemSelected = async () => {
     if (!subscription || isPreviewMode) return;
+    if (customerUserId) {
+      setCustomerActionError("Benefit QR redemption is not yet available in Customer. Ask the counter to redeem your benefit.");
+      return;
+    }
 
     const ids = exp.redeemableBenefits
       .filter((b) => b.available && selectedBenefitIds.has(b.id))
@@ -669,6 +703,10 @@ export function BusinessExperience({
 
   const redeemOffer = async (offer: Offer) => {
     if (isPreviewMode || offerRedeemLoading) return;
+    if (customerUserId) {
+      setCustomerActionError("Offer QR redemption is not yet available in Customer. Ask the counter for assistance.");
+      return;
+    }
 
     setOfferRedeemLoading(true);
 
@@ -2394,6 +2432,9 @@ export function BusinessExperience({
         }}
         showsVerticalScrollIndicator={false}
       >
+        {customerActionError ? (
+          <Card padding="md"><Text variant="bodySmall" color="textMuted">{customerActionError}</Text></Card>
+        ) : null}
         {memberships.length > 1 &&
         effectiveTab !== "profile" &&
         previewSection !== "profile" ? (
