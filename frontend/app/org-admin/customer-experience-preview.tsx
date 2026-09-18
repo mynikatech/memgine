@@ -6,6 +6,7 @@ import type {
   BusinessConfiguration,
   CustomerExperience,
   Organization,
+  OrganizationBranding,
   OrganizationDetails,
   ReferralProgram,
   Store,
@@ -65,6 +66,7 @@ type PreviewPanelProps = {
   onTabChange: (tab: ExperienceTabKey) => void;
   organizationOverride?: Organization;
   detailsOverride?: OrganizationDetails | null;
+  brandingOverride?: OrganizationBranding | null;
   membershipLogoUrl?: string;
   tagline?: string;
   heroImageUrl?: string;
@@ -138,7 +140,6 @@ export default function CustomerExperiencePreview() {
     useState<ExperienceTabKey>("card");
 
   const [publishing, setPublishing] = useState(false);
-  const [publishError, setPublishError] = useState<string | null>(null);
 
   const [notificationStatus, setNotificationStatus] = useState<
     "idle" | "sending" | "success" | "error"
@@ -253,7 +254,6 @@ export default function CustomerExperiencePreview() {
     }
 
     setPublishing(true);
-    setPublishError(null);
 
     try {
       /*
@@ -316,10 +316,6 @@ export default function CustomerExperiencePreview() {
       });
     } catch (error) {
       console.error("[CustomerExperiencePreview] publish failed:", error);
-
-      setPublishError(
-        "Unable to publish the Customer Experience. Your changes have not been published. Please try again.",
-      );
     } finally {
       setPublishing(false);
     }
@@ -481,11 +477,6 @@ export default function CustomerExperiencePreview() {
               }}
               disabled={publishing}
             />
-            {publishError ? (
-              <Text variant="bodySmall" color="text">
-                {publishError}
-              </Text>
-            ) : null}
           </View>
         </Card>
 
@@ -522,6 +513,7 @@ export default function CustomerExperiencePreview() {
                 publishedSnapshot?.organization ?? organization
               }
               detailsOverride={publishedSnapshot?.organizationDetails ?? null}
+              brandingOverride={publishedSnapshot?.organizationBranding ?? null}
               membershipLogoUrl={
                 publishedSnapshot?.organizationBranding?.logoUrl ?? undefined
               }
@@ -554,6 +546,7 @@ export default function CustomerExperiencePreview() {
                 proposedSnapshot?.organization ?? organization
               }
               detailsOverride={proposedSnapshot?.organizationDetails ?? null}
+              brandingOverride={proposedSnapshot?.organizationBranding ?? null}
               membershipLogoUrl={
                 proposedSnapshot?.organizationBranding?.logoUrl ?? undefined
               }
@@ -587,6 +580,7 @@ export default function CustomerExperiencePreview() {
               proposedSnapshot?.organization ?? organization
             }
             detailsOverride={proposedSnapshot?.organizationDetails ?? null}
+            brandingOverride={proposedSnapshot?.organizationBranding ?? null}
             membershipLogoUrl={
               proposedSnapshot?.organizationBranding?.logoUrl ?? undefined
             }
@@ -661,15 +655,20 @@ export default function CustomerExperiencePreview() {
                             ) : null}
                           </View>
                         </View>
-                        <Text variant="bodySmall" color="textSecondary">
-                          {group.items
-                            .slice(0, 3)
-                            .map((item) => item.label)
-                            .join(" · ")}
-                          {group.items.length > 3
-                            ? ` · +${group.items.length - 3} more`
-                            : ""}
-                        </Text>
+                        <View style={styles.diffItemDetails}>
+                          {group.items.map((item) => (
+                            <Text
+                              key={`${item.kind}-${item.label}-${item.detail}`}
+                              variant="caption"
+                              color="textSecondary"
+                            >
+                              <Text variant="caption" color="text">
+                                {item.label}
+                              </Text>
+                              {item.detail ? ` — ${item.detail}` : ""}
+                            </Text>
+                          ))}
+                        </View>
                       </View>
                     ))}
                   </View>
@@ -912,6 +911,7 @@ function PreviewPanel({
   onTabChange,
   organizationOverride,
   detailsOverride,
+  brandingOverride,
   membershipLogoUrl,
   tagline,
   heroImageUrl,
@@ -923,6 +923,23 @@ function PreviewPanel({
     domainData.memberships.find(
       (membership) => membership.product.id === selectedMembershipId,
     ) ?? domainData.memberships[0];
+
+  /*
+   * BusinessPreviewScope owns the theme consumed by BusinessExperience and
+   * nested customer components such as MembershipCard, OfferCard and
+   * BenefitItem.
+   *
+   * Current must use the branding frozen in the published release snapshot.
+   * Proposed uses the proposed snapshot branding. OrganizationBranding is
+   * authoritative for customer brand colours, matching the actual customer
+   * experience and Brand Preview; Customer Experience theme values are only
+   * used as fallback for older/incomplete snapshots.
+   */
+  const previewConfiguration = resolvePreviewConfiguration(
+    configuration,
+    brandingOverride,
+    mode === "proposed" ? experience?.experienceDefinition.theme : undefined,
+  );
 
   return (
     <View style={styles.comparePanel}>
@@ -945,7 +962,7 @@ function PreviewPanel({
           organizationId={
             organizationOverride?.id ?? domainData.product?.organizationId ?? ""
           }
-          configuration={configuration}
+          configuration={previewConfiguration}
           template={template}
         >
           <BusinessExperience
@@ -994,6 +1011,7 @@ function PreviewPanel({
             onTabChange={onTabChange}
             organizationOverride={organizationOverride}
             detailsOverride={detailsOverride}
+            brandingOverride={brandingOverride}
             membershipLogoUrl={membershipLogoUrl}
             tagline={tagline}
             heroImageUrl={heroImageUrl}
@@ -1006,6 +1024,58 @@ function PreviewPanel({
       </View>
     </View>
   );
+}
+
+function resolvePreviewConfiguration(
+  configuration: BusinessConfiguration | undefined,
+  branding: OrganizationBranding | null | undefined,
+  definitionTheme:
+    | CustomerExperience["experienceDefinition"]["theme"]
+    | undefined,
+): BusinessConfiguration | undefined {
+  if (!configuration) {
+    return undefined;
+  }
+
+  return {
+    ...configuration,
+    branding: {
+      ...configuration.branding,
+
+      logoUrl: branding?.logoUrl ?? configuration.branding.logoUrl,
+
+      darkThemeLogoUrl:
+        branding?.darkThemeLogoUrl ?? configuration.branding.darkThemeLogoUrl,
+
+      faviconUrl: branding?.faviconUrl ?? configuration.branding.faviconUrl,
+
+      splashScreenImageUrl:
+        branding?.splashScreenImageUrl ??
+        configuration.branding.splashScreenImageUrl,
+
+      /*
+       * OrganizationBranding is authoritative for customer brand colours.
+       *
+       * This matches the real customer experience and Brand Preview.
+       * CustomerExperience.theme is only a fallback for older snapshots that
+       * do not contain an organization branding colour.
+       */
+      primaryColor:
+        branding?.primaryColor ??
+        definitionTheme?.primaryColor ??
+        configuration.branding.primaryColor,
+
+      secondaryColor:
+        branding?.secondaryColor ??
+        definitionTheme?.secondaryColor ??
+        configuration.branding.secondaryColor,
+
+      accentColor:
+        branding?.accentColor ??
+        definitionTheme?.accentColor ??
+        configuration.branding.accentColor,
+    },
+  };
 }
 
 /* ========================================================================== */
@@ -1204,6 +1274,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     gap: 10,
+  },
+
+  diffItemDetails: {
+    gap: 4,
   },
 
   diffEmpty: {

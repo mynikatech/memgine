@@ -19,6 +19,7 @@ import type {
   OfferUsageRule,
   Organization,
   OrganizationDetails,
+  OrganizationBranding,
   Redemption,
   ReferralProgram,
   Store,
@@ -28,7 +29,12 @@ import type {
 } from "@/src/core";
 
 import { services } from "@/src/core";
-import { useBusiness, useTranslation } from "@/src/providers";
+import {
+  BusinessThemeScope,
+  useBusiness,
+  useTranslation,
+} from "@/src/providers";
+import { buildTheme } from "@/src/theme/theme";
 import { Badge, BrandLogo, Button, Card, Modal, Section, Text } from "@/src/ui";
 
 import {
@@ -115,6 +121,17 @@ type Props = {
    */
   detailsOverride?: OrganizationDetails | null;
 
+  /**
+   * Organization branding belonging to the exact customer state being
+   * rendered.
+   *
+   * Current Preview receives the branding frozen in the published release.
+   * Proposed Preview receives the branding captured in the proposed snapshot.
+   *
+   * When supplied this is authoritative for customer brand assets/colours.
+   */
+  brandingOverride?: OrganizationBranding | null;
+
   initialTab?: ExperienceTabKey;
 
   activeTab?: ExperienceTabKey;
@@ -184,6 +201,7 @@ export function BusinessExperience({
   previewDefinition,
   organizationOverride,
   detailsOverride,
+  brandingOverride,
   initialTab = "card",
   activeTab,
   onTabChange,
@@ -203,7 +221,6 @@ export function BusinessExperience({
     organization: contextOrganization,
     configuration,
     template,
-    theme,
   } = useBusiness();
 
   const { t, formatDate, formatMoney } = useTranslation();
@@ -222,7 +239,7 @@ export function BusinessExperience({
    * The details override is therefore supplied through the configuration
    * object used by the resolver where the resolver supports it.
    */
-  const resolvedBranding = useMemo(
+  const definitionResolvedBranding = useMemo(
     () =>
       resolveCustomerBranding({
         organization,
@@ -230,6 +247,49 @@ export function BusinessExperience({
         previewDefinition,
       }),
     [organization, configuration, previewDefinition],
+  );
+
+  /*
+   * OrganizationBranding is the authoritative customer-facing brand source.
+   *
+   * In preview mode brandingOverride belongs to the exact release state:
+   *
+   *   Current  -> published release OrganizationBranding
+   *   Proposed -> proposed snapshot OrganizationBranding
+   *
+   * CustomerExperienceDefinition can still supply presentation/content
+   * configuration, but it must not replace persisted organization brand
+   * colours when OrganizationBranding is available.
+   */
+  const resolvedBranding = useMemo(
+    () => ({
+      ...definitionResolvedBranding,
+
+      logoUrl: brandingOverride?.logoUrl ?? definitionResolvedBranding.logoUrl,
+
+      darkThemeLogoUrl:
+        brandingOverride?.darkThemeLogoUrl ??
+        definitionResolvedBranding.darkThemeLogoUrl,
+
+      faviconUrl:
+        brandingOverride?.faviconUrl ?? definitionResolvedBranding.faviconUrl,
+
+      splashScreenImageUrl:
+        brandingOverride?.splashScreenImageUrl ??
+        definitionResolvedBranding.splashScreenImageUrl,
+
+      primaryColor:
+        brandingOverride?.primaryColor ??
+        definitionResolvedBranding.primaryColor,
+
+      secondaryColor:
+        brandingOverride?.secondaryColor ??
+        definitionResolvedBranding.secondaryColor,
+
+      accentColor:
+        brandingOverride?.accentColor ?? definitionResolvedBranding.accentColor,
+    }),
+    [definitionResolvedBranding, brandingOverride],
   );
 
   const resolvedConfiguration = useMemo(
@@ -283,6 +343,19 @@ export function BusinessExperience({
     [configuration, resolvedBranding, previewDefinition, tagline],
   );
 
+  /*
+   * BusinessExperience and all nested customer components must consume the
+   * same resolved brand theme.
+   *
+   * Previously the renderer could resolve one branding configuration while
+   * MembershipCard / BenefitItem / OfferCard still consumed the outer provider
+   * theme. That allowed stale/default teal branding to leak into Preview.
+   */
+  const theme = useMemo(
+    () => buildTheme(resolvedConfiguration.branding),
+    [resolvedConfiguration.branding],
+  );
+
   const resolvedContent = previewDefinition?.content ?? content;
 
   const [tab, setTab] = useState<ExperienceTabKey>(initialTab);
@@ -317,7 +390,9 @@ export function BusinessExperience({
   const [savingPreference, setSavingPreference] = useState<
     "NOTIFICATIONS" | "MARKETING_EMAILS" | null
   >(null);
-  const [customerActionError, setCustomerActionError] = useState<string | null>(null);
+  const [customerActionError, setCustomerActionError] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -337,24 +412,46 @@ export function BusinessExperience({
 
       if (customerUserId) {
         try {
-          const [details, persistedOrganization, notifications, marketingEmails] = await Promise.all([
+          const [
+            details,
+            persistedOrganization,
+            notifications,
+            marketingEmails,
+          ] = await Promise.all([
             detailsOverride === undefined
               ? services.organization.getOrganizationDetails(organization.id)
               : Promise.resolve(detailsOverride),
             services.organization.getOrganization(organization.id),
-            services.customerData.preference(organization.id, customerUserId, "NOTIFICATIONS"),
-            services.customerData.preference(organization.id, customerUserId, "MARKETING_EMAILS"),
+            services.customerData.preference(
+              organization.id,
+              customerUserId,
+              "NOTIFICATIONS",
+            ),
+            services.customerData.preference(
+              organization.id,
+              customerUserId,
+              "MARKETING_EMAILS",
+            ),
           ]);
           if (cancelled) return;
           setProfileUserId(customerUserId);
           setProfileOrganizationDetails(details ?? null);
-          setProfileOrganizationWebsite(persistedOrganization?.website ?? organization.website ?? "");
-          setNotificationsEnabled(notifications == null ? true : notifications === "true");
+          setProfileOrganizationWebsite(
+            persistedOrganization?.website ?? organization.website ?? "",
+          );
+          setNotificationsEnabled(
+            notifications == null ? true : notifications === "true",
+          );
           setMarketingEmailsEnabled(marketingEmails === "true");
           setReferralProgram(null);
           setCustomerActionError(null);
         } catch (error) {
-          if (!cancelled) setCustomerActionError(error instanceof Error ? error.message : "Unable to load preferences.");
+          if (!cancelled)
+            setCustomerActionError(
+              error instanceof Error
+                ? error.message
+                : "Unable to load preferences.",
+            );
         }
         return;
       }
@@ -495,13 +592,24 @@ export function BusinessExperience({
     setSavingPreference(preferenceTypeCode);
 
     try {
-      if (customerUserId) await services.customerData.setPreference(
-        organization.id, customerUserId, preferenceTypeCode, String(nextValue));
-      else await services.customerPreference.setValue(
-        userId, preferenceTypeCode, String(nextValue));
+      if (customerUserId)
+        await services.customerData.setPreference(
+          organization.id,
+          customerUserId,
+          preferenceTypeCode,
+          String(nextValue),
+        );
+      else
+        await services.customerPreference.setValue(
+          userId,
+          preferenceTypeCode,
+          String(nextValue),
+        );
       setCustomerActionError(null);
     } catch (error) {
-      setCustomerActionError(error instanceof Error ? error.message : "Unable to save preference.");
+      setCustomerActionError(
+        error instanceof Error ? error.message : "Unable to save preference.",
+      );
       if (preferenceTypeCode === "NOTIFICATIONS") {
         setNotificationsEnabled(previousValue);
       } else {
@@ -644,7 +752,9 @@ export function BusinessExperience({
   const redeemSelected = async () => {
     if (!subscription || isPreviewMode) return;
     if (customerUserId) {
-      setCustomerActionError("Benefit QR redemption is not yet available in Customer. Ask the counter to redeem your benefit.");
+      setCustomerActionError(
+        "Benefit QR redemption is not yet available in Customer. Ask the counter to redeem your benefit.",
+      );
       return;
     }
 
@@ -704,7 +814,9 @@ export function BusinessExperience({
   const redeemOffer = async (offer: Offer) => {
     if (isPreviewMode || offerRedeemLoading) return;
     if (customerUserId) {
-      setCustomerActionError("Offer QR redemption is not yet available in Customer. Ask the counter for assistance.");
+      setCustomerActionError(
+        "Offer QR redemption is not yet available in Customer. Ask the counter for assistance.",
+      );
       return;
     }
 
@@ -2356,383 +2468,391 @@ export function BusinessExperience({
     : tabContent;
 
   return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: theme.colors.background,
-        paddingTop: insets.top,
-      }}
-    >
-      {isPreviewMode ? (
-        <View
-          style={{
-            paddingHorizontal: theme.spacing.lg,
-            paddingTop: theme.spacing.sm,
-          }}
-        >
-          <Pressable
-            onPress={onExit}
-            testID="experience-back"
-            style={({ pressed }) => ({
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 4,
-              alignSelf: "flex-start",
-              paddingVertical: 6,
-              opacity: pressed ? theme.states.pressedOpacity : 1,
-            })}
-          >
-            <Ionicons
-              name="chevron-back"
-              size={18}
-              color={theme.colors.primary}
-            />
-
-            <Text variant="label" color="primary">
-              {t("experience.back")}
-            </Text>
-          </Pressable>
-        </View>
-      ) : null}
-
+    <BusinessThemeScope theme={theme}>
       <View
         style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: theme.spacing.md,
-          paddingHorizontal: theme.spacing.lg,
-          paddingVertical: theme.spacing.sm,
+          flex: 1,
+          backgroundColor: theme.colors.background,
+          paddingTop: insets.top,
         }}
       >
-        <BrandLogo
-          logoUrl={membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl}
-          monogram={exp.monogram}
-          size={46}
-          fit="cover"
-          testID="experience-brand-logo"
-        />
-
-        <View style={{ flex: 1 }}>
-          <Text variant="h2" color="text">
-            {exp.displayName}
-          </Text>
-
-          <Text variant="caption" color="textMuted">
-            {tagline?.trim() || exp.tagline}
-          </Text>
-        </View>
-      </View>
-
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          padding: theme.spacing.lg,
-          paddingTop: theme.spacing.sm,
-          gap: theme.spacing.lg,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
-        {customerActionError ? (
-          <Card padding="md"><Text variant="bodySmall" color="textMuted">{customerActionError}</Text></Card>
-        ) : null}
-        {memberships.length > 1 &&
-        effectiveTab !== "profile" &&
-        previewSection !== "profile" ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{
-              gap: theme.spacing.sm,
+        {isPreviewMode ? (
+          <View
+            style={{
+              paddingHorizontal: theme.spacing.lg,
+              paddingTop: theme.spacing.sm,
             }}
-            testID="experience-membership-selector"
           >
-            {memberships.map((m) => {
-              const selected = m.subscription.id === selectedSubscriptionId;
+            <Pressable
+              onPress={onExit}
+              testID="experience-back"
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+                alignSelf: "flex-start",
+                paddingVertical: 6,
+                opacity: pressed ? theme.states.pressedOpacity : 1,
+              })}
+            >
+              <Ionicons
+                name="chevron-back"
+                size={18}
+                color={theme.colors.primary}
+              />
 
-              const label =
-                m.product.displayName ?? m.product.membershipProductName;
+              <Text variant="label" color="primary">
+                {t("experience.back")}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: theme.spacing.md,
+            paddingHorizontal: theme.spacing.lg,
+            paddingVertical: theme.spacing.sm,
+          }}
+        >
+          <BrandLogo
+            logoUrl={
+              membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl
+            }
+            monogram={exp.monogram}
+            size={46}
+            fit="cover"
+            testID="experience-brand-logo"
+          />
+
+          <View style={{ flex: 1 }}>
+            <Text variant="h2" color="text">
+              {exp.displayName}
+            </Text>
+
+            <Text variant="caption" color="textMuted">
+              {tagline?.trim() || exp.tagline}
+            </Text>
+          </View>
+        </View>
+
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            padding: theme.spacing.lg,
+            paddingTop: theme.spacing.sm,
+            gap: theme.spacing.lg,
+          }}
+          showsVerticalScrollIndicator={false}
+        >
+          {customerActionError ? (
+            <Card padding="md">
+              <Text variant="bodySmall" color="textMuted">
+                {customerActionError}
+              </Text>
+            </Card>
+          ) : null}
+          {memberships.length > 1 &&
+          effectiveTab !== "profile" &&
+          previewSection !== "profile" ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{
+                gap: theme.spacing.sm,
+              }}
+              testID="experience-membership-selector"
+            >
+              {memberships.map((m) => {
+                const selected = m.subscription.id === selectedSubscriptionId;
+
+                const label =
+                  m.product.displayName ?? m.product.membershipProductName;
+
+                return (
+                  <Pressable
+                    key={m.subscription.id}
+                    testID={`experience-membership-option-${m.subscription.id}`}
+                    onPress={() => onSelectSubscription(m.subscription.id)}
+                    style={({ pressed }) => ({
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                      paddingHorizontal: theme.spacing.md,
+                      paddingVertical: 8,
+                      borderRadius: theme.radius.pill,
+                      borderWidth: 1,
+                      borderColor: selected
+                        ? theme.colors.primary
+                        : theme.colors.border,
+                      backgroundColor: selected
+                        ? theme.colors.primarySoft
+                        : theme.colors.background,
+                      opacity: pressed ? theme.states.pressedOpacity : 1,
+                    })}
+                  >
+                    <Ionicons
+                      name={selected ? "card" : "card-outline"}
+                      size={14}
+                      color={
+                        selected ? theme.colors.primary : theme.colors.textMuted
+                      }
+                    />
+
+                    <Text
+                      variant="label"
+                      color={selected ? "primary" : "textMuted"}
+                    >
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          ) : null}
+
+          {renderedContent}
+        </ScrollView>
+
+        {!hideTabBar ? (
+          <View
+            style={{
+              flexDirection: "row",
+              borderTopWidth: 1,
+              borderTopColor: theme.colors.border,
+              backgroundColor: theme.colors.background,
+              paddingBottom: insets.bottom,
+            }}
+          >
+            {exp.tabs.map((tb) => {
+              const focused = tb.key === effectiveTab;
 
               return (
                 <Pressable
-                  key={m.subscription.id}
-                  testID={`experience-membership-option-${m.subscription.id}`}
-                  onPress={() => onSelectSubscription(m.subscription.id)}
-                  style={({ pressed }) => ({
-                    flexDirection: "row",
+                  key={tb.key}
+                  testID={`experience-tabbar-${tb.key}`}
+                  onPress={() => handleTabChange(tb.key)}
+                  style={{
+                    flex: 1,
                     alignItems: "center",
-                    gap: 6,
-                    paddingHorizontal: theme.spacing.md,
-                    paddingVertical: 8,
-                    borderRadius: theme.radius.pill,
-                    borderWidth: 1,
-                    borderColor: selected
-                      ? theme.colors.primary
-                      : theme.colors.border,
-                    backgroundColor: selected
-                      ? theme.colors.primarySoft
-                      : theme.colors.background,
-                    opacity: pressed ? theme.states.pressedOpacity : 1,
-                  })}
+                    justifyContent: "center",
+                    paddingVertical: 10,
+                    gap: 2,
+                  }}
                 >
                   <Ionicons
-                    name={selected ? "card" : "card-outline"}
-                    size={14}
+                    name={
+                      (focused
+                        ? tb.icon
+                        : tb.iconOutline) as keyof typeof Ionicons.glyphMap
+                    }
+                    size={22}
                     color={
-                      selected ? theme.colors.primary : theme.colors.textMuted
+                      focused ? theme.colors.primary : theme.colors.textMuted
                     }
                   />
 
                   <Text
-                    variant="label"
-                    color={selected ? "primary" : "textMuted"}
+                    variant="caption"
+                    color={focused ? "primary" : "textMuted"}
                   >
-                    {label}
+                    {t(tb.labelKey)}
                   </Text>
                 </Pressable>
               );
             })}
-          </ScrollView>
+          </View>
         ) : null}
 
-        {renderedContent}
-      </ScrollView>
-
-      {!hideTabBar ? (
-        <View
-          style={{
-            flexDirection: "row",
-            borderTopWidth: 1,
-            borderTopColor: theme.colors.border,
-            backgroundColor: theme.colors.background,
-            paddingBottom: insets.bottom,
-          }}
-        >
-          {exp.tabs.map((tb) => {
-            const focused = tb.key === effectiveTab;
-
-            return (
-              <Pressable
-                key={tb.key}
-                testID={`experience-tabbar-${tb.key}`}
-                onPress={() => handleTabChange(tb.key)}
-                style={{
-                  flex: 1,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  paddingVertical: 10,
-                  gap: 2,
-                }}
-              >
-                <Ionicons
-                  name={
-                    (focused
-                      ? tb.icon
-                      : tb.iconOutline) as keyof typeof Ionicons.glyphMap
-                  }
-                  size={22}
-                  color={
-                    focused ? theme.colors.primary : theme.colors.textMuted
-                  }
-                />
-
-                <Text
-                  variant="caption"
-                  color={focused ? "primary" : "textMuted"}
-                >
-                  {t(tb.labelKey)}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      ) : null}
-
-      {!isPreviewMode ? (
-        <View
-          style={{
-            alignItems: "center",
-            paddingVertical: 6,
-            borderTopWidth: 1,
-            borderTopColor: theme.colors.border,
-            backgroundColor: theme.colors.surface,
-          }}
-        >
-          <Text variant="caption" color="textMuted">
-            {t("experience.poweredBy")}
-          </Text>
-        </View>
-      ) : null}
-
-      <Modal
-        visible={referralOpen}
-        onClose={() => setReferralOpen(false)}
-        title={exp.referral?.headline ?? t("experience.referral")}
-        testID="experience-referral-modal"
-      >
-        {referralProgram || exp.referral ? (
-          <View style={{ gap: theme.spacing.md }}>
-            <Text variant="body" color="textSecondary">
-              {referralProgram?.description ?? exp.referral?.description}
+        {!isPreviewMode ? (
+          <View
+            style={{
+              alignItems: "center",
+              paddingVertical: 6,
+              borderTopWidth: 1,
+              borderTopColor: theme.colors.border,
+              backgroundColor: theme.colors.surface,
+            }}
+          >
+            <Text variant="caption" color="textMuted">
+              {t("experience.poweredBy")}
             </Text>
+          </View>
+        ) : null}
 
-            {referralSharePayload ? (
-              <>
+        <Modal
+          visible={referralOpen}
+          onClose={() => setReferralOpen(false)}
+          title={exp.referral?.headline ?? t("experience.referral")}
+          testID="experience-referral-modal"
+        >
+          {referralProgram || exp.referral ? (
+            <View style={{ gap: theme.spacing.md }}>
+              <Text variant="body" color="textSecondary">
+                {referralProgram?.description ?? exp.referral?.description}
+              </Text>
+
+              {referralSharePayload ? (
+                <>
+                  <View style={{ alignItems: "center", gap: 6 }}>
+                    <Text variant="caption" color="textMuted">
+                      {t("experience.referralCode")}
+                    </Text>
+                    <Badge
+                      label={referralSharePayload.referralCode}
+                      tone="brand"
+                    />
+                  </View>
+                  <Text
+                    variant="bodySmall"
+                    color="textSecondary"
+                    style={{ textAlign: "center" }}
+                  >
+                    {referralSharePayload.message}
+                  </Text>
+                </>
+              ) : exp.referral ? (
                 <View style={{ alignItems: "center", gap: 6 }}>
                   <Text variant="caption" color="textMuted">
                     {t("experience.referralCode")}
                   </Text>
-                  <Badge
-                    label={referralSharePayload.referralCode}
-                    tone="brand"
-                  />
+                  <Badge label={exp.referral.code} tone="brand" />
                 </View>
-                <Text
-                  variant="bodySmall"
-                  color="textSecondary"
-                  style={{ textAlign: "center" }}
-                >
-                  {referralSharePayload.message}
-                </Text>
-              </>
-            ) : exp.referral ? (
-              <View style={{ alignItems: "center", gap: 6 }}>
-                <Text variant="caption" color="textMuted">
-                  {t("experience.referralCode")}
-                </Text>
-                <Badge label={exp.referral.code} tone="brand" />
-              </View>
-            ) : null}
+              ) : null}
 
-            <Text
-              variant="bodySmall"
-              color="primary"
-              style={{ textAlign: "center" }}
-            >
-              {referralProgram?.referrerRewardValue != null
-                ? `Referral reward: ${referralProgram.referrerRewardValue}`
-                : exp.referral?.rewardLabel}
-            </Text>
-          </View>
-        ) : null}
-      </Modal>
-
-      {!isPreviewMode ? (
-        <>
-          <Modal
-            visible={!!redeemToken}
-            onClose={() => setRedeemToken(null)}
-            title={t("experience.redeemBenefits")}
-            testID="experience-redeem-token-modal"
-          >
-            {redeemToken ? (
-              <View
-                style={{
-                  alignItems: "center",
-                  gap: theme.spacing.md,
-                }}
+              <Text
+                variant="bodySmall"
+                color="primary"
+                style={{ textAlign: "center" }}
               >
-                <QrPlaceholder size={200} testID="experience-redemption-qr" />
+                {referralProgram?.referrerRewardValue != null
+                  ? `Referral reward: ${referralProgram.referrerRewardValue}`
+                  : exp.referral?.rewardLabel}
+              </Text>
+            </View>
+          ) : null}
+        </Modal>
 
-                <View style={{ alignItems: "center" }}>
-                  <Text variant="caption" color="textMuted">
-                    {t("experience.redemptionCode")}
-                  </Text>
-
-                  <Text variant="title" color="text">
-                    {redeemToken.token}
-                  </Text>
-                </View>
-
+        {!isPreviewMode ? (
+          <>
+            <Modal
+              visible={!!redeemToken}
+              onClose={() => setRedeemToken(null)}
+              title={t("experience.redeemBenefits")}
+              testID="experience-redeem-token-modal"
+            >
+              {redeemToken ? (
                 <View
                   style={{
-                    alignSelf: "stretch",
-                    gap: 6,
+                    alignItems: "center",
+                    gap: theme.spacing.md,
                   }}
                 >
-                  {redeemToken.benefitIds.map((id) => (
-                    <View
-                      key={id}
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: theme.spacing.sm,
-                      }}
-                    >
-                      <Ionicons
-                        name="checkmark-circle"
-                        size={16}
-                        color={theme.colors.primary}
-                      />
+                  <QrPlaceholder size={200} testID="experience-redemption-qr" />
 
-                      <Text variant="bodySmall" color="text">
-                        {benefitTitleById.get(id) ?? id}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
+                  <View style={{ alignItems: "center" }}>
+                    <Text variant="caption" color="textMuted">
+                      {t("experience.redemptionCode")}
+                    </Text>
 
-                <Text variant="caption" color="textMuted">
-                  {t("experience.benefitsCount", {
-                    count: redeemToken.benefitIds.length,
-                  })}
-                </Text>
+                    <Text variant="title" color="text">
+                      {redeemToken.token}
+                    </Text>
+                  </View>
 
-                <Text
-                  variant="bodySmall"
-                  color="textMuted"
-                  style={{
-                    textAlign: "center",
-                  }}
-                >
-                  {t("experience.redeemTokenHint")}
-                </Text>
-              </View>
-            ) : null}
-          </Modal>
+                  <View
+                    style={{
+                      alignSelf: "stretch",
+                      gap: 6,
+                    }}
+                  >
+                    {redeemToken.benefitIds.map((id) => (
+                      <View
+                        key={id}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: theme.spacing.sm,
+                        }}
+                      >
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={16}
+                          color={theme.colors.primary}
+                        />
 
-          <Modal
-            visible={!!offerRedeemToken}
-            onClose={() => setOfferRedeemToken(null)}
-            title="Redeem Offer"
-            testID="experience-offer-redeem-token-modal"
-          >
-            {offerRedeemToken ? (
-              <View
-                style={{
-                  alignItems: "center",
-                  gap: theme.spacing.md,
-                }}
-              >
-                <QrPlaceholder
-                  size={200}
-                  testID="experience-offer-redemption-qr"
-                />
+                        <Text variant="bodySmall" color="text">
+                          {benefitTitleById.get(id) ?? id}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
 
-                <View style={{ alignItems: "center" }}>
                   <Text variant="caption" color="textMuted">
-                    Redemption Code
+                    {t("experience.benefitsCount", {
+                      count: redeemToken.benefitIds.length,
+                    })}
                   </Text>
 
-                  <Text variant="title" color="text">
-                    {offerRedeemToken.token}
+                  <Text
+                    variant="bodySmall"
+                    color="textMuted"
+                    style={{
+                      textAlign: "center",
+                    }}
+                  >
+                    {t("experience.redeemTokenHint")}
                   </Text>
                 </View>
+              ) : null}
+            </Modal>
 
-                <Text
-                  variant="bodySmall"
-                  color="textMuted"
+            <Modal
+              visible={!!offerRedeemToken}
+              onClose={() => setOfferRedeemToken(null)}
+              title="Redeem Offer"
+              testID="experience-offer-redeem-token-modal"
+            >
+              {offerRedeemToken ? (
+                <View
                   style={{
-                    textAlign: "center",
+                    alignItems: "center",
+                    gap: theme.spacing.md,
                   }}
                 >
-                  Show this QR code at the counter to redeem this offer.
-                </Text>
-              </View>
-            ) : null}
-          </Modal>
-        </>
-      ) : null}
-    </View>
+                  <QrPlaceholder
+                    size={200}
+                    testID="experience-offer-redemption-qr"
+                  />
+
+                  <View style={{ alignItems: "center" }}>
+                    <Text variant="caption" color="textMuted">
+                      Redemption Code
+                    </Text>
+
+                    <Text variant="title" color="text">
+                      {offerRedeemToken.token}
+                    </Text>
+                  </View>
+
+                  <Text
+                    variant="bodySmall"
+                    color="textMuted"
+                    style={{
+                      textAlign: "center",
+                    }}
+                  >
+                    Show this QR code at the counter to redeem this offer.
+                  </Text>
+                </View>
+              ) : null}
+            </Modal>
+          </>
+        ) : null}
+      </View>
+    </BusinessThemeScope>
   );
 }
 
