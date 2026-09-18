@@ -100,3 +100,5 @@ DB/env/local/liquibase.local.properties
 **/~$*
 DB/hs_err_pid5188.log
 DB/hs_err_pid19520.log
+DB/hs_err_pid53656.log
+batch3-after-correction.diff

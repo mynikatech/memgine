@@ -6,20 +6,19 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 
 import type {
   User,
   MembershipProduct,
   OrganizationUser,
   Redemption,
-  Store,
   Subscription,
-  SubscriptionPlan,
 } from "@/src/core";
 import { services } from "@/src/core";
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { useBusiness, useTranslation } from "@/src/providers";
+import { useCounterSession } from "@/src/core/services/counter-session-context";
 import { Screen } from "@/src/layout";
 import {
   Badge,
@@ -115,269 +114,191 @@ function DetailItem({ label, value }: { label: string; value: string }) {
 
 export default function StaffCustomers() {
   const router = useRouter();
-
+  const params = useLocalSearchParams<{ organizationId?: string }>();
   const { organization } = useBusiness();
   const { formatDate } = useTranslation();
+  const { context } = useCounterSession();
+
+  const orgId = params.organizationId ?? organization.id;
+  const [organizationDisplayName, setOrganizationDisplayName] =
+    React.useState("");
+  const customersRequest = React.useRef(0);
 
   const [status, setStatus] = React.useState<Status>("loading");
+  const [loadError, setLoadError] = React.useState("Please try again.");
   const [rows, setRows] = React.useState<CustomerRow[]>([]);
   const [search, setSearch] = React.useState("");
   const [selectedCustomerId, setSelectedCustomerId] = React.useState<
     string | null
   >(null);
-
   const [
     activeSubscriptionEntityStatusId,
     setActiveSubscriptionEntityStatusId,
   ] = React.useState<string | undefined>(undefined);
 
-  const loadCustomers = React.useCallback(async () => {
-    setStatus("loading");
+  const validContext = context?.organizationId === orgId ? context : null;
 
-    try {
-      /*
-       * Use the exact same source-of-truth pattern as Org Admin Customers:
-       *
-       * Organization
-       *    ↓
-       * OrganizationUser
-       *    ↓ userId
-       * User
-       *
-       * Do NOT call services.customer.getCustomer() here. The Org Admin
-       * customer directory resolves the organization relationship against
-       * services.organization.listUsers(), which is also the persisted local
-       * AsyncStorage/mock data source used by the rest of the app.
-       */
-      const [organizationUsers, users, subscriptions] = await Promise.all([
-        services.organization.listOrganizationUsers(organization.id),
-        services.organization.listUsers(),
-        services.subscription.listByOrganization(organization.id),
-      ]);
-
-      const userMap = new Map<string, User>(
-        users.filter((user) => !user.isDeleted).map((user) => [user.id, user]),
-      );
-
-      const subscriptionsByOrganizationUser = new Map<string, Subscription[]>();
-
-      for (const subscription of subscriptions) {
-        if (subscription.isDeleted) {
-          continue;
+  React.useEffect(() => {
+    let active = true;
+    services.organization
+      .getOrganization(orgId)
+      .then((resolvedOrganization) => {
+        if (!active) return;
+        if (!resolvedOrganization || resolvedOrganization.isDeleted) {
+          throw new Error(`Organization not found: ${orgId}`);
         }
-
-        const current =
-          subscriptionsByOrganizationUser.get(
-            subscription.organizationUserId,
-          ) ?? [];
-
-        current.push(subscription);
-        subscriptionsByOrganizationUser.set(
-          subscription.organizationUserId,
-          current,
+        setOrganizationDisplayName(resolvedOrganization.displayName ?? "");
+      })
+      .catch((error) => {
+        if (!active) return;
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load organization.",
         );
-      }
+        setStatus("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, [orgId]);
 
-      /*
-       * Match Org Admin exactly: only non-deleted Customer organization
-       * relationships are included.
-       */
-      const customerOrganizationUsers = organizationUsers.filter(
-        (organizationUser) =>
-          !organizationUser.isDeleted &&
-          organizationUser.organizationUserTypeId === "org-user-type-customer",
-      );
+  React.useEffect(() => {
+    if (validContext) return;
+    router.replace(APP_ROUTES.counter.organization(orgId) as never);
+  }, [orgId, router, validContext]);
 
-      const customerRows: CustomerRow[] = [];
-
-      for (const organizationUser of customerOrganizationUsers) {
-        const user = userMap.get(organizationUser.userId);
-
-        if (!user) {
-          console.warn("COUNTER CUSTOMER USER MISSING", {
-            organizationUserId: organizationUser.id,
-            userId: organizationUser.userId,
-          });
-          continue;
-        }
-
-        customerRows.push({
+  const loadCustomers = React.useCallback(async () => {
+    if (!validContext) return;
+    const requestId = ++customersRequest.current;
+    setStatus("loading");
+    try {
+      const [customers, subscriptions, redemptions, products, statuses] =
+        await Promise.all([
+          services.counter.customers(validContext),
+          services.counter.subscriptions(validContext),
+          services.counter.redemptions(validContext),
+          services.membershipProduct.listProducts(orgId),
+          services.status.listStatusesByEntityTypeCode("SUBSCRIPTION"),
+        ]);
+      if (requestId !== customersRequest.current) return;
+      const activeStatusId = statuses.find(
+        (item) => item.statusCode?.toUpperCase() === "ACTIVE",
+      )?.id;
+      const mappedRows: CustomerRow[] = customers.map((item) => {
+        const user = {
+          id: item.userId,
+          userCode: item.userCode,
+          firstName: item.firstName,
+          middleName: item.middleName ?? undefined,
+          lastName: item.lastName ?? "",
+          displayName: item.displayName ?? undefined,
+          primaryEmail: item.primaryEmail ?? undefined,
+          primaryPhone: {
+            countryId: "",
+            callingCode: "",
+            number: item.primaryPhone,
+          },
+          userStatusId: item.userStatusId,
+          isDeleted: false,
+        } as User;
+        const organizationUser = {
+          id: item.organizationUserId,
+          organizationId: orgId,
+          userId: item.userId,
+          organizationUserTypeId: item.organizationUserTypeId,
+          organizationUserStatusId: item.organizationUserStatusId,
+          joiningDate: item.joiningDate,
+          isDeleted: false,
+        } as OrganizationUser;
+        const ownSubscriptions = subscriptions.filter(
+          (sub) => sub.organizationUserId === item.organizationUserId,
+        );
+        const mappedSubscriptions = ownSubscriptions.map(
+          (sub) =>
+            ({
+              id: sub.id,
+              subscriptionNumber: sub.subscriptionNumber,
+              organizationUserId: sub.organizationUserId,
+              subscriptionPlanId: sub.subscriptionPlanId,
+              subscriptionDate: sub.subscriptionDate,
+              startDate: sub.startDate,
+              endDate: sub.endDate,
+              subscriptionStatusId: sub.subscriptionStatusId,
+              totalAmount: {
+                amountMinor: Math.round(sub.totalAmount * 100),
+                currency: sub.currencyCode,
+              },
+              isDeleted: false,
+            }) as Subscription,
+        );
+        const productsBySubscriptionId: CustomerRow["productsBySubscriptionId"] =
+          {};
+        const membershipNamesBySubscriptionId: CustomerRow["membershipNamesBySubscriptionId"] =
+          {};
+        ownSubscriptions.forEach((sub) => {
+          productsBySubscriptionId[sub.id] = products.find(
+            (product) => product.id === sub.membershipProductId,
+          );
+          membershipNamesBySubscriptionId[sub.id] = sub.subscriptionPlanName;
+        });
+        const subscriptionIds = new Set(ownSubscriptions.map((sub) => sub.id));
+        const ownRedemptions: CustomerRedemption[] = redemptions
+          .filter((row) => subscriptionIds.has(row.subscriptionId))
+          .map((row) => ({
+            redemption: {
+              id: row.id,
+              redemptionNumber: row.redemptionNumber,
+              subscriptionId: row.subscriptionId,
+              benefitId: row.benefitId,
+              storeId: row.storeId,
+              staffId: row.staffId ?? undefined,
+              redemptionDateTime: row.redemptionDateTime,
+              quantity: row.quantity,
+              redemptionStatusId: row.redemptionStatusId,
+              remarks: row.remarks ?? undefined,
+              isDeleted: false,
+            } as Redemption,
+            benefitName: row.benefitName,
+            storeName: row.storeName,
+            productName:
+              ownSubscriptions.find((sub) => sub.id === row.subscriptionId)
+                ?.membershipProductName ?? "Membership",
+          }));
+        return {
           user,
           organizationUser,
-          subscriptions:
-            subscriptionsByOrganizationUser.get(organizationUser.id) ?? [],
-          productsBySubscriptionId: {},
-          membershipNamesBySubscriptionId: {},
-          redemptions: [],
-        });
-      }
-
-      /*
-       * Resolve membership products from the organization-scoped catalogue.
-       *
-       * IMPORTANT: getProduct(id) is not safe for persisted organization
-       * products because the local implementation delegates that lookup to
-       * its fallback service. The organization-scoped listProducts() path is
-       * the source of truth used by JoinFlow.
-       */
-      const [
-        membershipProducts,
-        organizationBenefits,
-        stores,
-        subscriptionStatuses,
-      ] = await Promise.all([
-        services.membershipProduct.listProducts(organization.id),
-        services.benefit.listByOrganization(organization.id),
-        services.organization.listStores(organization.id),
-        services.status.listStatusesByEntityTypeCode("SUBSCRIPTION"),
-      ]);
-
-      const productsById = new Map(
-        membershipProducts
-          .filter((product) => !product.isDeleted)
-          .map((product) => [product.id, product]),
-      );
-
-      const benefitsById = new Map(
-        organizationBenefits
-          .filter((benefit) => !benefit.isDeleted)
-          .map((benefit) => [benefit.id, benefit]),
-      );
-
-      const storesById = new Map<string, Store>(
-        stores
-          .filter((store) => !store.isDeleted)
-          .map((store) => [store.id, store]),
-      );
-
-      const activeSubscriptionStatus = subscriptionStatuses.find(
-        (item) => item?.statusCode?.trim().toUpperCase() === "ACTIVE",
-      );
-
-      const activeStatusId = activeSubscriptionStatus?.id;
-
-      for (const row of customerRows) {
-        for (const subscription of row.subscriptions) {
-          /*
-           * IMPORTANT: resolve the plan from the same organization-scoped
-           * membership-product catalogue that the customer directory uses.
-           *
-           * Each MembershipProduct contains its SubscriptionPlan records in
-           * `plans`. That is the reliable persisted relationship for Counter.
-           * The previous implementation called subscriptionPlan.getPlan()
-           * first; in the local service that can fall back to mock data and
-           * return no matching plan, causing us to fall back to the product
-           * name ("ARTISAN PASS") instead of the plan name ("SILVER").
-           *
-           * Org Admin -> Subscriptions presents the same relationship as:
-           *   primary   = SubscriptionPlan.subscriptionPlanName (SILVER)
-           *   secondary = MembershipProduct.membershipProductName (ARTISAN PASS)
-           *
-           * Counter must use exactly that presentation.
-           */
-          let matchedPlan: SubscriptionPlan | undefined;
-          let product: MembershipProduct | undefined;
-
-          for (const candidate of membershipProducts) {
-            if (candidate.isDeleted) {
-              continue;
-            }
-
-            const candidatePlan = candidate.plans?.find(
-              (plan) =>
-                !plan.isDeleted && plan.id === subscription.subscriptionPlanId,
-            );
-
-            if (candidatePlan) {
-              product = candidate;
-              matchedPlan = candidatePlan;
-              break;
-            }
-          }
-
-          /*
-           * Keep a fallback for data sets where the organization product
-           * catalogue does not contain the embedded plan. This does not
-           * change the normal persisted path above.
-           */
-          if (!matchedPlan) {
-            matchedPlan =
-              (await services.subscriptionPlan.getPlan(
-                subscription.subscriptionPlanId,
-              )) ?? undefined;
-
-            if (matchedPlan) {
-              product = productsById.get(matchedPlan.membershipProductId);
-            }
-          }
-
-          row.productsBySubscriptionId[subscription.id] = product;
-
-          /*
-           * Match Org Admin -> Subscriptions exactly:
-           *   primary name   = plan name (e.g. SILVER)
-           *   product name   = secondary line (e.g. ARTISAN PASS)
-           */
-          row.membershipNamesBySubscriptionId[subscription.id] =
-            matchedPlan?.subscriptionPlanName?.trim() || undefined;
-
-          if (!product) {
-            console.warn("COUNTER SUBSCRIPTION PRODUCT MISSING", {
-              subscriptionId: subscription.id,
-              subscriptionPlanId: subscription.subscriptionPlanId,
-              organizationId: organization.id,
-            });
-          }
-
-          const productBenefitIds = new Set(product?.benefitIds ?? []);
-
-          const subscriptionRedemptions =
-            await services.redemption.listBySubscription(subscription.id);
-
-          for (const redemption of subscriptionRedemptions) {
-            const benefit = benefitsById.get(redemption.benefitId);
-            const store = storesById.get(redemption.storeId);
-
-            row.redemptions.push({
-              redemption,
-              benefitName:
-                benefit && productBenefitIds.has(benefit.id)
-                  ? (benefit.displayName ?? benefit.benefitName)
-                  : "Reward redeemed",
-              storeName:
-                store?.name ?? organization.displayName ?? organization.name,
-              productName:
-                product?.displayName ??
-                product?.membershipProductName ??
-                "Membership",
-            });
-          }
-        }
-      }
-
-      setActiveSubscriptionEntityStatusId(activeStatusId);
-
-      console.log("COUNTER CUSTOMERS LOADED", {
-        organizationId: organization.id,
-        organizationUsers: organizationUsers.length,
-        customerOrganizationUsers: customerOrganizationUsers.length,
-        users: users.length,
-        customerRows: customerRows.length,
+          subscriptions: mappedSubscriptions,
+          productsBySubscriptionId,
+          membershipNamesBySubscriptionId,
+          redemptions: ownRedemptions,
+        };
       });
-
-      setRows(customerRows);
+      setActiveSubscriptionEntityStatusId(activeStatusId);
+      setRows(mappedRows);
       setStatus("ready");
     } catch (error) {
-      console.error("COUNTER CUSTOMERS LOAD ERROR", error);
+      if (requestId !== customersRequest.current) return;
       setRows([]);
+      setLoadError(
+        error instanceof Error ? error.message : "Unable to load customers.",
+      );
       setStatus("error");
     }
-  }, [organization.id, organization.displayName]);
+  }, [
+    orgId,
+    validContext?.organizationId,
+    validContext?.staffId,
+    validContext?.storeId,
+  ]);
 
   useFocusEffect(
     React.useCallback(() => {
-      loadCustomers();
-    }, [loadCustomers]),
+      if (validContext) loadCustomers();
+      return () => {
+        ++customersRequest.current;
+      };
+    }, [loadCustomers, validContext]),
   );
 
   const filteredRows = React.useMemo(() => {
@@ -393,11 +314,16 @@ export default function StaffCustomers() {
 
       const phone =
         `${user.primaryPhone.callingCode ?? ""} ${user.primaryPhone.number ?? ""}`.toLowerCase();
+      const phoneDigits = phone.replace(/\D/g, "").slice(-10);
+      const searchDigits = value.replace(/\D/g, "").slice(-10);
 
       const email = user.primaryEmail?.toLowerCase() ?? "";
 
       return (
-        name.includes(value) || phone.includes(value) || email.includes(value)
+        name.includes(value) ||
+        phone.includes(value) ||
+        email.includes(value) ||
+        (searchDigits.length > 0 && phoneDigits.includes(searchDigits))
       );
     });
   }, [rows, search]);
@@ -512,14 +438,12 @@ export default function StaffCustomers() {
     [activeSubscriptionEntityStatusId],
   );
 
-  if (status === "loading") {
+  if (!validContext || status === "loading") {
     return (
       <Screen
         testID="staff-customers-screen"
         edges={["top"]}
-        header={
-          <Header title="Customers" subtitle={organization.displayName} />
-        }
+        header={<Header title="Customers" subtitle={organizationDisplayName} />}
       >
         <StateView
           kind="loading"
@@ -535,14 +459,12 @@ export default function StaffCustomers() {
       <Screen
         testID="staff-customers-screen"
         edges={["top"]}
-        header={
-          <Header title="Customers" subtitle={organization.displayName} />
-        }
+        header={<Header title="Customers" subtitle={organizationDisplayName} />}
       >
         <StateView
           kind="error"
           title="Unable to load customers"
-          message="Please try again."
+          message={loadError}
           actionLabel="Retry"
           onAction={loadCustomers}
           testID="staff-customers-error"
@@ -586,7 +508,7 @@ export default function StaffCustomers() {
       <Screen
         testID="staff-customer-detail-screen"
         edges={["top"]}
-        header={<Header title="Customer" subtitle={organization.displayName} />}
+        header={<Header title="Customer" subtitle={organizationDisplayName} />}
       >
         <ScrollView
           contentContainerStyle={styles.detailContent}
@@ -734,21 +656,13 @@ export default function StaffCustomers() {
                     {isActive ? (
                       <View style={styles.membershipAction}>
                         <Pressable
-                          onPress={() => {
-                            /*
-                             * The existing Business Experience route
-                             * is the real customer-facing membership
-                             * experience.
-                             *
-                             * This is intentionally a small demo bridge
-                             * from Staff → Customers to that experience.
-                             */
+                          onPress={() =>
                             router.push(
                               APP_ROUTES.business.subscription(
                                 subscription.id,
                               ) as never,
-                            );
-                          }}
+                            )
+                          }
                           testID={`view-membership-${subscription.id}`}
                         >
                           <Text variant="bodyStrong" color="text">
@@ -844,7 +758,7 @@ export default function StaffCustomers() {
     <Screen
       testID="staff-customers-screen"
       edges={["top"]}
-      header={<Header title="Customers" subtitle={organization.displayName} />}
+      header={<Header title="Customers" subtitle={organizationDisplayName} />}
     >
       <ScrollView
         contentContainerStyle={styles.content}

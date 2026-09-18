@@ -37,6 +37,7 @@ import {
 } from "@/src/ui/domain";
 
 import { registerCustomerForOrganization } from "@/src/core/customer/customer-registration";
+import { counterCheckout } from "@/src/core/services/counter-checkout";
 
 /**
  * Customer acquisition & subscription purchase journey.
@@ -194,7 +195,8 @@ export default function JoinFlow() {
 
   const orgId = params.organizationId ?? organization.id;
 
-  const customerId = params.customerId ?? DEFAULT_CUSTOMER_ID;
+  const customerId = params.source === "STAFF_ASSISTED"
+    ? (params.customerId ?? "") : (params.customerId ?? DEFAULT_CUSTOMER_ID);
 
   /*
    * Staff-assisted purchase is identified only by the navigation
@@ -293,15 +295,6 @@ export default function JoinFlow() {
         setLoading(true);
         setLoadError(undefined);
 
-        console.log("JOIN LOAD", {
-          organizationId: orgId,
-          productId: params.productId,
-          customerId,
-          source: params.source,
-          staffId: params.staffId,
-          storeId: params.storeId,
-        });
-
         /*
          * --------------------------------------------------------
          * 1. Load organization membership catalogue
@@ -376,52 +369,40 @@ export default function JoinFlow() {
          * Resolve the User first, then create the lightweight Customer
          * view used by JoinFlow.
          */
-        const users = await services.organization.listUsers();
-
-        const user = users.find(
-          (item) => !item.isDeleted && item.id === customerId,
-        );
-
         let cust: Customer | null = null;
-
-        if (user) {
-          const fullName =
-            user.displayName?.trim() ||
-            [user.firstName, user.middleName, user.lastName]
-              .filter((value) => Boolean(value?.trim()))
-              .join(" ") ||
-            "Customer";
-
-          cust = {
-            id: user.id,
-            fullName,
-            email: user.primaryEmail,
-            phone: `${user.primaryPhone.callingCode ?? ""}${
-              user.primaryPhone.number ?? ""
-            }`,
-            createdAt: user.createdAt,
-          } as Customer;
-        }
-
         let resolvedOrganizationUserId: string | null = null;
-
-        try {
-          const organizationUsers =
-            await services.organization.listOrganizationUsersByUser(customerId);
-
-          const organizationUser = organizationUsers.find(
-            (item) =>
-              !item.isDeleted &&
-              item.organizationId === orgId &&
-              item.organizationUserTypeId === "org-user-type-customer",
-          );
-
-          resolvedOrganizationUserId = organizationUser?.id ?? null;
-        } catch (organizationUserError) {
-          console.warn(
-            "JOIN ORGANIZATION USER LOOKUP FAILED",
-            organizationUserError,
-          );
+        if (isStaffSale) {
+          if (!params.staffId || !params.storeId) throw new Error("Counter staff and store are required.");
+          if (customerId) {
+            const rows = await services.counter.customers({ organizationId: orgId,
+              storeId: params.storeId, staffId: params.staffId });
+            const row = rows.find(item => item.userId === customerId);
+            if (!row) throw new Error("Counter customer is not available in this organization.");
+            cust = { id: row.userId,
+              fullName: row.displayName || [row.firstName, row.lastName].filter(Boolean).join(" "),
+              email: row.primaryEmail ?? undefined, phone: row.primaryPhone,
+              createdAt: row.joiningDate };
+            resolvedOrganizationUserId = row.organizationUserId;
+          } else {
+            const draft = counterCheckout.get();
+            if (!draft) throw new Error("Verified Counter customer details have expired. Return to Counter.");
+            cust = { id: "", fullName: [draft.firstName, draft.lastName].join(" "),
+              email: draft.primaryEmail, phone: draft.primaryPhone,
+              createdAt: new Date().toISOString() };
+          }
+        } else {
+          const users = await services.organization.listUsers();
+          const user = users.find(item => !item.isDeleted && item.id === customerId);
+          if (user) {
+            cust = { id: user.id,
+              fullName: user.displayName?.trim() || [user.firstName, user.middleName, user.lastName].filter(Boolean).join(" "),
+              email: user.primaryEmail,
+              phone: (user.primaryPhone.callingCode ?? "") + (user.primaryPhone.number ?? ""),
+              createdAt: user.createdAt };
+          }
+          const orgUsers = await services.organization.listOrganizationUsersByUser(customerId);
+          resolvedOrganizationUserId = orgUsers.find(item => !item.isDeleted &&
+            item.organizationId === orgId && item.organizationUserTypeId === "org-user-type-customer")?.id ?? null;
         }
 
         if (!mounted) {
@@ -680,7 +661,7 @@ export default function JoinFlow() {
    */
 
   const payAndSubscribe = useCallback(async () => {
-    if (!product || !plan || !organizationUserId) {
+    if (!product || !plan || (!isStaffSale && !organizationUserId)) {
       return;
     }
 
@@ -704,11 +685,6 @@ export default function JoinFlow() {
         description: product.membershipProductName,
       });
 
-      console.log("PAYMENT RESULT", {
-        status: payment.status,
-        reference: payment.reference,
-      });
-
       /*
        * Do NOT create the subscription unless the payment service
        * explicitly reports success.
@@ -722,6 +698,33 @@ export default function JoinFlow() {
        * 2. RESOLVE ACTIVE SUBSCRIPTION STATUS
        * --------------------------------------------------------
        */
+      if (isStaffSale) {
+        if (!params.staffId || !params.storeId) throw new Error("Counter staff and store are required.");
+        const draft = customerId ? null : counterCheckout.get();
+        if (!customerId && !draft) throw new Error("Verified customer details have expired. Return to Counter.");
+        const saved = await services.counter.purchase({ organizationId: orgId,
+          storeId: params.storeId, staffId: params.staffId }, {
+            planId: plan.id,
+            ...(customerId ? { customerUserId: customerId } : {
+              firstName: draft!.firstName, lastName: draft!.lastName,
+              primaryEmail: draft!.primaryEmail, primaryPhone: draft!.primaryPhone,
+            }),
+          });
+        counterCheckout.clear();
+        const sub = {
+          id: saved.subscriptionId, subscriptionNumber: saved.subscriptionNumber,
+          organizationUserId: saved.organizationUserId, subscriptionPlanId: saved.subscriptionPlanId,
+          subscriptionDate: saved.subscriptionDate, startDate: saved.startDate,
+          endDate: saved.endDate, subscriptionStatusId: saved.subscriptionStatusId,
+          totalAmount: { amountMinor: Math.round(saved.totalAmount * 100), currency: saved.currencyCode },
+          isDeleted: false,
+        } as Subscription;
+        setSubscription(sub);
+        setReference(payment.reference);
+        setStep("success");
+        return;
+      }
+
       const subscriptionEntityStatuses =
         await services.status.listStatusesByEntityTypeCode("SUBSCRIPTION");
 
@@ -779,7 +782,7 @@ export default function JoinFlow() {
 
         subscriptionPlanId: plan.id,
 
-        organizationUserId,
+        organizationUserId: organizationUserId!,
 
         subscriptionDate,
 
@@ -1379,7 +1382,7 @@ export default function JoinFlow() {
           <Button
             label={t("join.payAndSubscribe")}
             fullWidth
-            disabled={!organizationUserId}
+            disabled={!isStaffSale && !organizationUserId}
             onPress={payAndSubscribe}
             testID="join-pay"
           />
@@ -1512,13 +1515,7 @@ export default function JoinFlow() {
             totalMinor={plan.price.amountMinor}
           />
 
-          {/*
-           * Temporary/demo link is deliberately shown
-           * for BOTH purchase paths.
-           *
-           * It demonstrates the newly created customer's
-           * customer-facing experience.
-           */}
+          {/* The customer preview remains part of the separate customer journey. */}
           <Button
             label="View Customer Experience"
             fullWidth

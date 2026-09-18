@@ -73,8 +73,21 @@ export const APP_ROUTES = {
 
   counter: {
     root: "/counter",
+
+    organization: (organizationId: string) =>
+      `/counter?organizationId=${encodeURIComponent(organizationId)}`,
+
     customers: "/counter/customers",
+
+    organizationCustomers: (organizationId: string) =>
+      `/counter/customers?organizationId=${encodeURIComponent(organizationId)}`,
+
     configuration: "/counter/configuration",
+
+    organizationConfiguration: (organizationId: string) =>
+      `/counter/configuration?organizationId=${encodeURIComponent(
+        organizationId,
+      )}`,
   },
 
   customer: {

@@ -1,5 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Slot, usePathname, useRouter } from "expo-router";
+import {
+  Slot,
+  useGlobalSearchParams,
+  usePathname,
+  useRouter,
+} from "expo-router";
 import {
   Pressable,
   StyleSheet,
@@ -9,36 +14,45 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { COUNTER_ROUTES } from "@/src/constants/navigation";
+import { APP_ROUTES, COUNTER_ROUTES } from "@/src/constants/navigation";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
 
-/**
- * Counter shell — a standalone, responsive Counter experience,
- * independent of the customer/mobile viewport.
- *
- * - Wide (web/desktop): persistent left sidebar + content.
- * - Narrow (tablet/mobile): compact top bar + full-width content.
- *
- * Counter is the store-operational application used at a business location.
- * Staff are users/actors of the application; "Counter" is the application
- * boundary and route namespace.
- */
 export default function CounterLayout() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const pathname = usePathname();
+  const { organizationId } = useGlobalSearchParams<{
+    organizationId?: string;
+  }>();
   const { width } = useWindowDimensions();
-
   const isWide = width >= 900;
 
   const go = (href: (typeof COUNTER_ROUTES)[number]["href"]) => {
+    if (organizationId) {
+      if (href === "/counter") {
+        router.push(APP_ROUTES.counter.organization(organizationId) as never);
+        return;
+      }
+      if (href === "/counter/customers") {
+        router.push(
+          APP_ROUTES.counter.organizationCustomers(organizationId) as never,
+        );
+        return;
+      }
+      if (href === "/counter/configuration") {
+        router.push(
+          APP_ROUTES.counter.organizationConfiguration(organizationId) as never,
+        );
+        return;
+      }
+    }
     router.push(href as never);
   };
+
   const Nav = ({ horizontal }: { horizontal?: boolean }) => (
     <View style={horizontal ? styles.navRow : styles.nav}>
       {COUNTER_ROUTES.map((route) => {
         const active = pathname === route.href;
-
         return (
           <Pressable
             key={route.name}
@@ -55,7 +69,6 @@ export default function CounterLayout() {
               size={horizontal ? 16 : 20}
               color={active ? COLORS.accent : COLORS.textMuted}
             />
-
             <Text style={[styles.navLabel, active && styles.navLabelActive]}>
               {route.title}
             </Text>
@@ -74,7 +87,6 @@ export default function CounterLayout() {
           color={COLORS.background}
         />
       </View>
-
       <View>
         <Text style={styles.brandName}>Memgine</Text>
         <Text style={styles.brandSub}>Counter</Text>
@@ -86,10 +98,7 @@ export default function CounterLayout() {
     <View
       style={[
         styles.root,
-        {
-          paddingTop: insets.top,
-          flexDirection: isWide ? "row" : "column",
-        },
+        { paddingTop: insets.top, flexDirection: isWide ? "row" : "column" },
       ]}
       testID="counter-shell"
     >
@@ -97,7 +106,6 @@ export default function CounterLayout() {
         <View style={styles.sidebar} testID="counter-sidebar">
           <Brand />
           <Nav />
-
           <Text style={styles.footer}>Counter</Text>
         </View>
       ) : (
@@ -115,11 +123,7 @@ export default function CounterLayout() {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-
+  root: { flex: 1, backgroundColor: COLORS.background },
   sidebar: {
     width: 260,
     backgroundColor: COLORS.surface,
@@ -128,7 +132,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.md,
   },
-
   topbar: {
     backgroundColor: COLORS.surface,
     borderBottomWidth: 1,
@@ -137,14 +140,12 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs,
     gap: SPACING.xs,
   },
-
   brand: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     marginBottom: SPACING.lg,
   },
-
   brandMark: {
     width: 40,
     height: 40,
@@ -153,28 +154,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
-  brandName: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: COLORS.text,
-  },
-
-  brandSub: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-  },
-
-  nav: {
-    gap: 4,
-  },
-
-  navRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-
+  brandName: { fontSize: 17, fontWeight: "700", color: COLORS.text },
+  brandSub: { fontSize: 12, color: COLORS.textMuted },
+  nav: { gap: 4 },
+  navRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   navItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -183,11 +166,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: RADIUS.sm,
   },
-
-  navItemActive: {
-    backgroundColor: COLORS.accentSoft,
-  },
-
+  navItemActive: { backgroundColor: COLORS.accentSoft },
   navPill: {
     flexDirection: "row",
     alignItems: "center",
@@ -199,31 +178,12 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.background,
   },
-
   navPillActive: {
     borderColor: COLORS.accent,
     backgroundColor: COLORS.accentSoft,
   },
-
-  navLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: COLORS.textMuted,
-  },
-
-  navLabelActive: {
-    color: COLORS.accent,
-    fontWeight: "700",
-  },
-
-  footer: {
-    marginTop: "auto",
-    fontSize: 12,
-    color: COLORS.textMuted,
-  },
-
-  content: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
+  navLabel: { fontSize: 14, fontWeight: "500", color: COLORS.textMuted },
+  navLabelActive: { color: COLORS.accent, fontWeight: "700" },
+  footer: { marginTop: "auto", fontSize: 12, color: COLORS.textMuted },
+  content: { flex: 1, backgroundColor: COLORS.background },
 });

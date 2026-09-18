@@ -10,6 +10,7 @@ import {
   CustomerContextProvider,
   LocalizationProvider,
 } from "@/src/providers";
+import { CounterSessionProvider } from "@/src/core/services/counter-session-context";
 
 import { runPdmStatusIdMigrationV1 } from "../src/data/migrations/pdm-status-id-migration-v1";
 import { runOrganizationStatusIdMigrationV2 } from "../src/data/migrations/organization-status-id-migration-v2";
@@ -65,7 +66,9 @@ export default function RootLayout() {
     <BusinessProvider>
       <LocalizationProvider>
         <CustomerContextProvider>
-          <Stack screenOptions={{ headerShown: false }} />
+          <CounterSessionProvider>
+            <Stack screenOptions={{ headerShown: false }} />
+          </CounterSessionProvider>
         </CustomerContextProvider>
       </LocalizationProvider>
     </BusinessProvider>

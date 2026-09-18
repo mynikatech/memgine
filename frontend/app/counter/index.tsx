@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
@@ -17,30 +17,23 @@ import type {
   MembershipProduct,
   Status,
   Staff,
+  StaffStoreAssignment,
   Store,
-  User,
   OfferRedemptionResult,
 } from "@/src/core";
 
-import {
-  redeemBenefits,
-  redeemFromToken,
-  redeemOffer,
-  RedemptionContext,
-  RedemptionMethod,
-  RedemptionResult,
-  QRCodeType,
-  services,
-} from "@/src/core";
+import { RedemptionMethod, RedemptionResult, services } from "@/src/core";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
+import { counterCheckout } from "@/src/core/services/counter-checkout";
+import { useCounterSession } from "@/src/core/services/counter-session-context";
+import {
+  eligibleCounterStores,
+  selectCounterStaff,
+} from "@/src/core/services/counter-context-selection";
 import { useBusiness, useTranslation } from "@/src/providers";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
-import {
-  registerCustomerForOrganization,
-  type RegisterCustomerResult,
-} from "@/src/core/customer/customer-registration";
 import {
   CustomerForm,
   type CustomerFormSubmitResult,
@@ -53,7 +46,7 @@ const MAX_PHONE_DIGITS = 10;
 const OTP_LENGTH = 6;
 
 const normalizePhone = (value: string): string =>
-  value.replace(/\D/g, "").slice(0, MAX_PHONE_DIGITS);
+  value.replace(/\D/g, "").slice(-MAX_PHONE_DIGITS);
 
 const normalizeOtp = (value: string): string =>
   value.replace(/\D/g, "").slice(0, OTP_LENGTH);
@@ -101,9 +94,38 @@ export default function StaffCounter() {
 
   const router = useRouter();
 
+  const params = useLocalSearchParams<{ organizationId?: string }>();
+
   const { t, formatMoney } = useTranslation();
 
-  const orgId = organization.id;
+  const {
+    context: counterSessionContext,
+    setContext: setCounterSessionContext,
+  } = useCounterSession();
+
+  const orgId = params.organizationId ?? organization.id;
+
+  const [counterOrganization, setCounterOrganization] = useState<
+    typeof organization | null
+  >(null);
+
+  const [activeStaffMembers, setActiveStaffMembers] = useState<Staff[]>([]);
+  const [staffNamesById, setStaffNamesById] = useState<Record<string, string>>(
+    {},
+  );
+  const [counterStores, setCounterStores] = useState<Store[]>([]);
+  const [counterAssignments, setCounterAssignments] = useState<
+    StaffStoreAssignment[]
+  >([]);
+  const [activeStoreStatusId, setActiveStoreStatusId] = useState("");
+  const [activeAssignmentStatusId, setActiveAssignmentStatusId] = useState("");
+  const [loadedOrgId, setLoadedOrgId] = useState("");
+
+  const [selectedDevStaffId, setSelectedDevStaffId] = useState("");
+  const [selectedDevStoreId, setSelectedDevStoreId] = useState("");
+
+  const [staffPickerVisible, setStaffPickerVisible] = useState(false);
+  const [storePickerVisible, setStorePickerVisible] = useState(false);
 
   const authenticatedStaffId =
     principal.kind === "STAFF" ? principal.staffId : null;
@@ -112,7 +134,7 @@ export default function StaffCounter() {
 
   const [counterStaffName, setCounterStaffName] = useState("");
 
-  const staffId = counterStaff?.id ?? authenticatedStaffId ?? "";
+  const staffId = loadedOrgId === orgId ? (counterStaff?.id ?? "") : "";
   const staffRole =
     counterStaff?.designation?.trim() ||
     counterStaff?.role ||
@@ -120,7 +142,31 @@ export default function StaffCounter() {
 
   const [store, setStore] = useState<Store | null>(null);
 
-  const storeId = store?.id ?? "";
+  const storeId = loadedOrgId === orgId ? (store?.id ?? "") : "";
+  const principalStaffIsCurrent =
+    loadedOrgId === orgId &&
+    activeStaffMembers.some((item) => item.id === authenticatedStaffId);
+  const selectedStaff =
+    loadedOrgId === orgId
+      ? selectCounterStaff(
+          activeStaffMembers,
+          authenticatedStaffId,
+          selectedDevStaffId,
+        )
+      : null;
+  const eligibleStores =
+    selectedStaff && activeStoreStatusId && activeAssignmentStatusId
+      ? eligibleCounterStores(
+          selectedStaff,
+          counterStores,
+          counterAssignments,
+          activeStoreStatusId,
+          activeAssignmentStatusId,
+        )
+      : null;
+  const storeChoices = eligibleStores?.primary
+    ? [eligibleStores.primary]
+    : (eligibleStores?.assigned ?? []);
 
   const [action, setAction] = useState<"redeem" | "sell">("redeem");
 
@@ -221,85 +267,8 @@ export default function StaffCounter() {
    * ------------------------------------------------------------
    */
 
-  const getCustomerForSubscription = useCallback(
-    async (subscriptionId: string) => {
-      const subscription =
-        await services.subscription.getSubscription(subscriptionId);
-
-      if (!subscription) {
-        return null;
-      }
-
-      const organizationUser = await services.organization.getOrganizationUser(
-        subscription.organizationUserId,
-      );
-
-      if (!organizationUser) {
-        return null;
-      }
-
-      const customer = await services.customer.getCustomer(
-        organizationUser.userId,
-      );
-
-      return customer
-        ? {
-            subscription,
-            organizationUser,
-            customer,
-          }
-        : null;
-    },
-    [],
-  );
-
-  /*
-   * ------------------------------------------------------------
-   * Resolve product behind subscription
-   * ------------------------------------------------------------
-   */
-
-  const getProductForSubscription = useCallback(
-    async (subscriptionId: string) => {
-      const subscription =
-        await services.subscription.getSubscription(subscriptionId);
-
-      if (!subscription) {
-        return null;
-      }
-
-      const plan = await services.subscriptionPlan.getPlan(
-        subscription.subscriptionPlanId,
-      );
-
-      if (!plan) {
-        return null;
-      }
-
-      const product = await services.membershipProduct.getProduct(
-        plan.membershipProductId,
-      );
-
-      if (!product) {
-        return null;
-      }
-
-      return {
-        subscription,
-        plan,
-        product,
-      };
-    },
-    [],
-  );
-
-  /*
-   * ------------------------------------------------------------
-   * Reset identity
-   * ------------------------------------------------------------
-   */
-
   const resetIdentity = useCallback(() => {
+    counterCheckout.clear();
     setTokenText("");
 
     setPhone("");
@@ -337,8 +306,6 @@ export default function StaffCounter() {
 
     setMemberships([]);
 
-    setAvailableForSale([]);
-
     setSelectedSubId("");
 
     setSelectedBenefitIds(new Set());
@@ -357,217 +324,122 @@ export default function StaffCounter() {
   useEffect(() => {
     let active = true;
 
+    setLoadedOrgId("");
+    setCounterOrganization(null);
+    setActiveStaffMembers([]);
+    setStaffNamesById({});
+    const existingSession =
+      counterSessionContext?.organizationId === orgId
+        ? counterSessionContext
+        : null;
+    if (counterSessionContext && !existingSession) {
+      setCounterSessionContext(null);
+    }
+    setCounterStores([]);
+    setCounterAssignments([]);
+    setSelectedDevStaffId(existingSession?.staffId ?? "");
+    setSelectedDevStoreId(existingSession?.storeId ?? "");
+    setStaffPickerVisible(false);
+    setStorePickerVisible(false);
+    setCounterStaff(null);
+    setCounterStaffName("");
+    setStore(null);
+    setSamples([]);
+    setAvailableForSale([]);
+    resetIdentity();
+
     (async () => {
       try {
         const [
-          orgStores,
+          resolvedOrganization,
+          stores,
           staffMembers,
+          assignments,
+          staffSnapshot,
           countryReferences,
           statuses,
-          organizationUsers,
-          subscriptions,
           catalog,
-          subscriptionStatuses,
-          organizationBenefits,
-          qrCodes,
+          storeStatuses,
+          assignmentStatuses,
         ] = await Promise.all([
+          services.organization.getOrganization(orgId),
           services.organization.listStores(orgId),
           services.organization.listStaff(orgId),
+          services.organization.listStaffStoreAssignments(orgId),
+          services.organization.getOrganizationUserSnapshot(orgId),
           services.referenceData.listCountries(),
           services.status.listUserStatuses(),
-          services.organization.listOrganizationUsers(orgId),
-          services.subscription.listByOrganization(orgId),
           services.membershipProduct.listProducts(orgId),
-          services.status.listStatusesByEntityTypeCode("SUBSCRIPTION"),
-          services.benefit.listByOrganization(orgId),
-          services.qrCode.listByOrganization(orgId),
+          services.status.listStoreStatuses(),
+          services.status.listStaffStoreAssignmentStatuses(),
         ]);
 
-        const activeSubscriptionStatusIds = new Set(
-          subscriptionStatuses
-            .filter(
-              (status) =>
-                status.statusCode?.trim().toUpperCase() === "ACTIVE" ||
-                status.statusName?.trim().toLowerCase() === "active",
-            )
-            .map((status) => status.id),
+        if (!resolvedOrganization || resolvedOrganization.isDeleted) {
+          throw new Error(`Organization not found: ${orgId}`);
+        }
+
+        const activeStaff = staffMembers.filter(
+          (item) => !item.isDeleted && item.isActive,
         );
 
-        const built: {
-          label: string;
-          raw: string;
-        }[] = [];
+        if (!active) return;
 
-        for (const subscription of subscriptions) {
-          if (
-            subscription.isDeleted ||
-            !activeSubscriptionStatusIds.has(subscription.subscriptionStatusId)
-          ) {
-            continue;
-          }
-
-          const organizationUser = organizationUsers.find(
-            (candidate) =>
-              !candidate.isDeleted &&
-              candidate.id === subscription.organizationUserId,
-          );
-
-          if (!organizationUser) {
-            continue;
-          }
-
-          const planProduct = catalog.find(
-            (candidate) =>
-              !candidate.isDeleted &&
-              candidate.plans.some(
-                (plan) => plan.id === subscription.subscriptionPlanId,
-              ),
-          );
-
-          const plan = planProduct?.plans.find(
-            (candidate) => candidate.id === subscription.subscriptionPlanId,
-          );
-
-          if (!planProduct || !plan) {
-            continue;
-          }
-
-          const benefits = organizationBenefits.filter(
-            (benefit) =>
-              !benefit.isDeleted && planProduct.benefitIds.includes(benefit.id),
-          );
-
-          if (!benefits.length) {
-            continue;
-          }
-
-          // Customer is a legacy projection. The canonical identity is
-          // User -> OrganizationUser, so resolve the display name from User
-          // first and only use Customer as a compatibility fallback.
-          const user = await services.organization.getUser(
-            organizationUser.userId,
-          );
-          const legacyCustomer = user
-            ? null
-            : await services.customer.getCustomer(organizationUser.userId);
-
-          const customerName =
-            user?.displayName?.trim() ||
-            `${user?.firstName ?? ""} ${user?.middleName ?? ""} ${
-              user?.lastName ?? ""
-            }`
-              .replace(/\s+/g, " ")
-              .trim() ||
-            legacyCustomer?.fullName?.trim() ||
-            "Customer";
-
-          // The membership product's display name may be the common brand
-          // name (for example, "ARTISAN PASS") rather than the tier.
-          // Resolve the tier from the canonical product/plan fields so the
-          // counter clearly identifies Silver vs Gold.
-          const membershipDescriptor = [
-            planProduct.tier,
-            planProduct.displayName,
-            planProduct.membershipProductName,
-            planProduct.membershipProductCode,
-            plan.subscriptionPlanCode,
-            plan.subscriptionPlanName,
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .toUpperCase();
-
-          const tier = ["PLATINUM", "GOLD", "SILVER"].find((candidate) =>
-            membershipDescriptor.includes(candidate),
-          );
-
-          const membershipLabel = tier
-            ? `${tier.charAt(0)}${tier.slice(1).toLowerCase()} Artisan Pass`
-            : planProduct.displayName?.trim() ||
-              planProduct.membershipProductName.trim();
-
-          const redemptionQr = qrCodes.find(
-            (qr) =>
-              !qr.isDeleted &&
-              qr.qrCodeTypeId === QRCodeType.BENEFIT_REDEMPTION &&
-              qr.organizationId === orgId &&
-              qr.targetEntityId === subscription.id,
-          );
-
-          if (redemptionQr) {
-            built.push({
-              label: `${customerName} · ${membershipLabel}`,
-              raw: redemptionQr.qrCodeToken,
-            });
-          }
-        }
-
-        if (!active) {
-          return;
-        }
-
-        setStore(orgStores[0] ?? null);
-
-        /*
-         * Counter staff resolution is deliberately session-shaped.
-         *
-         * Today there is no real authentication session, so the demo
-         * principal may not point at the one staff record created for the
-         * organization. When that happens, and exactly one active staff
-         * member exists, use that record for the current Counter session.
-         *
-         * Once authentication is introduced, principal.staffId will point
-         * at the authenticated Staff record and this fallback will simply
-         * stop being used. No Counter UI change will then be required.
-         */
-        const activeStaffMembers = staffMembers.filter(
-          (staff) => !staff.isDeleted && staff.isActive,
+        const usersById = new Map(
+          staffSnapshot.users.map((user) => [user.id, user]),
         );
-        const principalStaff = authenticatedStaffId
-          ? activeStaffMembers.find(
-              (staff) => staff.id === authenticatedStaffId,
-            )
-          : null;
-        const resolvedStaff =
-          principalStaff ??
-          (activeStaffMembers.length === 1 ? activeStaffMembers[0] : null);
+        const organizationUsersById = new Map(
+          staffSnapshot.organizationUsers.map((organizationUser) => [
+            organizationUser.id,
+            organizationUser,
+          ]),
+        );
+        const names = Object.fromEntries(
+          activeStaff.map((staff) => {
+            const organizationUser = organizationUsersById.get(
+              staff.organizationUserId,
+            );
+            const user = organizationUser
+              ? usersById.get(organizationUser.userId)
+              : undefined;
+            const name = user
+              ? user.displayName?.trim() ||
+                [user.firstName, user.middleName, user.lastName]
+                  .filter(Boolean)
+                  .join(" ")
+                  .trim()
+              : "";
+            return [
+              staff.id,
+              name || staff.designation?.trim() || staff.staffCode,
+            ];
+          }),
+        );
 
-        setCounterStaff(resolvedStaff);
-
-        if (resolvedStaff) {
-          const staffOrgUser = await services.organization.getOrganizationUser(
-            resolvedStaff.organizationUserId,
-          );
-          const staffUser = staffOrgUser
-            ? await services.organization.getUser(staffOrgUser.userId)
-            : null;
-
-          const resolvedStaffName =
-            staffUser?.displayName?.trim() ||
-            `${staffUser?.firstName ?? ""} ${staffUser?.middleName ?? ""} ${
-              staffUser?.lastName ?? ""
-            }`
-              .replace(/\s+/g, " ")
-              .trim();
-
-          setCounterStaffName(resolvedStaffName || "Staff");
-        } else {
-          setCounterStaffName("");
-        }
-
+        setCounterOrganization(resolvedOrganization);
+        setActiveStaffMembers(activeStaff);
+        setStaffNamesById(names);
+        setCounterStores(stores);
+        setCounterAssignments(assignments);
+        setActiveStoreStatusId(
+          storeStatuses.find((item) => item.statusCode === "ACTIVE")?.id ?? "",
+        );
+        setActiveAssignmentStatusId(
+          assignmentStatuses.find((item) => item.statusCode === "ACTIVE")?.id ??
+            "",
+        );
         setCountries(countryReferences);
         setUserStatuses(statuses);
-        setSamples(built);
-        resetIdentity();
-      } catch (error) {
-        console.error("COUNTER QR SAMPLE LOAD ERROR", error);
-
-        if (!active) {
-          return;
-        }
-
-        setStore(null);
-        setSamples([]);
+        setAvailableForSale(catalog.filter((product) => !product.isDeleted));
+        setLoadedOrgId(orgId);
+        if (activeStaff.length === 0)
+          setError("No active staff available for this organization.");
+      } catch (failure) {
+        if (active)
+          setError(
+            failure instanceof Error
+              ? failure.message
+              : "Unable to load Counter.",
+          );
       }
     })();
 
@@ -576,24 +448,94 @@ export default function StaffCounter() {
     };
   }, [orgId, resetIdentity]);
 
-  /*
-   * ------------------------------------------------------------
-   * Redemption context
-   * ------------------------------------------------------------
-   */
+  useEffect(() => {
+    if (loadedOrgId !== orgId) return;
+    let active = true;
+    setCounterStaff(null);
+    setCounterStaffName("");
+    setStore(null);
+    setSamples([]);
+    setCounterSessionContext(null);
+    setError(
+      activeStaffMembers.length === 0
+        ? "No active staff available for this organization."
+        : "",
+    );
 
-  const ctx = (method: RedemptionMethod): RedemptionContext => ({
-    organizationId: orgId,
-    storeId,
-    staffId,
-    method,
-  });
+    if (!selectedStaff) return;
+    const resolvedStore =
+      eligibleStores?.primary ??
+      (selectedDevStoreId
+        ? storeChoices.find((item) => item.id === selectedDevStoreId)
+        : undefined) ??
+      (storeChoices.length === 1 ? storeChoices[0] : null);
+    if (!resolvedStore) {
+      if (storeChoices.length === 0)
+        setError("The selected staff member has no active assigned store.");
+      return;
+    }
+    const context = {
+      organizationId: orgId,
+      staffId: selectedStaff.id,
+      storeId: resolvedStore.id,
+    };
+    (async () => {
+      try {
+        const [qr, personName] = await Promise.all([
+          services.counter.qrSamples(context),
+          services.counter.staffName(context),
+        ]);
+        if (!active) return;
+        setCounterStaff(selectedStaff);
+        setCounterStaffName(
+          personName?.trim() ||
+            staffNamesById[selectedStaff.id] ||
+            selectedStaff.designation ||
+            selectedStaff.staffCode,
+        );
+        setStore(resolvedStore);
+        setCounterSessionContext(context);
+        setSamples(
+          qr.map((item) => ({
+            label: `Test QR · ${item.customerName}`,
+            raw: item.token,
+          })),
+        );
+      } catch (failure) {
+        if (active)
+          setError(
+            failure instanceof Error
+              ? failure.message
+              : "Unable to resolve Counter staff and store.",
+          );
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [
+    orgId,
+    loadedOrgId,
+    authenticatedStaffId,
+    selectedDevStaffId,
+    selectedDevStoreId,
+    activeStaffMembers,
+    counterStores,
+    counterAssignments,
+    activeStoreStatusId,
+    activeAssignmentStatusId,
+    staffNamesById,
+    setCounterSessionContext,
+  ]);
 
-  /*
-   * ------------------------------------------------------------
-   * Membership selection
-   * ------------------------------------------------------------
-   */
+  const counterContext = () => {
+    if (!orgId || !staffId || !storeId) {
+      throw new Error(
+        "Select an active staff member and store before using Counter.",
+      );
+    }
+    return { organizationId: orgId, storeId, staffId };
+  };
 
   const selectMembership = (
     subId: string,
@@ -625,200 +567,121 @@ export default function StaffCounter() {
 
   const loadMembershipData = useCallback(
     async (customerId: string) => {
-      const [
-        organizationUsers,
-        subscriptions,
-        catalog,
-        productStatuses,
-        subscriptionStatuses,
-        organizationBenefits,
-      ] = await Promise.all([
-        services.organization.listOrganizationUsers(orgId),
-        services.subscription.listByOrganization(orgId),
-        services.membershipProduct.listProducts(orgId),
-        services.status.listMembershipProductStatuses(),
-        services.status.listStatusesByEntityTypeCode("SUBSCRIPTION"),
-        services.benefit.listByOrganization(orgId),
-      ]);
-
-      const activeProductStatusIds = new Set(
+      const [subscriptions, catalog, productStatuses, benefits] =
+        await Promise.all([
+          services.counter.subscriptions({
+            organizationId: orgId,
+            storeId,
+            staffId,
+          }),
+          services.membershipProduct.listProducts(orgId),
+          services.status.listMembershipProductStatuses(),
+          services.benefit.listByOrganization(orgId),
+        ]);
+      const activeProductIds = new Set(
         productStatuses
-          .filter(
-            (status) =>
-              status.statusCode?.trim().toUpperCase() === "ACTIVE" ||
-              status.statusName?.trim().toLowerCase() === "active",
-          )
+          .filter((status) => status.statusCode?.toUpperCase() === "ACTIVE")
           .map((status) => status.id),
       );
-
-      const customerOrganizationUsers = organizationUsers.filter(
-        (organizationUser) =>
-          !organizationUser.isDeleted &&
-          organizationUser.organizationUserTypeId ===
-            "org-user-type-customer" &&
-          organizationUser.userId === customerId,
-      );
-
-      const customerOrganizationUserIds = new Set(
-        customerOrganizationUsers.map(
-          (organizationUser) => organizationUser.id,
-        ),
-      );
-
-      const activeSubscriptionStatusIds = new Set(
-        subscriptionStatuses
-          .filter(
-            (status) =>
-              status.statusCode?.trim().toUpperCase() === "ACTIVE" ||
-              status.statusName?.trim().toLowerCase() === "active",
-          )
-          .map((status) => status.id),
-      );
-
-      const customerSubscriptions = subscriptions.filter(
-        (subscription) =>
-          !subscription.isDeleted &&
-          customerOrganizationUserIds.has(subscription.organizationUserId) &&
-          activeSubscriptionStatusIds.has(subscription.subscriptionStatusId),
-      );
-
-      console.log("COUNTER MEMBERSHIP OWNERSHIP RESOLUTION", {
-        customerId,
-        customerOrganizationUserIds: Array.from(customerOrganizationUserIds),
-        activeSubscriptionStatusIds: Array.from(activeSubscriptionStatusIds),
-        customerSubscriptions: customerSubscriptions.map((subscription) => ({
-          id: subscription.id,
-          subscriptionPlanId: subscription.subscriptionPlanId,
-          organizationUserId: subscription.organizationUserId,
-          subscriptionStatusId: subscription.subscriptionStatusId,
-        })),
-        catalog: catalog.map((product) => ({
-          id: product.id,
-          membershipProductName: product.membershipProductName,
-          plans: product.plans.map((plan) => ({
-            id: plan.id,
-            name: plan.subscriptionPlanName,
-            amountMinor: plan.price.amountMinor,
-            membershipProductId: plan.membershipProductId,
-          })),
-        })),
-      });
-
+      const owned = new Set<string>();
       const options: MembershipOption[] = [];
-      const ownedProductIds = new Set<string>();
-
-      for (const subscription of customerSubscriptions) {
-        // MembershipProduct persists its plans, so resolve the plan directly
-        // from the organization catalogue rather than the legacy/mock plan service.
+      for (const row of subscriptions.filter(
+        (item) => item.userId === customerId && item.statusCode === "ACTIVE",
+      )) {
         const product = catalog.find(
-          (candidate) =>
-            !candidate.isDeleted &&
-            candidate.plans.some(
-              (plan) => plan.id === subscription.subscriptionPlanId,
-            ),
+          (item) => item.id === row.membershipProductId,
         );
-
         const plan = product?.plans.find(
-          (candidate) => candidate.id === subscription.subscriptionPlanId,
+          (item) => item.id === row.subscriptionPlanId,
         );
-
-        if (!product || !plan) {
-          console.warn("COUNTER SUBSCRIPTION PLAN NOT FOUND IN CATALOG", {
-            subscriptionId: subscription.id,
-            subscriptionPlanId: subscription.subscriptionPlanId,
-            customerId,
-          });
-          continue;
-        }
-
-        ownedProductIds.add(product.id);
-
-        const benefits = organizationBenefits.filter(
-          (benefit) =>
-            !benefit.isDeleted && product.benefitIds.includes(benefit.id),
+        if (!product || !plan)
+          throw new Error(
+            "Subscription plan is missing from the server catalog.",
+          );
+        owned.add(product.id);
+        const attachedBenefits = benefits.filter(
+          (item) => !item.isDeleted && product.benefitIds.includes(item.id),
         );
-
-        const usedBenefitIds = new Set(
-          (await services.redemption.listBySubscription(subscription.id)).map(
-            (redemption) => redemption.benefitId,
-          ),
+        const eligibility = attachedBenefits.length
+          ? await services.counter.eligibility(
+              { organizationId: orgId, storeId, staffId },
+              row.id,
+              attachedBenefits.map((item) => item.id),
+            )
+          : [];
+        const unavailable = new Set(
+          eligibility
+            .filter((item) => item.reason)
+            .map((item) => item.benefitId),
         );
-
         options.push({
-          subscription,
-          productName: product?.membershipProductName ?? "Membership",
-          tier: plan.subscriptionPlanName || product.displayName,
-          benefits: benefits.map((benefit) => ({
-            ...benefit,
-            available: !usedBenefitIds.has(benefit.id),
+          subscription: {
+            id: row.id,
+            subscriptionNumber: row.subscriptionNumber,
+            organizationUserId: row.organizationUserId,
+            subscriptionPlanId: row.subscriptionPlanId,
+            subscriptionDate: row.subscriptionDate,
+            startDate: row.startDate,
+            endDate: row.endDate,
+            subscriptionStatusId: row.subscriptionStatusId,
+            totalAmount: {
+              amountMinor: Math.round(row.totalAmount * 100),
+              currency: row.currencyCode,
+            },
+            isDeleted: false,
+          } as MembershipOption["subscription"],
+          productName: product.membershipProductName,
+          tier: plan.subscriptionPlanName,
+          benefits: attachedBenefits.map((item) => ({
+            ...item,
+            available: !unavailable.has(item.id),
           })),
         });
       }
-
-      const availableProducts = catalog.filter(
-        (product) =>
-          !product.isDeleted &&
-          activeProductStatusIds.has(product.productStatusId) &&
-          !ownedProductIds.has(product.id),
-      );
-
       return {
         memberships: options,
-        availableProducts,
+        availableProducts: catalog.filter(
+          (product) =>
+            !product.isDeleted &&
+            activeProductIds.has(product.productStatusId) &&
+            !owned.has(product.id),
+        ),
       };
     },
-    [orgId],
+    [orgId, storeId, staffId],
   );
 
-  /*
-   * ------------------------------------------------------------
-   * Identify customer
-   * ------------------------------------------------------------
-   */
-
   const identifyCustomer = async (customerId: string) => {
-    const users = await services.organization.listUsers();
-    const user = users.find(
-      (item) => !item.isDeleted && item.id === customerId,
-    );
-
-    if (!user) {
-      setCustomer(null);
-      setMemberships([]);
-      setAvailableForSale([]);
-      setSelectedSubId("");
-      setSelectedBenefitIds(new Set());
-      return;
-    }
-
-    const counterCustomer = customerFromUser(user);
-    setCustomer(counterCustomer);
-
-    const { memberships: opts, availableProducts } = await loadMembershipData(
-      user.id,
-    );
-
-    setMemberships(opts);
-    setAvailableForSale(availableProducts);
-
-    if (opts.length) {
-      selectMembership(opts[0].subscription.id, opts);
-    } else {
-      setSelectedSubId("");
-      setSelectedBenefitIds(new Set());
+    try {
+      const rows = await services.counter.customers(counterContext());
+      const row = rows.find((item) => item.userId === customerId);
+      if (!row) throw new Error("Customer is not active in this organization.");
+      const identified: Customer = {
+        id: row.userId,
+        fullName:
+          row.displayName ||
+          [row.firstName, row.lastName].filter(Boolean).join(" "),
+        email: row.primaryEmail ?? undefined,
+        phone: row.primaryPhone,
+        createdAt: row.joiningDate,
+      };
+      const { memberships: opts, availableProducts } = await loadMembershipData(
+        row.userId,
+      );
+      setCustomer(identified);
+      setMemberships(opts);
+      setAvailableForSale(availableProducts);
+      if (opts.length) selectMembership(opts[0].subscription.id, opts);
+      else {
+        setSelectedSubId("");
+        setSelectedBenefitIds(new Set());
+      }
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "Unable to load customer.",
+      );
     }
   };
-
-  /*
-   * ------------------------------------------------------------
-   * New Customer
-   *
-   * The CustomerForm collects the complete customer information.
-   * Counter then sends OTP to the supplied phone. Only after OTP
-   * verification do we persist the User, OrganizationUser and
-   * acquisition record.
-   * ------------------------------------------------------------
-   */
 
   const handleNewCustomerFormSave = async (
     formResult: CustomerFormSubmitResult,
@@ -855,140 +718,76 @@ export default function StaffCounter() {
     }
   };
 
-  const customerFromUser = (user: User): Customer =>
-    ({
-      id: user.id,
-      fullName:
-        user.displayName?.trim() ||
-        `${user.firstName} ${user.middleName ?? ""} ${user.lastName}`
-          .replace(/\s+/g, " ")
-          .trim(),
-      email: user.primaryEmail,
-      phone: `${user.primaryPhone.callingCode ?? ""}${user.primaryPhone.number ?? ""}`,
-      createdAt: user.createdAt,
-    }) as Customer;
-
-  const identifyRegisteredUser = async (
-    registration: RegisterCustomerResult,
-  ) => {
-    const counterCustomer = customerFromUser(registration.user);
-
-    setCustomer(counterCustomer);
-
-    const { memberships: opts, availableProducts } = await loadMembershipData(
-      registration.user.id,
-    );
-
-    setMemberships(opts);
-    setAvailableForSale(availableProducts);
-
-    if (opts.length) {
-      selectMembership(opts[0].subscription.id, opts);
-    } else {
-      setSelectedSubId("");
-      setSelectedBenefitIds(new Set());
-    }
-  };
-
   const verifyNewCustomerOtp = async () => {
-    if (newOtpVerificationInFlight.current) {
-      return;
-    }
-
-    setError("");
-
-    const normalizedOtp = normalizeOtp(newOtpCode);
-
+    if (newOtpVerificationInFlight.current) return;
     if (!newCustomerDraft) {
-      setError("Customer details are missing. Please enter them again.");
+      setError("Enter customer details before verification.");
       return;
     }
-
     if (!newOtpRequestId) {
-      setError("Verification session has expired. Please request a new OTP.");
+      setError("Verification session expired. Request a new code.");
       return;
     }
-
-    if (normalizedOtp.length !== OTP_LENGTH) {
-      setError("Enter the 6-digit verification code.");
+    if (normalizeOtp(newOtpCode).length !== OTP_LENGTH) {
+      setError("Enter the complete 6-digit verification code.");
       return;
     }
-
     newOtpVerificationInFlight.current = true;
     setNewOtpVerifying(true);
-
     try {
-      const requestId = newOtpRequestId;
-
-      const res = await services.auth.verifyOtp({
-        requestId,
-        code: normalizedOtp,
+      const verified = await services.auth.verifyOtp({
+        requestId: newOtpRequestId,
+        code: normalizeOtp(newOtpCode),
       });
-
-      if (!res.verified) {
-        setError("Incorrect code. Please enter the OTP shown above.");
-        return;
+      if (!verified.verified)
+        throw new Error("Incorrect code. Please enter the OTP shown above.");
+      const input = newCustomerDraft.user;
+      const mobile =
+        (input.primaryPhone.callingCode || "") + input.primaryPhone.number;
+      const rows = await services.counter.customers(counterContext());
+      const existing = rows.find(
+        (item) => normalizePhone(item.primaryPhone) === normalizePhone(mobile),
+      );
+      setNewCustomerWasExisting(Boolean(existing));
+      if (existing) {
+        counterCheckout.clear();
+        await identifyCustomer(existing.userId);
+      } else {
+        counterCheckout.set({
+          firstName: input.firstName,
+          lastName: input.lastName,
+          primaryEmail: input.primaryEmail,
+          primaryPhone: mobile,
+        });
+        const catalog = await services.membershipProduct.listProducts(orgId);
+        setCustomer({
+          id: "",
+          fullName: [input.firstName, input.lastName].join(" "),
+          email: input.primaryEmail,
+          phone: mobile,
+          createdAt: new Date().toISOString(),
+        });
+        setMemberships([]);
+        setAvailableForSale(catalog.filter((item) => !item.isDeleted));
       }
-
-      // The OTP is single-use. Lock this request before registration starts
-      // so a second tap cannot consume the same request and show a misleading
-      // "Incorrect code" message while the first registration is still running.
       setNewOtpRequestId("");
-
-      const registration = await registerCustomerForOrganization({
-        organizationId: orgId,
-        userInput: newCustomerDraft.user,
-        sourceStoreId: newCustomerDraft.sourceStoreId,
-        registrationSource: "COUNTER",
-        registrationChannel: "POS",
-      });
-
-      // Registration deliberately reuses an existing canonical User when
-      // the phone number already exists. Surface that distinction to the
-      // Counter instead of presenting it as a newly-created customer.
-      setNewCustomerWasExisting(!registration.createdUser);
-
-      console.log("STAFF CUSTOMER REGISTRATION COMPLETE", {
-        organizationId: orgId,
-        userId: registration.user.id,
-        organizationUserId: registration.organizationUser.id,
-        createdUser: registration.createdUser,
-        createdOrganizationUser: registration.createdOrganizationUser,
-      });
-
-      await identifyRegisteredUser(registration);
-
-      setNewCustomerDraft(null);
+      setNewOtpSent(false);
       setNewDevCode("");
       setNewOtpCode("");
-      setNewOtpSent(false);
       setError("");
-    } catch (error) {
-      console.error("STAFF CUSTOMER REGISTRATION ERROR", error);
-
-      // Verification succeeded before registration. Because that OTP is now
-      // consumed, allow the customer to request a fresh OTP rather than
-      // leaving them on a screen whose next tap can only produce "Incorrect code".
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Unable to verify customer.",
+      );
       setNewOtpRequestId("");
       setNewOtpSent(false);
-      setNewOtpCode("");
-
-      setError(
-        error instanceof Error
-          ? `${error.message} Please request a new OTP and try again.`
-          : "Unable to complete customer registration. Please request a new OTP and try again.",
-      );
     } finally {
       newOtpVerificationInFlight.current = false;
       setNewOtpVerifying(false);
     }
   };
-
-  /*
-   * ------------------------------------------------------------
-   * Price
-   * ------------------------------------------------------------
-   */
 
   const priceLabel = (product: MembershipProduct) => {
     const plan = product.plans[0];
@@ -1008,169 +807,57 @@ export default function StaffCounter() {
    * ------------------------------------------------------------
    */
 
-  const sellProduct = async (productId: string) => {
-    if (!customer) {
-      setError("Please identify the customer first.");
-
+  const sellProduct = (productId: string) => {
+    if (!customer || !staffId || !storeId) {
+      setError("Identify a customer and staff/store context first.");
       return;
     }
-
-    try {
-      const existingUser = await services.organization.getUser(customer.id);
-
-      if (!existingUser) {
-        throw new Error("The identified customer user could not be found.");
-      }
-
-      const registration = await registerCustomerForOrganization({
-        organizationId: orgId,
-        userId: existingUser.id,
-        userInput: {
-          firstName: existingUser.firstName,
-          middleName: existingUser.middleName,
-          lastName: existingUser.lastName,
-          displayName: existingUser.displayName,
-          primaryEmail: existingUser.primaryEmail,
-          primaryPhone: existingUser.primaryPhone,
-          userStatusId: existingUser.userStatusId,
-          createdBy: existingUser.createdBy,
-        },
-        registrationSource: "COUNTER",
-        registrationChannel: "POS",
-      });
-
-      console.log("STAFF SALE CUSTOMER READY", {
-        organizationId: orgId,
-        customerId: registration.customer.id,
-        organizationUserId: registration.organizationUser.id,
-        productId,
-      });
-
-      /*
-       * Staff-assisted purchase.
-       *
-       * JoinFlow uses source=STAFF_ASSISTED to
-       * display the staff-specific success message
-       * and Done button.
-       */
-      router.push({
-        pathname: APP_ROUTES.join.root,
-        params: {
-          organizationId: orgId,
-          productId,
-          customerId: registration.customer.id,
-          staffId,
-          storeId,
-          source: "STAFF_ASSISTED",
-        },
-      });
-    } catch (error) {
-      console.error("STAFF SALE CUSTOMER REGISTRATION ERROR", error);
-
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Unable to prepare the customer for purchase.",
-      );
+    if (customer.id) counterCheckout.clear();
+    else if (!counterCheckout.get()) {
+      setError("Verify the new customer phone first.");
+      return;
     }
+    router.push({
+      pathname: APP_ROUTES.join.root,
+      params: {
+        organizationId: orgId,
+        productId,
+        customerId: customer.id,
+        staffId,
+        storeId,
+        source: "STAFF_ASSISTED",
+      },
+    });
   };
-
-  /*
-   * ------------------------------------------------------------
-   * QR redemption
-   * ------------------------------------------------------------
-   */
 
   const runQr = async () => {
     setBusy(true);
-
     setResult(null);
-
+    setError("");
     try {
-      const token = tokenText.trim();
-
-      if (!token) {
-        setResult({
-          kind: "INVALID",
-          message: "Enter a redemption QR token.",
-          outcomes: [],
-        });
-        return;
-      }
-
-      /*
-       * Route the QR by its persisted QR Code type.
-       *
-       * Benefit QR -> existing Benefit redemption engine.
-       * Offer QR   -> independent Offer redemption engine.
-       *
-       * This lookup must happen before calling redeemFromToken(), otherwise
-       * every QR is incorrectly treated as a Benefit Redemption QR.
-       */
-      const qrCode = await services.qrCode.getByToken(token);
-
-      if (!qrCode || qrCode.isDeleted) {
-        setResult({
-          kind: "INVALID",
-          message: "The redemption QR could not be found.",
-          outcomes: [],
-        });
-        return;
-      }
-
-      if (qrCode.qrCodeTypeId === QRCodeType.OFFER_REDEMPTION) {
-        const offerResult = await redeemOffer(
-          services,
-          {
-            organizationId: orgId,
-            storeId,
-            staffId,
-            method: RedemptionMethod.QR,
-          },
-          { token },
-        );
-
-        setResult(offerResult);
-        return;
-      }
-
-      if (qrCode.qrCodeTypeId === QRCodeType.BENEFIT_REDEMPTION) {
-        const benefitResult = await redeemFromToken(
-          services,
-          ctx(RedemptionMethod.QR),
-          token,
-        );
-
-        setResult(benefitResult);
-        return;
-      }
-
+      if (!tokenText.trim()) throw new Error("Enter a redemption QR token.");
+      const rows = await services.counter.redeemQr(
+        counterContext(),
+        tokenText.trim(),
+      );
       setResult({
-        kind: "INVALID",
-        message: "This QR code is not a supported redemption QR.",
-        outcomes: [],
+        kind: "SUCCESS",
+        message: "Redemption completed on the server.",
+        outcomes: rows.map((row) => ({
+          benefitId: row.benefitId,
+          title: row.benefitId,
+          status: "REDEEMED",
+          redemptionId: row.redemptionId,
+        })),
       });
-    } catch (error) {
-      console.error("COUNTER QR REDEMPTION ERROR", error);
-
-      setResult({
-        kind: "FAILED",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Unable to process the redemption QR.",
-        outcomes: [],
-      });
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "Unable to redeem QR.",
+      );
     } finally {
       setBusy(false);
     }
   };
-
-  /*
-   * ------------------------------------------------------------
-   * Existing customer Phone + OTP
-   * ------------------------------------------------------------
-   */
 
   const sendOtp = async () => {
     setError("");
@@ -1207,91 +894,43 @@ export default function StaffCounter() {
   };
 
   const verifyOtp = async () => {
-    if (otpVerificationInFlight.current) {
-      return;
-    }
-
+    if (otpVerificationInFlight.current) return;
     setError("");
-
-    const normalizedOtp = normalizeOtp(otpCode);
-
     if (!otpRequestId) {
-      setError("Verification session has expired. Please request a new OTP.");
+      setError("Verification session expired. Request a new code.");
       return;
     }
-
-    if (normalizedOtp.length !== OTP_LENGTH) {
-      setError("Enter the 6-digit verification code.");
+    if (normalizeOtp(otpCode).length !== OTP_LENGTH) {
+      setError("Enter the complete 6-digit verification code.");
       return;
     }
-
     otpVerificationInFlight.current = true;
     setOtpVerifying(true);
-
     try {
-      const requestId = otpRequestId;
-
-      const res = await services.auth.verifyOtp({
-        requestId,
-        code: normalizedOtp,
+      const verified = await services.auth.verifyOtp({
+        requestId: otpRequestId,
+        code: normalizeOtp(otpCode),
       });
-
-      if (!res.verified) {
-        setError("Incorrect code. Please enter the OTP shown above.");
-        return;
-      }
-
-      // OTP is single-use; prevent a second tap from submitting the consumed
-      // request while customer lookup is still running.
-      setOtpRequestId("");
-
-      const normalizedPhone = normalizePhone(phone);
-
-      const [users, organizationUsers] = await Promise.all([
-        services.organization.listUsers(),
-        services.organization.listOrganizationUsers(orgId),
-      ]);
-
-      const customerUserIds = new Set(
-        organizationUsers
-          .filter(
-            (organizationUser) =>
-              !organizationUser.isDeleted &&
-              organizationUser.organizationUserTypeId ===
-                "org-user-type-customer",
-          )
-          .map((organizationUser) => organizationUser.userId),
+      if (!verified.verified)
+        throw new Error("Incorrect code. Please enter the OTP shown above.");
+      const rows = await services.counter.customers(counterContext());
+      const row = rows.find(
+        (item) => normalizePhone(item.primaryPhone) === normalizePhone(phone),
       );
-
-      const matchingUser = users.find((user) => {
-        if (user.isDeleted || !customerUserIds.has(user.id)) {
-          return false;
-        }
-
-        const userNumber = normalizePhone(user.primaryPhone.number ?? "");
-        return userNumber === normalizedPhone;
-      });
-
-      if (!matchingUser) {
-        setOtpRequestId("");
-        setOtpSent(false);
-        setOtpCode("");
-        setError(
+      if (!row)
+        throw new Error(
           "OTP verified, but no customer was found for this phone number. Please request a new OTP and try again.",
         );
-        return;
-      }
-
-      await identifyCustomer(matchingUser.id);
+      await identifyCustomer(row.userId);
+      setOtpRequestId("");
       setOtpSent(false);
       setOtpCode("");
       setDevCode("");
-      setError("");
-    } catch (error) {
-      console.error("COUNTER VERIFY OTP ERROR", error);
-
+    } catch (failure) {
       setError(
-        error instanceof Error ? error.message : "Unable to verify the OTP.",
+        failure instanceof Error
+          ? failure.message
+          : "Unable to verify customer.",
       );
     } finally {
       otpVerificationInFlight.current = false;
@@ -1299,120 +938,100 @@ export default function StaffCounter() {
     }
   };
 
-  /*
-   * ------------------------------------------------------------
-   * Staff assisted search
-   * ------------------------------------------------------------
-   */
-
   const runSearch = async () => {
     setError("");
-
     setCustomer(null);
-
     setMemberships([]);
-
-    const term = searchTerm.trim();
-
+    const term = searchTerm.trim().toLowerCase();
     if (!term) {
       setError("Enter a phone number or name to search.");
-
       return;
     }
-
     try {
-      // Search the same organization-scoped customer relationships used by
-      // the Customers screen. This keeps Counter and Org Admin in sync.
-      const organizationUsers =
-        await services.organization.listOrganizationUsers(orgId);
-
-      const users = await services.organization.listUsers();
-      const userMap = new Map(
-        users.filter((user) => !user.isDeleted).map((user) => [user.id, user]),
-      );
-
-      const customerUserIds = new Set(
-        organizationUsers
+      const rows = await services.counter.customers(counterContext());
+      const phoneTerm = normalizePhone(searchTerm);
+      setSearchResults(
+        rows
           .filter(
-            (organizationUser) =>
-              !organizationUser.isDeleted &&
-              organizationUser.organizationUserTypeId ===
-                "org-user-type-customer",
+            (item) =>
+              [
+                item.firstName,
+                item.lastName,
+                item.displayName,
+                item.primaryEmail,
+              ].some((value) => value?.toLowerCase().includes(term)) ||
+              (phoneTerm.length > 0 &&
+                normalizePhone(item.primaryPhone).includes(phoneTerm)),
           )
-          .map((organizationUser) => organizationUser.userId),
+          .map((item) => ({
+            id: item.userId,
+            fullName:
+              item.displayName ||
+              [item.firstName, item.lastName].filter(Boolean).join(" "),
+            phone: item.primaryPhone,
+            email: item.primaryEmail ?? undefined,
+            createdAt: item.joiningDate,
+          })),
       );
-
-      const customers = Array.from(customerUserIds)
-        .map((userId) => userMap.get(userId))
-        .filter((user): user is User => Boolean(user))
-        .map(customerFromUser);
-
-      const normalizedTerm = term.toLowerCase();
-      const normalizedPhoneTerm = normalizePhone(term);
-
-      const filtered = customers.filter((candidate) => {
-        const name = candidate.fullName?.toLowerCase() ?? "";
-        const email = candidate.email?.toLowerCase() ?? "";
-        const candidatePhone = normalizePhone(candidate.phone ?? "");
-
-        return (
-          name.includes(normalizedTerm) ||
-          email.includes(normalizedTerm) ||
-          (normalizedPhoneTerm.length > 0 &&
-            candidatePhone.includes(normalizedPhoneTerm))
-        );
-      });
-
-      setSearchResults(filtered);
-    } catch (error) {
-      console.error("COUNTER CUSTOMER SEARCH ERROR", error);
+      setSearched(true);
+    } catch (failure) {
       setSearchResults([]);
       setError(
-        error instanceof Error ? error.message : "Unable to search customers.",
+        failure instanceof Error
+          ? failure.message
+          : "Unable to search customers.",
       );
     }
-
-    setSearched(true);
   };
 
-  /*
-   * ------------------------------------------------------------
-   * Manual redemption
-   * ------------------------------------------------------------
-   */
-
-  const runManual = async (method: RedemptionMethod) => {
+  const runManual = async (_method: RedemptionMethod) => {
     setBusy(true);
-
     setResult(null);
-
-    const res = await redeemBenefits(services, ctx(method), {
-      subscriptionId: selectedSubId,
-      benefitIds: Array.from(selectedBenefitIds),
-    });
-
-    setResult(res);
-
-    if (customer) {
-      const { memberships: opts, availableProducts } = await loadMembershipData(
-        customer.id,
+    setError("");
+    try {
+      const ids = Array.from(selectedBenefitIds);
+      const rows = await services.counter.redeem(
+        counterContext(),
+        selectedSubId,
+        ids,
       );
-
-      setMemberships(opts);
-      setAvailableForSale(availableProducts);
-
-      const opt = opts.find((item) => item.subscription.id === selectedSubId);
-
-      setSelectedBenefitIds(
-        new Set(
-          (opt?.benefits ?? [])
-            .filter((benefit) => benefit.available)
-            .map((benefit) => benefit.id),
-        ),
+      setResult({
+        kind: "SUCCESS",
+        message: "Redemption completed on the server.",
+        customer: customer ?? undefined,
+        outcomes: rows.map((row) => ({
+          benefitId: row.benefitId,
+          title:
+            selectedOption?.benefits.find((item) => item.id === row.benefitId)
+              ?.benefitName ?? row.benefitId,
+          status: "REDEEMED",
+          redemptionId: row.redemptionId,
+        })),
+      });
+      if (customer) {
+        const refreshed = await loadMembershipData(customer.id);
+        setMemberships(refreshed.memberships);
+        setAvailableForSale(refreshed.availableProducts);
+        const option = refreshed.memberships.find(
+          (item) => item.subscription.id === selectedSubId,
+        );
+        setSelectedBenefitIds(
+          new Set(
+            (option?.benefits ?? [])
+              .filter((item) => item.available)
+              .map((item) => item.id),
+          ),
+        );
+      }
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Unable to redeem benefits.",
       );
+    } finally {
+      setBusy(false);
     }
-
-    setBusy(false);
   };
 
   const toggleBenefit = (id: string) =>
@@ -1647,23 +1266,133 @@ export default function StaffCounter() {
 
         <View style={styles.ctxRow}>
           <Text style={styles.ctxLabel}>Business</Text>
-          <Text style={styles.ctxValue}>{organization.displayName}</Text>
+          <Text style={styles.ctxValue}>
+            {(loadedOrgId === orgId
+              ? counterOrganization?.displayName
+              : null) ?? "Loading..."}
+          </Text>
         </View>
 
         <View style={styles.ctxRow}>
           <Text style={styles.ctxLabel}>Store</Text>
-          <Text style={styles.ctxValue}>{store?.name ?? "—"}</Text>
+          {storeChoices.length > 1 && !eligibleStores?.primary ? (
+            <Pressable
+              testID="counter-store-selector"
+              onPress={() => setStorePickerVisible(true)}
+              style={styles.contextSelector}
+            >
+              <Text style={styles.contextSelectorText}>
+                {store?.name ?? "Select store"}
+              </Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.ctxValue}>{store?.name ?? "—"}</Text>
+          )}
         </View>
 
         <View style={styles.ctxRow}>
           <Text style={styles.ctxLabel}>Staff</Text>
-          <Text style={styles.ctxValue}>
-            {counterStaff
-              ? `${counterStaffName || "Staff"} · ${counterStaff.role}`
-              : "Staff not resolved"}
-          </Text>
+          {principalStaffIsCurrent || activeStaffMembers.length <= 1 ? (
+            <Text style={styles.ctxValue}>
+              {counterStaff
+                ? `${counterStaffName || "Staff"} · ${counterStaff.role}`
+                : selectedStaff
+                  ? `${staffNamesById[selectedStaff.id] || selectedStaff.designation || selectedStaff.staffCode} · ${selectedStaff.role}`
+                  : activeStaffMembers.length === 0
+                    ? "No active staff"
+                    : "Resolving staff..."}
+            </Text>
+          ) : (
+            <Pressable
+              testID="counter-staff-selector"
+              onPress={() => setStaffPickerVisible(true)}
+              style={styles.contextSelector}
+            >
+              <Text style={styles.contextSelectorText}>
+                {counterStaff
+                  ? `${counterStaffName || counterStaff.staffCode} · ${counterStaff.role}`
+                  : selectedStaff
+                    ? `${staffNamesById[selectedStaff.id] || selectedStaff.designation || selectedStaff.staffCode} · ${selectedStaff.role}`
+                    : activeStaffMembers.length > 0
+                      ? "Select staff"
+                      : "No active staff"}
+              </Text>
+            </Pressable>
+          )}
         </View>
       </View>
+
+      <Modal
+        visible={staffPickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setStaffPickerVisible(false)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setStaffPickerVisible(false)}
+        >
+          <Pressable style={styles.modalCard} onPress={() => undefined}>
+            <Text style={styles.cardTitle}>Select Counter Staff</Text>
+            <Text style={styles.muted}>
+              Local/Dev selection for{" "}
+              {counterOrganization?.displayName ?? orgId}.
+            </Text>
+            {activeStaffMembers.map((item) => (
+              <Pressable
+                key={item.id}
+                testID={`counter-staff-option-${item.id}`}
+                style={styles.staffOption}
+                onPress={() => {
+                  resetIdentity();
+                  setSelectedDevStaffId(item.id);
+                  setSelectedDevStoreId("");
+                  setStaffPickerVisible(false);
+                }}
+              >
+                <Text style={styles.benefitTitle}>
+                  {staffNamesById[item.id] ||
+                    item.designation?.trim() ||
+                    item.staffCode}
+                </Text>
+                <Text style={styles.muted}>
+                  {item.designation?.trim() || item.staffCode}
+                </Text>
+              </Pressable>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={storePickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setStorePickerVisible(false)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setStorePickerVisible(false)}
+        >
+          <Pressable style={styles.modalCard} onPress={() => undefined}>
+            <Text style={styles.cardTitle}>Select Counter Store</Text>
+            {storeChoices.map((item) => (
+              <Pressable
+                key={item.id}
+                testID={`counter-store-option-${item.id}`}
+                style={styles.staffOption}
+                onPress={() => {
+                  resetIdentity();
+                  setSelectedDevStoreId(item.id);
+                  setStorePickerVisible(false);
+                }}
+              >
+                <Text style={styles.benefitTitle}>{item.name}</Text>
+              </Pressable>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Redeem vs Sell */}
       <View style={styles.modeRow}>
@@ -1925,8 +1654,7 @@ export default function StaffCounter() {
 
           <Text style={styles.muted}>
             Add the complete customer details, verify the mobile number by OTP,
-            and save the customer immediately for use at Counter and in Org
-            Admin.
+            and complete the membership purchase to save the customer.
           </Text>
 
           {!customer ? (
@@ -2008,9 +1736,7 @@ export default function StaffCounter() {
                   ]}
                 >
                   <Text style={styles.primaryBtnText}>
-                    {newOtpVerifying
-                      ? "Verifying & Saving..."
-                      : "Verify & Save Customer"}
+                    {newOtpVerifying ? "Verifying..." : "Verify Phone"}
                   </Text>
                 </Pressable>
 
@@ -2054,7 +1780,7 @@ export default function StaffCounter() {
               <Text style={styles.identified}>
                 {newCustomerWasExisting
                   ? "Existing customer found — ready at Counter"
-                  : "New customer saved and ready at Counter"}
+                  : "New customer verified and ready to purchase"}
               </Text>
 
               {newCustomerWasExisting ? (
@@ -2215,6 +1941,50 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: COLORS.text,
+  },
+
+  contextSelector: {
+    maxWidth: 360,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    backgroundColor: COLORS.background,
+  },
+
+  contextSelectorText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: SPACING.md,
+  },
+
+  modalCard: {
+    width: "100%",
+    maxWidth: 520,
+    maxHeight: "80%",
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.md,
+    gap: 8,
+  },
+
+  staffOption: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    padding: 12,
+    backgroundColor: COLORS.background,
   },
 
   input: {
