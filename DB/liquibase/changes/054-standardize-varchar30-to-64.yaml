@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 054-standardize-varchar30-to-64
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/054-standardize-varchar30-to-64.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
