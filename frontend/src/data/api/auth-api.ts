@@ -13,6 +13,7 @@ export type AuthSession = {
   displayName: string;
   expiresAt: string;
   access: AuthAccessContext[];
+  passwordConfigured: boolean;
 };
 
 export type OtpChallenge = {
@@ -28,10 +29,10 @@ export class AuthApi {
   }
 
   passwordLogin(phone: string, regionCode: string, password: string) {
-    return httpClient.post<{ phone: string; regionCode: string; password: string }, AuthSession>(
-      "/api/v1/auth/password/login",
-      { phone, regionCode, password },
-    );
+    return httpClient.post<
+      { phone: string; regionCode: string; password: string },
+      AuthSession
+    >("/api/v1/auth/password/login", { phone, regionCode, password });
   }
 
   requestOtp(phone: string, regionCode: string) {

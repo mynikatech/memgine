@@ -99,7 +99,7 @@ class AuthenticationService(
     }
 
     fun toDto(principal: AuthenticatedPrincipal) = AuthSessionDto(
-        principal.userId, principal.displayName, principal.expiresAt, principal.access
+        principal.userId, principal.displayName, principal.expiresAt, principal.access,     sql.passwordConfigured(principal.userId)
     )
 
     private fun createSession(

@@ -25,13 +25,19 @@ export default function ProfileScreen() {
     return <Redirect href={APP_ROUTES.login} />;
   }
 
+  const passwordConfigured = auth.session.passwordConfigured;
+
   const savePassword = async () => {
     setMessage(null);
 
     try {
       await auth.setPassword(password);
       setPassword("");
-      setMessage("Password updated.");
+      setMessage(
+        passwordConfigured
+          ? "Password changed successfully."
+          : "Password set successfully.",
+      );
     } catch (cause) {
       setMessage(
         cause instanceof Error ? cause.message : "Password update failed.",
@@ -56,28 +62,34 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text variant="bodyStrong">Password</Text>
+          <Text variant="bodyStrong">
+            {passwordConfigured ? "Change password" : "Set password"}
+          </Text>
 
           <Text color="textMuted">
-            Set or update the password used for phone and password sign-in.
+            {passwordConfigured
+              ? "Change the password used for phone and password sign-in."
+              : "Create a password to enable phone and password sign-in."}
           </Text>
 
           <Input
             value={password}
             onChangeText={setPassword}
             secureTextEntry
-            placeholder="New password"
+            placeholder={
+              passwordConfigured ? "New password" : "Create password"
+            }
           />
 
           <Button
-            label="Save password"
+            label={passwordConfigured ? "Change password" : "Set password"}
             onPress={() => void savePassword()}
             disabled={!password}
           />
 
           {message ? (
             <Text
-              color={message === "Password updated." ? "success" : "danger"}
+              color={message.includes("successfully") ? "success" : "danger"}
             >
               {message}
             </Text>

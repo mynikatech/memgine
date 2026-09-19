@@ -54,7 +54,10 @@ export function AdminShell({ title, subtitle, icon, items }: Props) {
   );
 
   const activeHref = items
-    .flatMap((item) => [item.href, ...(item.children?.map((child) => child.href) ?? [])])
+    .flatMap((item) => [
+      item.href,
+      ...(item.children?.map((child) => child.href) ?? []),
+    ])
     .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
     .sort((left, right) => right.length - left.length)[0];
 
@@ -170,13 +173,72 @@ export function AdminShell({ title, subtitle, icon, items }: Props) {
         <View style={styles.sidebar} testID="admin-sidebar">
           <Brand />
           <Nav />
-          <Pressable onPress={() => void logout().then(() => router.replace(APP_ROUTES.login as never))}>
-            <Text style={styles.footer}>Sign out</Text>
-          </Pressable>
+          <View style={styles.accountActions}>
+            <Pressable
+              onPress={() => router.push("/profile" as never)}
+              style={styles.accountAction}
+            >
+              <Ionicons
+                name="person-circle-outline"
+                size={18}
+                color={COLORS.textMuted}
+              />
+              <Text style={styles.accountActionText}>Profile</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() =>
+                void logout().then(() =>
+                  router.replace(APP_ROUTES.login as never),
+                )
+              }
+              style={styles.accountAction}
+            >
+              <Ionicons
+                name="log-out-outline"
+                size={18}
+                color={COLORS.textMuted}
+              />
+              <Text style={styles.accountActionText}>Sign out</Text>
+            </Pressable>
+          </View>
         </View>
       ) : (
         <View style={styles.topbar} testID="admin-topbar">
-          <Brand />
+          <View style={styles.mobileHeader}>
+            <Brand />
+
+            <View style={styles.mobileAccountActions}>
+              <Pressable
+                onPress={() => router.push("/profile" as never)}
+                style={styles.mobileAccountAction}
+              >
+                <Ionicons
+                  name="person-circle-outline"
+                  size={18}
+                  color={COLORS.textMuted}
+                />
+                <Text style={styles.accountActionText}>Profile</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() =>
+                  void logout().then(() =>
+                    router.replace(APP_ROUTES.login as never),
+                  )
+                }
+                style={styles.mobileAccountAction}
+              >
+                <Ionicons
+                  name="log-out-outline"
+                  size={18}
+                  color={COLORS.textMuted}
+                />
+                <Text style={styles.accountActionText}>Sign out</Text>
+              </Pressable>
+            </View>
+          </View>
+
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <Nav horizontal />
           </ScrollView>
@@ -251,7 +313,45 @@ const styles = StyleSheet.create({
   },
   navLabel: { fontSize: 14, fontWeight: "500", color: COLORS.textMuted },
   navLabelActive: { color: COLORS.accent, fontWeight: "700" },
-  footer: { marginTop: "auto", fontSize: 12, color: COLORS.textMuted },
+  accountActions: {
+    marginTop: "auto",
+    gap: 4,
+  },
+
+  accountAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: RADIUS.sm,
+  },
+
+  accountActionText: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+  },
+
+  mobileHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SPACING.sm,
+  },
+
+  mobileAccountActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  mobileAccountAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
   content: { flex: 1, backgroundColor: COLORS.background },
   subNav: {
     marginLeft: 32,

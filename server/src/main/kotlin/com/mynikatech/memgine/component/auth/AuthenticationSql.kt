@@ -89,4 +89,9 @@ interface AuthenticationSql {
     fun access(
         @Bind("userId") userId: String
     ): List<AuthAccessRow>
+    
+    @SqlQuery("SELECT auth_password_configured(:userId)")
+    fun passwordConfigured(
+        @Bind("userId") userId: String
+    ): Boolean
 }

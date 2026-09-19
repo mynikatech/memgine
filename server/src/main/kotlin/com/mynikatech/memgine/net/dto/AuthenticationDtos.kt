@@ -26,7 +26,8 @@ import kotlinx.serialization.Serializable
     val userId: String,
     val displayName: String,
     val expiresAt: String,
-    val access: List<AuthAccessContextDto>
+    val access: List<AuthAccessContextDto>,
+    val passwordConfigured: Boolean
 )
 @Serializable data class LogoutResponse(val loggedOut: Boolean)
 @Serializable data class SetPasswordResponse(val updated: Boolean)
