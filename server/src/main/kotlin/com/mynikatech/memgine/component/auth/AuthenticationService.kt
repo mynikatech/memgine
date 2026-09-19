@@ -8,6 +8,7 @@ import com.mynikatech.memgine.exception.ForbiddenException
 import com.mynikatech.memgine.exception.UnauthorizedException
 import com.mynikatech.memgine.net.dto.*
 import com.mynikatech.memgine.security.AuthenticatedPrincipal
+import com.mynikatech.memgine.security.PosSessionContext
 import com.mynikatech.memgine.security.PhoneNormalizer
 import de.mkammerer.argon2.Argon2Factory
 import java.security.MessageDigest
@@ -86,15 +87,7 @@ class AuthenticationService(
     ): CreatedAuthenticationSession {
         val verification = otpService.verify(request.challengeId, request.otp, OtpPurpose.LOGIN)
         val identity = sql.identity(verification.destination)
-        println(
-    "CUSTOMER_AUTH_DEBUG " +
-        "destination=${verification.destination} " +
-        "db=${sql.debugConnection()} " +
-        "phoneCount=${sql.debugPhoneCount(verification.destination)} " +
-        "userId=${identity?.userId} " +
-        "active=${identity?.userActive}"
-        )
-
+       
         if (identity == null || !identity.userActive) {
             throw UnauthorizedException("Login could not be completed", "INVALID_LOGIN")
         }
@@ -107,7 +100,16 @@ class AuthenticationService(
     fun resolve(token: String?): AuthenticatedPrincipal? {
         if (token.isNullOrBlank()) return null
         val session = sql.resolveSession(hashToken(token)) ?: return null
-        return AuthenticatedPrincipal(session.userId, session.displayName, session.expiresAt, access(session.userId))
+        val pos = sql.posContext(session.sessionId)
+        if (pos?.posSession == true && !pos.valid) {
+            sql.revokeSession(hashToken(token), session.userId)
+            return null
+        }
+        val context = if (pos?.posSession == true) PosSessionContext(
+            pos.deviceId ?: return null, pos.organizationId ?: return null,
+            pos.storeId ?: return null, pos.staffId ?: return null
+        ) else null
+        return AuthenticatedPrincipal(session.userId, session.displayName, session.expiresAt, access(session.userId), context)
     }
 
     fun logout(token: String?, principal: AuthenticatedPrincipal): Boolean =
@@ -126,7 +128,8 @@ class AuthenticationService(
 
     fun toDto(principal: AuthenticatedPrincipal, sessionToken: String? = null) = AuthSessionDto(
         principal.userId, principal.displayName, principal.expiresAt, principal.access,
-        sql.passwordConfigured(principal.userId), sessionToken
+        sql.passwordConfigured(principal.userId), sessionToken,
+        principal.posContext?.let { PosSessionContextDto(it.deviceId, it.organizationId, it.storeId, it.staffId) }
     )
 
     private fun createSession(

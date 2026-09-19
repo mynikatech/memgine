@@ -20,52 +20,52 @@ fun Route.counterRoutes(service: CounterService) {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
             val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
-            call.respond(ApiResponse.success(service.customers(org, store, staff, call.authenticatedPrincipal().userId), call.callId))
+            call.respond(ApiResponse.success(service.customers(org, store, staff, call.authenticatedPrincipal()), call.callId))
         }
         get("/subscriptions") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
             val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
-            call.respond(ApiResponse.success(service.subscriptions(org, store, staff, call.authenticatedPrincipal().userId), call.callId))
+            call.respond(ApiResponse.success(service.subscriptions(org, store, staff, call.authenticatedPrincipal()), call.callId))
         }
         get("/redemptions") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
             val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
-            call.respond(ApiResponse.success(service.redemptions(org, store, staff, call.authenticatedPrincipal().userId), call.callId))
+            call.respond(ApiResponse.success(service.redemptions(org, store, staff, call.authenticatedPrincipal()), call.callId))
         }
         get("/qr-samples") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
             val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
-            call.respond(ApiResponse.success(service.qrSamples(org, store, staff, call.authenticatedPrincipal().userId), call.callId))
+            call.respond(ApiResponse.success(service.qrSamples(org, store, staff, call.authenticatedPrincipal()), call.callId))
         }
         get("/staff-name") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
             val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
-            call.respond(ApiResponse.success(service.staffName(org, store, staff, call.authenticatedPrincipal().userId), call.callId))
+            call.respond(ApiResponse.success(service.staffName(org, store, staff, call.authenticatedPrincipal()), call.callId))
         }
         post("/eligibility") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             val request = call.receive<CounterRedeemRequest>()
             call.respond(ApiResponse.success(service.eligibility(org, request.storeId, request.staffId,
-                request.subscriptionId, request.benefitIds, call.authenticatedPrincipal().userId), call.callId))
+                request.subscriptionId, request.benefitIds, call.authenticatedPrincipal()), call.callId))
         }
         post("/purchases") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             call.respond(HttpStatusCode.Created, ApiResponse.success(
-                service.purchase(org, call.receive<CounterPurchaseRequest>(), call.authenticatedPrincipal().userId), call.callId))
+                service.purchase(org, call.receive<CounterPurchaseRequest>(), call.authenticatedPrincipal()), call.callId))
         }
         post("/redemptions") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             call.respond(HttpStatusCode.Created, ApiResponse.success(
-                service.redeem(org, call.receive<CounterRedeemRequest>(), call.authenticatedPrincipal().userId), call.callId))
+                service.redeem(org, call.receive<CounterRedeemRequest>(), call.authenticatedPrincipal()), call.callId))
         }
         post("/qr-redemptions") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             call.respond(HttpStatusCode.Created, ApiResponse.success(
-                service.redeemQr(org, call.receive<CounterQrRedeemRequest>(), call.authenticatedPrincipal().userId), call.callId))
+                service.redeemQr(org, call.receive<CounterQrRedeemRequest>(), call.authenticatedPrincipal()), call.callId))
         }
     }
 }

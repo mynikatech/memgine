@@ -29,6 +29,7 @@ type AuthContextValue = {
   verifyOtp: (challengeId: string, otp: string) => Promise<AuthSession>;
   requestCustomerOtp: (phone: string, regionCode: string) => Promise<OtpChallenge>;
   verifyCustomerOtp: (challengeId: string, otp: string) => Promise<AuthSession>;
+  unlockPos: (staffId: string, pin: string) => Promise<AuthSession>;
   setPassword: (password: string) => Promise<void>;
   logout: () => Promise<void>;
   hasCapability: (capability: string, organizationId?: string) => boolean;
@@ -90,6 +91,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await authApi.verifyCustomerOtp(challengeId, otp),
         );
         await saveNativeSessionToken(next.sessionToken ?? null);
+        setSession(next);
+        return next;
+      },
+      unlockPos: async (staffId, pin) => {
+        const next = unwrap<AuthSession>(await authApi.unlockPos(staffId, pin));
         setSession(next);
         return next;
       },

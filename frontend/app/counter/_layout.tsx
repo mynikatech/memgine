@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import {
   Slot,
+  Redirect,
   useGlobalSearchParams,
   usePathname,
   useRouter,
@@ -16,7 +17,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { APP_ROUTES, COUNTER_ROUTES } from "@/src/constants/navigation";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
-import { AuthGuard } from "@/src/ui/auth/AuthGuard";
 import { useAuth } from "@/src/providers/AuthProvider";
 
 export default function CounterLayout() {
@@ -24,19 +24,13 @@ export default function CounterLayout() {
     organizationId?: string;
   }>();
 
-  if (!organizationId) {
-    return (
-      <AuthGuard capability="COUNTER_ACCESS">
-        <CounterShell />
-      </AuthGuard>
-    );
-  }
-
-  return (
-    <AuthGuard capability="COUNTER_ACCESS" organizationId={organizationId}>
-      <CounterShell />
-    </AuthGuard>
-  );
+  const { loading, session, hasCapability } = useAuth();
+  if (loading) return null;
+  if (!session) return <Redirect href={APP_ROUTES.counterUnlock} />;
+  const pos = session.posContext;
+  if (pos && organizationId && pos.organizationId !== organizationId) return <Redirect href={APP_ROUTES.counter.organization(pos.organizationId) as never} />;
+  if (!hasCapability("COUNTER_ACCESS", pos?.organizationId ?? organizationId)) return <Redirect href="/access-denied" />;
+  return <CounterShell />;
 }
 
 function CounterShell() {
@@ -47,7 +41,7 @@ function CounterShell() {
     organizationId?: string;
   }>();
   const { width } = useWindowDimensions();
-  const { logout } = useAuth();
+  const { logout, session, hasCapability } = useAuth();
   const isWide = width >= 900;
 
   const go = (href: (typeof COUNTER_ROUTES)[number]["href"]) => {
@@ -74,7 +68,7 @@ function CounterShell() {
 
   const Nav = ({ horizontal }: { horizontal?: boolean }) => (
     <View style={horizontal ? styles.navRow : styles.nav}>
-      {COUNTER_ROUTES.map((route) => {
+      {COUNTER_ROUTES.filter((route) => route.name !== "configuration" || hasCapability("ORG_ADMIN_ACCESS", organizationId)).map((route) => {
         const active = pathname === route.href;
         return (
           <Pressable
@@ -145,7 +139,7 @@ function CounterShell() {
             <Pressable
               onPress={() =>
                 void logout().then(() =>
-                  router.replace(APP_ROUTES.login as never),
+                  router.replace((session?.posContext ? APP_ROUTES.counterUnlock : APP_ROUTES.login) as never),
                 )
               }
               style={styles.accountAction}
@@ -155,7 +149,7 @@ function CounterShell() {
                 size={18}
                 color={COLORS.textMuted}
               />
-              <Text style={styles.accountActionText}>Sign out</Text>
+              <Text style={styles.accountActionText}>{session?.posContext ? "Lock counter" : "Sign out"}</Text>
             </Pressable>
           </View>
         </View>
@@ -180,7 +174,7 @@ function CounterShell() {
               <Pressable
                 onPress={() =>
                   void logout().then(() =>
-                    router.replace(APP_ROUTES.login as never),
+                    router.replace((session?.posContext ? APP_ROUTES.counterUnlock : APP_ROUTES.login) as never),
                   )
                 }
                 style={styles.mobileAccountAction}
@@ -190,7 +184,7 @@ function CounterShell() {
                   size={18}
                   color={COLORS.textMuted}
                 />
-                <Text style={styles.accountActionText}>Sign out</Text>
+                <Text style={styles.accountActionText}>{session?.posContext ? "Lock counter" : "Sign out"}</Text>
               </Pressable>
             </View>
           </View>

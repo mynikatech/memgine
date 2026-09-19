@@ -1,0 +1,9 @@
+databaseChangeLog:
+  - changeSet:
+      id: 066-fix-pos-device-registration
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/066-fix-pos-device-registration.sql
+            relativeToChangelogFile: true
+            splitStatements: false

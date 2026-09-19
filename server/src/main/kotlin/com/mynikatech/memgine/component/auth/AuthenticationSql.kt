@@ -28,6 +28,12 @@ data class AuthAccessRow(
     var capabilityCode: String = ""
 )
 
+data class AuthPosContextRow(
+    var posSession: Boolean = false, var valid: Boolean = false,
+    var deviceId: String? = null, var organizationId: String? = null,
+    var storeId: String? = null, var staffId: String? = null
+)
+
 interface AuthenticationSql {
 
     @SqlQuery("SELECT * FROM auth_find_identity(:phone)")
@@ -94,6 +100,10 @@ interface AuthenticationSql {
     fun passwordConfigured(
         @Bind("userId") userId: String
     ): Boolean
+
+    @SqlQuery("SELECT * FROM auth_resolve_pos_session_context(:sessionId)")
+    @RegisterBeanMapper(AuthPosContextRow::class)
+    fun posContext(@Bind("sessionId") sessionId: String): AuthPosContextRow?
     
     @SqlQuery(
     """

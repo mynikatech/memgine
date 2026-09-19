@@ -31,7 +31,7 @@ import {
   eligibleCounterStores,
   selectCounterStaff,
 } from "@/src/core/services/counter-context-selection";
-import { useBusiness, useTranslation } from "@/src/providers";
+import { useAuth, useBusiness, useTranslation } from "@/src/providers";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
 import {
@@ -90,7 +90,8 @@ const RESULT_STYLE: Record<CounterResult["kind"], { fg: string; bg: string }> =
   };
 
 export default function StaffCounter() {
-  const { organization, principal } = useBusiness();
+  const { organization } = useBusiness();
+  const { session } = useAuth();
 
   const router = useRouter();
 
@@ -121,14 +122,13 @@ export default function StaffCounter() {
   const [activeAssignmentStatusId, setActiveAssignmentStatusId] = useState("");
   const [loadedOrgId, setLoadedOrgId] = useState("");
 
-  const [selectedDevStaffId, setSelectedDevStaffId] = useState("");
-  const [selectedDevStoreId, setSelectedDevStoreId] = useState("");
+  const [selectedStaffId, setSelectedStaffId] = useState("");
+  const [selectedStoreId, setSelectedStoreId] = useState("");
+  const [authenticatedStaffId, setAuthenticatedStaffId] = useState("");
 
   const [staffPickerVisible, setStaffPickerVisible] = useState(false);
   const [storePickerVisible, setStorePickerVisible] = useState(false);
 
-  const authenticatedStaffId =
-    principal.kind === "STAFF" ? principal.staffId : null;
 
   const [counterStaff, setCounterStaff] = useState<Staff | null>(null);
 
@@ -138,7 +138,7 @@ export default function StaffCounter() {
   const staffRole =
     counterStaff?.designation?.trim() ||
     counterStaff?.role ||
-    (principal.kind === "STAFF" ? principal.role : null);
+    null;
 
   const [store, setStore] = useState<Store | null>(null);
 
@@ -146,12 +146,15 @@ export default function StaffCounter() {
   const principalStaffIsCurrent =
     loadedOrgId === orgId &&
     activeStaffMembers.some((item) => item.id === authenticatedStaffId);
+  const canSelectOperationalStaff = !session?.posContext && (session?.access.some(
+    (context) => context.organizationId === orgId && context.capabilities.includes("ORG_ADMIN_ACCESS"),
+  ) ?? false);
   const selectedStaff =
     loadedOrgId === orgId
       ? selectCounterStaff(
           activeStaffMembers,
           authenticatedStaffId,
-          selectedDevStaffId,
+          authenticatedStaffId || selectedStaffId,
         )
       : null;
   const eligibleStores =
@@ -337,8 +340,8 @@ export default function StaffCounter() {
     }
     setCounterStores([]);
     setCounterAssignments([]);
-    setSelectedDevStaffId(existingSession?.staffId ?? "");
-    setSelectedDevStoreId(existingSession?.storeId ?? "");
+    setSelectedStaffId(existingSession?.staffId ?? "");
+    setSelectedStoreId(existingSession?.storeId ?? "");
     setStaffPickerVisible(false);
     setStorePickerVisible(false);
     setCounterStaff(null);
@@ -414,9 +417,13 @@ export default function StaffCounter() {
             ];
           }),
         );
+        const ownStaffId = session?.posContext?.staffId ?? activeStaff.find((staff) =>
+          organizationUsersById.get(staff.organizationUserId)?.userId === session?.userId,
+        )?.id ?? "";
 
         setCounterOrganization(resolvedOrganization);
         setActiveStaffMembers(activeStaff);
+        setAuthenticatedStaffId(ownStaffId);
         setStaffNamesById(names);
         setCounterStores(stores);
         setCounterAssignments(assignments);
@@ -464,9 +471,10 @@ export default function StaffCounter() {
 
     if (!selectedStaff) return;
     const resolvedStore =
+      (session?.posContext ? counterStores.find((item) => item.id === session.posContext?.storeId) : null) ??
       eligibleStores?.primary ??
-      (selectedDevStoreId
-        ? storeChoices.find((item) => item.id === selectedDevStoreId)
+      (selectedStoreId
+        ? storeChoices.find((item) => item.id === selectedStoreId)
         : undefined) ??
       (storeChoices.length === 1 ? storeChoices[0] : null);
     if (!resolvedStore) {
@@ -517,8 +525,8 @@ export default function StaffCounter() {
     orgId,
     loadedOrgId,
     authenticatedStaffId,
-    selectedDevStaffId,
-    selectedDevStoreId,
+    selectedStaffId,
+    selectedStoreId,
     activeStaffMembers,
     counterStores,
     counterAssignments,
@@ -526,6 +534,8 @@ export default function StaffCounter() {
     activeAssignmentStatusId,
     staffNamesById,
     setCounterSessionContext,
+    session,
+    counterStores,
   ]);
 
   const counterContext = () => {
@@ -1275,7 +1285,7 @@ export default function StaffCounter() {
 
         <View style={styles.ctxRow}>
           <Text style={styles.ctxLabel}>Store</Text>
-          {storeChoices.length > 1 && !eligibleStores?.primary ? (
+          {storeChoices.length > 1 && !eligibleStores?.primary && !session?.posContext ? (
             <Pressable
               testID="counter-store-selector"
               onPress={() => setStorePickerVisible(true)}
@@ -1292,7 +1302,7 @@ export default function StaffCounter() {
 
         <View style={styles.ctxRow}>
           <Text style={styles.ctxLabel}>Staff</Text>
-          {principalStaffIsCurrent || activeStaffMembers.length <= 1 ? (
+          {!canSelectOperationalStaff || principalStaffIsCurrent || activeStaffMembers.length <= 1 ? (
             <Text style={styles.ctxValue}>
               {counterStaff
                 ? `${counterStaffName || "Staff"} · ${counterStaff.role}`
@@ -1335,7 +1345,7 @@ export default function StaffCounter() {
           <Pressable style={styles.modalCard} onPress={() => undefined}>
             <Text style={styles.cardTitle}>Select Counter Staff</Text>
             <Text style={styles.muted}>
-              Local/Dev selection for{" "}
+              Operational staff selection for{" "}
               {counterOrganization?.displayName ?? orgId}.
             </Text>
             {activeStaffMembers.map((item) => (
@@ -1345,8 +1355,8 @@ export default function StaffCounter() {
                 style={styles.staffOption}
                 onPress={() => {
                   resetIdentity();
-                  setSelectedDevStaffId(item.id);
-                  setSelectedDevStoreId("");
+                  setSelectedStaffId(item.id);
+                  setSelectedStoreId("");
                   setStaffPickerVisible(false);
                 }}
               >
@@ -1383,7 +1393,7 @@ export default function StaffCounter() {
                 style={styles.staffOption}
                 onPress={() => {
                   resetIdentity();
-                  setSelectedDevStoreId(item.id);
+                  setSelectedStoreId(item.id);
                   setStorePickerVisible(false);
                 }}
               >

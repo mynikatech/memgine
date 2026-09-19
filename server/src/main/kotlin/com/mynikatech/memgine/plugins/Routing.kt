@@ -42,6 +42,9 @@ import com.mynikatech.memgine.component.auth.AuthenticationService
 import com.mynikatech.memgine.component.auth.AuthenticationSql
 import com.mynikatech.memgine.component.auth.authenticationRoutes
 import com.mynikatech.memgine.component.otp.*
+import com.mynikatech.memgine.component.pos.PosAuthenticationService
+import com.mynikatech.memgine.component.pos.PosAuthenticationSql
+import com.mynikatech.memgine.component.pos.posAuthenticationRoutes
 import com.mynikatech.memgine.component.role.RbacService
 import com.mynikatech.memgine.component.role.RbacSql
 import com.mynikatech.memgine.component.role.rbacRoutes
@@ -86,6 +89,9 @@ fun Application.configureRouting(
     val authenticationService = AuthenticationService(
         database.jdbi.onDemand(AuthenticationSql::class.java), otpService,
         phoneNormalizer, config.authentication
+    )
+    val posAuthenticationService = PosAuthenticationService(
+        database.jdbi.onDemand(PosAuthenticationSql::class.java), authenticationService, config.authentication
     )
     installAuthenticationGate(authenticationService, config.authentication)
     val organizationService =
@@ -138,6 +144,7 @@ fun Application.configureRouting(
 
         route("/api/v1") {
             authenticationRoutes(authenticationService, config.authentication)
+            posAuthenticationRoutes(posAuthenticationService, config.authentication)
             rbacRoutes(rbacService, customerDevIdentityEnabled)
             organizationRoutes(organizationService)
             organizationUserRoutes(organizationUserService)

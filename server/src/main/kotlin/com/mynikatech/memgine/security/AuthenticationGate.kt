@@ -45,6 +45,11 @@ fun Application.installAuthenticationGate(
             path.startsWith("/api/v1/customer/") -> protectCustomerPath(
                 principal, path, call.request.httpMethod
             )
+            path.startsWith("/api/v1/pos/") -> {
+                if (path !in setOf("/api/v1/pos/context", "/api/v1/pos/unlock")) {
+                    if (principal == null) throw UnauthorizedException("Authentication is required")
+                }
+            }
         }
     }
 }

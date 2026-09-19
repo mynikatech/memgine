@@ -15,8 +15,9 @@ import type {
 import { StaffRole, services } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
+import { posApi } from "@/src/data/api/pos-api";
 
-import { DataTable, Modal, Text } from "@/src/ui";
+import { Button, DataTable, Input, Modal, Text } from "@/src/ui";
 
 import type { DataTableColumn } from "@/src/ui";
 
@@ -81,6 +82,9 @@ export default function OrgAdminStaff() {
   /* ---------------------------------------------------------------------- */
 
   const [isEditing, setIsEditing] = useState(false);
+  const [pinStaff, setPinStaff] = useState<Staff | null>(null);
+  const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
 
   const [users, setUsers] = useState<User[]>([]);
   const [userStatuses, setUserStatuses] = useState<Status[]>([]);
@@ -635,6 +639,31 @@ export default function OrgAdminStaff() {
     setFormVisible(true);
   };
 
+  const savePosPin = async () => {
+    if (!pinStaff || !/^\d{4}$/.test(pin) || pin !== confirmPin) {
+      Alert.alert("Invalid POS PIN", "Enter matching 4-digit PIN values.");
+      return;
+    }
+    const result = await posApi.setPin(organization.id, pinStaff.id, pin);
+    if (!result.success) {
+      Alert.alert("Unable to set POS PIN", result.error.message);
+      return;
+    }
+    closePosPin();
+  };
+
+  const openPosPin = (item: Staff) => {
+    setPin("");
+    setConfirmPin("");
+    setPinStaff(item);
+  };
+
+  const closePosPin = () => {
+    setPinStaff(null);
+    setPin("");
+    setConfirmPin("");
+  };
+
   /* ---------------------------------------------------------------------- */
   /* EDIT STAFF                                                              */
   /* ---------------------------------------------------------------------- */
@@ -848,11 +877,19 @@ export default function OrgAdminStaff() {
                       label: "Edit",
                       onPress: handleEdit,
                     },
+                    {
+                      label: "Set POS PIN",
+                      onPress: openPosPin,
+                    },
                   ]
                 : [
                     {
                       label: "View",
                       onPress: handleView,
+                    },
+                    {
+                      label: "Set POS PIN",
+                      onPress: openPosPin,
                     },
                   ]
             }
@@ -907,6 +944,31 @@ export default function OrgAdminStaff() {
             onCancel={closeForm}
           />
         ) : null}
+      </Modal>
+      <Modal
+        visible={!!pinStaff}
+        onClose={closePosPin}
+        title={pinStaff ? `Set POS PIN — ${pinStaff.staffCode}` : "Set POS PIN"}
+      >
+        <Input
+          label="PIN"
+          value={pin}
+          onChangeText={(value) => setPin(value.replace(/\D/g, "").slice(0, 4))}
+          keyboardType="number-pad"
+          secureTextEntry
+          maxLength={4}
+        />
+        <Input
+          label="Confirm PIN"
+          value={confirmPin}
+          onChangeText={(value) =>
+            setConfirmPin(value.replace(/\D/g, "").slice(0, 4))
+          }
+          keyboardType="number-pad"
+          secureTextEntry
+          maxLength={4}
+        />
+        <Button label="Save POS PIN" onPress={() => void savePosPin()} />
       </Modal>
     </ScrollView>
   );

@@ -169,6 +169,10 @@ data class AppConfig(
                         "MEMGINE_CUSTOMER_SESSION_DAYS",
                         "30"
                     ).toLong(),
+                    posDeviceCookieName = value("memgine.authentication.posDeviceCookieName", "MEMGINE_POS_DEVICE_COOKIE_NAME", "memgine_pos_device"),
+                    posDeviceCookieDays = value("memgine.authentication.posDeviceCookieDays", "MEMGINE_POS_DEVICE_COOKIE_DAYS", "365").toLong(),
+                    posPinMaxAttempts = value("memgine.authentication.posPinMaxAttempts", "MEMGINE_POS_PIN_MAX_ATTEMPTS", "5").toInt(),
+                    posPinLockMinutes = value("memgine.authentication.posPinLockMinutes", "MEMGINE_POS_PIN_LOCK_MINUTES", "15").toLong(),
                     cookieName = value(
                         "memgine.authentication.cookieName",
                         "MEMGINE_AUTH_COOKIE_NAME",
@@ -221,6 +225,10 @@ data class ServerConfig(
 data class AuthenticationConfig(
     val sessionDurationMinutes: Long,
     val customerSessionDurationDays: Long,
+    val posDeviceCookieName: String,
+    val posDeviceCookieDays: Long,
+    val posPinMaxAttempts: Int,
+    val posPinLockMinutes: Long,
     val cookieName: String,
     val secureCookie: Boolean,
     val passwordMinimumLength: Int

@@ -1,4 +1,5 @@
 import { httpClient } from "./http-client";
+import { posApi } from "./pos-api";
 import type { ApiResult } from "./result";
 
 export type AuthAccessContext = {
@@ -15,6 +16,7 @@ export type AuthSession = {
   access: AuthAccessContext[];
   passwordConfigured: boolean;
   sessionToken?: string | null;
+  posContext?: { deviceId: string; organizationId: string; storeId: string; staffId: string } | null;
 };
 
 export type OtpChallenge = {
@@ -77,6 +79,8 @@ export class AuthApi {
       { password },
     );
   }
+
+  unlockPos(staffId: string, pin: string) { return posApi.unlock(staffId, pin); }
 }
 
 export const authApi = new AuthApi();
