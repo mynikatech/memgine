@@ -25,7 +25,7 @@ export class CustomerDataService {
     return result.data;
   }
 
-  async profiles(userId: ID): Promise<CustomerProfile[]> {
+  async profiles(userId?: ID): Promise<CustomerProfile[]> {
     const result = await this.api.profiles(userId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;

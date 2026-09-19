@@ -55,7 +55,7 @@ export default function DiscoverGateway() {
 
   const { setActiveBusiness } = useBusiness();
 
-  const { customerId, setActiveContext, setActiveCustomer } =
+  const { customerId, setActiveContext } =
     useCustomerContext();
 
   const { t, formatMoney } = useTranslation();
@@ -109,11 +109,7 @@ export default function DiscoverGateway() {
        * ?as=cust-new-demo is retained as the demo-persona override.
        * ------------------------------------------------------------
        */
-      const activeCustomerId = typeof as === "string" && as ? as : customerId;
-
-      if (typeof as === "string" && as && as !== customerId) {
-        setActiveCustomer(as);
-      }
+      const activeCustomerId = customerId;
 
       /*
        * ------------------------------------------------------------
@@ -306,7 +302,6 @@ export default function DiscoverGateway() {
     customerId,
     setActiveBusiness,
     setActiveContext,
-    setActiveCustomer,
   ]);
 
   useEffect(() => {

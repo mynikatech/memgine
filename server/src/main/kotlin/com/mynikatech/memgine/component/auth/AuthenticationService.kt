@@ -78,6 +78,32 @@ class AuthenticationService(
         return createSession(identity.userId, identity.displayName, clientIp, userAgent, access)
     }
 
+    fun requestCustomerLoginOtp(request: OtpLoginRequest): OtpChallengeResponse =
+        requestLoginOtp(request)
+
+    fun verifyCustomerLoginOtp(
+        request: OtpVerifyLoginRequest, clientIp: String?, userAgent: String?
+    ): CreatedAuthenticationSession {
+        val verification = otpService.verify(request.challengeId, request.otp, OtpPurpose.LOGIN)
+        val identity = sql.identity(verification.destination)
+        println(
+    "CUSTOMER_AUTH_DEBUG " +
+        "destination=${verification.destination} " +
+        "db=${sql.debugConnection()} " +
+        "phoneCount=${sql.debugPhoneCount(verification.destination)} " +
+        "userId=${identity?.userId} " +
+        "active=${identity?.userActive}"
+        )
+
+        if (identity == null || !identity.userActive) {
+            throw UnauthorizedException("Login could not be completed", "INVALID_LOGIN")
+        }
+        return createSession(
+            identity.userId, identity.displayName, clientIp, userAgent,
+            access(identity.userId), config.customerSessionDurationDays * 24 * 60
+        )
+    }
+
     fun resolve(token: String?): AuthenticatedPrincipal? {
         if (token.isNullOrBlank()) return null
         val session = sql.resolveSession(hashToken(token)) ?: return null
@@ -98,17 +124,19 @@ class AuthenticationService(
         }
     }
 
-    fun toDto(principal: AuthenticatedPrincipal) = AuthSessionDto(
-        principal.userId, principal.displayName, principal.expiresAt, principal.access,     sql.passwordConfigured(principal.userId)
+    fun toDto(principal: AuthenticatedPrincipal, sessionToken: String? = null) = AuthSessionDto(
+        principal.userId, principal.displayName, principal.expiresAt, principal.access,
+        sql.passwordConfigured(principal.userId), sessionToken
     )
 
     private fun createSession(
         userId: String, displayName: String, clientIp: String?, userAgent: String?,
-        resolvedAccess: List<AuthAccessContextDto> = access(userId)
+        resolvedAccess: List<AuthAccessContextDto> = access(userId),
+        durationMinutes: Long = config.sessionDurationMinutes
     ): CreatedAuthenticationSession {
         val tokenBytes = ByteArray(32).also(random::nextBytes)
         val token = Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes)
-        val expiresAt = LocalDateTime.now(clock).plusMinutes(config.sessionDurationMinutes)
+        val expiresAt = LocalDateTime.now(clock).plusMinutes(durationMinutes)
         sql.createSession(
             UUID.randomUUID().toString(), userId, hashToken(token), expiresAt.toString(),
             clientIp?.take(64), userAgent?.take(500)

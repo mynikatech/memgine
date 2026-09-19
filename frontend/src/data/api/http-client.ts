@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import { apiFailure, apiSuccess, type ApiResult } from "./result";
 
@@ -29,6 +30,24 @@ function resolveApiBaseUrl(): string {
 
 export const API_BASE_URL = resolveApiBaseUrl();
 
+const NATIVE_SESSION_KEY = "memgine.native.session";
+let nativeSessionToken: string | null | undefined;
+
+async function currentNativeSessionToken(): Promise<string | null> {
+  if (Platform.OS === "web") return null;
+  if (nativeSessionToken === undefined) {
+    nativeSessionToken = await SecureStore.getItemAsync(NATIVE_SESSION_KEY);
+  }
+  return nativeSessionToken;
+}
+
+export async function saveNativeSessionToken(token: string | null): Promise<void> {
+  if (Platform.OS === "web") return;
+  nativeSessionToken = token;
+  if (token) await SecureStore.setItemAsync(NATIVE_SESSION_KEY, token);
+  else await SecureStore.deleteItemAsync(NATIVE_SESSION_KEY);
+}
+
 export class HttpClient {
   async get<TResponse>(path: string): Promise<ApiResult<TResponse>> {
     return this.request<never, TResponse>("GET", path);
@@ -58,6 +77,7 @@ export class HttpClient {
     body?: TRequest,
   ): Promise<ApiResult<TResponse>> {
     let response: Response;
+    const nativeToken = await currentNativeSessionToken();
 
     try {
       response = await fetch(`${API_BASE_URL}${path}`, {
@@ -65,6 +85,8 @@ export class HttpClient {
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
+          ...(Platform.OS !== "web" ? { "X-Memgine-Client": "native" } : {}),
+          ...(nativeToken ? { "X-Memgine-Session": nativeToken } : {}),
         },
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       });

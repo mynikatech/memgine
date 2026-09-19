@@ -14,6 +14,7 @@ export type AuthSession = {
   expiresAt: string;
   access: AuthAccessContext[];
   passwordConfigured: boolean;
+  sessionToken?: string | null;
 };
 
 export type OtpChallenge = {
@@ -45,6 +46,20 @@ export class AuthApi {
   verifyOtp(challengeId: string, otp: string) {
     return httpClient.post<{ challengeId: string; otp: string }, AuthSession>(
       "/api/v1/auth/otp/verify",
+      { challengeId, otp },
+    );
+  }
+
+  requestCustomerOtp(phone: string, regionCode: string) {
+    return httpClient.post<{ phone: string; regionCode: string }, OtpChallenge>(
+      "/api/v1/auth/customer/otp/request",
+      { phone, regionCode },
+    );
+  }
+
+  verifyCustomerOtp(challengeId: string, otp: string) {
+    return httpClient.post<{ challengeId: string; otp: string }, AuthSession>(
+      "/api/v1/auth/customer/otp/verify",
       { challengeId, otp },
     );
   }

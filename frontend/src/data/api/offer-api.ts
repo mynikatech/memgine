@@ -39,7 +39,7 @@ export class OfferApi {
   async listForCustomer(organizationId: ID, userId: ID): Promise<ApiResult<Offer[]>> {
     try {
       const result = await httpClient.get<Offer[]>(
-        `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/offers?userId=${encodeURIComponent(userId)}`,
+        `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/offers`,
       );
       if (!result.success) return result;
       return apiSuccess(await Promise.all(result.data.map((offer) => this.fromServer(offer))));

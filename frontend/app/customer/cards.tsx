@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { Pressable, View } from "react-native";
 
 import type { Benefit, MembershipProduct, OrganizationUser, Subscription, Status as DomainStatus } from "@/src/core";
@@ -8,7 +8,7 @@ import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
 import { BusinessThemeScope, useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
 import { buildTheme, type Theme } from "@/src/theme/theme";
-import { Badge, Card, Header, ReferenceSelect, Section, StateView, Text } from "@/src/ui";
+import { Badge, Card, Header, Section, StateView, Text } from "@/src/ui";
 import { MembershipCard } from "@/src/ui/domain";
 
 type CardVM = {
@@ -27,21 +27,16 @@ type OrgGroup = {
   cards: CardVM[];
 };
 
-/** Server-backed wallet with a temporary Local/Dev customer selector. */
+/** Server-backed wallet for the authenticated customer. */
 export default function MyCards() {
   const router = useRouter();
   const { configuration, setActiveBusiness } = useBusiness();
-  const { customerId, customerChoices, profiles, customersLoading, customersError,
-    refreshCustomers, setActiveContext, setActiveCustomer } = useCustomerContext();
+  const { customerId, profiles, customersLoading, customersError,
+    refreshCustomers, setActiveContext } = useCustomerContext();
   const { t, formatDate } = useTranslation();
   const [groups, setGroups] = useState<OrgGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const options = useMemo(() => {
-    return customerChoices.map((choice) => ({ id: choice.userId, name: choice.displayName }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [customerChoices]);
 
   useFocusEffect(useCallback(() => {
     if (!customerId || customersLoading || customersError) {
@@ -117,15 +112,6 @@ export default function MyCards() {
   return (
     <Screen testID="customer-cards-screen" edges={["top"]}
       header={<Header title={t("cards.title")} subtitle={t("cards.subtitle")} testID="cards-header" />}>
-      {options.length > 0 ? (
-        <Card padding="md">
-          <ReferenceSelect label="Customer (temporary test selector)" value={customerId}
-            items={options} onChange={setActiveCustomer} placeholder="Select customer" testID="customer-selector" />
-          <View style={{ marginTop: 8 }}>
-            <Text variant="caption" color="textMuted">Local/Dev selection; authentication will replace this later.</Text>
-          </View>
-        </Card>
-      ) : null}
       {customersLoading || loading ? (
         <StateView kind="loading" message={t("common.loading")} testID="cards-state" />
       ) : customersError || error ? (

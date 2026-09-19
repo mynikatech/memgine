@@ -85,7 +85,7 @@ export class BenefitApi {
 
   async rulesForCustomer(organizationId: ID, userId: ID, benefitId: ID): Promise<BenefitUsageRule[]> {
     const result = await httpClient.get<ServerRule[]>(
-      `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/benefits/${encodeURIComponent(benefitId)}/usage-rules?userId=${encodeURIComponent(userId)}`,
+      `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/benefits/${encodeURIComponent(benefitId)}/usage-rules`,
     );
     if (!result.success) throw new Error(result.error.message);
     return Promise.all(result.data.map(async (rule) => ({
@@ -136,7 +136,7 @@ export class BenefitApi {
   async listForCustomer(organizationId: ID, userId?: ID): Promise<ApiResult<Benefit[]>> {
     try {
       const result = await httpClient.get<ServerBenefit[]>(
-        `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/benefits${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
+        `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/benefits`,
       );
       if (!result.success) return result;
       return apiSuccess(await Promise.all(result.data.map((dto) => this.fromServer(dto))));

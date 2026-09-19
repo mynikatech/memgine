@@ -14,6 +14,7 @@ import {
   type OtpChallenge,
 } from "@/src/data/api/auth-api";
 import type { ApiResult } from "@/src/data/api/result";
+import { saveNativeSessionToken } from "@/src/data/api/http-client";
 
 type AuthContextValue = {
   session: AuthSession | null;
@@ -26,6 +27,8 @@ type AuthContextValue = {
   ) => Promise<AuthSession>;
   requestOtp: (phone: string, regionCode: string) => Promise<OtpChallenge>;
   verifyOtp: (challengeId: string, otp: string) => Promise<AuthSession>;
+  requestCustomerOtp: (phone: string, regionCode: string) => Promise<OtpChallenge>;
+  verifyCustomerOtp: (challengeId: string, otp: string) => Promise<AuthSession>;
   setPassword: (password: string) => Promise<void>;
   logout: () => Promise<void>;
   hasCapability: (capability: string, organizationId?: string) => boolean;
@@ -47,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const result = await authApi.session();
       const current = result.success ? result.data : null;
+      if (!current) await saveNativeSessionToken(null);
       setSession(current);
       return current;
     } finally {
@@ -79,6 +83,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(next);
         return next;
       },
+      requestCustomerOtp: async (phone, regionCode) =>
+        unwrap<OtpChallenge>(await authApi.requestCustomerOtp(phone, regionCode)),
+      verifyCustomerOtp: async (challengeId, otp) => {
+        const next = unwrap<AuthSession>(
+          await authApi.verifyCustomerOtp(challengeId, otp),
+        );
+        await saveNativeSessionToken(next.sessionToken ?? null);
+        setSession(next);
+        return next;
+      },
       setPassword: async (password) => {
         unwrap(await authApi.setPassword(password));
         await refresh();
@@ -86,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout: async () => {
         const result = await authApi.logout();
         if (!result.success) throw new Error(result.error.message);
+        await saveNativeSessionToken(null);
         setSession(null);
       },
       hasCapability: (capability, organizationId) =>

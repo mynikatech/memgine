@@ -139,7 +139,7 @@ export default function JoinFlow() {
 
   const { organization, configuration, theme } = useBusiness();
 
-  const { setActiveContext, setActiveCustomer } = useCustomerContext();
+  const { setActiveContext } = useCustomerContext();
 
   const { t, formatMoney, formatDate } = useTranslation();
 
@@ -630,7 +630,6 @@ export default function JoinFlow() {
         } as Subscription;
         setSubscription(sub);
         setReference(payment.reference);
-        setActiveCustomer(saved.userId);
         setActiveContext(orgId, sub.id);
         setStep("success");
         return;
@@ -656,7 +655,6 @@ export default function JoinFlow() {
       } as Subscription;
       setSubscription(sub);
       setReference(payment.reference);
-      setActiveCustomer(saved.userId);
       setActiveContext(orgId, sub.id);
       setStep("success");
     } catch (error) {
@@ -678,7 +676,6 @@ export default function JoinFlow() {
     orgId,
     customerId,
     setActiveContext,
-    setActiveCustomer,
     phoneVerified,
     customer,
     firstName,

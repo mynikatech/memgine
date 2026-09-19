@@ -52,9 +52,7 @@ class CustomerService(
     }
 
     fun relationships(userId: String): List<CustomerRelationshipDto> {
-        requireDevIdentity()
-        if (sql.choices().none { it.userId == userId })
-            throw ForbiddenException("Customer is unavailable")
+        validateUserId(userId)
         return sql.relationships(userId)
     }
 
@@ -142,6 +140,31 @@ class CustomerService(
         }
     }
 
+    fun purchaseAuthenticated(
+        organizationId: String, customerUserId: String, request: CustomerPurchaseRequestDto
+    ): CounterPurchaseResult {
+        if (request.customerUserId != null) {
+            throw BadRequestException("Customer identity is determined by the authenticated session")
+        }
+        if (organizationId.isBlank() || organizationId.length > 40 ||
+            request.planId.isBlank() || request.planId.length > 40) {
+            throw BadRequestException("Valid membership plan is required")
+        }
+        return try {
+            sql.purchaseAuthenticated(organizationId, request.planId, customerUserId)
+                ?: throw ConflictException("Membership purchase was not created")
+        } catch (error: Exception) {
+            val postgres = generateSequence<Throwable>(error) { it.cause }
+                .filterIsInstance<PSQLException>().firstOrNull()
+            when (postgres?.sqlState) {
+                "42501" -> throw ForbiddenException("Customer purchase is not permitted")
+                "22023", "P0002" -> throw BadRequestException("Membership or customer is unavailable")
+                "23505" -> throw ConflictException("Customer already has an active membership")
+                else -> throw error
+            }
+        }
+    }
+
     fun preference(organizationId: String, userId: String, code: String): String? {
         authorizeCustomer(organizationId, userId)
         validatePreferenceCode(code)
@@ -156,11 +179,16 @@ class CustomerService(
     }
 
     private fun authorizeCustomer(organizationId: String, userId: String) {
-        requireDevIdentity()
         if (organizationId.isBlank() || organizationId.length > 40 ||
             userId.isBlank() || userId.length > 40 ||
             !sql.hasActiveRelationship(organizationId, userId)) {
             throw ForbiddenException("Customer does not belong to this organization")
+        }
+    }
+
+    private fun validateUserId(userId: String) {
+        if (userId.isBlank() || userId.length > 40) {
+            throw ForbiddenException("Customer is unavailable")
         }
     }
 

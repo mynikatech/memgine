@@ -65,6 +65,12 @@ interface CustomerSql {
                  @Bind("primaryPhone") primaryPhone: String?,
                  @Bind("actorUserId") actorUserId: String?): CounterPurchaseResult?
 
+    @SqlQuery("""SELECT * FROM customer_purchase_subscription_authenticated(
+        :organizationId, :planId, :customerUserId)""")
+    fun purchaseAuthenticated(@Bind("organizationId") organizationId: String,
+                              @Bind("planId") planId: String,
+                              @Bind("customerUserId") customerUserId: String): CounterPurchaseResult?
+
     @SqlQuery("SELECT get_customer_preference_value(:userId, :code)")
     fun preference(@Bind("userId") userId: String, @Bind("code") code: String): String?
 

@@ -164,6 +164,11 @@ data class AppConfig(
                         "MEMGINE_AUTH_SESSION_MINUTES",
                         "480"
                     ).toLong(),
+                    customerSessionDurationDays = value(
+                        "memgine.authentication.customerSessionDurationDays",
+                        "MEMGINE_CUSTOMER_SESSION_DAYS",
+                        "30"
+                    ).toLong(),
                     cookieName = value(
                         "memgine.authentication.cookieName",
                         "MEMGINE_AUTH_COOKIE_NAME",
@@ -215,6 +220,7 @@ data class ServerConfig(
 
 data class AuthenticationConfig(
     val sessionDurationMinutes: Long,
+    val customerSessionDurationDays: Long,
     val cookieName: String,
     val secureCookie: Boolean,
     val passwordMinimumLength: Int

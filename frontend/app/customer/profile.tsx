@@ -1,19 +1,17 @@
-import { useRouter } from "expo-router";
 import { View } from "react-native";
 
-import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
-import { useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
+import { useAuth, useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
 import { Card, Header, ListRow, Section, StateView, Text } from "@/src/ui";
 
 export default function Profile() {
-  const { theme, organization } = useBusiness();
+  const { theme } = useBusiness();
   const { t, locale, currency, timezone } = useTranslation();
-  const router = useRouter();
   const { customerId, profiles, customersLoading, customersError, refreshCustomers } = useCustomerContext();
+  const { session, logout } = useAuth();
   const relationships = profiles.filter((row) => row.userId === customerId);
   const customer = relationships[0];
-  const name = customer?.displayName?.trim() ||
+  const name = customer?.displayName?.trim() || session?.displayName?.trim() ||
     [customer?.firstName, customer?.lastName].filter(Boolean).join(" ").trim();
   const initial = (name || "?").charAt(0).toUpperCase();
 
@@ -119,30 +117,8 @@ export default function Profile() {
             testID="profile-about"
           />
 
-          <ListRow
-            label="Counter"
-            icon="calculator-outline"
-            onPress={() => router.push(APP_ROUTES.counter.root)}
-            testID="profile-counter"
-          />
-
-          <ListRow
-            label="Org Admin"
-            icon="business-outline"
-            onPress={() =>
-              router.push(
-                APP_ROUTES.orgAdmin.organization(organization.id) as never,
-              )
-            }
-            testID="profile-org-admin"
-          />
-
-          <ListRow
-            label="Platform Admin"
-            icon="shield-checkmark-outline"
-            onPress={() => router.push(APP_ROUTES.platformAdmin.root)}
-            testID="profile-platform-admin"
-          />
+          <ListRow label="Sign out" icon="log-out-outline" onPress={() => { void logout(); }}
+            testID="profile-sign-out" />
         </Card>
       </Section>
     </Screen>

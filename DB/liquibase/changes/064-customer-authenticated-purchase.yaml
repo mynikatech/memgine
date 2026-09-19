@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 064-customer-authenticated-purchase
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/064-customer-authenticated-purchase.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

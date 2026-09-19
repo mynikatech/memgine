@@ -35,14 +35,29 @@ fun Route.authenticationRoutes(service: AuthenticationService, config: Authentic
             call.setSessionCookie(config, created.token)
             call.respond(ApiResponse.success(service.toDto(created.principal), call.callId))
         }
+        post("/customer/otp/request") {
+            call.respond(ApiResponse.success(service.requestCustomerLoginOtp(call.receive()), call.callId))
+        }
+        post("/customer/otp/verify") {
+            val created = service.verifyCustomerLoginOtp(
+                call.receive(), call.clientIp(), call.request.headers[HttpHeaders.UserAgent]
+            )
+            val native = call.isNativeAuthenticationClient()
+            if (!native) call.setSessionCookie(
+                config, created.token, config.customerSessionDurationDays * 24 * 60
+            )
+            call.respond(ApiResponse.success(
+                service.toDto(created.principal, if (native) created.token else null), call.callId
+            ))
+        }
         get("/session") {
-            val principal = service.resolve(call.request.cookies[config.cookieName])
+            val principal = service.resolve(call.authenticationToken(config))
                 ?: throw UnauthorizedException("Authentication is required")
             call.respond(ApiResponse.success(service.toDto(principal), call.callId))
         }
         post("/logout") {
             val principal = call.authenticatedPrincipal()
-            val loggedOut = service.logout(call.request.cookies[config.cookieName], principal)
+            val loggedOut = service.logout(call.authenticationToken(config), principal)
             call.clearSessionCookie(config)
             call.respond(ApiResponse.success(LogoutResponse(loggedOut), call.callId))
         }
@@ -58,12 +73,13 @@ private fun io.ktor.server.application.ApplicationCall.clientIp(): String? =
         ?: request.headers["X-Real-IP"]?.trim()
 
 private fun io.ktor.server.application.ApplicationCall.setSessionCookie(
-    config: AuthenticationConfig, token: String
+    config: AuthenticationConfig, token: String,
+    durationMinutes: Long = config.sessionDurationMinutes
 ) {
     response.cookies.append(
         Cookie(
             name = config.cookieName, value = token, path = "/",
-            maxAge = (config.sessionDurationMinutes * 60).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+            maxAge = (durationMinutes * 60).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
             secure = config.secureCookie, httpOnly = true,
             extensions = mapOf("SameSite" to "Lax")
         )

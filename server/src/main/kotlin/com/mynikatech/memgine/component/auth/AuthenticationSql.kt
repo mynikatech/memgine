@@ -94,4 +94,30 @@ interface AuthenticationSql {
     fun passwordConfigured(
         @Bind("userId") userId: String
     ): Boolean
+    
+    @SqlQuery(
+    """
+    SELECT concat_ws(
+        '|',
+        current_database(),
+        current_user,
+        current_schema(),
+        current_setting('search_path'),
+        COALESCE(inet_server_addr()::text, 'local'),
+        COALESCE(inet_server_port()::text, '')
+    )
+    """
+        )
+        fun debugConnection(): String
+
+        @SqlQuery(
+            """
+            SELECT COUNT(*)
+            FROM memginedev."user"
+            WHERE primary_phone = :phone
+            """
+        )
+        fun debugPhoneCount(
+            @Bind("phone") phone: String
+        ): Int
 }

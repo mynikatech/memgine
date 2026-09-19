@@ -1,6 +1,7 @@
 package com.mynikatech.memgine.security
 
 import com.mynikatech.memgine.component.auth.AuthenticationService
+import com.mynikatech.memgine.component.auth.authenticationToken
 import com.mynikatech.memgine.config.AuthenticationConfig
 import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.exception.ForbiddenException
@@ -23,7 +24,7 @@ fun Application.installAuthenticationGate(
             return@intercept
         }
 
-        val principal = service.resolve(call.request.cookies[config.cookieName])
+        val principal = service.resolve(call.authenticationToken(config))
         if (principal != null) call.attributes.put(AuthenticatedPrincipalKey, principal)
 
         if (path.startsWith("/api/v1/auth/")) {
@@ -41,7 +42,20 @@ fun Application.installAuthenticationGate(
             path.startsWith("/api/v1/organizations/") -> protectOrganizationPath(
                 principal, path, call.request.httpMethod
             )
+            path.startsWith("/api/v1/customer/") -> protectCustomerPath(
+                principal, path, call.request.httpMethod
+            )
         }
+    }
+}
+
+private fun protectCustomerPath(principal: AuthenticatedPrincipal?, path: String, method: HttpMethod) {
+    val publicCatalogRead = method == HttpMethod.Get && (
+        path.endsWith("/membership-products") || path.endsWith("/benefits")
+    )
+    val publicAcquisition = method == HttpMethod.Post && path.endsWith("/purchases")
+    if (!publicCatalogRead && !publicAcquisition) {
+        if (principal == null) throw UnauthorizedException("Authentication is required")
     }
 }
 

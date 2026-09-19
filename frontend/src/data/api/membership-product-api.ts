@@ -89,7 +89,7 @@ export class MembershipProductApi {
   async listForCustomer(organizationId: ID, userId?: ID): Promise<ApiResult<MembershipProduct[]>> {
     try {
       const result = await httpClient.get<ServerProduct[]>(
-        `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/membership-products${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`,
+        `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/membership-products`,
       );
       if (!result.success) return result;
       return apiSuccess(await Promise.all(result.data.map((item) => this.fromServer(item))));

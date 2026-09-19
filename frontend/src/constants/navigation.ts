@@ -36,6 +36,7 @@ export type AdminRoute = {
 export const APP_ROUTES = {
   root: "/",
   login: "/login",
+  customerLogin: "/customer-login",
   workspaces: "/workspaces",
 
   platformAdmin: {

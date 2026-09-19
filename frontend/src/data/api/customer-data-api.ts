@@ -13,42 +13,42 @@ import { StoreApi } from "./store-api";
 
 const base = (organizationId: ID) =>
   `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}`;
-const selected = (userId: ID) => `?userId=${encodeURIComponent(userId)}`;
 
 export class CustomerDataApi {
   choices(): Promise<ApiResult<CustomerChoice[]>> {
     return httpClient.get("/api/v1/customer/dev/choices");
   }
 
-  profiles(userId: ID): Promise<ApiResult<CustomerProfile[]>> {
-    return httpClient.get(`/api/v1/customer/relationships${selected(userId)}`);
+  profiles(_userId?: ID): Promise<ApiResult<CustomerProfile[]>> {
+    return httpClient.get("/api/v1/customer/relationships");
   }
 
   purchase(organizationId: ID, input: {
     planId: ID; customerUserId?: ID; firstName?: string; lastName?: string;
     primaryEmail?: string; primaryPhone?: string;
   }): Promise<ApiResult<CounterPurchaseResult>> {
+    const { customerUserId: _customerUserId, ...request } = input;
     return httpClient.post(
-      `${base(organizationId)}/purchases${input.customerUserId ? selected(input.customerUserId) : ""}`, input,
+      `${base(organizationId)}/purchases`, request,
     );
   }
 
   preference(organizationId: ID, userId: ID, code: string): Promise<ApiResult<{ value: string | null }>> {
     return httpClient.get(
-      `${base(organizationId)}/preferences/${encodeURIComponent(code)}${selected(userId)}`,
+      `${base(organizationId)}/preferences/${encodeURIComponent(code)}`,
     );
   }
 
   setPreference(organizationId: ID, userId: ID, code: string, value: string): Promise<ApiResult<{ value: string }>> {
     return httpClient.put(
-      `${base(organizationId)}/preferences/${encodeURIComponent(code)}${selected(userId)}`,
+      `${base(organizationId)}/preferences/${encodeURIComponent(code)}`,
       { value },
     );
   }
 
   async subscriptions(organizationId: ID, userId: ID): Promise<ApiResult<CounterSubscription[]>> {
     const result = await httpClient.get<CounterSubscription[]>(
-      `${base(organizationId)}/subscriptions${selected(userId)}`,
+      `${base(organizationId)}/subscriptions`,
     );
     if (!result.success) return result;
     return apiSuccess(await Promise.all(result.data.map(async (row) => ({
@@ -59,7 +59,7 @@ export class CustomerDataApi {
 
   async redemptions(organizationId: ID, userId: ID): Promise<ApiResult<OrgAdminRedemption[]>> {
     const result = await httpClient.get<OrgAdminRedemption[]>(
-      `${base(organizationId)}/history/redemptions${selected(userId)}`,
+      `${base(organizationId)}/history/redemptions`,
     );
     if (!result.success) return result;
     return apiSuccess(await Promise.all(result.data.map(async (row) => ({

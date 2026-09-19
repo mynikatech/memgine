@@ -155,7 +155,7 @@ fun Application.configureRouting(
             subscriptionRoutes(subscriptionService)
             redemptionRoutes(redemptionService)
             customerRoutes(customerService)
-            if (customerDevIdentityEnabled) customerSelfServiceRoutes(customerService)
+            customerSelfServiceRoutes(customerService)
             counterRoutes(counterService)
             notificationConfigurationRoutes(notificationConfigurationService)
             integrationConfigurationRoutes(integrationConfigurationService)
