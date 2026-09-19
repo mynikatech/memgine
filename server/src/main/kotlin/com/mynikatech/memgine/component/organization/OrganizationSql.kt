@@ -13,11 +13,15 @@ interface OrganizationSql {
         SELECT
             organization_id AS "organizationId",
             organization_details_id AS "organizationDetailsId",
-            organization_branding_id AS "organizationBrandingId"
-        FROM create_organization(
+            organization_branding_id AS "organizationBrandingId",
+            owner_user_id AS "ownerUserId",
+            owner_organization_user_id AS "ownerOrganizationUserId",
+            owner_role_assignment_id AS "ownerRoleAssignmentId"
+        FROM onboard_organization(
             CAST(:organizationJson AS jsonb),
             CAST(:detailsJson AS jsonb),
             CAST(:brandingJson AS jsonb),
+            CAST(:ownerJson AS jsonb),
             :actorUserId
         )
         """
@@ -26,6 +30,7 @@ interface OrganizationSql {
         @Bind("organizationJson") organizationJson: String,
         @Bind("detailsJson") detailsJson: String,
         @Bind("brandingJson") brandingJson: String,
+        @Bind("ownerJson") ownerJson: String,
         @Bind("actorUserId") actorUserId: String
     ): CreateOrganizationResponseDto
 

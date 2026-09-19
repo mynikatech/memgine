@@ -56,6 +56,15 @@ export default function OrganizationNew() {
     number: "",
   });
 
+  const [ownerFirstName, setOwnerFirstName] = useState("");
+  const [ownerLastName, setOwnerLastName] = useState("");
+  const [ownerEmail, setOwnerEmail] = useState("");
+  const [ownerPhone, setOwnerPhone] = useState<PhoneValue>({
+    countryId: "country-ca",
+    callingCode: "+1",
+    number: "",
+  });
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -63,6 +72,9 @@ export default function OrganizationNew() {
   const [typeTouched, setTypeTouched] = useState(false);
   const [emailTouched, setEmailTouched] = useState(false);
   const [phoneTouched, setPhoneTouched] = useState(false);
+  const [ownerFirstNameTouched, setOwnerFirstNameTouched] = useState(false);
+  const [ownerEmailTouched, setOwnerEmailTouched] = useState(false);
+  const [ownerPhoneTouched, setOwnerPhoneTouched] = useState(false);
 
   /*
    * Load reference data used by both Create and Edit.
@@ -101,6 +113,11 @@ export default function OrganizationNew() {
 
           if (canada) {
             setPrimaryPhone((current) => ({
+              ...current,
+              countryId: canada.id,
+              callingCode: canada.callingCode ?? "+1",
+            }));
+            setOwnerPhone((current) => ({
               ...current,
               countryId: canada.id,
               callingCode: canada.callingCode ?? "+1",
@@ -242,6 +259,29 @@ export default function OrganizationNew() {
         ? "Primary phone number must contain exactly 10 digits."
         : undefined;
 
+  const ownerFirstNameError =
+    ownerFirstNameTouched && !ownerFirstName.trim()
+      ? "Owner first name is required."
+      : ownerFirstName.trim().length > 100
+        ? "Owner first name must not exceed 100 characters."
+        : undefined;
+
+  const ownerEmailError =
+    ownerEmailTouched &&
+    !!ownerEmail.trim() &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail.trim())
+      ? "Please enter a valid owner email address."
+      : ownerEmail.trim().length > 254
+        ? "Owner email must not exceed 254 characters."
+        : undefined;
+
+  const ownerPhoneError =
+    ownerPhoneTouched && !ownerPhone.number.trim()
+      ? "Owner phone number is required."
+      : ownerPhone.number.length > 0 && ownerPhone.number.length !== 10
+        ? "Owner phone number must contain exactly 10 digits."
+        : undefined;
+
   const canSubmit =
     businessName.trim().length >= 2 &&
     businessName.trim().length <= 150 &&
@@ -252,6 +292,16 @@ export default function OrganizationNew() {
     primaryPhone.number.length === 10 &&
     !!primaryPhone.countryId &&
     !!primaryPhone.callingCode &&
+    (isEditMode ||
+      (ownerFirstName.trim().length > 0 &&
+        ownerFirstName.trim().length <= 100 &&
+        ownerLastName.trim().length <= 100 &&
+        (!ownerEmail.trim() ||
+          (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail.trim()) &&
+            ownerEmail.trim().length <= 254)) &&
+        ownerPhone.number.length === 10 &&
+        !!ownerPhone.countryId &&
+        !!ownerPhone.callingCode)) &&
     !busy &&
     !loadingTypes &&
     !loadingCountries &&
@@ -267,6 +317,11 @@ export default function OrganizationNew() {
     setTypeTouched(true);
     setEmailTouched(true);
     setPhoneTouched(true);
+    if (!isEditMode) {
+      setOwnerFirstNameTouched(true);
+      setOwnerEmailTouched(true);
+      setOwnerPhoneTouched(true);
+    }
     setError("");
 
     if (!businessName.trim()) {
@@ -317,6 +372,51 @@ export default function OrganizationNew() {
     if (primaryPhone.number.length !== 10) {
       setError("Primary phone number must contain exactly 10 digits.");
       return false;
+    }
+
+    if (!isEditMode) {
+      if (!ownerFirstName.trim()) {
+        setError("Owner first name is required.");
+        return false;
+      }
+
+      if (ownerFirstName.trim().length > 100) {
+        setError("Owner first name must not exceed 100 characters.");
+        return false;
+      }
+
+      if (ownerLastName.trim().length > 100) {
+        setError("Owner last name must not exceed 100 characters.");
+        return false;
+      }
+
+      if (
+        ownerEmail.trim() &&
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail.trim())
+      ) {
+        setError("Please enter a valid owner email address.");
+        return false;
+      }
+
+      if (ownerEmail.trim().length > 254) {
+        setError("Owner email must not exceed 254 characters.");
+        return false;
+      }
+
+      if (!ownerPhone.countryId || !ownerPhone.callingCode) {
+        setError("Owner phone country is required.");
+        return false;
+      }
+
+      if (!ownerPhone.number.trim()) {
+        setError("Owner phone number is required.");
+        return false;
+      }
+
+      if (ownerPhone.number.length !== 10) {
+        setError("Owner phone number must contain exactly 10 digits.");
+        return false;
+      }
     }
 
     if (isEditMode && !existingOrganization) {
@@ -403,6 +503,16 @@ export default function OrganizationNew() {
           countryId: primaryPhone.countryId,
           callingCode: primaryPhone.callingCode,
           number: primaryPhone.number,
+        },
+        owner: {
+          firstName: ownerFirstName.trim(),
+          lastName: ownerLastName.trim() || undefined,
+          email: ownerEmail.trim() || undefined,
+          phone: {
+            countryId: ownerPhone.countryId,
+            callingCode: ownerPhone.callingCode,
+            number: ownerPhone.number,
+          },
         },
         useDefaultBusinessContent,
       });
@@ -569,6 +679,79 @@ export default function OrganizationNew() {
           disabled={busy || loadingCountries || loadingOrganization}
           testID="organization-primary-phone"
         />
+
+        {!isEditMode ? (
+          <>
+            <View style={styles.section}>
+              <Text variant="h2" color="text">
+                Business Owner
+              </Text>
+              <Text variant="bodySmall" color="textMuted">
+                Enter the owner identity separately from the organization contact details. An existing user with the same phone will be reused without replacing their profile.
+              </Text>
+            </View>
+
+            <Input
+              label="Owner First Name"
+              required
+              value={ownerFirstName}
+              onChangeText={(value) => {
+                setOwnerFirstName(value);
+                if (error) setError("");
+              }}
+              onBlur={() => setOwnerFirstNameTouched(true)}
+              placeholder="Enter owner first name"
+              maxLength={100}
+              error={ownerFirstNameError}
+              testID="organization-owner-first-name"
+            />
+
+            <Input
+              label="Owner Last Name"
+              value={ownerLastName}
+              onChangeText={(value) => {
+                setOwnerLastName(value);
+                if (error) setError("");
+              }}
+              placeholder="Enter owner last name"
+              maxLength={100}
+              testID="organization-owner-last-name"
+            />
+
+            <Input
+              label="Owner Email"
+              value={ownerEmail}
+              onChangeText={(value) => {
+                setOwnerEmail(value);
+                if (error) setError("");
+              }}
+              onBlur={() => setOwnerEmailTouched(true)}
+              placeholder="Enter owner email"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={254}
+              error={ownerEmailError}
+              testID="organization-owner-email"
+            />
+
+            <PhoneField
+              label="Owner Phone"
+              required
+              value={ownerPhone}
+              countries={countries}
+              onChange={(phone) => {
+                setOwnerPhone(phone);
+                setOwnerPhoneTouched(true);
+                if (error) setError("");
+              }}
+              error={ownerPhoneTouched ? ownerPhoneError : undefined}
+              maxDigits={10}
+              disabled={busy || loadingCountries}
+              testID="organization-owner-phone"
+            />
+          </>
+        ) : null}
 
         {!isEditMode && selectedType ? (
           <View

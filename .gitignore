@@ -102,3 +102,7 @@ DB/hs_err_pid5188.log
 DB/hs_err_pid19520.log
 DB/hs_err_pid53656.log
 batch3-after-correction.diff
+server/replay_pid3912.log
+server/hs_err_pid3912.log
+replay_pid36856.log
+hs_err_pid36856.log

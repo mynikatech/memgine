@@ -178,10 +178,7 @@ class StaffService(
                                         null,
 
                                     joiningDate =
-                                        person.joiningDate,
-
-                                    actorUserId =
-                                        ORG_ADMIN_USER_ID
+                                        person.joiningDate
                                 )
                             ),
                             ORG_ADMIN_USER_ID
@@ -237,6 +234,15 @@ class StaffService(
                     request.staff.staffStatusId,
                     ORG_ADMIN_USER_ID
                 )
+
+            // The Staff domain row and its effective RBAC base role are part
+            // of this same JDBI transaction. A failure rolls back the person,
+            // organization relationship, Staff row and store assignments.
+            staffSql.ensureBaseRole(
+                organizationId,
+                savedStaff.id,
+                ORG_ADMIN_USER_ID
+            )
 
             val savedAssignments =
                 request.assignments.map {

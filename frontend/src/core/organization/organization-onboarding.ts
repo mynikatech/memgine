@@ -113,6 +113,13 @@ export async function onboardOrganization(
 
   const primaryPhoneCountryId = input.primaryPhone.countryId.trim();
 
+  const ownerFirstName = input.owner.firstName.trim();
+  const ownerLastName = input.owner.lastName?.trim();
+  const ownerEmail = input.owner.email?.trim();
+  const ownerPhoneCountryId = input.owner.phone.countryId.trim();
+  const ownerPhoneCallingCode = input.owner.phone.callingCode.trim();
+  const ownerPhoneNumber = input.owner.phone.number.trim();
+
   if (!name) {
     throw new Error("Business name is required.");
   }
@@ -155,6 +162,34 @@ export async function onboardOrganization(
 
   if (primaryPhoneNumber.length > 20) {
     throw new Error("Primary phone number must not exceed 20 characters.");
+  }
+
+  if (!ownerFirstName) {
+    throw new Error("Owner first name is required.");
+  }
+
+  if (ownerFirstName.length > 100) {
+    throw new Error("Owner first name must not exceed 100 characters.");
+  }
+
+  if (ownerLastName && ownerLastName.length > 100) {
+    throw new Error("Owner last name must not exceed 100 characters.");
+  }
+
+  if (ownerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) {
+    throw new Error("Please enter a valid owner email address.");
+  }
+
+  if (ownerEmail && ownerEmail.length > 254) {
+    throw new Error("Owner email must not exceed 254 characters.");
+  }
+
+  if (!ownerPhoneCountryId || !ownerPhoneCallingCode || !ownerPhoneNumber) {
+    throw new Error("Owner phone is required.");
+  }
+
+  if (`${ownerPhoneCallingCode}${ownerPhoneNumber}`.length > 20) {
+    throw new Error("Owner phone must not exceed 20 characters.");
   }
 
   /*
@@ -202,6 +237,15 @@ export async function onboardOrganization(
     account: materialized.account,
     details: materialized.details,
     branding: materialized.branding,
+  }, {
+    firstName: ownerFirstName,
+    lastName: ownerLastName,
+    email: ownerEmail,
+    phone: {
+      countryId: ownerPhoneCountryId,
+      callingCode: ownerPhoneCallingCode,
+      number: ownerPhoneNumber,
+    },
   });
 
   if (!result.success) {

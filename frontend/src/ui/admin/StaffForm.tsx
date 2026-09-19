@@ -11,7 +11,7 @@ import type {
   User,
 } from "@/src/core";
 
-import { DEFAULT_ROLE_CAPABILITIES, StaffRole } from "@/src/core";
+import { StaffRole } from "@/src/core";
 
 import { useTheme } from "@/src/providers";
 
@@ -215,14 +215,14 @@ export function StaffForm({
     {
       id: StaffRole.OWNER,
       code: StaffRole.OWNER,
-      name: "Owner",
+      name: "Business Owner",
       displayOrder: 1,
       active: true,
     },
     {
-      id: StaffRole.MANAGER,
-      code: StaffRole.MANAGER,
-      name: "Manager",
+      id: StaffRole.ORG_ADMIN,
+      code: StaffRole.ORG_ADMIN,
+      name: "Organization Administrator",
       displayOrder: 2,
       active: true,
     },
@@ -342,7 +342,7 @@ export function StaffForm({
 
           relievingDate: isNew ? undefined : form.relievingDate,
 
-          capabilities: [...DEFAULT_ROLE_CAPABILITIES[form.role]],
+          capabilities: [],
         },
         {
           firstName,

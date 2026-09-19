@@ -63,17 +63,29 @@ data class OrganizationBrandingDto(
 )
 
 @Serializable
+data class BusinessOwnerIdentityDto(
+    val firstName: String,
+    val lastName: String? = null,
+    val email: String? = null,
+    val phone: PhoneDto
+)
+
+@Serializable
 data class CreateOrganizationRequestDto(
     val organization: OrganizationDto,
     val details: OrganizationDetailsDto,
-    val branding: OrganizationBrandingDto
+    val branding: OrganizationBrandingDto,
+    val owner: BusinessOwnerIdentityDto
 )
 
 @Serializable
 data class CreateOrganizationResponseDto(
     val organizationId: String,
     val organizationDetailsId: String,
-    val organizationBrandingId: String
+    val organizationBrandingId: String,
+    val ownerUserId: String,
+    val ownerOrganizationUserId: String,
+    val ownerRoleAssignmentId: String
 )
 
 @Serializable

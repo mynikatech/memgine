@@ -49,6 +49,15 @@ interface StaffSql {
         @Bind("actorUserId") actorUserId: String
     ): StaffDto
 
+    @SqlQuery(
+        "SELECT rbac_ensure_staff_base_role(:organizationId, :staffId, :actorUserId)"
+    )
+    fun ensureBaseRole(
+        @Bind("organizationId") organizationId: String,
+        @Bind("staffId") staffId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): String
+
     @SqlQuery("""
         SELECT *
         FROM update_staff(

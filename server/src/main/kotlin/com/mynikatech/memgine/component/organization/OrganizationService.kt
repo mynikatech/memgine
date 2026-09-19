@@ -19,6 +19,7 @@ class OrganizationService(
             json.encodeToString(request.organization),
             json.encodeToString(request.details),
             json.encodeToString(request.branding),
+            json.encodeToString(request.owner),
             PLATFORM_ADMIN_USER_ID
         )
     }
@@ -84,6 +85,7 @@ class OrganizationService(
         if (branding.id.length > 64) throw BadRequestException("Organization branding id must not exceed 64 characters")
         if (branding.organizationId != organization.id) throw BadRequestException("Organization branding organizationId does not match organization id")
         validateBranding(branding)
+        validateOwner(request.owner)
     }
 
     private fun validateUpdate(organizationId: String, request: UpdateOrganizationRequestDto) {
@@ -128,10 +130,32 @@ class OrganizationService(
         if (branding.brandingStatusId.isBlank()) throw BadRequestException("Branding status is required")
     }
 
+    private fun validateOwner(owner: com.mynikatech.memgine.net.dto.BusinessOwnerIdentityDto) {
+        val firstName = owner.firstName.trim()
+        val lastName = owner.lastName?.trim().orEmpty()
+        val email = owner.email?.trim().orEmpty()
+        if (firstName.isBlank()) throw BadRequestException("Owner first name is required")
+        if (firstName.length > 100) throw BadRequestException("Owner first name must not exceed 100 characters")
+        if (lastName.length > 100) throw BadRequestException("Owner last name must not exceed 100 characters")
+        if (email.isNotEmpty() && (!EMAIL_PATTERN.matches(email) || email.length > 254)) {
+            throw BadRequestException("Owner email is invalid")
+        }
+        if (owner.phone.countryId.isBlank()) throw BadRequestException("Owner phone country is required")
+        if (owner.phone.callingCode.isBlank() || owner.phone.number.isBlank()) {
+            throw BadRequestException("Owner phone is required")
+        }
+        if ((owner.phone.callingCode.trim() + owner.phone.number.trim()).length > 20) {
+            throw BadRequestException("Owner phone must not exceed 20 characters")
+        }
+    }
+
     private fun validateOrganizationId(organizationId: String) {
         if (organizationId.isBlank()) throw BadRequestException("Organization id is required")
         if (organizationId.length > 64) throw BadRequestException("Organization id must not exceed 64 characters")
     }
 
-    private companion object { const val PLATFORM_ADMIN_USER_ID = "user-platform-admin" }
+    private companion object {
+        const val PLATFORM_ADMIN_USER_ID = "user-platform-admin"
+        val EMAIL_PATTERN = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
+    }
 }

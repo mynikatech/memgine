@@ -4,6 +4,7 @@ import { apiFailure, type ApiResult } from "./result";
 import { httpClient } from "./http-client";
 import {
   OrganizationApiMapper,
+  type BusinessOwnerIdentityApiDto,
   type CreateOrganizationApiRequest,
   type UpdateOrganizationApiRequest,
 } from "./mappers/organization-api-mapper";
@@ -12,6 +13,9 @@ type CreateOrganizationServerResponse = {
   organizationId: string;
   organizationDetailsId: string;
   organizationBrandingId: string;
+  ownerUserId: string;
+  ownerOrganizationUserId: string;
+  ownerRoleAssignmentId: string;
 };
 
 type UpdateOrganizationServerResponse = {
@@ -46,8 +50,9 @@ export class OrganizationApi {
 
   async create(
     input: CreateOrganizationRepositoryInput,
+    owner: BusinessOwnerIdentityApiDto,
   ): Promise<ApiResult<Organization>> {
-    const request = OrganizationApiMapper.toCreateRequest(input);
+    const request = OrganizationApiMapper.toCreateRequest(input, owner);
 
     const serverResult = await httpClient.post<
       CreateOrganizationApiRequest,

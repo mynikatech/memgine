@@ -35,6 +35,9 @@ import com.mynikatech.memgine.component.organization.organizationRoutes
 import com.mynikatech.memgine.component.organizationuser.OrganizationUserService
 import com.mynikatech.memgine.component.organizationuser.OrganizationUserSql
 import com.mynikatech.memgine.component.organizationuser.organizationUserRoutes
+import com.mynikatech.memgine.component.role.RbacService
+import com.mynikatech.memgine.component.role.RbacSql
+import com.mynikatech.memgine.component.role.rbacRoutes
 import com.mynikatech.memgine.component.referencedata.ReferenceDataService
 import com.mynikatech.memgine.component.referencedata.referenceDataRoutes
 import com.mynikatech.memgine.component.staff.StaffService
@@ -68,6 +71,7 @@ fun Application.configureRouting(
         OrganizationUserService(
             database.jdbi.onDemand(OrganizationUserSql::class.java)
         )
+    val rbacService = RbacService(database.jdbi.onDemand(RbacSql::class.java))
 
     val storeService =
         StoreService(
@@ -103,6 +107,7 @@ fun Application.configureRouting(
         }
 
         route("/api/v1") {
+            rbacRoutes(rbacService, customerDevIdentityEnabled)
             organizationRoutes(organizationService)
             organizationUserRoutes(organizationUserService)
 

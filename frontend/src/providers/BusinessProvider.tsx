@@ -11,7 +11,6 @@ import {
   BusinessConfiguration,
   BUSINESS_CONTEXTS,
   DEFAULT_ACTIVE_ORG_ID,
-  DEFAULT_ROLE_CAPABILITIES,
   Capability,
   hasCapability,
   ID,
@@ -329,13 +328,15 @@ export function BusinessProvider({
       availableLanguages: ["en"],
     };
 
-    const capabilities = DEFAULT_ROLE_CAPABILITIES[StaffRole.OWNER];
+    // Organization context is not proof of an effective role assignment.
+    // Authentication will supply server-resolved capabilities to this principal.
+    const capabilities: Capability[] = [];
 
     const principal: Principal = {
       kind: "STAFF",
       staffId: "staff-dev-owner",
       organizationId: organization.id,
-      role: StaffRole.OWNER,
+      role: StaffRole.ORG_ADMIN,
       capabilities,
     };
 

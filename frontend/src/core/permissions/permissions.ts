@@ -5,46 +5,43 @@ import { ID } from "../domain/common";
  * capabilities, NOT by whether a user is the business owner.
  */
 export enum Capability {
-  VIEW_CONFIG = "VIEW_CONFIG",
-  EDIT_CONFIG = "EDIT_CONFIG",
-  MANAGE_MEMBERSHIP_PRODUCTS = "MANAGE_MEMBERSHIP_PRODUCTS",
-  MANAGE_BENEFITS = "MANAGE_BENEFITS",
-  MANAGE_OFFERS = "MANAGE_OFFERS",
-  MANAGE_STAFF = "MANAGE_STAFF",
-  VIEW_CUSTOMERS = "VIEW_CUSTOMERS",
-  PERFORM_REDEMPTION = "PERFORM_REDEMPTION",
-  VIEW_ACTIVITY = "VIEW_ACTIVITY",
+  PLATFORM_ADMIN_ACCESS = "PLATFORM_ADMIN_ACCESS",
+  BUSINESS_OWNER_ACCESS = "BUSINESS_OWNER_ACCESS",
+  ORG_ADMIN_ACCESS = "ORG_ADMIN_ACCESS",
+  COUNTER_ACCESS = "COUNTER_ACCESS",
+  CUSTOMER_ACCESS = "CUSTOMER_ACCESS",
+}
+
+export enum RoleCode {
+  PLATFORM_ADMIN = "PLATFORM_ADMIN",
+  BUSINESS_OWNER = "BUSINESS_OWNER",
+  ORG_ADMIN = "ORG_ADMIN",
+  STAFF = "STAFF",
+  CUSTOMER = "CUSTOMER",
 }
 
 export enum StaffRole {
-  OWNER = "OWNER",
+  OWNER = "BUSINESS_OWNER",
+  ORG_ADMIN = "ORG_ADMIN",
   MANAGER = "MANAGER",
   STAFF = "STAFF",
 }
 
 /** Contract-level default role → capabilities mapping (not an enforcement engine). */
+export const ROLE_CAPABILITIES: Record<RoleCode, Capability[]> = {
+  [RoleCode.PLATFORM_ADMIN]: [Capability.PLATFORM_ADMIN_ACCESS],
+  [RoleCode.BUSINESS_OWNER]: [Capability.BUSINESS_OWNER_ACCESS, Capability.ORG_ADMIN_ACCESS, Capability.COUNTER_ACCESS],
+  [RoleCode.ORG_ADMIN]: [Capability.ORG_ADMIN_ACCESS, Capability.COUNTER_ACCESS],
+  [RoleCode.STAFF]: [Capability.COUNTER_ACCESS],
+  [RoleCode.CUSTOMER]: [Capability.CUSTOMER_ACCESS],
+};
+
+/** Preview defaults only. Server effective capabilities are authoritative. */
 export const DEFAULT_ROLE_CAPABILITIES: Record<StaffRole, Capability[]> = {
-  [StaffRole.OWNER]: [
-    Capability.VIEW_CONFIG,
-    Capability.EDIT_CONFIG,
-    Capability.MANAGE_MEMBERSHIP_PRODUCTS,
-    Capability.MANAGE_BENEFITS,
-    Capability.MANAGE_OFFERS,
-    Capability.MANAGE_STAFF,
-    Capability.VIEW_CUSTOMERS,
-    Capability.PERFORM_REDEMPTION,
-    Capability.VIEW_ACTIVITY,
-  ],
-  [StaffRole.MANAGER]: [
-    Capability.VIEW_CONFIG,
-    Capability.MANAGE_MEMBERSHIP_PRODUCTS,
-    Capability.MANAGE_BENEFITS,
-    Capability.MANAGE_OFFERS,
-    Capability.VIEW_CUSTOMERS,
-    Capability.PERFORM_REDEMPTION,
-    Capability.VIEW_ACTIVITY,
-  ],
-  [StaffRole.STAFF]: [Capability.VIEW_CUSTOMERS, Capability.PERFORM_REDEMPTION],
+  [StaffRole.OWNER]: ROLE_CAPABILITIES[RoleCode.BUSINESS_OWNER],
+  [StaffRole.ORG_ADMIN]: ROLE_CAPABILITIES[RoleCode.ORG_ADMIN],
+  [StaffRole.MANAGER]: [],
+  [StaffRole.STAFF]: ROLE_CAPABILITIES[RoleCode.STAFF],
 };
 
 /** The current actor consuming the UI. */
@@ -61,18 +58,19 @@ export interface StaffPrincipal {
 export interface CustomerPrincipal {
   kind: "CUSTOMER";
   customerId: ID;
+  capabilities?: Capability[];
 }
 
 export type Principal = StaffPrincipal | CustomerPrincipal;
 
 export function hasCapability(principal: Principal, capability: Capability): boolean {
-  return principal.kind === "STAFF" && principal.capabilities.includes(capability);
+  return principal.capabilities?.includes(capability) ?? false;
 }
 
 export function canEditConfig(principal: Principal): boolean {
-  return hasCapability(principal, Capability.EDIT_CONFIG);
+  return hasCapability(principal, Capability.ORG_ADMIN_ACCESS);
 }
 
 export function canPerformRedemption(principal: Principal): boolean {
-  return hasCapability(principal, Capability.PERFORM_REDEMPTION);
+  return hasCapability(principal, Capability.COUNTER_ACCESS);
 }

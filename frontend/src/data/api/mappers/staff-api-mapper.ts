@@ -1,5 +1,4 @@
 import {
-  DEFAULT_ROLE_CAPABILITIES,
   StaffRole,
   type ID,
   type OrganizationUser,
@@ -151,8 +150,12 @@ export interface DeleteStaffStoreAssignmentServerResponse {
 function toStaffRole(roleCode: string): StaffRole {
   const normalized = roleCode.trim().toUpperCase();
 
-  if (normalized === StaffRole.OWNER) {
+  if (normalized === StaffRole.OWNER || normalized === "OWNER") {
     return StaffRole.OWNER;
+  }
+
+  if (normalized === StaffRole.ORG_ADMIN || normalized === "ADMIN") {
+    return StaffRole.ORG_ADMIN;
   }
 
   if (normalized === StaffRole.MANAGER) {
@@ -177,7 +180,8 @@ export const StaffApiMapper = {
       relievingDate: dto.relievingDate,
       staffStatusId: dto.staffStatusId,
       role,
-      capabilities: [...DEFAULT_ROLE_CAPABILITIES[role]],
+      // Staff metadata is not an effective RBAC assignment.
+      capabilities: [],
       isActive: !dto.isDeleted,
       createdAt: dto.createdAt,
       createdBy: dto.createdBy,

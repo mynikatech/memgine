@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 059-mvp-rbac-foundation
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/059-mvp-rbac-foundation.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

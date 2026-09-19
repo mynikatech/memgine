@@ -65,6 +65,18 @@ export type CreateOrganizationApiRequest = {
   organization: OrganizationApiDto;
   details: OrganizationDetailsApiDto;
   branding: OrganizationBrandingApiDto;
+  owner: BusinessOwnerIdentityApiDto;
+};
+
+export type BusinessOwnerIdentityApiDto = {
+  firstName: string;
+  lastName?: string | null;
+  email?: string | null;
+  phone: {
+    countryId: string;
+    callingCode: string;
+    number: string;
+  };
 };
 
 export type UpdateOrganizationApiRequest = {
@@ -141,11 +153,22 @@ function toOrganizationBrandingDto(
 export const OrganizationApiMapper = {
   toCreateRequest(
     input: CreateOrganizationRepositoryInput,
+    owner: BusinessOwnerIdentityApiDto,
   ): CreateOrganizationApiRequest {
     return {
       organization: toOrganizationDto(input.organization),
       details: toOrganizationDetailsDto(input.details),
       branding: toOrganizationBrandingDto(input.branding),
+      owner: {
+        firstName: owner.firstName.trim(),
+        lastName: owner.lastName?.trim() || null,
+        email: owner.email?.trim() || null,
+        phone: {
+          countryId: owner.phone.countryId,
+          callingCode: owner.phone.callingCode,
+          number: owner.phone.number,
+        },
+      },
     };
   },
 

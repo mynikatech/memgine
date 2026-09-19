@@ -111,6 +111,18 @@ export interface OnboardOrganizationInput {
     number: string;
   };
 
+  /** Business Owner identity is separate from organization contact data. */
+  owner: {
+    firstName: string;
+    lastName?: string;
+    email?: string;
+    phone: {
+      countryId: ID;
+      callingCode: string;
+      number: string;
+    };
+  };
+
   useDefaultBusinessContent: boolean;
 }
 
