@@ -617,6 +617,7 @@ export default function OrgAdminOffers() {
               onPress={() =>
                 router.push(
                   APP_ROUTES.orgAdmin.customerExperienceSection(
+                    organization.id,
                     "offers",
                   ) as never,
                 )
@@ -698,6 +699,7 @@ export default function OrgAdminOffers() {
             onPress={() =>
               router.push(
                 APP_ROUTES.orgAdmin.customerExperienceSection(
+                  organization.id,
                   "offers",
                 ) as never,
               )

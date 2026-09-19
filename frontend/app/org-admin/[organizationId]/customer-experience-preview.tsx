@@ -873,11 +873,15 @@ function IndividualPreviewLink({
     | "business-information";
   router: ReturnType<typeof useRouter>;
 }) {
+  const { organization } = useBusiness();
   return (
     <Pressable
       onPress={() =>
         router.push(
-          APP_ROUTES.orgAdmin.customerExperienceSection(section) as never,
+          APP_ROUTES.orgAdmin.customerExperienceSection(
+            organization.id,
+            section,
+          ) as never,
         )
       }
       accessibilityRole="link"

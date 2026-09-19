@@ -736,6 +736,7 @@ export default function OrgAdminBenefits() {
 
     router.push({
       pathname: APP_ROUTES.orgAdmin.customerExperienceSection(
+        organization.id,
         "benefits",
       ) as never,
 

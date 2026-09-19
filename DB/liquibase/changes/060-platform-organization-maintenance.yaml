@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 060-platform-organization-maintenance
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/060-platform-organization-maintenance.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

@@ -39,6 +39,9 @@ export const APP_ROUTES = {
   platformAdmin: {
     root: "/platform-admin",
     organizations: "/platform-admin/organizations",
+    organizationMaintenance: "/platform-admin/organization-maintenance",
+    organizationMaintenanceFor: (organizationId: string) =>
+      `/platform-admin/organization-maintenance/${encodeURIComponent(organizationId)}`,
     organizationNew: "/platform-admin/organization-new",
     organizationTypes: "/platform-admin/organization-types",
     templates: "/platform-admin/templates",
@@ -49,25 +52,42 @@ export const APP_ROUTES = {
 
   orgAdmin: {
     root: "/org-admin",
-    business: "/org-admin/business",
-    branding: "/org-admin/branding",
-    stores: "/org-admin/stores",
-    staffMembers: "/org-admin/staff-members",
-    benefits: "/org-admin/benefits",
-    memberships: "/org-admin/memberships",
-    offers: "/org-admin/offers",
-    customers: "/org-admin/customers",
-    subscriptions: "/org-admin/subscriptions",
-    redemptions: "/org-admin/redemptions",
-    customerExperience: "/org-admin/customer-experience",
-    customerExperiencePreview: "/org-admin/customer-experience-preview",
-    customerExperienceSection: (section: string) =>
-      `/org-admin/customer-experience/${encodeURIComponent(section)}`,
+    organization: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}`,
+    business: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/business`,
+    branding: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/branding`,
+    stores: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/stores`,
+    staffMembers: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/staff-members`,
+    benefits: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/benefits`,
+    memberships: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/memberships`,
+    offers: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/offers`,
+    customers: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/customers`,
+    subscriptions: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/subscriptions`,
+    redemptions: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/redemptions`,
+    customerExperience: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/customer-experience`,
+    customerExperiencePreview: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/customer-experience-preview`,
+    customerExperienceSection: (organizationId: string, section: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/customer-experience/${encodeURIComponent(section)}`,
 
     settings: {
-      root: "/org-admin/settings",
-      notifications: "/org-admin/settings/notifications",
-      integrations: "/org-admin/settings/integrations",
+      root: (organizationId: string) =>
+        `/org-admin/${encodeURIComponent(organizationId)}/settings`,
+      notifications: (organizationId: string) =>
+        `/org-admin/${encodeURIComponent(organizationId)}/settings/notifications`,
+      integrations: (organizationId: string) =>
+        `/org-admin/${encodeURIComponent(organizationId)}/settings/integrations`,
     },
   },
 
@@ -165,80 +185,80 @@ export const COUNTER_ROUTES: CounterRoute[] = [
 ];
 
 /** Organization Admin (web) sidebar. */
-export const ORG_ADMIN_ROUTES: AdminRoute[] = [
+export const createOrgAdminRoutes = (organizationId: string): AdminRoute[] => [
   {
     title: "Dashboard",
-    href: APP_ROUTES.orgAdmin.root,
+    href: APP_ROUTES.orgAdmin.organization(organizationId),
     icon: "grid-outline",
   },
   {
     title: "Business",
-    href: APP_ROUTES.orgAdmin.business,
+    href: APP_ROUTES.orgAdmin.business(organizationId),
     icon: "business-outline",
   },
   {
     title: "Branding",
-    href: APP_ROUTES.orgAdmin.branding,
+    href: APP_ROUTES.orgAdmin.branding(organizationId),
     icon: "color-palette-outline",
   },
   {
     title: "Stores",
-    href: APP_ROUTES.orgAdmin.stores,
+    href: APP_ROUTES.orgAdmin.stores(organizationId),
     icon: "storefront-outline",
   },
   {
     title: "Staff",
-    href: APP_ROUTES.orgAdmin.staffMembers,
+    href: APP_ROUTES.orgAdmin.staffMembers(organizationId),
     icon: "people-outline",
   },
   {
     title: "Benefits",
-    href: APP_ROUTES.orgAdmin.benefits,
+    href: APP_ROUTES.orgAdmin.benefits(organizationId),
     icon: "gift-outline",
   },
   {
     title: "Memberships",
-    href: APP_ROUTES.orgAdmin.memberships,
+    href: APP_ROUTES.orgAdmin.memberships(organizationId),
     icon: "card-outline",
   },
   {
     title: "Offers",
-    href: APP_ROUTES.orgAdmin.offers,
+    href: APP_ROUTES.orgAdmin.offers(organizationId),
     icon: "pricetags-outline",
   },
   {
     title: "Customer Experience",
-    href: APP_ROUTES.orgAdmin.customerExperience,
+    href: APP_ROUTES.orgAdmin.customerExperience(organizationId),
     icon: "phone-portrait-outline",
   },
   {
     title: "Customers",
-    href: APP_ROUTES.orgAdmin.customers,
+    href: APP_ROUTES.orgAdmin.customers(organizationId),
     icon: "people-outline",
   },
   {
     title: "Subscriptions",
-    href: APP_ROUTES.orgAdmin.subscriptions,
+    href: APP_ROUTES.orgAdmin.subscriptions(organizationId),
     icon: "card-outline",
   },
   {
     title: "Redemptions",
-    href: APP_ROUTES.orgAdmin.redemptions,
+    href: APP_ROUTES.orgAdmin.redemptions(organizationId),
     icon: "card-outline",
   },
   {
     title: "Settings",
-    href: APP_ROUTES.orgAdmin.settings.root,
+    href: APP_ROUTES.orgAdmin.settings.root(organizationId),
     icon: "settings-outline",
     children: [
       {
         title: "Notifications",
-        href: APP_ROUTES.orgAdmin.settings.notifications,
+        href: APP_ROUTES.orgAdmin.settings.notifications(organizationId),
         icon: "notifications-outline",
       },
       {
         title: "Integrations",
-        href: APP_ROUTES.orgAdmin.settings.integrations,
+        href: APP_ROUTES.orgAdmin.settings.integrations(organizationId),
         icon: "git-network-outline",
       },
     ],
@@ -256,6 +276,11 @@ export const PLATFORM_ADMIN_ROUTES: AdminRoute[] = [
     title: "Organizations",
     href: APP_ROUTES.platformAdmin.organizations,
     icon: "business-outline",
+  },
+  {
+    title: "Organization Maintenance",
+    href: APP_ROUTES.platformAdmin.organizationMaintenance,
+    icon: "people-circle-outline",
   },
   {
     title: "Organization Types",

@@ -7,7 +7,7 @@ import { useBusiness, useCustomerContext, useTranslation } from "@/src/providers
 import { Card, Header, ListRow, Section, StateView, Text } from "@/src/ui";
 
 export default function Profile() {
-  const { theme } = useBusiness();
+  const { theme, organization } = useBusiness();
   const { t, locale, currency, timezone } = useTranslation();
   const router = useRouter();
   const { customerId, profiles, customersLoading, customersError, refreshCustomers } = useCustomerContext();
@@ -129,7 +129,11 @@ export default function Profile() {
           <ListRow
             label="Org Admin"
             icon="business-outline"
-            onPress={() => router.push(APP_ROUTES.orgAdmin.root)}
+            onPress={() =>
+              router.push(
+                APP_ROUTES.orgAdmin.organization(organization.id) as never,
+              )
+            }
             testID="profile-org-admin"
           />
 

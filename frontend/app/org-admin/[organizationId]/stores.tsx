@@ -632,6 +632,7 @@ export default function OrgAdminStores() {
      */
     router.push({
       pathname: APP_ROUTES.orgAdmin.customerExperienceSection(
+        organization.id,
         "stores",
       ) as never,
       params: {

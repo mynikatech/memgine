@@ -160,17 +160,14 @@ export default function PlatformOrganizations() {
     });
   }, []);
 
-  /**
-   * Open Organization is the explicit hand-off into Organization Admin.
-   */
-  const openOrganization = useCallback(
-    (organizationId: string) => {
-      setActiveBusiness(organizationId);
-
-      router.replace(APP_ROUTES.orgAdmin.root);
-    },
-    [setActiveBusiness],
-  );
+  /** Open the Platform Admin maintenance boundary for this organization. */
+  const openOrganization = useCallback((organizationId: string) => {
+    router.push(
+      APP_ROUTES.platformAdmin.organizationMaintenanceFor(
+        organizationId,
+      ) as never,
+    );
+  }, []);
 
   /**
    * Resolve and persist an organization lifecycle status.

@@ -601,6 +601,7 @@ export default function OrgAdminMemberships() {
   const handlePreview = () => {
     router.push({
       pathname: APP_ROUTES.orgAdmin.customerExperienceSection(
+        organization.id,
         "membership",
       ) as never,
       params: {

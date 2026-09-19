@@ -64,6 +64,7 @@ import type { TemplateService } from "./template";
 import type { CustomerExperienceService } from "./customer-experience";
 import type { CustomerExperienceReleaseService } from "./customer-experience-release";
 import type { NotificationService } from "./notification";
+import { OrganizationMaintenanceService } from "./organization-maintenance-service";
 
 const organizationService: OrganizationService = new LocalOrganizationService(
   mockServices.organization,
@@ -146,6 +147,9 @@ const orgAdminTransactions = new OrgAdminTransactionReadService(
 const orgAdminCustomers = new OrgAdminCustomerService(new OrgAdminCustomerApi());
 const counter = new CounterService(new CounterApi());
 const customerData = new CustomerDataService(new CustomerDataApi());
+const organizationMaintenance = new OrganizationMaintenanceService(
+  apis.organizationMaintenance,
+);
 const offerRedemptionService: OfferRedemptionService =
   new LocalOfferRedemptionService(apis.offerRedemption);
 const customerPreferenceService = new LocalCustomerPreferenceService(
@@ -167,6 +171,7 @@ export type MemgineServices = {
   orgAdminCustomers: OrgAdminCustomerService;
   counter: CounterService;
   customerData: CustomerDataService;
+  organizationMaintenance: OrganizationMaintenanceService;
   offerRedemption: OfferRedemptionService;
   status: StatusService;
   auth: CustomerAuthService;
@@ -204,6 +209,7 @@ export const services: MemgineServices = {
   orgAdminCustomers,
   counter,
   customerData,
+  organizationMaintenance,
   offerRedemption: offerRedemptionService,
   status: statusService,
   auth: mockServices.auth,

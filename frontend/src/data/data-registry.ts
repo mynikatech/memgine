@@ -21,6 +21,7 @@ import { OfferRedemptionApi } from "./api/offer-redemption-api";
 import { OrganizationUserApi } from "./api/organization-user-api";
 import { NotificationConfigurationApi } from "./api/notification-configuration-api";
 import { IntegrationConfigurationApi } from "./api/integration-configuration-api";
+import { OrganizationMaintenanceApi } from "./api/organization-maintenance-api";
 
 import { LocalBrandingRepository } from "./repositories/branding/branding-repository.local";
 import { LocalOrganizationMembersRepository } from "./repositories/organization/organization-members.repository.local";
@@ -108,4 +109,5 @@ export const apis = {
     offerRedemptionQRContextRepository,
   ),
   organizationUser: new OrganizationUserApi(),
+  organizationMaintenance: new OrganizationMaintenanceApi(),
 } as const;

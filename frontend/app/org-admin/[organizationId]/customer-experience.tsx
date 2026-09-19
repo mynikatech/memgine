@@ -145,12 +145,17 @@ export default function CustomerExperienceConfiguration() {
   }, [definition]);
 
   const openFinalReview = () => {
-    router.push(APP_ROUTES.orgAdmin.customerExperiencePreview as never);
+    router.push(
+      APP_ROUTES.orgAdmin.customerExperiencePreview(organization.id) as never,
+    );
   };
 
   const openSectionPreview = (section: SectionKey) => {
     router.push(
-      APP_ROUTES.orgAdmin.customerExperienceSection(section) as never,
+      APP_ROUTES.orgAdmin.customerExperienceSection(
+        organization.id,
+        section,
+      ) as never,
     );
   };
 

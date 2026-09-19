@@ -50,16 +50,21 @@ export function AdminShell({ title, subtitle, icon, items }: Props) {
     },
   );
 
+  const activeHref = items
+    .flatMap((item) => [item.href, ...(item.children?.map((child) => child.href) ?? [])])
+    .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
+    .sort((left, right) => right.length - left.length)[0];
+
   const Nav = ({ horizontal }: { horizontal?: boolean }) => (
     <View style={horizontal ? styles.navRow : styles.nav}>
       {items.map((item) => {
         const hasChildren = item.children && item.children.length > 0;
 
         const childActive = item.children?.some(
-          (child) => pathname === child.href,
+          (child) => child.href === activeHref,
         );
 
-        const active = pathname === item.href || !!childActive;
+        const active = item.href === activeHref || !!childActive;
 
         const expanded = expandedRoutes[item.href] ?? false;
 
@@ -110,7 +115,7 @@ export function AdminShell({ title, subtitle, icon, items }: Props) {
             {hasChildren && expanded ? (
               <View style={horizontal ? styles.subNavRow : styles.subNav}>
                 {item.children?.map((child) => {
-                  const childIsActive = pathname === child.href;
+                  const childIsActive = child.href === activeHref;
 
                   return (
                     <Pressable

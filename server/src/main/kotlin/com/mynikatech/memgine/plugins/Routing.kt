@@ -35,6 +35,9 @@ import com.mynikatech.memgine.component.organization.organizationRoutes
 import com.mynikatech.memgine.component.organizationuser.OrganizationUserService
 import com.mynikatech.memgine.component.organizationuser.OrganizationUserSql
 import com.mynikatech.memgine.component.organizationuser.organizationUserRoutes
+import com.mynikatech.memgine.component.organizationmaintenance.OrganizationMaintenanceService
+import com.mynikatech.memgine.component.organizationmaintenance.OrganizationMaintenanceSql
+import com.mynikatech.memgine.component.organizationmaintenance.organizationMaintenanceRoutes
 import com.mynikatech.memgine.component.role.RbacService
 import com.mynikatech.memgine.component.role.RbacSql
 import com.mynikatech.memgine.component.role.rbacRoutes
@@ -72,6 +75,10 @@ fun Application.configureRouting(
             database.jdbi.onDemand(OrganizationUserSql::class.java)
         )
     val rbacService = RbacService(database.jdbi.onDemand(RbacSql::class.java))
+    val organizationMaintenanceService =
+        OrganizationMaintenanceService(
+            database.jdbi.onDemand(OrganizationMaintenanceSql::class.java)
+        )
 
     val storeService =
         StoreService(
@@ -110,6 +117,7 @@ fun Application.configureRouting(
             rbacRoutes(rbacService, customerDevIdentityEnabled)
             organizationRoutes(organizationService)
             organizationUserRoutes(organizationUserService)
+            organizationMaintenanceRoutes(organizationMaintenanceService)
 
             // Batch 2A
             storeRoutes(storeService)
