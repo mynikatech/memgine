@@ -57,6 +57,11 @@ dependencies {
     implementation(libs.aws.sns)
     implementation(libs.aws.sqs)
     implementation(libs.aws.ses)
+    implementation(libs.aws.pinpoint.sms.voice.v2)
+
+    // Authentication and canonical international phone identity.
+    implementation(libs.libphonenumber)
+    implementation(libs.argon2.jvm)
 
     // -------------------------
     // Tests

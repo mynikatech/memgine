@@ -13,14 +13,14 @@ export type EffectiveRole = { roleId: ID; roleCode: RoleCode; organizationId: ID
 export type EffectiveCapability = { capabilityCode: Capability; organizationId: ID | null };
 export type AssignRoleInput = {
   userId: ID; effectiveFrom?: string | null; effectiveTo?: string | null;
-  reason?: string | null; actorUserId: ID;
+  reason?: string | null;
 };
 
 const userPath = (userId: ID) => `/api/v1/dev/rbac/users/${encodeURIComponent(userId)}`;
 const scopeQuery = (organizationId?: ID) =>
   organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";
 
-/** Local/Dev identity API. Future authentication replaces the caller identity seam. */
+/** Local/Dev RBAC maintenance API. The server derives mutation actors from the authenticated session. */
 export class RbacApi {
   roles(): Promise<ApiResult<RbacRole[]>> {
     return httpClient.get("/api/v1/dev/rbac/roles");
@@ -43,14 +43,14 @@ export class RbacApi {
   assignOrganizationRole(organizationId: ID, input: AssignRoleInput & { roleCode: RoleCode }): Promise<ApiResult<{ assignmentId: ID }>> {
     return httpClient.post(`/api/v1/dev/rbac/organizations/${encodeURIComponent(organizationId)}/assignments`, input);
   }
-  revokeOrganizationRole(organizationId: ID, assignmentId: ID, actorUserId: ID): Promise<ApiResult<{ revoked: boolean }>> {
-    return httpClient.post(`/api/v1/dev/rbac/organizations/${encodeURIComponent(organizationId)}/assignments/${encodeURIComponent(assignmentId)}/revoke`, { actorUserId });
+  revokeOrganizationRole(organizationId: ID, assignmentId: ID): Promise<ApiResult<{ revoked: boolean }>> {
+    return httpClient.post(`/api/v1/dev/rbac/organizations/${encodeURIComponent(organizationId)}/assignments/${encodeURIComponent(assignmentId)}/revoke`, {});
   }
   assignPlatformRole(input: AssignRoleInput): Promise<ApiResult<{ assignmentId: ID }>> {
     return httpClient.post("/api/v1/dev/rbac/platform-assignments", input);
   }
-  revokePlatformRole(assignmentId: ID, actorUserId: ID): Promise<ApiResult<{ revoked: boolean }>> {
-    return httpClient.post(`/api/v1/dev/rbac/platform-assignments/${encodeURIComponent(assignmentId)}/revoke`, { actorUserId });
+  revokePlatformRole(assignmentId: ID): Promise<ApiResult<{ revoked: boolean }>> {
+    return httpClient.post(`/api/v1/dev/rbac/platform-assignments/${encodeURIComponent(assignmentId)}/revoke`, {});
   }
 }
 

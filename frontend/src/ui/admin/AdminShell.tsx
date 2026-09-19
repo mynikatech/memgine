@@ -12,6 +12,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useState } from "react";
 import type { AdminRoute } from "@/src/constants/navigation";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
+import { APP_ROUTES } from "@/src/constants/navigation";
+import { useAuth } from "@/src/providers/AuthProvider";
 
 /**
  * AdminShell — a reusable, desktop-first responsive admin layout shared by the
@@ -32,6 +34,7 @@ export function AdminShell({ title, subtitle, icon, items }: Props) {
   const pathname = usePathname();
   const { width } = useWindowDimensions();
   const isWide = width >= 900;
+  const { logout } = useAuth();
 
   const Brand = () => (
     <View style={styles.brand}>
@@ -167,7 +170,9 @@ export function AdminShell({ title, subtitle, icon, items }: Props) {
         <View style={styles.sidebar} testID="admin-sidebar">
           <Brand />
           <Nav />
-          <Text style={styles.footer}>Memgine Admin</Text>
+          <Pressable onPress={() => void logout().then(() => router.replace(APP_ROUTES.login as never))}>
+            <Text style={styles.footer}>Sign out</Text>
+          </Pressable>
         </View>
       ) : (
         <View style={styles.topbar} testID="admin-topbar">

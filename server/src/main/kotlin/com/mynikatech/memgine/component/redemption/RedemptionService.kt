@@ -6,9 +6,7 @@ import com.mynikatech.memgine.net.dto.OrgAdminRedemptionDto
 
 class RedemptionService(private val sql: RedemptionSql) {
     // Current Org Admin components use the development actor until request auth is wired.
-    private val actorUserId = "user-org-admin"
-
-    fun listForOrganization(organizationId: String): List<OrgAdminRedemptionDto> {
+    fun listForOrganization(organizationId: String, actorUserId: String): List<OrgAdminRedemptionDto> {
         if (organizationId.isBlank() || organizationId.length > 40) {
             throw BadRequestException("Invalid organization id")
         }

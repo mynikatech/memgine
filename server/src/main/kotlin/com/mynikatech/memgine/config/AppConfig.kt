@@ -5,7 +5,9 @@ import java.util.Properties
 
 data class AppConfig(
     val server: ServerConfig,
-    val database: DatabaseConfig
+    val database: DatabaseConfig,
+    val authentication: AuthenticationConfig,
+    val otp: OtpConfig
 ) {
     companion object {
         fun load(config: ApplicationConfig? = null): AppConfig {
@@ -15,31 +17,123 @@ data class AppConfig(
                     ?.use { load(it) }
             }
 
-            fun value(path: String, env: String, default: String? = null): String =
+            fun optionalValue(path: String, env: String): String? =
                 System.getenv(env)
                     ?: localProperties.getProperty(env)
                     ?: config?.propertyOrNull(path)?.getString()
+
+            fun value(
+                path: String,
+                env: String,
+                default: String? = null
+            ): String =
+                optionalValue(path, env)
                     ?: default
                     ?: error("Missing configuration: $env / $path")
+
+            fun booleanValue(
+                path: String,
+                env: String,
+                default: Boolean? = null
+            ): Boolean {
+                val rawValue = optionalValue(path, env)
+                    ?: default?.toString()
+                    ?: error("Missing configuration: $env / $path")
+
+                return rawValue.toBooleanStrictOrNull()
+                    ?: error("Invalid boolean configuration: $env=$rawValue")
+            }
+
+            val environment = value(
+                "memgine.server.environment",
+                "MEMGINE_ENVIRONMENT"
+            ).lowercase()
+
+            val enforceHttps = booleanValue(
+                "memgine.server.enforceHttps",
+                "MEMGINE_ENFORCE_HTTPS"
+            )
+
+            val otpProvider = value(
+                "memgine.otp.provider",
+                "MEMGINE_OTP_PROVIDER"
+            ).uppercase()
+
+            if (
+                otpProvider == "DEV" &&
+                environment !in setOf("local", "dev", "development")
+            ) {
+                error(
+                    "DevOtpProvider cannot be used outside local/development environments"
+                )
+            }
+
+            val otpPepper = value(
+                "memgine.otp.pepper",
+                "MEMGINE_OTP_PEPPER"
+            )
+
+            val allowedRegions = value(
+                "memgine.otp.allowedRegions",
+                "MEMGINE_OTP_ALLOWED_REGIONS"
+            )
+                .split(',')
+                .map(String::trim)
+                .filter(String::isNotEmpty)
+                .map(String::uppercase)
+                .toSet()
+
+            require(allowedRegions.isNotEmpty()) {
+                "MEMGINE_OTP_ALLOWED_REGIONS must contain at least one region"
+            }
+
+            val awsRegion = optionalValue(
+                "memgine.otp.awsRegion",
+                "MEMGINE_OTP_AWS_REGION"
+            ).orEmpty()
+
+            val awsConfigurationSet = optionalValue(
+                "memgine.otp.awsConfigurationSet",
+                "MEMGINE_OTP_AWS_CONFIGURATION_SET"
+            ).orEmpty()
+
+            val awsOriginationIdentity = optionalValue(
+                "memgine.otp.awsOriginationIdentity",
+                "MEMGINE_OTP_AWS_ORIGINATION_IDENTITY"
+            ).orEmpty()
+
+            if (otpProvider == "AWS_END_USER_MESSAGING_SMS") {
+                require(awsRegion.isNotBlank()) {
+                    "MEMGINE_OTP_AWS_REGION is required when AWS SMS provider is enabled"
+                }
+
+                require(awsOriginationIdentity.isNotBlank()) {
+                    "MEMGINE_OTP_AWS_ORIGINATION_IDENTITY is required when AWS SMS provider is enabled"
+                }
+            }
 
             return AppConfig(
                 server = ServerConfig(
                     host = value(
                         "ktor.deployment.host",
-                        "MEMGINE_SERVER_HOST",
-                        "0.0.0.0"
+                        "MEMGINE_SERVER_HOST"
                     ),
                     port = value(
                         "ktor.deployment.port",
-                        "MEMGINE_SERVER_PORT",
-                        "8080"
+                        "MEMGINE_SERVER_PORT"
                     ).toInt(),
-                    enforceHttps = value(
-                        "memgine.server.enforceHttps",
-                        "MEMGINE_ENFORCE_HTTPS",
-                        "false"
-                    ).toBoolean()
+                    enforceHttps = enforceHttps,
+                    environment = environment,
+                    corsAllowedHosts = value(
+                        "memgine.server.corsAllowedHosts",
+                        "MEMGINE_CORS_ALLOWED_HOSTS"
+                    )
+                        .split(',')
+                        .map(String::trim)
+                        .filter(String::isNotEmpty)
+                        .toSet()
                 ),
+
                 database = DatabaseConfig(
                     jdbcUrl = value(
                         "memgine.database.jdbcUrl",
@@ -55,14 +149,56 @@ data class AppConfig(
                     ),
                     schema = value(
                         "memgine.database.schema",
-                        "MEMGINE_DB_SCHEMA",
-                        "memginedev"
+                        "MEMGINE_DB_SCHEMA"
                     ),
                     maximumPoolSize = value(
                         "memgine.database.maximumPoolSize",
                         "MEMGINE_DB_POOL_SIZE",
                         "10"
                     ).toInt()
+                ),
+
+                authentication = AuthenticationConfig(
+                    sessionDurationMinutes = value(
+                        "memgine.authentication.sessionDurationMinutes",
+                        "MEMGINE_AUTH_SESSION_MINUTES",
+                        "480"
+                    ).toLong(),
+                    cookieName = value(
+                        "memgine.authentication.cookieName",
+                        "MEMGINE_AUTH_COOKIE_NAME",
+                        "memgine_session"
+                    ),
+                    secureCookie = enforceHttps,
+                    passwordMinimumLength = value(
+                        "memgine.authentication.passwordMinimumLength",
+                        "MEMGINE_AUTH_PASSWORD_MIN_LENGTH",
+                        "12"
+                    ).toInt()
+                ),
+
+                otp = OtpConfig(
+                    provider = otpProvider,
+                    pepper = otpPepper,
+                    ttlSeconds = value(
+                        "memgine.otp.ttlSeconds",
+                        "MEMGINE_OTP_TTL_SECONDS",
+                        "300"
+                    ).toLong(),
+                    cooldownSeconds = value(
+                        "memgine.otp.cooldownSeconds",
+                        "MEMGINE_OTP_COOLDOWN_SECONDS",
+                        "60"
+                    ).toInt(),
+                    maxAttempts = value(
+                        "memgine.otp.maxAttempts",
+                        "MEMGINE_OTP_MAX_ATTEMPTS",
+                        "5"
+                    ).toInt(),
+                    allowedRegions = allowedRegions,
+                    awsRegion = awsRegion,
+                    awsConfigurationSet = awsConfigurationSet,
+                    awsOriginationIdentity = awsOriginationIdentity
                 )
             )
         }
@@ -72,7 +208,28 @@ data class AppConfig(
 data class ServerConfig(
     val host: String,
     val port: Int,
-    val enforceHttps: Boolean
+    val enforceHttps: Boolean,
+    val environment: String,
+    val corsAllowedHosts: Set<String>
+)
+
+data class AuthenticationConfig(
+    val sessionDurationMinutes: Long,
+    val cookieName: String,
+    val secureCookie: Boolean,
+    val passwordMinimumLength: Int
+)
+
+data class OtpConfig(
+    val provider: String,
+    val pepper: String,
+    val ttlSeconds: Long,
+    val cooldownSeconds: Int,
+    val maxAttempts: Int,
+    val allowedRegions: Set<String>,
+    val awsRegion: String,
+    val awsConfigurationSet: String,
+    val awsOriginationIdentity: String
 )
 
 data class DatabaseConfig(

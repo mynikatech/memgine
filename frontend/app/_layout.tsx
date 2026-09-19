@@ -7,6 +7,7 @@ import { services } from "@/src/core";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import {
   BusinessProvider,
+  AuthProvider,
   CustomerContextProvider,
   LocalizationProvider,
 } from "@/src/providers";
@@ -65,14 +66,16 @@ export default function RootLayout() {
   // Reusable foundation providers (Stage 2B). Business context + localization
   // are available to all routes; the Stage 1 navigation shells are unchanged.
   return (
-    <BusinessProvider>
-      <LocalizationProvider>
+    <AuthProvider>
+      <BusinessProvider>
+        <LocalizationProvider>
         <CustomerContextProvider>
           <CounterSessionProvider>
             <Stack screenOptions={{ headerShown: false }} />
           </CounterSessionProvider>
         </CustomerContextProvider>
-      </LocalizationProvider>
-    </BusinessProvider>
+        </LocalizationProvider>
+      </BusinessProvider>
+    </AuthProvider>
   );
 }

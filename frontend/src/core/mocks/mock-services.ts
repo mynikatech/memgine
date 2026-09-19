@@ -2994,13 +2994,6 @@ export class InMemoryCustomerAuthService implements CustomerAuthService {
       mobile: input.mobile.trim(),
     });
 
-    console.log("OTP SEND", {
-      requestId,
-      devCode,
-      mobile: input.mobile.trim(),
-      stored: this.codes.get(requestId),
-    });
-
     return {
       requestId,
       devCode,
@@ -3009,14 +3002,6 @@ export class InMemoryCustomerAuthService implements CustomerAuthService {
 
   async verifyOtp(input: VerifyOtpInput): Promise<VerifyOtpResult> {
     const entry = this.codes.get(input.requestId);
-
-    console.log("OTP VERIFY", {
-      requestId: input.requestId,
-      enteredCode: input.code.trim(),
-      entry,
-      storedCode: entry?.code,
-      match: entry?.code === input.code.trim(),
-    });
 
     const verified = !!entry && entry.code === input.code.trim();
 

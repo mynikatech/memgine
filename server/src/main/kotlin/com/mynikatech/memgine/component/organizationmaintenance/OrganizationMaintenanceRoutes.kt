@@ -12,16 +12,17 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
+import com.mynikatech.memgine.security.authenticatedPrincipal
 
 fun Route.organizationMaintenanceRoutes(service: OrganizationMaintenanceService) {
     route("/platform/organizations/{organizationId}/administrative-users") {
         get {
-            call.respond(ApiResponse.success(service.list(call.organizationId()), call.callId))
+            call.respond(ApiResponse.success(service.list(call.organizationId(), call.authenticatedPrincipal().userId), call.callId))
         }
         post {
             call.respond(
                 ApiResponse.success(
-                    service.create(call.organizationId(), call.receive()),
+                    service.create(call.organizationId(), call.receive(), call.authenticatedPrincipal().userId),
                     call.callId
                 )
             )
@@ -33,7 +34,8 @@ fun Route.organizationMaintenanceRoutes(service: OrganizationMaintenanceService)
                 ApiResponse.success(
                     service.update(
                         call.organizationId(), userId,
-                        call.receive<SaveOrganizationAdministrativeUserRequest>()
+                        call.receive<SaveOrganizationAdministrativeUserRequest>(),
+                        call.authenticatedPrincipal().userId
                     ),
                     call.callId
                 )

@@ -8,38 +8,40 @@ import com.mynikatech.memgine.net.dto.OrganizationAdministrativeUserDto
 import com.mynikatech.memgine.net.dto.SaveOrganizationAdministrativeUserRequest
 import java.time.LocalDateTime
 import org.postgresql.util.PSQLException
+import com.mynikatech.memgine.security.PhoneNormalizer
 
-class OrganizationMaintenanceService(private val sql: OrganizationMaintenanceSql) {
-    fun list(organizationId: String): List<OrganizationAdministrativeUserDto> =
-        read { sql.list(requiredId(organizationId), PLATFORM_ADMIN_USER_ID).map(::toDto) }
+class OrganizationMaintenanceService(
+    private val sql: OrganizationMaintenanceSql,
+    private val phoneNormalizer: PhoneNormalizer = PhoneNormalizer()
+) {
+    fun list(organizationId: String, actorUserId: String): List<OrganizationAdministrativeUserDto> =
+        read { sql.list(requiredId(organizationId), requiredId(actorUserId)).map(::toDto) }
 
     fun create(
         organizationId: String,
-        request: SaveOrganizationAdministrativeUserRequest
-    ): OrganizationAdministrativeUserDto = save(organizationId, null, request)
+        request: SaveOrganizationAdministrativeUserRequest, actorUserId: String
+    ): OrganizationAdministrativeUserDto = save(organizationId, null, request, actorUserId)
 
     fun update(
         organizationId: String,
         userId: String,
-        request: SaveOrganizationAdministrativeUserRequest
-    ): OrganizationAdministrativeUserDto = save(organizationId, requiredId(userId), request)
+        request: SaveOrganizationAdministrativeUserRequest, actorUserId: String
+    ): OrganizationAdministrativeUserDto = save(organizationId, requiredId(userId), request, actorUserId)
 
     private fun save(
         organizationId: String,
         userId: String?,
-        request: SaveOrganizationAdministrativeUserRequest
+        request: SaveOrganizationAdministrativeUserRequest,
+        actorUserId: String
     ): OrganizationAdministrativeUserDto {
         val firstName = request.firstName.trim()
         val lastName = request.lastName?.trim()?.takeIf(String::isNotEmpty)
         val email = request.primaryEmail?.trim()?.lowercase()?.takeIf(String::isNotEmpty)
-        val phone = request.primaryPhone.replace(Regex("[^0-9+]"), "")
+        val phone = phoneNormalizer.normalize(request.primaryPhone, null).e164
         val role = request.roleCode.trim().uppercase()
 
         if (firstName.isEmpty() || firstName.length > 100 || (lastName?.length ?: 0) > 100) {
             throw BadRequestException("A valid first name and last name are required")
-        }
-        if (!phone.matches(Regex("^\\+[1-9][0-9]{7,14}$"))) {
-            throw BadRequestException("Phone must include a valid country calling code")
         }
         if (email != null && (email.length > 254 || !email.matches(EMAIL))) {
             throw BadRequestException("Email address is invalid")
@@ -54,7 +56,7 @@ class OrganizationMaintenanceService(private val sql: OrganizationMaintenanceSql
                 sql.save(
                     requiredId(organizationId), userId, firstName, lastName, email,
                     phone, role, request.effectiveFrom, request.effectiveTo,
-                    PLATFORM_ADMIN_USER_ID
+                    requiredId(actorUserId)
                 )
             )
         }
@@ -110,7 +112,6 @@ class OrganizationMaintenanceService(private val sql: OrganizationMaintenanceSql
         )
 
     private companion object {
-        const val PLATFORM_ADMIN_USER_ID = "user-platform-admin"
         val ADMINISTRATIVE_ROLES = setOf("BUSINESS_OWNER", "ORG_ADMIN")
         val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
     }

@@ -12,3 +12,4 @@ export {
 } from "./CustomerContextProvider";
 export type { ActiveCustomerContext } from "./CustomerContextProvider";
 export { LocalizationProvider, useTranslation } from "./LocalizationProvider";
+export { AuthProvider, useAuth } from "./AuthProvider";

@@ -9,7 +9,7 @@ import { APP_ROUTES } from "@/src/constants/navigation";
  */
 export default function Index() {
   if (Platform.OS === "web") {
-    return <Redirect href={APP_ROUTES.counter.root} />;
+    return <Redirect href={APP_ROUTES.workspaces} />;
   }
   return <Redirect href={APP_ROUTES.customer.cards} />;
 }

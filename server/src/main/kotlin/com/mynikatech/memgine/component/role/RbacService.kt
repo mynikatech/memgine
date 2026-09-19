@@ -27,23 +27,23 @@ class RbacService(private val sql: RbacSql) {
         RbacCheckResultDto(sql.hasCapability(required(userId, "User"), organizationId,
             required(capabilityCode, "Capability")))
 
-    fun assignOrganizationRole(organizationId: String, request: RbacAssignOrganizationRoleRequest): RbacAssignmentResultDto {
+    fun assignOrganizationRole(organizationId: String, request: RbacAssignOrganizationRoleRequest, actorUserId: String): RbacAssignmentResultDto {
         validateDates(request.effectiveFrom, request.effectiveTo)
         return RbacAssignmentResultDto(write { sql.assignOrganizationRole(required(organizationId, "Organization"),
             required(request.userId, "User"), required(request.roleCode, "Role"),
-            request.effectiveFrom, request.effectiveTo, request.reason, required(request.actorUserId, "Actor")) })
+            request.effectiveFrom, request.effectiveTo, request.reason, required(actorUserId, "Actor")) })
     }
-    fun revokeOrganizationRole(organizationId: String, assignmentId: String, request: RbacRevokeRoleRequest) =
+    fun revokeOrganizationRole(organizationId: String, assignmentId: String, actorUserId: String) =
         RbacRevocationResultDto(write { sql.revokeOrganizationRole(required(organizationId, "Organization"),
-            required(assignmentId, "Assignment"), required(request.actorUserId, "Actor")) })
-    fun assignPlatformRole(request: RbacAssignPlatformRoleRequest): RbacAssignmentResultDto {
+            required(assignmentId, "Assignment"), required(actorUserId, "Actor")) })
+    fun assignPlatformRole(request: RbacAssignPlatformRoleRequest, actorUserId: String): RbacAssignmentResultDto {
         validateDates(request.effectiveFrom, request.effectiveTo)
         return RbacAssignmentResultDto(write { sql.assignPlatformRole(required(request.userId, "User"),
-            request.effectiveFrom, request.effectiveTo, request.reason, required(request.actorUserId, "Actor")) })
+            request.effectiveFrom, request.effectiveTo, request.reason, required(actorUserId, "Actor")) })
     }
-    fun revokePlatformRole(assignmentId: String, request: RbacRevokeRoleRequest) =
+    fun revokePlatformRole(assignmentId: String, actorUserId: String) =
         RbacRevocationResultDto(write { sql.revokePlatformRole(required(assignmentId, "Assignment"),
-            required(request.actorUserId, "Actor")) })
+            required(actorUserId, "Actor")) })
 
     private fun <T> write(action: () -> T): T = try {
         action()

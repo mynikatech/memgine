@@ -6,6 +6,7 @@ import com.mynikatech.memgine.net.dto.CreateStaffTransactionRequestDto
 import com.mynikatech.memgine.net.dto.CreateStaffStoreAssignmentRequestDto
 import com.mynikatech.memgine.net.dto.UpdateStaffRequestDto
 import com.mynikatech.memgine.net.dto.UpdateStaffStoreAssignmentRequestDto
+import com.mynikatech.memgine.security.authenticatedPrincipal
 import io.ktor.server.application.call
 import io.ktor.server.plugins.callid.callId
 import io.ktor.server.request.receive
@@ -40,7 +41,8 @@ fun Route.staffRoutes(service: StaffService) {
                     ApiResponse.success(
                         service.create(
                             organizationId,
-                            request
+                            request,
+                            call.authenticatedPrincipal().userId
                         ),
                         call.callId
                     )
@@ -54,13 +56,13 @@ fun Route.staffRoutes(service: StaffService) {
                     call.receive<
                         UpdateStaffRequestDto
                     >()
-                call.respond(ApiResponse.success(service.update(organizationId, staffId, request), call.callId))
+                call.respond(ApiResponse.success(service.update(organizationId, staffId, request, call.authenticatedPrincipal().userId), call.callId))
             }
 
             delete("/{staffId}") {
                 val organizationId = required(call.parameters["organizationId"], "Organization")
                 val staffId = required(call.parameters["staffId"], "Staff")
-                call.respond(ApiResponse.success(service.delete(organizationId, staffId), call.callId))
+                call.respond(ApiResponse.success(service.delete(organizationId, staffId, call.authenticatedPrincipal().userId), call.callId))
             }
         }
 
@@ -73,20 +75,20 @@ fun Route.staffRoutes(service: StaffService) {
             post {
                 val organizationId = required(call.parameters["organizationId"], "Organization")
                 val request = call.receive<CreateStaffStoreAssignmentRequestDto>()
-                call.respond(ApiResponse.success(service.createAssignment(organizationId, request), call.callId))
+                call.respond(ApiResponse.success(service.createAssignment(organizationId, request, call.authenticatedPrincipal().userId), call.callId))
             }
 
             put("/{assignmentId}") {
                 val organizationId = required(call.parameters["organizationId"], "Organization")
                 val assignmentId = required(call.parameters["assignmentId"], "Assignment")
                 val request = call.receive<UpdateStaffStoreAssignmentRequestDto>()
-                call.respond(ApiResponse.success(service.updateAssignment(organizationId, assignmentId, request), call.callId))
+                call.respond(ApiResponse.success(service.updateAssignment(organizationId, assignmentId, request, call.authenticatedPrincipal().userId), call.callId))
             }
 
             delete("/{assignmentId}") {
                 val organizationId = required(call.parameters["organizationId"], "Organization")
                 val assignmentId = required(call.parameters["assignmentId"], "Assignment")
-                call.respond(ApiResponse.success(service.deleteAssignment(organizationId, assignmentId), call.callId))
+                call.respond(ApiResponse.success(service.deleteAssignment(organizationId, assignmentId, call.authenticatedPrincipal().userId), call.callId))
             }
         }
     }

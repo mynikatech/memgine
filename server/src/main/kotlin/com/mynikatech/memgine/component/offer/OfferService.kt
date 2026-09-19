@@ -12,28 +12,27 @@ import java.time.LocalDate
 import java.time.LocalTime
 
 class OfferService(private val jdbi: Jdbi) {
-    private val actorUserId = "user-org-admin"
 
-    fun list(organizationId: String): List<OfferDto> {
+    fun list(organizationId: String, actorUserId: String): List<OfferDto> {
         validateId(organizationId, 40)
-        requireOrganizationAdmin(organizationId)
+        requireOrganizationAdmin(organizationId, actorUserId)
         return jdbi.onDemand(OfferSql::class.java).list(organizationId, actorUserId)
     }
 
-    fun get(organizationId: String, offerId: String): OfferDto {
+    fun get(organizationId: String, offerId: String, actorUserId: String): OfferDto {
         validateId(organizationId, 40)
         validateId(offerId, 40)
-        requireOrganizationAdmin(organizationId)
+        requireOrganizationAdmin(organizationId, actorUserId)
         return jdbi.onDemand(OfferSql::class.java).get(organizationId, offerId, actorUserId)
             ?: throw NotFoundException("Offer not found")
     }
 
-    fun rules(organizationId: String, offerId: String): List<OfferUsageRuleDto> {
-        get(organizationId, offerId)
+    fun rules(organizationId: String, offerId: String, actorUserId: String): List<OfferUsageRuleDto> {
+        get(organizationId, offerId, actorUserId)
         return jdbi.onDemand(OfferSql::class.java).rules(organizationId, offerId, actorUserId)
     }
 
-    fun save(organizationId: String, request: OfferWriteDto, create: Boolean): OfferBundleDto {
+    fun save(organizationId: String, request: OfferWriteDto, create: Boolean, actorUserId: String): OfferBundleDto {
         validateId(organizationId, 40)
         validateId(request.id, 40)
         if (request.offerCode.isBlank() || request.offerCode.length > 50 ||
@@ -118,8 +117,8 @@ class OfferService(private val jdbi: Jdbi) {
         }
     }
 
-    fun delete(organizationId: String, offerId: String): DeleteOfferDto {
-        val current = get(organizationId, offerId)
+    fun delete(organizationId: String, offerId: String, actorUserId: String): DeleteOfferDto {
+        val current = get(organizationId, offerId, actorUserId)
         try {
             jdbi.onDemand(OfferSql::class.java)
                 .delete(organizationId, offerId, current.versionNo, actorUserId)
@@ -133,7 +132,7 @@ class OfferService(private val jdbi: Jdbi) {
         if (id.isBlank() || id.length > maxLength) throw BadRequestException("Invalid id")
     }
 
-    private fun requireOrganizationAdmin(organizationId: String) {
+    private fun requireOrganizationAdmin(organizationId: String, actorUserId: String) {
         if (!jdbi.onDemand(OfferSql::class.java).canAdminister(organizationId, actorUserId)) {
             throw ForbiddenException("Organization access denied")
         }

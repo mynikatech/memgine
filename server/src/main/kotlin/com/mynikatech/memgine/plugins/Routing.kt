@@ -38,6 +38,10 @@ import com.mynikatech.memgine.component.organizationuser.organizationUserRoutes
 import com.mynikatech.memgine.component.organizationmaintenance.OrganizationMaintenanceService
 import com.mynikatech.memgine.component.organizationmaintenance.OrganizationMaintenanceSql
 import com.mynikatech.memgine.component.organizationmaintenance.organizationMaintenanceRoutes
+import com.mynikatech.memgine.component.auth.AuthenticationService
+import com.mynikatech.memgine.component.auth.AuthenticationSql
+import com.mynikatech.memgine.component.auth.authenticationRoutes
+import com.mynikatech.memgine.component.otp.*
 import com.mynikatech.memgine.component.role.RbacService
 import com.mynikatech.memgine.component.role.RbacSql
 import com.mynikatech.memgine.component.role.rbacRoutes
@@ -49,6 +53,9 @@ import com.mynikatech.memgine.component.store.StoreService
 import com.mynikatech.memgine.component.store.StoreSql
 import com.mynikatech.memgine.component.store.storeRoutes
 import com.mynikatech.memgine.database.DatabaseContext
+import com.mynikatech.memgine.config.AppConfig
+import com.mynikatech.memgine.security.PhoneNormalizer
+import com.mynikatech.memgine.security.installAuthenticationGate
 import com.mynikatech.memgine.model.common.ApiResponse
 import io.ktor.server.application.Application
 import io.ktor.server.application.call
@@ -63,11 +70,27 @@ fun Application.configureRouting(
     referenceDataService: ReferenceDataService,
     entityStatusService: EntityStatusService,
     brandingAssetService: BrandingAssetService,
-    customerDevIdentityEnabled: Boolean
+    config: AppConfig
 ) {
+    val customerDevIdentityEnabled = config.server.environment in setOf("local", "dev", "development")
+    val phoneNormalizer = PhoneNormalizer()
+    val otpProvider: OtpProvider = when (config.otp.provider) {
+        "DEV" -> DevOtpProvider(config.server.environment)
+        "AWS", "AWS_SMS", "AWS_END_USER_MESSAGING_SMS" -> AwsEndUserMessagingSmsProvider(config.otp)
+        else -> error("Unsupported OTP provider: ${config.otp.provider}")
+    }
+    val otpService = OtpService(
+        database.jdbi.onDemand(OtpSql::class.java), phoneNormalizer,
+        OtpProviderRouter(config.otp, otpProvider), config.otp
+    )
+    val authenticationService = AuthenticationService(
+        database.jdbi.onDemand(AuthenticationSql::class.java), otpService,
+        phoneNormalizer, config.authentication
+    )
+    installAuthenticationGate(authenticationService, config.authentication)
     val organizationService =
         OrganizationService(
-            database.jdbi.onDemand(OrganizationSql::class.java)
+            database.jdbi.onDemand(OrganizationSql::class.java), phoneNormalizer
         )
 
     val organizationUserService =
@@ -77,7 +100,7 @@ fun Application.configureRouting(
     val rbacService = RbacService(database.jdbi.onDemand(RbacSql::class.java))
     val organizationMaintenanceService =
         OrganizationMaintenanceService(
-            database.jdbi.onDemand(OrganizationMaintenanceSql::class.java)
+            database.jdbi.onDemand(OrganizationMaintenanceSql::class.java), phoneNormalizer
         )
 
     val storeService =
@@ -87,7 +110,7 @@ fun Application.configureRouting(
 
     val staffService =
         StaffService(
-            database.jdbi
+            database.jdbi, phoneNormalizer
         )
     val benefitService = BenefitService(database.jdbi)
     val membershipProductService = MembershipProductService(database.jdbi)
@@ -114,6 +137,7 @@ fun Application.configureRouting(
         }
 
         route("/api/v1") {
+            authenticationRoutes(authenticationService, config.authentication)
             rbacRoutes(rbacService, customerDevIdentityEnabled)
             organizationRoutes(organizationService)
             organizationUserRoutes(organizationUserService)
@@ -131,7 +155,7 @@ fun Application.configureRouting(
             subscriptionRoutes(subscriptionService)
             redemptionRoutes(redemptionService)
             customerRoutes(customerService)
-            customerSelfServiceRoutes(customerService)
+            if (customerDevIdentityEnabled) customerSelfServiceRoutes(customerService)
             counterRoutes(counterService)
             notificationConfigurationRoutes(notificationConfigurationService)
             integrationConfigurationRoutes(integrationConfigurationService)

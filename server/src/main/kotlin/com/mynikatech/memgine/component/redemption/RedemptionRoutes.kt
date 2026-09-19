@@ -8,13 +8,14 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.route
+import com.mynikatech.memgine.security.authenticatedPrincipal
 
 fun Route.redemptionRoutes(service: RedemptionService) {
     route("/organizations/{organizationId}/redemptions") {
         get {
             val organizationId = call.parameters["organizationId"]
                 ?: throw BadRequestException("Organization id is required")
-            call.respond(ApiResponse.success(service.listForOrganization(organizationId), call.callId))
+            call.respond(ApiResponse.success(service.listForOrganization(organizationId, call.authenticatedPrincipal().userId), call.callId))
         }
     }
 }

@@ -4,6 +4,7 @@ import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.model.common.ApiResponse
 import com.mynikatech.memgine.net.dto.NotificationConfigurationResultDto
 import com.mynikatech.memgine.net.dto.NotificationConfigurationWriteDto
+import com.mynikatech.memgine.security.authenticatedPrincipal
 import io.ktor.server.application.call
 import io.ktor.server.plugins.callid.callId
 import io.ktor.server.request.receive
@@ -16,13 +17,13 @@ fun Route.notificationConfigurationRoutes(service: NotificationConfigurationServ
             val organizationId = call.parameters["organizationId"]
                 ?: throw BadRequestException("Organization id is required")
             call.respond(ApiResponse.success(
-                NotificationConfigurationResultDto(service.get(organizationId)), call.callId))
+                NotificationConfigurationResultDto(service.get(organizationId, call.authenticatedPrincipal().userId)), call.callId))
         }
         put {
             val organizationId = call.parameters["organizationId"]
                 ?: throw BadRequestException("Organization id is required")
             call.respond(ApiResponse.success(
-                service.save(organizationId, call.receive<NotificationConfigurationWriteDto>()), call.callId))
+                service.save(organizationId, call.receive<NotificationConfigurationWriteDto>(), call.authenticatedPrincipal().userId), call.callId))
         }
     }
 }

@@ -8,43 +8,51 @@ import com.mynikatech.memgine.net.dto.UpdateOrganizationRequestDto
 import com.mynikatech.memgine.net.dto.UpdateOrganizationResponseDto
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import com.mynikatech.memgine.security.PhoneNormalizer
 
 class OrganizationService(
     private val sql: OrganizationSql,
+    private val phoneNormalizer: PhoneNormalizer = PhoneNormalizer(),
     private val json: Json = Json { encodeDefaults = true; explicitNulls = true }
 ) {
-    fun create(request: CreateOrganizationRequestDto): CreateOrganizationResponseDto {
+    fun create(request: CreateOrganizationRequestDto, actorUserId: String): CreateOrganizationResponseDto {
         validateCreate(request)
+        val canonicalOwnerPhone = phoneNormalizer.normalize(
+            request.owner.phone.callingCode + request.owner.phone.number, null
+        ).e164
+        val owner = request.owner.copy(
+            phone = request.owner.phone.copy(callingCode = canonicalOwnerPhone, number = "")
+        )
         return sql.createOrganization(
             json.encodeToString(request.organization),
             json.encodeToString(request.details),
             json.encodeToString(request.branding),
-            json.encodeToString(request.owner),
-            PLATFORM_ADMIN_USER_ID
+            json.encodeToString(owner),
+            actorUserId
         )
     }
 
-    fun update(organizationId: String, request: UpdateOrganizationRequestDto): UpdateOrganizationResponseDto {
+    fun update(organizationId: String, request: UpdateOrganizationRequestDto, actorUserId: String): UpdateOrganizationResponseDto {
         validateUpdate(organizationId, request)
         sql.updateOrganization(
             organizationId,
             request.organization?.let { json.encodeToString(it) },
             request.details?.let { json.encodeToString(it) },
             request.branding?.let { json.encodeToString(it) },
-            PLATFORM_ADMIN_USER_ID
+            actorUserId
         )
         return UpdateOrganizationResponseDto(organizationId)
     }
 
-    fun activate(organizationId: String): OrganizationLifecycleResponseDto {
+    fun activate(organizationId: String, actorUserId: String): OrganizationLifecycleResponseDto {
         validateOrganizationId(organizationId)
-        val statusId = sql.setOrganizationLifecycleStatus(organizationId, "ACTIVE", PLATFORM_ADMIN_USER_ID)
+        val statusId = sql.setOrganizationLifecycleStatus(organizationId, "ACTIVE", actorUserId)
         return OrganizationLifecycleResponseDto(organizationId, statusId)
     }
 
-    fun deactivate(organizationId: String): OrganizationLifecycleResponseDto {
+    fun deactivate(organizationId: String, actorUserId: String): OrganizationLifecycleResponseDto {
         validateOrganizationId(organizationId)
-        val statusId = sql.setOrganizationLifecycleStatus(organizationId, "INACTIVE", PLATFORM_ADMIN_USER_ID)
+        val statusId = sql.setOrganizationLifecycleStatus(organizationId, "INACTIVE", actorUserId)
         return OrganizationLifecycleResponseDto(organizationId, statusId)
     }
 
@@ -155,7 +163,6 @@ class OrganizationService(
     }
 
     private companion object {
-        const val PLATFORM_ADMIN_USER_ID = "user-platform-admin"
         val EMAIL_PATTERN = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
     }
 }

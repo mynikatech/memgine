@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 062-otp-utc-timestamps
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/062-otp-utc-timestamps.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

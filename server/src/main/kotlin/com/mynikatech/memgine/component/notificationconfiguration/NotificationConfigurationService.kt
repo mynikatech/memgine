@@ -10,15 +10,13 @@ import org.jdbi.v3.core.Jdbi
 import org.postgresql.util.PSQLException
 
 class NotificationConfigurationService(private val jdbi: Jdbi) {
-    private val actorUserId = "user-org-admin"
-
-    fun get(organizationId: String): NotificationConfigurationDto? {
-        requireAdmin(organizationId)
+    fun get(organizationId: String, actorUserId: String): NotificationConfigurationDto? {
+        requireAdmin(organizationId, actorUserId)
         return jdbi.onDemand(NotificationConfigurationSql::class.java).get(organizationId, actorUserId)
     }
 
-    fun save(organizationId: String, request: NotificationConfigurationWriteDto): NotificationConfigurationDto {
-        requireAdmin(organizationId)
+    fun save(organizationId: String, request: NotificationConfigurationWriteDto, actorUserId: String): NotificationConfigurationDto {
+        requireAdmin(organizationId, actorUserId)
         if (request.configurationName.isBlank() || request.configurationName.length > 100 ||
             request.notificationStatusId.isBlank() || request.versionNo < 1) {
             throw BadRequestException("Invalid Notification Configuration fields")
@@ -35,10 +33,10 @@ class NotificationConfigurationService(private val jdbi: Jdbi) {
         } catch (error: Exception) {
             translate(error)
         }
-        return get(organizationId) ?: throw IllegalStateException("Notification Configuration missing after save")
+        return get(organizationId, actorUserId) ?: throw IllegalStateException("Notification Configuration missing after save")
     }
 
-    private fun requireAdmin(organizationId: String) {
+    private fun requireAdmin(organizationId: String, actorUserId: String) {
         if (organizationId.isBlank() || organizationId.length > 40) throw BadRequestException("Invalid organization id")
         if (!jdbi.onDemand(NotificationConfigurationSql::class.java)
                 .canAdminister(organizationId, actorUserId)) {

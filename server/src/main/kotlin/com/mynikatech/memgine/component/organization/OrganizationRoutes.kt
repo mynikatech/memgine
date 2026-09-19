@@ -15,6 +15,7 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
 import kotlinx.serialization.json.Json
+import com.mynikatech.memgine.security.authenticatedPrincipal
 
 fun Route.organizationRoutes(service: OrganizationService) {
 
@@ -22,7 +23,7 @@ fun Route.organizationRoutes(service: OrganizationService) {
 
         post("/create") {
             val request = call.receive<CreateOrganizationRequestDto>()
-            val result = service.create(request)
+            val result = service.create(request, call.authenticatedPrincipal().userId)
 
             call.respond(
                 HttpStatusCode.Created,
@@ -39,7 +40,7 @@ fun Route.organizationRoutes(service: OrganizationService) {
                 call.receive<UpdateOrganizationRequestDto>()
 
             val result =
-                service.update(organizationId, request)
+                service.update(organizationId, request, call.authenticatedPrincipal().userId)
 
             call.respond(
                 HttpStatusCode.OK,
@@ -52,7 +53,7 @@ fun Route.organizationRoutes(service: OrganizationService) {
                 call.parameters["organizationId"]
                     ?: throw BadRequestException("Organization id is required")
 
-            val result = service.activate(organizationId)
+            val result = service.activate(organizationId, call.authenticatedPrincipal().userId)
 
             call.respond(
                 HttpStatusCode.OK,
@@ -65,7 +66,7 @@ fun Route.organizationRoutes(service: OrganizationService) {
                 call.parameters["organizationId"]
                     ?: throw BadRequestException("Organization id is required")
 
-            val result = service.deactivate(organizationId)
+            val result = service.deactivate(organizationId, call.authenticatedPrincipal().userId)
 
             call.respond(
                 HttpStatusCode.OK,

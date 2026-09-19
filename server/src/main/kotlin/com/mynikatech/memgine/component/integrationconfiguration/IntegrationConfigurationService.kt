@@ -10,22 +10,20 @@ import org.jdbi.v3.core.Jdbi
 import org.postgresql.util.PSQLException
 
 class IntegrationConfigurationService(private val jdbi: Jdbi) {
-    private val actorUserId = "user-org-admin"
-
-    fun list(organizationId: String): List<IntegrationConfigurationDto> {
-        requireAdmin(organizationId)
+    fun list(organizationId: String, actorUserId: String): List<IntegrationConfigurationDto> {
+        requireAdmin(organizationId, actorUserId)
         return jdbi.onDemand(IntegrationConfigurationSql::class.java).list(organizationId, actorUserId)
     }
 
-    fun get(organizationId: String, id: String): IntegrationConfigurationDto {
+    fun get(organizationId: String, id: String, actorUserId: String): IntegrationConfigurationDto {
         validateId(id)
-        return list(organizationId).find { it.id == id }
+        return list(organizationId, actorUserId).find { it.id == id }
             ?: throw NotFoundException("Integration Configuration not found")
     }
 
     fun save(organizationId: String, request: IntegrationConfigurationWriteDto,
-             create: Boolean): IntegrationConfigurationDto {
-        requireAdmin(organizationId)
+             create: Boolean, actorUserId: String): IntegrationConfigurationDto {
+        requireAdmin(organizationId, actorUserId)
         validateId(request.id)
         if (request.integrationName.isBlank() || request.integrationName.length > 100 ||
             request.provider.isBlank() || request.provider.length > 100 ||
@@ -34,7 +32,7 @@ class IntegrationConfigurationService(private val jdbi: Jdbi) {
             throw BadRequestException("Invalid Integration Configuration fields")
         }
         val sql = jdbi.onDemand(IntegrationConfigurationSql::class.java)
-        val existing = list(organizationId).find { it.id == request.id }
+        val existing = list(organizationId, actorUserId).find { it.id == request.id }
         if (create && existing != null) throw ConflictException("Integration Configuration already exists")
         if (!create && existing == null) throw NotFoundException("Integration Configuration not found")
         try {
@@ -46,11 +44,11 @@ class IntegrationConfigurationService(private val jdbi: Jdbi) {
         } catch (error: Exception) {
             translate(error)
         }
-        return get(organizationId, request.id)
+        return get(organizationId, request.id, actorUserId)
     }
 
-    fun delete(organizationId: String, id: String): DeleteIntegrationConfigurationDto {
-        val current = get(organizationId, id)
+    fun delete(organizationId: String, id: String, actorUserId: String): DeleteIntegrationConfigurationDto {
+        val current = get(organizationId, id, actorUserId)
         try {
             jdbi.onDemand(IntegrationConfigurationSql::class.java)
                 .delete(organizationId, id, current.versionNo, actorUserId)
@@ -60,7 +58,7 @@ class IntegrationConfigurationService(private val jdbi: Jdbi) {
         return DeleteIntegrationConfigurationDto(id, true)
     }
 
-    private fun requireAdmin(organizationId: String) {
+    private fun requireAdmin(organizationId: String, actorUserId: String) {
         validateId(organizationId)
         if (!jdbi.onDemand(IntegrationConfigurationSql::class.java)
                 .canAdminister(organizationId, actorUserId)) {

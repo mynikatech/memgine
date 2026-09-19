@@ -9,15 +9,13 @@ import org.jdbi.v3.core.Jdbi
 import org.postgresql.util.PSQLException
 
 class CounterService(private val jdbi: Jdbi) {
-    // Matches the development actor used by the existing Org Admin routes.
-    private val actorUserId = "user-org-admin"
     private fun sql(): CounterSql = jdbi.onDemand(CounterSql::class.java)
 
     private fun id(value: String, name: String) {
         if (value.isBlank() || value.length > 40) throw BadRequestException("Invalid $name")
     }
 
-    private fun authorize(organizationId: String, storeId: String, staffId: String) {
+    private fun authorize(organizationId: String, storeId: String, staffId: String, actorUserId: String) {
         id(organizationId, "organization id")
         id(storeId, "store id")
         id(staffId, "staff id")
@@ -26,34 +24,34 @@ class CounterService(private val jdbi: Jdbi) {
         }
     }
 
-    fun customers(org: String, store: String, staff: String): List<OrgAdminCustomerDto> {
-        authorize(org, store, staff)
+    fun customers(org: String, store: String, staff: String, actorUserId: String): List<OrgAdminCustomerDto> {
+        authorize(org, store, staff, actorUserId)
         return sql().customers(org, actorUserId)
     }
 
-    fun subscriptions(org: String, store: String, staff: String): List<CounterSubscriptionDto> {
-        authorize(org, store, staff)
+    fun subscriptions(org: String, store: String, staff: String, actorUserId: String): List<CounterSubscriptionDto> {
+        authorize(org, store, staff, actorUserId)
         return sql().subscriptions(org, actorUserId)
     }
 
-    fun redemptions(org: String, store: String, staff: String): List<OrgAdminRedemptionDto> {
-        authorize(org, store, staff)
+    fun redemptions(org: String, store: String, staff: String, actorUserId: String): List<OrgAdminRedemptionDto> {
+        authorize(org, store, staff, actorUserId)
         return sql().redemptions(org, actorUserId)
     }
 
-    fun qrSamples(org: String, store: String, staff: String): List<CounterQrDto> {
-        authorize(org, store, staff)
+    fun qrSamples(org: String, store: String, staff: String, actorUserId: String): List<CounterQrDto> {
+        authorize(org, store, staff, actorUserId)
         return sql().qrCodes(org, null)
     }
 
-    fun staffName(org: String, store: String, staff: String): String? {
-        authorize(org, store, staff)
+    fun staffName(org: String, store: String, staff: String, actorUserId: String): String? {
+        authorize(org, store, staff, actorUserId)
         return sql().staffName(org, staff)
     }
 
     fun eligibility(org: String, store: String, staff: String,
-                    subscriptionId: String, benefitIds: List<String>): List<CounterEligibilityDto> {
-        authorize(org, store, staff)
+                    subscriptionId: String, benefitIds: List<String>, actorUserId: String): List<CounterEligibilityDto> {
+        authorize(org, store, staff, actorUserId)
         id(subscriptionId, "subscription id")
         if (benefitIds.isEmpty() || benefitIds.size > 100) throw BadRequestException("Select benefits")
         benefitIds.forEach { id(it, "benefit id") }
@@ -61,8 +59,8 @@ class CounterService(private val jdbi: Jdbi) {
         return benefitIds.distinct().map { CounterEligibilityDto(it, lookup.rejection(org, subscriptionId, it)) }
     }
 
-    fun purchase(org: String, request: CounterPurchaseRequest): CounterPurchaseResult {
-        authorize(org, request.storeId, request.staffId)
+    fun purchase(org: String, request: CounterPurchaseRequest, actorUserId: String): CounterPurchaseResult {
+        authorize(org, request.storeId, request.staffId, actorUserId)
         id(request.planId, "plan id")
         request.customerUserId?.let { id(it, "customer user id") }
         if (request.customerUserId == null && (request.firstName.isNullOrBlank() ||
@@ -77,8 +75,8 @@ class CounterService(private val jdbi: Jdbi) {
         }
     }
 
-    fun redeem(org: String, request: CounterRedeemRequest): List<CounterRedemptionResult> {
-        authorize(org, request.storeId, request.staffId)
+    fun redeem(org: String, request: CounterRedeemRequest, actorUserId: String): List<CounterRedemptionResult> {
+        authorize(org, request.storeId, request.staffId, actorUserId)
         id(request.subscriptionId, "subscription id")
         if (request.benefitIds.isEmpty() || request.benefitIds.size > 100 ||
             request.benefitIds.distinct().size != request.benefitIds.size) {
@@ -91,8 +89,8 @@ class CounterService(private val jdbi: Jdbi) {
         }
     }
 
-    fun redeemQr(org: String, request: CounterQrRedeemRequest): List<CounterRedemptionResult> {
-        authorize(org, request.storeId, request.staffId)
+    fun redeemQr(org: String, request: CounterQrRedeemRequest, actorUserId: String): List<CounterRedemptionResult> {
+        authorize(org, request.storeId, request.staffId, actorUserId)
         if (request.token.isBlank() || request.token.length > 200) throw BadRequestException("Invalid QR token")
         if (sql().qrCodeType(org, request.token) == "QR_OFFER_REDEMPTION") {
             throw BadRequestException("Offer QR redemption is not supported by the server yet")

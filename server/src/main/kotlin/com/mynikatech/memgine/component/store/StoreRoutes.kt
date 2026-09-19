@@ -4,6 +4,7 @@ import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.model.common.ApiResponse
 import com.mynikatech.memgine.net.dto.CreateStoreRequestDto
 import com.mynikatech.memgine.net.dto.UpdateStoreRequestDto
+import com.mynikatech.memgine.security.authenticatedPrincipal
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.plugins.callid.callId
@@ -79,10 +80,7 @@ fun Route.storeRoutes(
                 call.receive<CreateStoreRequestDto>()
 
             val result =
-                service.create(
-                    organizationId,
-                    request
-                )
+                service.create(organizationId, request, call.authenticatedPrincipal().userId)
 
             call.respond(
                 HttpStatusCode.Created,
@@ -110,11 +108,7 @@ fun Route.storeRoutes(
                 call.receive<UpdateStoreRequestDto>()
 
             val result =
-                service.update(
-                    organizationId,
-                    storeId,
-                    request
-                )
+                service.update(organizationId, storeId, request, call.authenticatedPrincipal().userId)
 
             call.respond(
                 HttpStatusCode.OK,
@@ -139,10 +133,7 @@ fun Route.storeRoutes(
                     )
 
             val result =
-                service.delete(
-                    organizationId,
-                    storeId
-                )
+                service.delete(organizationId, storeId, call.authenticatedPrincipal().userId)
 
             call.respond(
                 HttpStatusCode.OK,

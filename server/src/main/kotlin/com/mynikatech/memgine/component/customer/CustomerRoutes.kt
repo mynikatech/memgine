@@ -12,20 +12,21 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import com.mynikatech.memgine.security.authenticatedPrincipal
 
 fun Route.customerRoutes(service: CustomerService) {
     route("/organizations/{organizationId}/customers") {
         get {
             val organizationId = call.parameters["organizationId"]
                 ?: throw BadRequestException("Organization id is required")
-            call.respond(ApiResponse.success(service.list(organizationId), call.callId))
+            call.respond(ApiResponse.success(service.list(organizationId, call.authenticatedPrincipal().userId), call.callId))
         }
         post("/prospects") {
             val organizationId = call.parameters["organizationId"]
                 ?: throw BadRequestException("Organization id is required")
             call.respond(HttpStatusCode.Created,
                 ApiResponse.success(service.createProspect(organizationId,
-                    call.receive<CreateProspectiveCustomerDto>()), call.callId))
+                    call.receive<CreateProspectiveCustomerDto>(), call.authenticatedPrincipal().userId), call.callId))
         }
     }
 }

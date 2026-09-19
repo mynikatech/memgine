@@ -30,10 +30,8 @@ class CustomerService(
     private val devIdentityEnabled: Boolean
 ) {
     // Existing Org Admin components use this development actor until request auth is wired.
-    private val actorUserId = "user-org-admin"
-
-    fun list(organizationId: String): List<OrgAdminCustomerDto> {
-        authorize(organizationId)
+    fun list(organizationId: String, actorUserId: String): List<OrgAdminCustomerDto> {
+        authorize(organizationId, actorUserId)
         return sql.list(organizationId, actorUserId)
     }
 
@@ -175,8 +173,8 @@ class CustomerService(
             throw BadRequestException("Unsupported customer preference")
     }
 
-    fun createProspect(organizationId: String, request: CreateProspectiveCustomerDto): ProspectiveCustomerCreatedDto {
-        authorize(organizationId)
+    fun createProspect(organizationId: String, request: CreateProspectiveCustomerDto, actorUserId: String): ProspectiveCustomerCreatedDto {
+        authorize(organizationId, actorUserId)
         val firstName = request.firstName.trim()
         val lastName = request.lastName.trim()
         val phone = request.primaryPhone.trim()
@@ -206,7 +204,7 @@ class CustomerService(
         }
     }
 
-    private fun authorize(organizationId: String) {
+    private fun authorize(organizationId: String, actorUserId: String) {
         if (organizationId.isBlank() || organizationId.length > 40) {
             throw BadRequestException("Invalid organization id")
         }

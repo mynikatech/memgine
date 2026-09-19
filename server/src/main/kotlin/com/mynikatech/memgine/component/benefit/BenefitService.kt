@@ -8,7 +8,6 @@ import org.jdbi.v3.core.Jdbi
 import java.time.LocalDate
 
 class BenefitService(private val jdbi: Jdbi) {
-    private val actorUserId = "user-org-admin"
 
     fun byMembershipProduct(membershipProductId: String): List<BenefitDto> {
         validateId(membershipProductId)
@@ -37,7 +36,7 @@ class BenefitService(private val jdbi: Jdbi) {
         return jdbi.onDemand(BenefitSql::class.java).rules(organizationId, benefitId)
     }
 
-    fun save(organizationId: String, request: BenefitWriteDto, create: Boolean): BenefitBundleDto {
+    fun save(organizationId: String, request: BenefitWriteDto, create: Boolean, actorUserId: String): BenefitBundleDto {
         validateId(organizationId)
         validateId(request.id)
         if (request.benefitCode.isBlank() || request.benefitName.isBlank() ||
@@ -122,7 +121,7 @@ class BenefitService(private val jdbi: Jdbi) {
         }
     }
 
-    fun delete(organizationId: String, benefitId: String): DeleteBenefitDto {
+    fun delete(organizationId: String, benefitId: String, actorUserId: String): DeleteBenefitDto {
         validateId(organizationId)
         validateId(benefitId)
         jdbi.onDemand(BenefitSql::class.java).delete(organizationId, benefitId, actorUserId)

@@ -10,7 +10,6 @@ import org.postgresql.util.PSQLException
 import java.time.LocalDate
 
 class MembershipProductService(private val jdbi: Jdbi) {
-    private val actorUserId = "user-org-admin"
 
     fun list(organizationId: String): List<MembershipProductDto> {
         validateId(organizationId, 64)
@@ -27,7 +26,7 @@ class MembershipProductService(private val jdbi: Jdbi) {
     }
 
     fun save(organizationId: String, request: MembershipProductWriteDto,
-             create: Boolean): MembershipProductDto {
+             create: Boolean, actorUserId: String): MembershipProductDto {
         validateId(organizationId, 64)
         validateId(request.id, 40)
         if (request.membershipProductCode.isBlank() || request.membershipProductCode.length > 30 ||
@@ -125,7 +124,7 @@ class MembershipProductService(private val jdbi: Jdbi) {
         } } catch (error: Exception) { translateDatabaseError(error) }
     }
 
-    fun delete(organizationId: String, productId: String): DeleteMembershipProductDto {
+    fun delete(organizationId: String, productId: String, actorUserId: String): DeleteMembershipProductDto {
         validateId(organizationId, 64)
         validateId(productId, 40)
         try {

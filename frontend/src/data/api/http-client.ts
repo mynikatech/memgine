@@ -13,10 +13,15 @@ type ServerApiResponse<T> = {
 };
 
 function resolveApiBaseUrl(): string {
-  const configuredUrl = process.env.EXPO_PUBLIC_MEMGINE_API_BASE_URL?.trim();
+  const configuredUrl =
+    Platform.OS === "web"
+      ? process.env.EXPO_PUBLIC_MEMGINE_API_BASE_URL_WEB?.trim()
+      : process.env.EXPO_PUBLIC_MEMGINE_API_BASE_URL_NATIVE?.trim();
 
   if (!configuredUrl) {
-    throw new Error("EXPO_PUBLIC_MEMGINE_API_BASE_URL is not configured.");
+    throw new Error(
+      `Memgine API base URL is not configured for platform: ${Platform.OS}`,
+    );
   }
 
   return configuredUrl.replace(/\/+$/, "");
@@ -57,6 +62,7 @@ export class HttpClient {
     try {
       response = await fetch(`${API_BASE_URL}${path}`, {
         method,
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },

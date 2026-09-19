@@ -9,6 +9,7 @@ import io.ktor.server.plugins.callid.callId
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.*
+import com.mynikatech.memgine.security.authenticatedPrincipal
 
 fun Route.benefitRoutes(service: BenefitService) {
     get("/membership-products/{membershipProductId}/benefits") {
@@ -39,19 +40,19 @@ fun Route.benefitRoutes(service: BenefitService) {
                 val organizationId = required(call.parameters["organizationId"])
                 val request = call.receive<BenefitWriteDto>()
                 call.respond(HttpStatusCode.Created,
-                    ApiResponse.success(service.save(organizationId, request, true), call.callId))
+                    ApiResponse.success(service.save(organizationId, request, true, call.authenticatedPrincipal().userId), call.callId))
             }
             put("/{benefitId}") {
                 val organizationId = required(call.parameters["organizationId"])
                 val benefitId = required(call.parameters["benefitId"])
                 val request = call.receive<BenefitWriteDto>()
                 if (request.id != benefitId) throw BadRequestException("Benefit id does not match path")
-                call.respond(ApiResponse.success(service.save(organizationId, request, false), call.callId))
+                call.respond(ApiResponse.success(service.save(organizationId, request, false, call.authenticatedPrincipal().userId), call.callId))
             }
             delete("/{benefitId}") {
                 val organizationId = required(call.parameters["organizationId"])
                 val benefitId = required(call.parameters["benefitId"])
-                call.respond(ApiResponse.success(service.delete(organizationId, benefitId), call.callId))
+                call.respond(ApiResponse.success(service.delete(organizationId, benefitId, call.authenticatedPrincipal().userId), call.callId))
             }
         }
     }

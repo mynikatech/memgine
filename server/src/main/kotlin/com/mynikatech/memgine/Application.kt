@@ -44,7 +44,7 @@ fun Application.module() {
     configureMonitoring()
     configureSecurity(config.server)
     configureStatusPages()
-    configureCors()
+    configureCors(config.server)
 
     val referenceDataSql =
         database.jdbi.onDemand(ReferenceDataSql::class.java)
@@ -93,6 +93,6 @@ fun Application.module() {
         referenceDataService,
         entityStatusService,
         brandingAssetService,
-        config.database.schema == "memginedev"
+        config
     )
 }

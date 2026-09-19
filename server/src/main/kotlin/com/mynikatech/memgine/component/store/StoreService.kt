@@ -30,7 +30,8 @@ class StoreService(
 
     fun create(
         organizationId: String,
-        request: CreateStoreRequestDto
+        request: CreateStoreRequestDto,
+        actorUserId: String
     ): StoreDto {
         validateOrganizationId(organizationId)
         validateStoreId(request.id)
@@ -67,14 +68,15 @@ class StoreService(
             storeStatusId = request.storeStatusId,
             openingDate = request.openingDate,
             closingDate = request.closingDate,
-            actorUserId = ORG_ADMIN_USER_ID
+            actorUserId = actorUserId
         )
     }
 
     fun update(
         organizationId: String,
         storeId: String,
-        request: UpdateStoreRequestDto
+        request: UpdateStoreRequestDto,
+        actorUserId: String
     ): StoreDto {
         validateOrganizationId(organizationId)
         validateStoreId(storeId)
@@ -111,13 +113,14 @@ class StoreService(
             storeStatusId = request.storeStatusId,
             openingDate = request.openingDate,
             closingDate = request.closingDate,
-            actorUserId = ORG_ADMIN_USER_ID
+            actorUserId = actorUserId
         )
     }
 
     fun delete(
         organizationId: String,
-        storeId: String
+        storeId: String,
+        actorUserId: String
     ): DeleteStoreResponseDto {
         validateOrganizationId(organizationId)
         validateStoreId(storeId)
@@ -125,7 +128,7 @@ class StoreService(
         val deleted = sql.delete(
             organizationId,
             storeId,
-            ORG_ADMIN_USER_ID
+            actorUserId
         )
 
         if (!deleted) {
@@ -233,7 +236,4 @@ class StoreService(
         }
     }
 
-    private companion object {
-        const val ORG_ADMIN_USER_ID = "user-org-admin"
-    }
 }

@@ -16,15 +16,32 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { APP_ROUTES, COUNTER_ROUTES } from "@/src/constants/navigation";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
+import { AuthGuard } from "@/src/ui/auth/AuthGuard";
+import { useAuth } from "@/src/providers/AuthProvider";
 
 export default function CounterLayout() {
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const pathname = usePathname();
   const { organizationId } = useGlobalSearchParams<{
     organizationId?: string;
   }>();
+
+  if (!organizationId) {
+    return <AuthGuard capability="COUNTER_ACCESS"><CounterShell /></AuthGuard>;
+  }
+
+  return (
+    <AuthGuard capability="COUNTER_ACCESS" organizationId={organizationId}>
+      <CounterShell />
+    </AuthGuard>
+  );
+}
+
+function CounterShell() {
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const pathname = usePathname();
+  const { organizationId } = useGlobalSearchParams<{ organizationId?: string }>();
   const { width } = useWindowDimensions();
+  const { logout } = useAuth();
   const isWide = width >= 900;
 
   const go = (href: (typeof COUNTER_ROUTES)[number]["href"]) => {
@@ -106,7 +123,9 @@ export default function CounterLayout() {
         <View style={styles.sidebar} testID="counter-sidebar">
           <Brand />
           <Nav />
-          <Text style={styles.footer}>Counter</Text>
+          <Pressable onPress={() => void logout().then(() => router.replace(APP_ROUTES.login as never))}>
+            <Text style={styles.footer}>Sign out</Text>
+          </Pressable>
         </View>
       ) : (
         <View style={styles.topbar} testID="counter-topbar">

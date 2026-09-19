@@ -8,9 +8,11 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.jdbi.v3.core.Jdbi
+import com.mynikatech.memgine.security.PhoneNormalizer
 
 class StaffService(
     private val jdbi: Jdbi,
+    private val phoneNormalizer: PhoneNormalizer = PhoneNormalizer(),
     private val json: Json = Json {
         ignoreUnknownKeys = true
         explicitNulls = false
@@ -57,7 +59,8 @@ class StaffService(
 
     fun create(
         organizationId: String,
-        request: CreateStaffTransactionRequestDto
+        request: CreateStaffTransactionRequestDto,
+        actorUserId: String
     ): CreateStaffTransactionResponseDto {
         validateId(
             "Organization",
@@ -155,7 +158,7 @@ class StaffService(
                                         person.primaryEmail,
 
                                     primaryPhone =
-                                        person.primaryPhone,
+                                        phoneNormalizer.normalize(person.primaryPhone, null).e164,
 
                                     preferredLanguageId =
                                         person.preferredLanguageId,
@@ -181,7 +184,7 @@ class StaffService(
                                         person.joiningDate
                                 )
                             ),
-                            ORG_ADMIN_USER_ID
+                            actorUserId
                         )
 
                     val result =
@@ -232,7 +235,7 @@ class StaffService(
                     request.staff.joiningDate,
                     request.staff.relievingDate,
                     request.staff.staffStatusId,
-                    ORG_ADMIN_USER_ID
+                    actorUserId
                 )
 
             // The Staff domain row and its effective RBAC base role are part
@@ -241,7 +244,7 @@ class StaffService(
             staffSql.ensureBaseRole(
                 organizationId,
                 savedStaff.id,
-                ORG_ADMIN_USER_ID
+                actorUserId
             )
 
             val savedAssignments =
@@ -256,7 +259,7 @@ class StaffService(
                         assignment.assignmentStatusId,
                         assignment.effectiveDate,
                         assignment.endDate,
-                        ORG_ADMIN_USER_ID
+                        actorUserId
                     )
                 }
 
@@ -273,7 +276,8 @@ class StaffService(
     fun update(
         organizationId: String,
         staffId: String,
-        request: UpdateStaffRequestDto
+        request: UpdateStaffRequestDto,
+        actorUserId: String
     ): StaffDto {
         validateId(
             "Organization",
@@ -305,13 +309,14 @@ class StaffService(
                 request.joiningDate,
                 request.relievingDate,
                 request.staffStatusId,
-                ORG_ADMIN_USER_ID
+                actorUserId
             )
     }
 
     fun delete(
         organizationId: String,
-        staffId: String
+        staffId: String,
+        actorUserId: String
     ): DeleteStaffResponseDto {
         validateId(
             "Organization",
@@ -331,7 +336,7 @@ class StaffService(
                 .delete(
                     organizationId,
                     staffId,
-                    ORG_ADMIN_USER_ID
+                    actorUserId
                 )
 
         if (!deleted) {
@@ -366,7 +371,8 @@ class StaffService(
     fun createAssignment(
         organizationId: String,
         request:
-            CreateStaffStoreAssignmentRequestDto
+            CreateStaffStoreAssignmentRequestDto,
+        actorUserId: String
     ): StaffStoreAssignmentDto {
         validateId(
             "Organization",
@@ -406,7 +412,7 @@ class StaffService(
                 request.assignmentStatusId,
                 request.effectiveDate,
                 request.endDate,
-                ORG_ADMIN_USER_ID
+                actorUserId
             )
     }
 
@@ -414,7 +420,8 @@ class StaffService(
         organizationId: String,
         assignmentId: String,
         request:
-            UpdateStaffStoreAssignmentRequestDto
+            UpdateStaffStoreAssignmentRequestDto,
+        actorUserId: String
     ): StaffStoreAssignmentDto {
         validateId(
             "Organization",
@@ -448,13 +455,14 @@ class StaffService(
                 request.assignmentStatusId,
                 request.effectiveDate,
                 request.endDate,
-                ORG_ADMIN_USER_ID
+                actorUserId
             )
     }
 
     fun deleteAssignment(
         organizationId: String,
-        assignmentId: String
+        assignmentId: String,
+        actorUserId: String
     ):
         DeleteStaffStoreAssignmentResponseDto {
         validateId(
@@ -475,7 +483,7 @@ class StaffService(
                 .deleteAssignment(
                     organizationId,
                     assignmentId,
-                    ORG_ADMIN_USER_ID
+                    actorUserId
                 )
 
         if (!deleted) {
@@ -632,8 +640,4 @@ class StaffService(
         }
     }
 
-    private companion object {
-        const val ORG_ADMIN_USER_ID =
-            "user-org-admin"
-    }
 }

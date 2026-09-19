@@ -8,8 +8,9 @@ import io.ktor.server.plugins.callid.callId
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.*
+import com.mynikatech.memgine.security.authenticatedPrincipal
 
-/** Local/Dev identity seam. Real authenticated-principal routing belongs to Phase 2. */
+/** Local/Dev RBAC maintenance surface; mutations still derive the actor from the authenticated principal. */
 fun Route.rbacRoutes(service: RbacService, devIdentityEnabled: Boolean) {
     if (!devIdentityEnabled) return
     route("/dev/rbac") {
@@ -30,18 +31,18 @@ fun Route.rbacRoutes(service: RbacService, devIdentityEnabled: Boolean) {
         }
         post("/organizations/{organizationId}/assignments") {
             call.respond(ApiResponse.success(service.assignOrganizationRole(required(call.parameters["organizationId"]),
-                call.receive<RbacAssignOrganizationRoleRequest>()), call.callId))
+                call.receive<RbacAssignOrganizationRoleRequest>(), call.authenticatedPrincipal().userId), call.callId))
         }
         post("/organizations/{organizationId}/assignments/{assignmentId}/revoke") {
             call.respond(ApiResponse.success(service.revokeOrganizationRole(required(call.parameters["organizationId"]),
-                required(call.parameters["assignmentId"]), call.receive<RbacRevokeRoleRequest>()), call.callId))
+                required(call.parameters["assignmentId"]), call.authenticatedPrincipal().userId), call.callId))
         }
         post("/platform-assignments") {
-            call.respond(ApiResponse.success(service.assignPlatformRole(call.receive<RbacAssignPlatformRoleRequest>()), call.callId))
+            call.respond(ApiResponse.success(service.assignPlatformRole(call.receive<RbacAssignPlatformRoleRequest>(), call.authenticatedPrincipal().userId), call.callId))
         }
         post("/platform-assignments/{assignmentId}/revoke") {
             call.respond(ApiResponse.success(service.revokePlatformRole(required(call.parameters["assignmentId"]),
-                call.receive<RbacRevokeRoleRequest>()), call.callId))
+                call.authenticatedPrincipal().userId), call.callId))
         }
     }
 }

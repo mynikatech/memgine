@@ -13,6 +13,8 @@ liquibase-gradle = "2.2.0"
 picocli="4.6.1"
 
 aws-sdk = "2.25.47"
+libphonenumber = "8.13.47"
+argon2 = "2.11"
 
 [libraries]
 
@@ -83,6 +85,9 @@ picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
 aws-sns = { module = "software.amazon.awssdk:sns", version.ref = "aws-sdk" }
 aws-sqs = { module = "software.amazon.awssdk:sqs", version.ref = "aws-sdk" }
 aws-ses = { module = "software.amazon.awssdk:ses", version.ref = "aws-sdk" }
+aws-pinpoint-sms-voice-v2 = { module = "software.amazon.awssdk:pinpointsmsvoicev2", version.ref = "aws-sdk" }
+libphonenumber = { module = "com.googlecode.libphonenumber:libphonenumber", version.ref = "libphonenumber" }
+argon2-jvm = { module = "de.mkammerer:argon2-jvm", version.ref = "argon2" }
 
 [plugins]
 

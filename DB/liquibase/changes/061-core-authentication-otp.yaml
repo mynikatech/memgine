@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 061-core-authentication-otp
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/061-core-authentication-otp.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

@@ -6,9 +6,7 @@ import com.mynikatech.memgine.net.dto.OrgAdminSubscriptionDto
 
 class SubscriptionService(private val sql: SubscriptionSql) {
     // Current Org Admin components use the development actor until request auth is wired.
-    private val actorUserId = "user-org-admin"
-
-    fun listForOrganization(organizationId: String): List<OrgAdminSubscriptionDto> {
+    fun listForOrganization(organizationId: String, actorUserId: String): List<OrgAdminSubscriptionDto> {
         if (organizationId.isBlank() || organizationId.length > 40) {
             throw BadRequestException("Invalid organization id")
         }
