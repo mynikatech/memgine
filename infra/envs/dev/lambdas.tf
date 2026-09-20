@@ -23,6 +23,7 @@ module "email_role" {
   role_name     = "memgine-dev-email-lambda-role"
   queue_arn     = module.notifications.email_queue_arn
   log_group_arn = aws_cloudwatch_log_group.email.arn
+  secret_arn    = aws_secretsmanager_secret.resend_api_key.arn
 }
 
 module "whatsapp_role" {
@@ -30,6 +31,7 @@ module "whatsapp_role" {
   role_name     = "memgine-dev-whatsapp-lambda-role"
   queue_arn     = module.notifications.whatsapp_queue_arn
   log_group_arn = aws_cloudwatch_log_group.whatsapp.arn
+  secret_arn    = aws_secretsmanager_secret.meta_wa_token.arn
 }
 
 resource "aws_lambda_function" "email" {
@@ -43,6 +45,7 @@ resource "aws_lambda_function" "email" {
   memory_size      = 512
   depends_on       = [aws_cloudwatch_log_group.email]
   tags             = merge(local.lambda_tags, { Purpose = "notification-email-processor" })
+  environment { variables = { RESEND_FROM_EMAIL = var.resend_from_email, RESEND_API_KEY_SECRET_ID = aws_secretsmanager_secret.resend_api_key.name } }
 }
 
 resource "aws_lambda_function" "whatsapp" {
@@ -56,6 +59,7 @@ resource "aws_lambda_function" "whatsapp" {
   memory_size      = 512
   depends_on       = [aws_cloudwatch_log_group.whatsapp]
   tags             = merge(local.lambda_tags, { Purpose = "notification-whatsapp-processor" })
+  environment { variables = { META_PHONE_NUMBER_ID = var.meta_phone_number_id, META_GRAPH_API_VERSION = var.meta_graph_api_version, META_WA_TOKEN_SECRET_ID = aws_secretsmanager_secret.meta_wa_token.name } }
 }
 
 resource "aws_lambda_event_source_mapping" "email" {

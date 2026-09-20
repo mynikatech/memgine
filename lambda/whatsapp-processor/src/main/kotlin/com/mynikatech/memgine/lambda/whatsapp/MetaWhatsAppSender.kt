@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit
 
 data class MetaSendResult(val messageId:String?)
 class MetaWhatsAppSender(
- private val token:String=System.getenv("META_WA_TOKEN") ?: error("META_WA_TOKEN is required"),
+ private val token:String,
  private val phoneNumberId:String=System.getenv("META_PHONE_NUMBER_ID") ?: error("META_PHONE_NUMBER_ID is required"),
  private val version:String=System.getenv("META_GRAPH_API_VERSION") ?: DEFAULT_GRAPH_API_VERSION,
  private val client:OkHttpClient=OkHttpClient.Builder().connectTimeout(10,TimeUnit.SECONDS).readTimeout(20,TimeUnit.SECONDS).writeTimeout(20,TimeUnit.SECONDS).build()

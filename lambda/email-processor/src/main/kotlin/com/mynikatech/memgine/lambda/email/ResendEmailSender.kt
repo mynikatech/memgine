@@ -9,7 +9,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
 class ResendEmailSender(
-    private val apiKey: String = System.getenv("RESEND_API_KEY") ?: error("RESEND_API_KEY is required"),
+    private val apiKey: String,
     private val from: String = System.getenv("RESEND_FROM_EMAIL") ?: error("RESEND_FROM_EMAIL is required"),
     private val client: OkHttpClient = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).writeTimeout(20, TimeUnit.SECONDS).build()
 ) : EmailSender {

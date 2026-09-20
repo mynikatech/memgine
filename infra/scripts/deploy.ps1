@@ -25,7 +25,13 @@ $EnvDir = Join-Path $ScriptDir "..\envs\$Environment"
 $EnvDir = [System.IO.Path]::GetFullPath($EnvDir)
 
 $BackendFile = Join-Path $EnvDir "backend.hcl"
+$VarFile = Join-Path $EnvDir "$Environment.tfvars"
 $PlanFile = Join-Path $EnvDir "$Environment.tfplan"
+
+if (-not (Test-Path $VarFile)) {
+    Write-Error "Terraform variable file not found: $VarFile"
+    exit 1
+}
 
 Write-Host ""
 Write-Host "Memgine Terraform Deployment"
@@ -115,7 +121,7 @@ try {
 
         Write-Host ""
         Write-Host "Creating saved Terraform plan..."
-        terraform plan "-out=$PlanFile"
+        terraform plan "-var-file=$VarFile" "-out=$PlanFile"
 
         if ($LASTEXITCODE -ne 0) {
             throw "terraform plan failed."
