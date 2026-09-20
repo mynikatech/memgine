@@ -51,4 +51,31 @@ data class CounterQrDto(
 )
 
 @Serializable
-data class CounterQrRedeemRequest(val storeId: String, val staffId: String, val token: String)
+data class CounterQrRedeemRequest(
+    val storeId: String, val staffId: String, val token: String
+)
+
+/**
+ * Request one business-bound Counter OTP. Exactly one of purchase/redemption
+ * must be supplied. The server selects the canonical phone for existing users.
+ */
+@Serializable
+data class CounterBusinessOtpRequest(
+    val phone: String? = null,
+    val regionCode: String? = null,
+    val purchase: CounterPurchaseRequest? = null,
+    val redemption: CounterRedeemRequest? = null
+)
+
+/** Verify the OTP only. This does not execute a Counter purchase. */
+@Serializable
+data class CounterBusinessOtpCompleteRequest(
+    val challengeId: String,
+    val otp: String
+)
+
+/** Finalize a purchase after its OTP has already been verified and payment succeeded. */
+@Serializable
+data class CounterBusinessOtpFinalizeRequest(
+    val challengeId: String
+)

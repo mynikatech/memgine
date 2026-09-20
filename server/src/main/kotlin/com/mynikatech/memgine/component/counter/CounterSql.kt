@@ -22,17 +22,21 @@ interface CounterSql {
     fun qrCodeType(@Bind("organizationId") organizationId: String,
                    @Bind("token") token: String): String?
 
-    @SqlQuery("SELECT * FROM get_organization_customers_admin(:organizationId, :actorUserId)")
-    fun customers(@Bind("organizationId") organizationId: String,
-                  @Bind("actorUserId") actorUserId: String): List<OrgAdminCustomerDto>
+    @SqlQuery("SELECT * FROM get_counter_customers(:organizationId, :actorUserId)")
+    fun customers(
+        @Bind("organizationId") organizationId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): List<OrgAdminCustomerDto>
 
     @SqlQuery("SELECT * FROM get_counter_subscriptions(:organizationId, :actorUserId)")
     fun subscriptions(@Bind("organizationId") organizationId: String,
                       @Bind("actorUserId") actorUserId: String): List<CounterSubscriptionDto>
 
-    @SqlQuery("SELECT * FROM get_organization_redemptions_admin(:organizationId, :actorUserId)")
-    fun redemptions(@Bind("organizationId") organizationId: String,
-                    @Bind("actorUserId") actorUserId: String): List<OrgAdminRedemptionDto>
+    @SqlQuery("SELECT * FROM get_counter_redemptions(:organizationId, :actorUserId)")
+    fun redemptions(
+        @Bind("organizationId") organizationId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): List<OrgAdminRedemptionDto>
 
     @SqlQuery("""SELECT * FROM counter_purchase_subscription(
         :organizationId, :storeId, :staffId, :planId, :customerUserId,
@@ -74,5 +78,19 @@ interface CounterSql {
         ORDER BY q.qr_code_id""")
     fun qrCodes(@Bind("organizationId") organizationId: String,
                 @Bind("token") token: String?): List<CounterQrDto>
+                
+        @SqlQuery("""
+        SELECT *
+        FROM get_counter_subscription_benefits(
+            :organizationId,
+            :subscriptionId,
+            :actorUserId
+        )
+    """)
+    fun subscriptionBenefits(
+        @Bind("organizationId") organizationId: String,
+        @Bind("subscriptionId") subscriptionId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): List<BenefitDto>
 
 }

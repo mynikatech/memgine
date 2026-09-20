@@ -28,6 +28,36 @@ fun Route.counterRoutes(service: CounterService) {
             val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
             call.respond(ApiResponse.success(service.subscriptions(org, store, staff, call.authenticatedPrincipal()), call.callId))
         }
+        get("/subscriptions/{subscriptionId}/benefits") {
+            val org =
+                call.parameters["organizationId"]
+                    ?: throw BadRequestException("Organization id is required")
+
+            val subscriptionId =
+                call.parameters["subscriptionId"]
+                    ?: throw BadRequestException("Subscription id is required")
+
+            val store =
+                call.request.queryParameters["storeId"]
+                    ?: throw BadRequestException("Store id is required")
+
+            val staff =
+                call.request.queryParameters["staffId"]
+                    ?: throw BadRequestException("Staff id is required")
+
+            call.respond(
+                ApiResponse.success(
+                    service.subscriptionBenefits(
+                        org,
+                        store,
+                        staff,
+                        subscriptionId,
+                        call.authenticatedPrincipal()
+                    ),
+                    call.callId
+                )
+            )
+        }
         get("/redemptions") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
@@ -52,15 +82,50 @@ fun Route.counterRoutes(service: CounterService) {
             call.respond(ApiResponse.success(service.eligibility(org, request.storeId, request.staffId,
                 request.subscriptionId, request.benefitIds, call.authenticatedPrincipal()), call.callId))
         }
+
+        // Counter purchases must use the one business-bound OTP flow.
         post("/purchases") {
-            val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
-            call.respond(HttpStatusCode.Created, ApiResponse.success(
-                service.purchase(org, call.receive<CounterPurchaseRequest>(), call.authenticatedPrincipal()), call.callId))
+            throw BadRequestException("Counter purchase requires business OTP verification")
         }
-        post("/redemptions") {
+        post("/purchases/otp/request") {
+            val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            call.respond(ApiResponse.success(
+                service.requestPurchaseOtp(org, call.receive<CounterBusinessOtpRequest>(), call.authenticatedPrincipal()),
+                call.callId
+            ))
+        }
+        post("/purchases/otp/complete") {
+            val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            call.respond(ApiResponse.success(
+                service.verifyPurchaseOtp(org, call.receive<CounterBusinessOtpCompleteRequest>(), call.authenticatedPrincipal()),
+                call.callId
+            ))
+        }
+        post("/purchases/otp/finalize") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             call.respond(HttpStatusCode.Created, ApiResponse.success(
-                service.redeem(org, call.receive<CounterRedeemRequest>(), call.authenticatedPrincipal()), call.callId))
+                service.finalizePurchaseOtp(org, call.receive<CounterBusinessOtpFinalizeRequest>(), call.authenticatedPrincipal()),
+                call.callId
+            ))
+        }
+
+        // Phone/manual redemption uses one action-bound OTP. QR remains OTP-free.
+        post("/redemptions") {
+            throw BadRequestException("Counter redemption requires business OTP verification")
+        }
+        post("/redemptions/otp/request") {
+            val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            call.respond(ApiResponse.success(
+                service.requestRedemptionOtp(org, call.receive<CounterBusinessOtpRequest>(), call.authenticatedPrincipal()),
+                call.callId
+            ))
+        }
+        post("/redemptions/otp/complete") {
+            val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            call.respond(HttpStatusCode.Created, ApiResponse.success(
+                service.completeRedemptionOtp(org, call.receive<CounterBusinessOtpCompleteRequest>(), call.authenticatedPrincipal()),
+                call.callId
+            ))
         }
         post("/qr-redemptions") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")

@@ -11,6 +11,8 @@ import org.jdbi.v3.sqlobject.customizer.Bind
 import org.jdbi.v3.sqlobject.statement.SqlQuery
 
 interface CustomerSql {
+    @SqlQuery("SELECT primary_phone FROM \"user\" WHERE user_id = :userId AND is_deleted = false")
+    fun userPhone(@Bind("userId") userId: String): String?
     @SqlQuery("SELECT can_administer_organization(:organizationId, :actorUserId)")
     fun canAdminister(@Bind("organizationId") organizationId: String,
                       @Bind("actorUserId") actorUserId: String): Boolean

@@ -68,12 +68,18 @@ fun Route.customerSelfServiceRoutes(service: CustomerService) {
             post("/purchases") {
                 val input = call.receive<CustomerPurchaseRequestDto>()
                 val principal = call.attributes.getOrNull(AuthenticatedPrincipalKey)
-                val result = if (principal == null) {
-                    service.purchase(call.organizationId(), null, input)
-                } else {
-                    service.purchaseAuthenticated(call.organizationId(), principal.userId, input)
-                }
+                if (principal == null || !service.hasActiveRelationship(call.organizationId(), principal.userId))
+                    throw BadRequestException("Membership purchase requires business OTP verification")
+                val result = service.purchaseAuthenticated(call.organizationId(), principal.userId, input)
                 call.respond(HttpStatusCode.Created, ApiResponse.success(result, call.callId))
+            }
+            post("/purchases/otp/request") {
+                val principal = call.attributes.getOrNull(AuthenticatedPrincipalKey)
+                call.respond(ApiResponse.success(service.requestPurchaseOtp(call.organizationId(), call.receive(), principal?.userId), call.callId))
+            }
+            post("/purchases/otp/complete") {
+                val principal = call.attributes.getOrNull(AuthenticatedPrincipalKey)
+                call.respond(HttpStatusCode.Created, ApiResponse.success(service.completePurchaseOtp(call.organizationId(), call.receive(), principal?.userId), call.callId))
             }
             get("/preferences/{code}") {
                 val code = call.parameters["code"] ?: throw BadRequestException("Preference code is required")

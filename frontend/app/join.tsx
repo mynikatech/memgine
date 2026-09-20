@@ -68,10 +68,10 @@ type Step =
   | "landing"
   | "register"
   | "otp"
+  | "purchaseOtp"
   | "review"
   | "processing"
   | "success";
-
 
 /*
  * --------------------------------------------------------------
@@ -166,8 +166,11 @@ export default function JoinFlow() {
   const [organizationUserId, setOrganizationUserId] = useState<string | null>(
     null,
   );
+  const [activeOrganization, setActiveOrganization] = useState(organization);
 
-  const [step, setStep] = useState<Step>(isStaffSale || customerId ? "review" : "landing");
+  const [step, setStep] = useState<Step>(
+    isStaffSale || customerId ? "review" : "landing",
+  );
   const [phoneVerified, setPhoneVerified] = useState(false);
 
   const [firstName, setFirstName] = useState("");
@@ -198,6 +201,14 @@ export default function JoinFlow() {
   const [code, setCode] = useState("");
 
   const [otpError, setOtpError] = useState<string | undefined>();
+
+  // Counter purchase verification is separate from normal customer login/registration OTP.
+  // It is requested once for the exact selected membership and reused through payment.
+  const [purchaseOtpChallengeId, setPurchaseOtpChallengeId] = useState("");
+  const [purchaseOtpDevCode, setPurchaseOtpDevCode] = useState("");
+  const [purchaseOtpCode, setPurchaseOtpCode] = useState("");
+  const [purchaseOtpVerified, setPurchaseOtpVerified] = useState(false);
+  const [purchaseOtpBusy, setPurchaseOtpBusy] = useState(false);
 
   /*
    * Subscription / payment state
@@ -243,14 +254,22 @@ export default function JoinFlow() {
         setLoading(true);
         setLoadError(undefined);
 
+        const resolvedOrganization =
+          orgId === organization.id
+            ? organization
+            : await services.organization.getOrganization(orgId);
+
+        if (!resolvedOrganization) {
+          throw new Error(`Organization not found: ${orgId}`);
+        }
+
         /*
          * --------------------------------------------------------
          * 1. Load organization membership catalogue
          * --------------------------------------------------------
          */
-        const membershipProducts = isStaffSale
-          ? await services.membershipProduct.listProducts(orgId)
-          : await services.customerData.membershipProducts(orgId);
+        const membershipProducts =
+          await services.customerData.membershipProducts(orgId);
 
         let pid = params.productId;
 
@@ -293,9 +312,8 @@ export default function JoinFlow() {
          * The organization-scoped method is the correct persisted
          * data path.
          */
-        const organizationBenefits = isStaffSale
-          ? await services.benefit.listByOrganization(orgId)
-          : await services.customerData.benefits(orgId);
+        const organizationBenefits =
+          await services.customerData.benefits(orgId);
 
         const bens = organizationBenefits.filter(
           (benefit) =>
@@ -321,33 +339,61 @@ export default function JoinFlow() {
         let cust: Customer | null = null;
         let resolvedOrganizationUserId: string | null = null;
         if (isStaffSale) {
-          if (!params.staffId || !params.storeId) throw new Error("Counter staff and store are required.");
+          if (!params.staffId || !params.storeId)
+            throw new Error("Counter staff and store are required.");
           if (customerId) {
-            const rows = await services.counter.customers({ organizationId: orgId,
-              storeId: params.storeId, staffId: params.staffId });
-            const row = rows.find(item => item.userId === customerId);
-            if (!row) throw new Error("Counter customer is not available in this organization.");
-            cust = { id: row.userId,
-              fullName: row.displayName || [row.firstName, row.lastName].filter(Boolean).join(" "),
-              email: row.primaryEmail ?? undefined, phone: row.primaryPhone,
-              createdAt: row.joiningDate };
+            const rows = await services.counter.customers({
+              organizationId: orgId,
+              storeId: params.storeId,
+              staffId: params.staffId,
+            });
+            const row = rows.find((item) => item.userId === customerId);
+            if (!row)
+              throw new Error(
+                "Counter customer is not available in this organization.",
+              );
+            cust = {
+              id: row.userId,
+              fullName:
+                row.displayName ||
+                [row.firstName, row.lastName].filter(Boolean).join(" "),
+              email: row.primaryEmail ?? undefined,
+              phone: row.primaryPhone,
+              createdAt: row.joiningDate,
+            };
             resolvedOrganizationUserId = row.organizationUserId;
           } else {
             const draft = counterCheckout.get();
-            if (!draft) throw new Error("Verified Counter customer details have expired. Return to Counter.");
-            cust = { id: "", fullName: [draft.firstName, draft.lastName].join(" "),
-              email: draft.primaryEmail, phone: draft.primaryPhone,
-              createdAt: new Date().toISOString() };
+            if (!draft)
+              throw new Error(
+                "Verified Counter customer details have expired. Return to Counter.",
+              );
+            cust = {
+              id: "",
+              fullName: [draft.firstName, draft.lastName].join(" "),
+              email: draft.primaryEmail,
+              phone: draft.primaryPhone,
+              createdAt: new Date().toISOString(),
+            };
           }
         } else {
           if (customerId) {
             const profiles = await services.customerData.profiles(customerId);
-            const profile = profiles.find((item) => item.userId === customerId && item.organizationId === orgId);
-            if (!profile) throw new Error("Customer is not active in this organization.");
-            cust = { id: profile.userId,
-              fullName: profile.displayName?.trim() || [profile.firstName, profile.lastName].filter(Boolean).join(" "),
-              email: profile.primaryEmail ?? undefined, phone: profile.primaryPhone,
-              createdAt: profile.joiningDate };
+            const profile = profiles.find(
+              (item) =>
+                item.userId === customerId && item.organizationId === orgId,
+            );
+            if (!profile)
+              throw new Error("Customer is not active in this organization.");
+            cust = {
+              id: profile.userId,
+              fullName:
+                profile.displayName?.trim() ||
+                [profile.firstName, profile.lastName].filter(Boolean).join(" "),
+              email: profile.primaryEmail ?? undefined,
+              phone: profile.primaryPhone,
+              createdAt: profile.joiningDate,
+            };
             resolvedOrganizationUserId = profile.organizationUserId;
           }
         }
@@ -356,6 +402,7 @@ export default function JoinFlow() {
           return;
         }
 
+        setActiveOrganization(resolvedOrganization);
         setProduct(prod);
 
         setBenefits(bens);
@@ -364,7 +411,6 @@ export default function JoinFlow() {
 
         setOrganizationUserId(resolvedOrganizationUserId);
       } catch (error) {
-
         if (!mounted) {
           return;
         }
@@ -459,7 +505,6 @@ export default function JoinFlow() {
 
       setStep("otp");
     } catch (error) {
-
       setOtpError(
         error instanceof Error
           ? error.message
@@ -524,29 +569,136 @@ export default function JoinFlow() {
       }${normalizePhone(mobile)}`;
 
       // Keep verified details in memory until the server purchase succeeds.
-      setCustomer({ id: "", fullName: `${firstName.trim()} ${lastName.trim()}`.trim(),
-        phone: fullMobile, email: email.trim() || undefined,
-        createdAt: new Date().toISOString() });
+      setCustomer({
+        id: "",
+        fullName: `${firstName.trim()} ${lastName.trim()}`.trim(),
+        phone: fullMobile,
+        email: email.trim() || undefined,
+        createdAt: new Date().toISOString(),
+      });
       setPhoneVerified(true);
 
       setStep("review");
     } catch (error) {
+      setOtpError(
+        error instanceof Error ? error.message : "Unable to verify the phone.",
+      );
+    }
+  }, [requestId, code, firstName, lastName, countryCode, mobile, email]);
 
+  const counterPurchasePayload = useCallback(() => {
+    if (!isStaffSale || !plan || !params.staffId || !params.storeId) {
+      throw new Error("Counter staff, store and membership plan are required.");
+    }
+
+    const draft = customerId ? null : counterCheckout.get();
+    if (!customerId && !draft) {
+      throw new Error(
+        "Customer details have expired. Return to Counter and select the membership again.",
+      );
+    }
+
+    const purchase = {
+      planId: plan.id,
+      ...(customerId
+        ? { customerUserId: customerId }
+        : {
+            firstName: draft!.firstName,
+            lastName: draft!.lastName,
+            primaryEmail: draft!.primaryEmail,
+            primaryPhone: draft!.primaryPhone,
+          }),
+    };
+
+    const phone = customerId ? (customer?.phone ?? "") : draft!.primaryPhone;
+    if (!phone) {
+      throw new Error("Customer phone number is required for verification.");
+    }
+
+    return {
+      context: {
+        organizationId: orgId,
+        storeId: params.storeId,
+        staffId: params.staffId,
+      },
+      phone,
+      purchase,
+    };
+  }, [
+    isStaffSale,
+    plan,
+    params.staffId,
+    params.storeId,
+    customerId,
+    customer,
+    orgId,
+  ]);
+
+  const requestCounterPurchaseOtp = useCallback(async () => {
+    try {
+      setOtpError(undefined);
+      setPurchaseOtpBusy(true);
+
+      const { context, phone, purchase } = counterPurchasePayload();
+      const result = await services.counter.requestPurchaseOtp(
+        context,
+        phone,
+        purchase,
+      );
+
+      setPurchaseOtpChallengeId(result.challengeId);
+      setPurchaseOtpDevCode(String(result.devCode ?? ""));
+      setPurchaseOtpCode("");
+      setPurchaseOtpVerified(false);
+      setStep("purchaseOtp");
+    } catch (error) {
       setOtpError(
         error instanceof Error
           ? error.message
-          : "Unable to verify the phone.",
+          : "Unable to send purchase verification code.",
       );
+      setStep("review");
+    } finally {
+      setPurchaseOtpBusy(false);
     }
-  }, [
-    requestId,
-    code,
-    firstName,
-    lastName,
-    countryCode,
-    mobile,
-    email,
-  ]);
+  }, [counterPurchasePayload]);
+
+  const verifyCounterPurchaseOtp = useCallback(async () => {
+    try {
+      setOtpError(undefined);
+
+      const normalizedCode = normalizeOtp(purchaseOtpCode);
+      if (!purchaseOtpChallengeId) {
+        throw new Error("Purchase verification session has expired.");
+      }
+      if (normalizedCode.length !== OTP_LENGTH) {
+        throw new Error("Enter the complete 6-digit verification code.");
+      }
+
+      setPurchaseOtpBusy(true);
+      const { context } = counterPurchasePayload();
+      const verified = await services.counter.verifyPurchaseOtp(
+        context,
+        purchaseOtpChallengeId,
+        normalizedCode,
+      );
+      if (!verified) {
+        throw new Error("Purchase verification failed.");
+      }
+
+      setPurchaseOtpVerified(true);
+      setPurchaseOtpCode("");
+      setStep("review");
+    } catch (error) {
+      setOtpError(
+        error instanceof Error
+          ? error.message
+          : "Unable to verify purchase code.",
+      );
+    } finally {
+      setPurchaseOtpBusy(false);
+    }
+  }, [counterPurchasePayload, purchaseOtpChallengeId, purchaseOtpCode]);
 
   /*
    * --------------------------------------------------------------
@@ -570,64 +722,66 @@ export default function JoinFlow() {
    */
 
   const payAndSubscribe = useCallback(async () => {
-    if (!product || !plan || (!isStaffSale && !organizationUserId && !phoneVerified)) {
+    if (
+      !product ||
+      !plan ||
+      (!isStaffSale && !organizationUserId && !phoneVerified)
+    ) {
+      return;
+    }
+
+    // Counter sale has exactly one Memgine OTP. Request it before payment.
+    if (isStaffSale && !purchaseOtpVerified) {
+      await requestCounterPurchaseOtp();
       return;
     }
 
     setStep("processing");
 
     try {
-      /*
-       * --------------------------------------------------------
-       * 1. PAYMENT
-       * --------------------------------------------------------
-       *
-       * JoinFlow only knows about PaymentService.
-       *
-       * The current service registry supplies the local payment
-       * implementation. Production can replace that implementation
-       * without changing this workflow.
-       */
       const payment = await services.payment.pay({
         amountMinor: plan.price.amountMinor,
         currency: plan.price.currency,
         description: product.membershipProductName,
       });
 
-      /*
-       * Do NOT create the subscription unless the payment service
-       * explicitly reports success.
-       */
       if (payment.status !== "PAID") {
         throw new Error("Payment was not completed.");
       }
 
-      /*
-       * --------------------------------------------------------
-       * 2. RESOLVE ACTIVE SUBSCRIPTION STATUS
-       * --------------------------------------------------------
-       */
       if (isStaffSale) {
-        if (!params.staffId || !params.storeId) throw new Error("Counter staff and store are required.");
-        const draft = customerId ? null : counterCheckout.get();
-        if (!customerId && !draft) throw new Error("Verified customer details have expired. Return to Counter.");
-        const saved = await services.counter.purchase({ organizationId: orgId,
-          storeId: params.storeId, staffId: params.staffId }, {
-            planId: plan.id,
-            ...(customerId ? { customerUserId: customerId } : {
-              firstName: draft!.firstName, lastName: draft!.lastName,
-              primaryEmail: draft!.primaryEmail, primaryPhone: draft!.primaryPhone,
-            }),
-          });
+        if (!purchaseOtpChallengeId) {
+          throw new Error("Purchase verification is required before payment.");
+        }
+
+        const { context } = counterPurchasePayload();
+        const saved = await services.counter.finalizePurchaseOtp(
+          context,
+          purchaseOtpChallengeId,
+        );
+
         counterCheckout.clear();
+        setPurchaseOtpChallengeId("");
+        setPurchaseOtpDevCode("");
+        setPurchaseOtpCode("");
+        setPurchaseOtpVerified(false);
+
         const sub = {
-          id: saved.subscriptionId, subscriptionNumber: saved.subscriptionNumber,
-          organizationUserId: saved.organizationUserId, subscriptionPlanId: saved.subscriptionPlanId,
-          subscriptionDate: saved.subscriptionDate, startDate: saved.startDate,
-          endDate: saved.endDate, subscriptionStatusId: saved.subscriptionStatusId,
-          totalAmount: { amountMinor: Math.round(saved.totalAmount * 100), currency: saved.currencyCode },
+          id: saved.subscriptionId,
+          subscriptionNumber: saved.subscriptionNumber,
+          organizationUserId: saved.organizationUserId,
+          subscriptionPlanId: saved.subscriptionPlanId,
+          subscriptionDate: saved.subscriptionDate,
+          startDate: saved.startDate,
+          endDate: saved.endDate,
+          subscriptionStatusId: saved.subscriptionStatusId,
+          totalAmount: {
+            amountMinor: Math.round(saved.totalAmount * 100),
+            currency: saved.currencyCode,
+          },
           isDeleted: false,
         } as Subscription;
+
         setSubscription(sub);
         setReference(payment.reference);
         setActiveContext(orgId, sub.id);
@@ -635,32 +789,45 @@ export default function JoinFlow() {
         return;
       }
 
+      // Authenticated customer purchases do not require a second business OTP.
       if (!customerId && (!phoneVerified || !customer)) {
         throw new Error("Verify the customer phone before purchasing.");
       }
+
       const saved = await services.customerData.purchase(orgId, {
         planId: plan.id,
-        ...(customerId ? { customerUserId: customerId } : {
-          firstName: firstName.trim(), lastName: lastName.trim(),
-          primaryEmail: email.trim() || undefined, primaryPhone: customer!.phone,
-        }),
+        ...(customerId
+          ? { customerUserId: customerId }
+          : {
+              firstName: firstName.trim(),
+              lastName: lastName.trim(),
+              primaryEmail: email.trim() || undefined,
+              primaryPhone: customer!.phone,
+            }),
       });
+
       const sub = {
-        id: saved.subscriptionId, subscriptionNumber: saved.subscriptionNumber,
-        organizationUserId: saved.organizationUserId, subscriptionPlanId: saved.subscriptionPlanId,
-        subscriptionDate: saved.subscriptionDate, startDate: saved.startDate,
-        endDate: saved.endDate, subscriptionStatusId: saved.subscriptionStatusId,
-        totalAmount: { amountMinor: Math.round(saved.totalAmount * 100), currency: saved.currencyCode },
+        id: saved.subscriptionId,
+        subscriptionNumber: saved.subscriptionNumber,
+        organizationUserId: saved.organizationUserId,
+        subscriptionPlanId: saved.subscriptionPlanId,
+        subscriptionDate: saved.subscriptionDate,
+        startDate: saved.startDate,
+        endDate: saved.endDate,
+        subscriptionStatusId: saved.subscriptionStatusId,
+        totalAmount: {
+          amountMinor: Math.round(saved.totalAmount * 100),
+          currency: saved.currencyCode,
+        },
         isDeleted: false,
       } as Subscription;
+
       setSubscription(sub);
       setReference(payment.reference);
       setActiveContext(orgId, sub.id);
       setStep("success");
     } catch (error) {
-
       setStep("review");
-
       setOtpError(
         error instanceof Error
           ? error.message
@@ -672,7 +839,10 @@ export default function JoinFlow() {
     plan,
     organizationUserId,
     isStaffSale,
-    params.staffId,
+    purchaseOtpVerified,
+    requestCounterPurchaseOtp,
+    purchaseOtpChallengeId,
+    counterPurchasePayload,
     orgId,
     customerId,
     setActiveContext,
@@ -797,7 +967,13 @@ export default function JoinFlow() {
       testID="join-screen"
       edges={["top"]}
       header={
-        <BusinessHeader right={headerRight} testID="join-business-header" />
+        <BusinessHeader
+          businessName={
+            activeOrganization.displayName ?? activeOrganization.name
+          }
+          right={headerRight}
+          testID="join-business-header"
+        />
       }
     >
       {/* LANDING */}
@@ -847,7 +1023,8 @@ export default function JoinFlow() {
 
           <Button
             label={t("join.joinCta", {
-              business: organization.displayName ?? organization.name,
+              business:
+                activeOrganization.displayName ?? activeOrganization.name,
             })}
             fullWidth
             onPress={() => setStep("register")}
@@ -1104,6 +1281,62 @@ export default function JoinFlow() {
         </View>
       ) : null}
 
+      {/* COUNTER PURCHASE OTP — one Memgine OTP for the exact selected purchase */}
+      {step === "purchaseOtp" ? (
+        <View
+          style={{
+            gap: theme.spacing.lg,
+          }}
+          testID="join-purchase-otp"
+        >
+          <Text variant="h2" color="text">
+            Confirm membership purchase
+          </Text>
+
+          <Text variant="bodySmall" color="textMuted">
+            Enter the verification code sent to the customer. This is the only
+            Memgine OTP required for this Counter purchase.
+          </Text>
+
+          {purchaseOtpDevCode ? (
+            <Badge
+              label={`Dev OTP: ${purchaseOtpDevCode}`}
+              tone="info"
+              testID="join-purchase-dev-otp"
+            />
+          ) : null}
+
+          <Input
+            label="Verification code"
+            value={purchaseOtpCode}
+            onChangeText={(value) => setPurchaseOtpCode(normalizeOtp(value))}
+            keyboardType="number-pad"
+            maxLength={OTP_LENGTH}
+            error={otpError}
+            testID="join-purchase-otp-input"
+          />
+
+          <Button
+            label={purchaseOtpBusy ? "Verifying..." : "Verify & Continue"}
+            fullWidth
+            disabled={
+              purchaseOtpBusy ||
+              normalizeOtp(purchaseOtpCode).length !== OTP_LENGTH
+            }
+            onPress={verifyCounterPurchaseOtp}
+            testID="join-purchase-otp-verify"
+          />
+
+          <Button
+            label="Send New Code"
+            fullWidth
+            disabled={purchaseOtpBusy}
+            onPress={requestCounterPurchaseOtp}
+            testID="join-purchase-otp-resend"
+          />
+        </View>
+      ) : null}
+
       {/* REVIEW */}
       {step === "review" ? (
         <View
@@ -1121,7 +1354,8 @@ export default function JoinFlow() {
             meta={[
               {
                 label: t("join.business"),
-                value: organization.displayName ?? organization.name,
+                value:
+                  activeOrganization.displayName ?? activeOrganization.name,
               },
 
               ...(isStaffSale
@@ -1217,8 +1451,22 @@ export default function JoinFlow() {
             </Text>
           ) : null}
 
+          {isStaffSale && purchaseOtpVerified ? (
+            <Badge label="Customer verified for this purchase" tone="success" />
+          ) : null}
+
+          {otpError ? (
+            <Text variant="bodySmall" color="textMuted">
+              {otpError}
+            </Text>
+          ) : null}
+
           <Button
-            label={t("join.payAndSubscribe")}
+            label={
+              isStaffSale && !purchaseOtpVerified
+                ? "Send Purchase OTP"
+                : t("join.payAndSubscribe")
+            }
             fullWidth
             disabled={!isStaffSale && !organizationUserId && !phoneVerified}
             onPress={payAndSubscribe}
@@ -1288,7 +1536,8 @@ export default function JoinFlow() {
                   }}
                 >
                   {t("join.successBody", {
-                    business: organization.displayName ?? organization.name,
+                    business:
+                      activeOrganization.displayName ?? activeOrganization.name,
                     product:
                       product.displayName ?? product.membershipProductName,
                   })}
@@ -1305,7 +1554,8 @@ export default function JoinFlow() {
             meta={[
               {
                 label: t("join.business"),
-                value: organization.displayName ?? organization.name,
+                value:
+                  activeOrganization.displayName ?? activeOrganization.name,
               },
 
               {

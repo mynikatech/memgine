@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+
 import { View } from "react-native";
 
 import { useBusiness } from "@/src/providers";
@@ -6,19 +7,26 @@ import { useBusiness } from "@/src/providers";
 import { Text } from "../Text";
 
 /**
- * BusinessHeader — branded top bar driven entirely by BusinessProvider
- * (business name + brand colour). Reused across customer screens. No business
- * value is hard-coded here.
+ * BusinessHeader — branded top bar driven by BusinessProvider by default.
+ * Organization-scoped flows can override the displayed business name without
+ * mutating the global provider context.
  */
 type BusinessHeaderProps = {
   subtitle?: string;
   right?: ReactNode;
   testID?: string;
+  businessName?: string;
 };
 
-export function BusinessHeader({ subtitle, right, testID }: BusinessHeaderProps) {
+export function BusinessHeader({
+  subtitle,
+  right,
+  testID,
+  businessName,
+}: BusinessHeaderProps) {
   const { configuration, theme } = useBusiness();
-  const name = configuration.identity.displayName;
+
+  const name = businessName ?? configuration.identity.displayName;
   const initial = name.trim().charAt(0).toUpperCase();
 
   return (
@@ -45,16 +53,19 @@ export function BusinessHeader({ subtitle, right, testID }: BusinessHeaderProps)
           {initial}
         </Text>
       </View>
+
       <View style={{ flex: 1 }}>
         {subtitle ? (
           <Text variant="caption" color="textMuted">
             {subtitle}
           </Text>
         ) : null}
+
         <Text variant="h2" color="text">
           {name}
         </Text>
       </View>
+
       {right}
     </View>
   );

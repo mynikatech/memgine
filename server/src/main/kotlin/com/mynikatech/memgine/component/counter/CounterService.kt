@@ -4,12 +4,19 @@ import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.exception.ConflictException
 import com.mynikatech.memgine.exception.ForbiddenException
 import com.mynikatech.memgine.exception.NotFoundException
+import com.mynikatech.memgine.component.otp.BusinessOtpContextRow
+import com.mynikatech.memgine.component.otp.BusinessOtpService
+import com.mynikatech.memgine.component.otp.OtpPurpose
+import com.mynikatech.memgine.component.otp.OtpRequestResult
 import com.mynikatech.memgine.net.dto.*
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
 import com.mynikatech.memgine.security.AuthenticatedPrincipal
 import org.jdbi.v3.core.Jdbi
 import org.postgresql.util.PSQLException
 
-class CounterService(private val jdbi: Jdbi) {
+class CounterService(private val jdbi: Jdbi, private val businessOtp: BusinessOtpService) {
     private fun sql(): CounterSql = jdbi.onDemand(CounterSql::class.java)
 
     private fun id(value: String, name: String) {
@@ -38,6 +45,23 @@ class CounterService(private val jdbi: Jdbi) {
     fun subscriptions(org: String, store: String, staff: String, principal: AuthenticatedPrincipal): List<CounterSubscriptionDto> {
         authorize(org, store, staff, principal)
         return sql().subscriptions(org, principal.userId)
+    }
+    
+    fun subscriptionBenefits(
+        org: String,
+        store: String,
+        staff: String,
+        subscriptionId: String,
+        principal: AuthenticatedPrincipal
+    ): List<BenefitDto> {
+        authorize(org, store, staff, principal)
+        id(subscriptionId, "subscription id")
+
+        return sql().subscriptionBenefits(
+            org,
+            subscriptionId,
+            principal.userId
+        )
     }
 
     fun redemptions(org: String, store: String, staff: String, principal: AuthenticatedPrincipal): List<OrgAdminRedemptionDto> {
@@ -81,6 +105,99 @@ class CounterService(private val jdbi: Jdbi) {
         }
     }
 
+    fun requestPurchaseOtp(org: String, input: CounterBusinessOtpRequest,
+                           principal: AuthenticatedPrincipal): OtpRequestResult {
+        val request = input.purchase ?: throw BadRequestException("Purchase details are required")
+        if (input.redemption != null) throw BadRequestException("Only one Counter action may be verified")
+        validatePurchase(org, request, principal)
+        val verificationPhone = if (request.customerUserId != null) {
+            sql().customers(org, principal.userId)
+                .firstOrNull { it.userId == request.customerUserId }
+                ?.primaryPhone
+                ?: throw BadRequestException("Customer is not active in this organization")
+        } else {
+            request.primaryPhone
+                ?: throw BadRequestException("New customer phone is required")
+        }
+
+        return businessOtp.request(
+            verificationPhone,
+            input.regionCode,
+            OtpPurpose.COUNTER_PURCHASE_VERIFY,
+            org,
+            request.storeId,
+            request.planId,
+            null,
+            request.customerUserId,
+            request.staffId,
+            null,
+            Json.encodeToString(request)
+        )
+    }
+
+    /**
+     * Verifies the one Counter purchase OTP, but deliberately does NOT create
+     * the subscription yet. Payment happens after this succeeds.
+     */
+    fun verifyPurchaseOtp(org: String, input: CounterBusinessOtpCompleteRequest,
+                          principal: AuthenticatedPrincipal): Boolean {
+        val context = businessOtp.verifyAndResolve(
+            input.challengeId,
+            input.otp,
+            OtpPurpose.COUNTER_PURCHASE_VERIFY
+        )
+        validatePurchaseContext(org, context, principal)
+        return true
+    }
+
+    /**
+     * Finalizes a previously verified Counter purchase after payment succeeds.
+     * No second OTP is requested or verified here.
+     */
+    fun finalizePurchaseOtp(org: String, input: CounterBusinessOtpFinalizeRequest,
+                            principal: AuthenticatedPrincipal): CounterPurchaseResult {
+        val context = businessOtp.resolveVerified(
+            input.challengeId,
+            OtpPurpose.COUNTER_PURCHASE_VERIFY
+        )
+        val request = validatePurchaseContext(org, context, principal)
+        val result = purchase(org, request, principal)
+        businessOtp.consume(input.challengeId, OtpPurpose.COUNTER_PURCHASE_VERIFY)
+        return result
+    }
+
+    private fun validatePurchaseContext(
+        org: String,
+        context: BusinessOtpContextRow,
+        principal: AuthenticatedPrincipal
+    ): CounterPurchaseRequest {
+        if (context.organizationId != org) {
+            throw ForbiddenException("Business verification does not belong to this organization")
+        }
+
+        val request = Json.decodeFromString<CounterPurchaseRequest>(context.payload)
+        if (context.storeId != request.storeId ||
+            context.planId != request.planId ||
+            context.staffId != request.staffId ||
+            context.userId != request.customerUserId) {
+            throw BadRequestException("Business verification context is invalid")
+        }
+
+        validatePurchase(org, request, principal)
+
+        if (request.customerUserId != null) {
+            val canonicalPhone = sql().customers(org, principal.userId)
+                .firstOrNull { it.userId == request.customerUserId }
+                ?.primaryPhone
+                ?: throw BadRequestException("Customer is not active in this organization")
+            if (context.normalizedPhone != canonicalPhone) {
+                throw BadRequestException("Business verification context is invalid")
+            }
+        }
+
+        return request
+    }
+
     fun redeem(org: String, request: CounterRedeemRequest, principal: AuthenticatedPrincipal): List<CounterRedemptionResult> {
         authorize(org, request.storeId, request.staffId, principal)
         id(request.subscriptionId, "subscription id")
@@ -93,6 +210,95 @@ class CounterService(private val jdbi: Jdbi) {
             sql().redeem(org, request.storeId, request.staffId, request.subscriptionId,
                 request.benefitIds.toTypedArray(), principal.userId)
         }
+    }
+
+    fun requestRedemptionOtp(org: String, input: CounterBusinessOtpRequest,
+                             principal: AuthenticatedPrincipal): OtpRequestResult {
+        val request = input.redemption ?: throw BadRequestException("Redemption details are required")
+        if (input.purchase != null) throw BadRequestException("Only one Counter action may be verified")
+        validateRedemption(org, request, principal)
+        val subscription = sql().subscriptions(org, principal.userId)
+            .firstOrNull { it.id == request.subscriptionId }
+            ?: throw BadRequestException("Subscription is not active in this organization")
+
+        val customerPhone = sql().customers(org, principal.userId)
+            .firstOrNull { it.userId == subscription.userId }
+            ?.primaryPhone
+            ?: throw BadRequestException("Customer is not active in this organization")
+
+        return businessOtp.request(
+            customerPhone,
+            input.regionCode,
+            OtpPurpose.COUNTER_REDEMPTION_VERIFY,
+            org,
+            request.storeId,
+            null,
+            request.subscriptionId,
+            subscription.userId,
+            request.staffId,
+            Json.encodeToString(request.benefitIds.sorted()),
+            Json.encodeToString(request)
+        )
+    }
+
+    fun completeRedemptionOtp(org: String, input: CounterBusinessOtpCompleteRequest,
+                              principal: AuthenticatedPrincipal): List<CounterRedemptionResult> {
+        val context = businessOtp.verifyAndResolve(
+            input.challengeId,
+            input.otp,
+            OtpPurpose.COUNTER_REDEMPTION_VERIFY
+        )
+        if (context.organizationId != org) {
+            throw ForbiddenException("Business verification does not belong to this organization")
+        }
+
+        val request = Json.decodeFromString<CounterRedeemRequest>(context.payload)
+        val boundBenefitIds =
+            Json.decodeFromString<List<String>>(context.benefitIds ?: "[]").sorted()
+
+        if (context.storeId != request.storeId ||
+            context.subscriptionId != request.subscriptionId ||
+            context.staffId != request.staffId ||
+            boundBenefitIds != request.benefitIds.sorted()) {
+            throw BadRequestException("Business verification context is invalid")
+        }
+
+        val subscription = sql().subscriptions(org, principal.userId)
+            .firstOrNull { it.id == request.subscriptionId }
+            ?: throw BadRequestException("Subscription is not active in this organization")
+
+        if (context.userId != subscription.userId) {
+            throw BadRequestException("Business verification context is invalid")
+        }
+
+        val canonicalPhone = sql().customers(org, principal.userId)
+            .firstOrNull { it.userId == subscription.userId }
+            ?.primaryPhone
+            ?: throw BadRequestException("Customer is not active in this organization")
+
+        if (context.normalizedPhone != canonicalPhone) {
+            throw BadRequestException("Business verification context is invalid")
+        }
+
+        val result = redeem(org, request, principal)
+        businessOtp.consume(input.challengeId, OtpPurpose.COUNTER_REDEMPTION_VERIFY)
+        return result
+    }
+
+    private fun validatePurchase(org: String, request: CounterPurchaseRequest, principal: AuthenticatedPrincipal) {
+        authorize(org, request.storeId, request.staffId, principal)
+        id(request.planId, "plan id")
+        request.customerUserId?.let { id(it, "customer user id") }
+        if (request.customerUserId == null && (request.firstName.isNullOrBlank() || request.lastName.isNullOrBlank() || request.primaryPhone.isNullOrBlank()))
+            throw BadRequestException("New customer name and phone are required")
+    }
+
+    private fun validateRedemption(org: String, request: CounterRedeemRequest, principal: AuthenticatedPrincipal) {
+        authorize(org, request.storeId, request.staffId, principal)
+        id(request.subscriptionId, "subscription id")
+        if (request.benefitIds.isEmpty() || request.benefitIds.size > 100 || request.benefitIds.distinct().size != request.benefitIds.size)
+            throw BadRequestException("Select distinct benefits")
+        request.benefitIds.forEach { id(it, "benefit id") }
     }
 
     fun redeemQr(org: String, request: CounterQrRedeemRequest, principal: AuthenticatedPrincipal): List<CounterRedemptionResult> {

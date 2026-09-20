@@ -28,4 +28,10 @@ data class CustomerPurchaseRequestDto(
 )
 
 @Serializable
+data class CustomerPurchaseOtpRequestDto(val phone: String? = null, val regionCode: String? = null, val purchase: CustomerPurchaseRequestDto)
+
+@Serializable
+data class CustomerPurchaseOtpCompleteDto(val challengeId: String, val otp: String)
+
+@Serializable
 data class CustomerPreferenceValueDto(val value: String? = null)

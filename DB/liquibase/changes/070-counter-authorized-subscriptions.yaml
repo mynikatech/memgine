@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 070-counter-authorized-subscriptions
+      author: mynikatech
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/070-counter-authorized-subscriptions.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

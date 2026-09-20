@@ -86,6 +86,7 @@ fun Application.configureRouting(
         database.jdbi.onDemand(OtpSql::class.java), phoneNormalizer,
         OtpProviderRouter(config.otp, otpProvider), config.otp
     )
+    val businessOtpService = BusinessOtpService(otpService, database.jdbi.onDemand(BusinessOtpSql::class.java))
     val authenticationService = AuthenticationService(
         database.jdbi.onDemand(AuthenticationSql::class.java), otpService,
         phoneNormalizer, config.authentication
@@ -124,8 +125,8 @@ fun Application.configureRouting(
     val subscriptionService = SubscriptionService(database.jdbi.onDemand(SubscriptionSql::class.java))
     val redemptionService = RedemptionService(database.jdbi.onDemand(RedemptionSql::class.java))
     val customerService = CustomerService(database.jdbi.onDemand(CustomerSql::class.java),
-        membershipProductService, benefitService, storeService, customerDevIdentityEnabled)
-    val counterService = CounterService(database.jdbi)
+        membershipProductService, benefitService, storeService, customerDevIdentityEnabled, businessOtpService)
+    val counterService = CounterService(database.jdbi, businessOtpService)
     val notificationConfigurationService = NotificationConfigurationService(database.jdbi)
     val integrationConfigurationService = IntegrationConfigurationService(database.jdbi)
     val customerExperienceReleaseService =

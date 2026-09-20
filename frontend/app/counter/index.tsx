@@ -129,16 +129,13 @@ export default function StaffCounter() {
   const [staffPickerVisible, setStaffPickerVisible] = useState(false);
   const [storePickerVisible, setStorePickerVisible] = useState(false);
 
-
   const [counterStaff, setCounterStaff] = useState<Staff | null>(null);
 
   const [counterStaffName, setCounterStaffName] = useState("");
 
   const staffId = loadedOrgId === orgId ? (counterStaff?.id ?? "") : "";
   const staffRole =
-    counterStaff?.designation?.trim() ||
-    counterStaff?.role ||
-    null;
+    counterStaff?.designation?.trim() || counterStaff?.role || null;
 
   const [store, setStore] = useState<Store | null>(null);
 
@@ -146,9 +143,14 @@ export default function StaffCounter() {
   const principalStaffIsCurrent =
     loadedOrgId === orgId &&
     activeStaffMembers.some((item) => item.id === authenticatedStaffId);
-  const canSelectOperationalStaff = !session?.posContext && (session?.access.some(
-    (context) => context.organizationId === orgId && context.capabilities.includes("ORG_ADMIN_ACCESS"),
-  ) ?? false);
+  const canSelectOperationalStaff =
+    !session?.posContext &&
+    (session?.access.some(
+      (context) =>
+        context.organizationId === orgId &&
+        context.capabilities.includes("ORG_ADMIN_ACCESS"),
+    ) ??
+      false);
   const selectedStaff =
     loadedOrgId === orgId
       ? selectCounterStaff(
@@ -183,31 +185,15 @@ export default function StaffCounter() {
    * New Customer
    *
    * Counter reuses the same CustomerForm as Org Admin. The form
-   * collects the complete customer details first. OTP verification
-   * then authenticates the phone before the customer is persisted.
+   * collects the complete customer details first. The customer is not persisted
+   * here; the single purchase-bound OTP is requested after a membership is selected.
    */
   const [countries, setCountries] = useState<CountryReference[]>([]);
 
   const [userStatuses, setUserStatuses] = useState<Status[]>([]);
 
-  const [newCustomerDraft, setNewCustomerDraft] =
-    useState<CustomerFormSubmitResult | null>(null);
-
-  // True when Counter registration finds that the supplied phone number
-  // already belongs to an existing canonical User.
+  // True when the entered phone already belongs to an existing canonical User.
   const [newCustomerWasExisting, setNewCustomerWasExisting] = useState(false);
-
-  const [newOtpRequestId, setNewOtpRequestId] = useState("");
-
-  const [newDevCode, setNewDevCode] = useState("");
-
-  const [newOtpCode, setNewOtpCode] = useState("");
-
-  const [newOtpSent, setNewOtpSent] = useState(false);
-
-  const [newOtpVerifying, setNewOtpVerifying] = useState(false);
-
-  const newOtpVerificationInFlight = useRef(false);
 
   /*
    * Redemption result
@@ -226,7 +212,7 @@ export default function StaffCounter() {
   const [samples, setSamples] = useState<{ label: string; raw: string }[]>([]);
 
   /*
-   * Existing customer Phone + OTP
+   * Existing customer phone lookup; action-bound OTP happens later
    */
   const [phone, setPhone] = useState("");
 
@@ -292,18 +278,7 @@ export default function StaffCounter() {
 
     setSearched(false);
 
-    setNewCustomerDraft(null);
     setNewCustomerWasExisting(false);
-
-    setNewOtpRequestId("");
-
-    setNewDevCode("");
-
-    setNewOtpCode("");
-
-    setNewOtpSent(false);
-    setNewOtpVerifying(false);
-    newOtpVerificationInFlight.current = false;
 
     setCustomer(null);
 
@@ -417,9 +392,14 @@ export default function StaffCounter() {
             ];
           }),
         );
-        const ownStaffId = session?.posContext?.staffId ?? activeStaff.find((staff) =>
-          organizationUsersById.get(staff.organizationUserId)?.userId === session?.userId,
-        )?.id ?? "";
+        const ownStaffId =
+          session?.posContext?.staffId ??
+          activeStaff.find(
+            (staff) =>
+              organizationUsersById.get(staff.organizationUserId)?.userId ===
+              session?.userId,
+          )?.id ??
+          "";
 
         setCounterOrganization(resolvedOrganization);
         setActiveStaffMembers(activeStaff);
@@ -471,7 +451,9 @@ export default function StaffCounter() {
 
     if (!selectedStaff) return;
     const resolvedStore =
-      (session?.posContext ? counterStores.find((item) => item.id === session.posContext?.storeId) : null) ??
+      (session?.posContext
+        ? counterStores.find((item) => item.id === session.posContext?.storeId)
+        : null) ??
       eligibleStores?.primary ??
       (selectedStoreId
         ? storeChoices.find((item) => item.id === selectedStoreId)
@@ -577,17 +559,15 @@ export default function StaffCounter() {
 
   const loadMembershipData = useCallback(
     async (customerId: string) => {
-      const [subscriptions, catalog, productStatuses, benefits] =
-        await Promise.all([
-          services.counter.subscriptions({
-            organizationId: orgId,
-            storeId,
-            staffId,
-          }),
-          services.membershipProduct.listProducts(orgId),
-          services.status.listMembershipProductStatuses(),
-          services.benefit.listByOrganization(orgId),
-        ]);
+      const [subscriptions, catalog, productStatuses] = await Promise.all([
+        services.counter.subscriptions({
+          organizationId: orgId,
+          storeId,
+          staffId,
+        }),
+        services.membershipProduct.listProducts(orgId),
+        services.status.listMembershipProductStatuses(),
+      ]);
       const activeProductIds = new Set(
         productStatuses
           .filter((status) => status.statusCode?.toUpperCase() === "ACTIVE")
@@ -609,8 +589,13 @@ export default function StaffCounter() {
             "Subscription plan is missing from the server catalog.",
           );
         owned.add(product.id);
-        const attachedBenefits = benefits.filter(
-          (item) => !item.isDeleted && product.benefitIds.includes(item.id),
+        const attachedBenefits = await services.counter.subscriptionBenefits(
+          {
+            organizationId: orgId,
+            storeId,
+            staffId,
+          },
+          row.id,
         );
         const eligibility = attachedBenefits.length
           ? await services.counter.eligibility(
@@ -698,104 +683,55 @@ export default function StaffCounter() {
   ) => {
     setError("");
 
-    const phone = formResult.user.primaryPhone;
-
-    if (!phone) {
+    const input = formResult.user;
+    const primaryPhone = input.primaryPhone;
+    if (!primaryPhone) {
       setError("Primary Phone Number is required.");
       return;
     }
 
-    const mobile = `${phone.callingCode}${phone.number}`;
+    const mobile = `${primaryPhone.callingCode}${primaryPhone.number}`;
 
     try {
-      const res = await services.auth.sendOtp({
-        mobile,
-      });
-
-      setNewCustomerDraft(formResult);
-      setNewOtpRequestId(String(res.requestId));
-      setNewDevCode(String(res.devCode ?? ""));
-      setNewOtpCode("");
-      setNewOtpSent(true);
-    } catch (error) {
-      console.error("STAFF NEW CUSTOMER SEND OTP ERROR", error);
-
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Unable to send the verification code.",
-      );
-    }
-  };
-
-  const verifyNewCustomerOtp = async () => {
-    if (newOtpVerificationInFlight.current) return;
-    if (!newCustomerDraft) {
-      setError("Enter customer details before verification.");
-      return;
-    }
-    if (!newOtpRequestId) {
-      setError("Verification session expired. Request a new code.");
-      return;
-    }
-    if (normalizeOtp(newOtpCode).length !== OTP_LENGTH) {
-      setError("Enter the complete 6-digit verification code.");
-      return;
-    }
-    newOtpVerificationInFlight.current = true;
-    setNewOtpVerifying(true);
-    try {
-      const verified = await services.auth.verifyOtp({
-        requestId: newOtpRequestId,
-        code: normalizeOtp(newOtpCode),
-      });
-      if (!verified.verified)
-        throw new Error("Incorrect code. Please enter the OTP shown above.");
-      const input = newCustomerDraft.user;
-      const mobile =
-        (input.primaryPhone.callingCode || "") + input.primaryPhone.number;
+      // Do not send a generic OTP here. The one Counter purchase OTP is
+      // requested only after the exact membership/plan has been selected.
       const rows = await services.counter.customers(counterContext());
       const existing = rows.find(
         (item) => normalizePhone(item.primaryPhone) === normalizePhone(mobile),
       );
+
       setNewCustomerWasExisting(Boolean(existing));
+
       if (existing) {
         counterCheckout.clear();
         await identifyCustomer(existing.userId);
-      } else {
-        counterCheckout.set({
-          firstName: input.firstName,
-          lastName: input.lastName,
-          primaryEmail: input.primaryEmail,
-          primaryPhone: mobile,
-        });
-        const catalog = await services.membershipProduct.listProducts(orgId);
-        setCustomer({
-          id: "",
-          fullName: [input.firstName, input.lastName].join(" "),
-          email: input.primaryEmail,
-          phone: mobile,
-          createdAt: new Date().toISOString(),
-        });
-        setMemberships([]);
-        setAvailableForSale(catalog.filter((item) => !item.isDeleted));
+        return;
       }
-      setNewOtpRequestId("");
-      setNewOtpSent(false);
-      setNewDevCode("");
-      setNewOtpCode("");
+
+      counterCheckout.set({
+        firstName: input.firstName,
+        lastName: input.lastName,
+        primaryEmail: input.primaryEmail,
+        primaryPhone: mobile,
+      });
+
+      const catalog = await services.membershipProduct.listProducts(orgId);
+      setCustomer({
+        id: "",
+        fullName: [input.firstName, input.lastName].join(" "),
+        email: input.primaryEmail,
+        phone: mobile,
+        createdAt: new Date().toISOString(),
+      });
+      setMemberships([]);
+      setAvailableForSale(catalog.filter((item) => !item.isDeleted));
       setError("");
     } catch (failure) {
       setError(
         failure instanceof Error
           ? failure.message
-          : "Unable to verify customer.",
+          : "Unable to prepare customer details.",
       );
-      setNewOtpRequestId("");
-      setNewOtpSent(false);
-    } finally {
-      newOtpVerificationInFlight.current = false;
-      setNewOtpVerifying(false);
     }
   };
 
@@ -824,7 +760,7 @@ export default function StaffCounter() {
     }
     if (customer.id) counterCheckout.clear();
     else if (!counterCheckout.get()) {
-      setError("Verify the new customer phone first.");
+      setError("Enter the new customer details first.");
       return;
     }
     router.push({
@@ -869,43 +805,42 @@ export default function StaffCounter() {
     }
   };
 
-  const sendOtp = async () => {
+  const findCustomerByPhone = async () => {
     setError("");
 
     const normalizedPhone = normalizePhone(phone);
-
     if (normalizedPhone.length !== MAX_PHONE_DIGITS) {
       setError("Enter a 10-digit phone number.");
-
       return;
     }
 
     try {
-      const res = await services.auth.sendOtp({
-        mobile: normalizedPhone,
-      });
+      const rows = await services.counter.customers(counterContext());
+      const row = rows.find(
+        (item) => normalizePhone(item.primaryPhone) === normalizedPhone,
+      );
+      if (!row) {
+        throw new Error("No active customer was found for this phone number.");
+      }
 
-      setOtpRequestId(String(res.requestId));
-
-      setDevCode(String(res.devCode ?? ""));
-
+      // Identification itself is only lookup. The action-bound OTP is requested
+      // after the membership (sale) or exact benefits (redemption) are selected.
+      await identifyCustomer(row.userId);
+      setOtpRequestId("");
+      setOtpSent(false);
       setOtpCode("");
-
-      setOtpSent(true);
-    } catch (error) {
-      console.error("COUNTER SEND OTP ERROR", error);
-
+      setDevCode("");
+    } catch (failure) {
       setError(
-        error instanceof Error
-          ? error.message
-          : "Unable to send the verification code.",
+        failure instanceof Error ? failure.message : "Unable to find customer.",
       );
     }
   };
 
-  const verifyOtp = async () => {
+  const verifyRedemptionOtp = async () => {
     if (otpVerificationInFlight.current) return;
     setError("");
+
     if (!otpRequestId) {
       setError("Verification session expired. Request a new code.");
       return;
@@ -914,37 +849,61 @@ export default function StaffCounter() {
       setError("Enter the complete 6-digit verification code.");
       return;
     }
+
     otpVerificationInFlight.current = true;
     setOtpVerifying(true);
+    setBusy(true);
     try {
-      const verified = await services.auth.verifyOtp({
-        requestId: otpRequestId,
-        code: normalizeOtp(otpCode),
-      });
-      if (!verified.verified)
-        throw new Error("Incorrect code. Please enter the OTP shown above.");
-      const rows = await services.counter.customers(counterContext());
-      const row = rows.find(
-        (item) => normalizePhone(item.primaryPhone) === normalizePhone(phone),
+      const rows = await services.counter.completeRedemptionOtp(
+        counterContext(),
+        otpRequestId,
+        normalizeOtp(otpCode),
       );
-      if (!row)
-        throw new Error(
-          "OTP verified, but no customer was found for this phone number. Please request a new OTP and try again.",
-        );
-      await identifyCustomer(row.userId);
+
+      setResult({
+        kind: "SUCCESS",
+        message: "Redemption completed on the server.",
+        customer: customer ?? undefined,
+        outcomes: rows.map((row) => ({
+          benefitId: row.benefitId,
+          title:
+            selectedOption?.benefits.find((item) => item.id === row.benefitId)
+              ?.benefitName ?? row.benefitId,
+          status: "REDEEMED",
+          redemptionId: row.redemptionId,
+        })),
+      });
+
       setOtpRequestId("");
       setOtpSent(false);
       setOtpCode("");
       setDevCode("");
+
+      if (customer) {
+        const refreshed = await loadMembershipData(customer.id);
+        setMemberships(refreshed.memberships);
+        setAvailableForSale(refreshed.availableProducts);
+        const option = refreshed.memberships.find(
+          (item) => item.subscription.id === selectedSubId,
+        );
+        setSelectedBenefitIds(
+          new Set(
+            (option?.benefits ?? [])
+              .filter((item) => item.available)
+              .map((item) => item.id),
+          ),
+        );
+      }
     } catch (failure) {
       setError(
         failure instanceof Error
           ? failure.message
-          : "Unable to verify customer.",
+          : "Unable to verify redemption code.",
       );
     } finally {
       otpVerificationInFlight.current = false;
       setOtpVerifying(false);
+      setBusy(false);
     }
   };
 
@@ -994,21 +953,72 @@ export default function StaffCounter() {
     }
   };
 
+  const sendRedemptionOtp = async () => {
+    setBusy(true);
+    setResult(null);
+    setError("");
+
+    try {
+      const ids = Array.from(selectedBenefitIds);
+
+      if (!customer || !selectedSubId || ids.length === 0) {
+        throw new Error(
+          "Select a customer, membership and at least one benefit.",
+        );
+      }
+
+      if (!customer.phone) {
+        throw new Error(
+          "This customer does not have a phone number. Use Staff-Assisted redemption.",
+        );
+      }
+
+      const challenge = await services.counter.requestRedemptionOtp(
+        counterContext(),
+        customer.phone,
+        selectedSubId,
+        ids,
+      );
+
+      setOtpRequestId(challenge.challengeId);
+      setDevCode(String(challenge.devCode ?? ""));
+      setOtpCode("");
+      setOtpSent(true);
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Unable to send redemption verification code.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const runManual = async (_method: RedemptionMethod) => {
     setBusy(true);
     setResult(null);
     setError("");
+
     try {
       const ids = Array.from(selectedBenefitIds);
+
+      if (!customer || !selectedSubId || ids.length === 0) {
+        throw new Error(
+          "Select a customer, membership and at least one benefit.",
+        );
+      }
+
       const rows = await services.counter.redeem(
         counterContext(),
         selectedSubId,
         ids,
       );
+
       setResult({
         kind: "SUCCESS",
         message: "Redemption completed on the server.",
-        customer: customer ?? undefined,
+        customer,
         outcomes: rows.map((row) => ({
           benefitId: row.benefitId,
           title:
@@ -1018,21 +1028,23 @@ export default function StaffCounter() {
           redemptionId: row.redemptionId,
         })),
       });
-      if (customer) {
-        const refreshed = await loadMembershipData(customer.id);
-        setMemberships(refreshed.memberships);
-        setAvailableForSale(refreshed.availableProducts);
-        const option = refreshed.memberships.find(
-          (item) => item.subscription.id === selectedSubId,
-        );
-        setSelectedBenefitIds(
-          new Set(
-            (option?.benefits ?? [])
-              .filter((item) => item.available)
-              .map((item) => item.id),
-          ),
-        );
-      }
+
+      const refreshed = await loadMembershipData(customer.id);
+
+      setMemberships(refreshed.memberships);
+      setAvailableForSale(refreshed.availableProducts);
+
+      const option = refreshed.memberships.find(
+        (item) => item.subscription.id === selectedSubId,
+      );
+
+      setSelectedBenefitIds(
+        new Set(
+          (option?.benefits ?? [])
+            .filter((item) => item.available)
+            .map((item) => item.id),
+        ),
+      );
     } catch (failure) {
       setError(
         failure instanceof Error
@@ -1103,6 +1115,7 @@ export default function StaffCounter() {
                     <Pressable
                       key={option.subscription.id}
                       testID={`counter-membership-${option.subscription.id}`}
+                      disabled={otpSent}
                       onPress={() => selectMembership(option.subscription.id)}
                       style={[styles.chip, on && styles.chipOn]}
                     >
@@ -1123,7 +1136,7 @@ export default function StaffCounter() {
                 <Pressable
                   key={benefit.id}
                   testID={`counter-benefit-${benefit.id}`}
-                  disabled={!benefit.available}
+                  disabled={!benefit.available || otpSent}
                   onPress={() => toggleBenefit(benefit.id)}
                   style={[
                     styles.benefitRow,
@@ -1160,17 +1173,90 @@ export default function StaffCounter() {
             <View style={styles.redeemBar}>
               <Text style={styles.muted}>{selectedCount} selected</Text>
 
-              <Pressable
-                testID="counter-redeem-manual"
-                disabled={selectedCount === 0 || busy}
-                onPress={() => runManual(method)}
-                style={[
-                  styles.primaryBtn,
-                  (selectedCount === 0 || busy) && styles.btnDisabled,
-                ]}
-              >
-                <Text style={styles.primaryBtnText}>Redeem Selected</Text>
-              </Pressable>
+              {method === RedemptionMethod.STAFF_ASSISTED ? (
+                <Pressable
+                  testID="counter-redeem-staff-assisted"
+                  disabled={selectedCount === 0 || busy}
+                  onPress={() => runManual(method)}
+                  style={[
+                    styles.primaryBtn,
+                    (selectedCount === 0 || busy) && styles.btnDisabled,
+                  ]}
+                >
+                  <Text style={styles.primaryBtnText}>
+                    {busy ? "Redeeming..." : "Redeem Selected"}
+                  </Text>
+                </Pressable>
+              ) : !otpSent ? (
+                <Pressable
+                  testID="counter-send-redemption-otp"
+                  disabled={selectedCount === 0 || busy}
+                  onPress={sendRedemptionOtp}
+                  style={[
+                    styles.primaryBtn,
+                    (selectedCount === 0 || busy) && styles.btnDisabled,
+                  ]}
+                >
+                  <Text style={styles.primaryBtnText}>Send Redemption OTP</Text>
+                </Pressable>
+              ) : (
+                <View style={styles.otpSection}>
+                  <Text style={styles.label}>Redemption Verification</Text>
+
+                  <Text style={styles.muted}>
+                    OTP is bound to this membership and the selected benefits.
+                  </Text>
+
+                  {devCode ? (
+                    <Text style={styles.tiny}>Dev code: {devCode}</Text>
+                  ) : null}
+
+                  <TextInput
+                    testID="counter-redemption-otp"
+                    value={otpCode}
+                    onChangeText={(value) => setOtpCode(normalizeOtp(value))}
+                    placeholder="Enter OTP"
+                    placeholderTextColor={COLORS.textMuted}
+                    keyboardType="number-pad"
+                    maxLength={OTP_LENGTH}
+                    style={styles.input}
+                  />
+
+                  <Pressable
+                    testID="counter-redemption-verify"
+                    disabled={
+                      otpVerifying ||
+                      normalizeOtp(otpCode).length !== OTP_LENGTH
+                    }
+                    onPress={verifyRedemptionOtp}
+                    style={[
+                      styles.primaryBtn,
+                      (otpVerifying ||
+                        normalizeOtp(otpCode).length !== OTP_LENGTH) &&
+                        styles.btnDisabled,
+                    ]}
+                  >
+                    <Text style={styles.primaryBtnText}>
+                      {otpVerifying ? "Verifying..." : "Verify & Redeem"}
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    testID="counter-redemption-cancel-otp"
+                    disabled={otpVerifying}
+                    onPress={() => {
+                      setOtpRequestId("");
+                      setOtpSent(false);
+                      setOtpCode("");
+                      setDevCode("");
+                      setError("");
+                    }}
+                    style={styles.secondaryBtn}
+                  >
+                    <Text style={styles.secondaryBtnText}>Cancel OTP</Text>
+                  </Pressable>
+                </View>
+              )}
             </View>
           </>
         )}
@@ -1285,7 +1371,9 @@ export default function StaffCounter() {
 
         <View style={styles.ctxRow}>
           <Text style={styles.ctxLabel}>Store</Text>
-          {storeChoices.length > 1 && !eligibleStores?.primary && !session?.posContext ? (
+          {storeChoices.length > 1 &&
+          !eligibleStores?.primary &&
+          !session?.posContext ? (
             <Pressable
               testID="counter-store-selector"
               onPress={() => setStorePickerVisible(true)}
@@ -1302,7 +1390,9 @@ export default function StaffCounter() {
 
         <View style={styles.ctxRow}>
           <Text style={styles.ctxLabel}>Staff</Text>
-          {!canSelectOperationalStaff || principalStaffIsCurrent || activeStaffMembers.length <= 1 ? (
+          {!canSelectOperationalStaff ||
+          principalStaffIsCurrent ||
+          activeStaffMembers.length <= 1 ? (
             <Text style={styles.ctxValue}>
               {counterStaff
                 ? `${counterStaffName || "Staff"} · ${counterStaff.role}`
@@ -1442,7 +1532,7 @@ export default function StaffCounter() {
             currentMode === "qr"
               ? "Scan QR"
               : currentMode === "phone"
-                ? "Phone + OTP"
+                ? "Phone Lookup"
                 : currentMode === "assisted"
                   ? "Staff-Assisted"
                   : "New Customer";
@@ -1518,70 +1608,44 @@ export default function StaffCounter() {
         </View>
       ) : null}
 
-      {/* Phone + OTP */}
+      {/* Phone lookup — OTP is requested only after the exact action is selected */}
       {mode === "phone" ? (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Phone + OTP</Text>
+          <Text style={styles.cardTitle}>Phone Lookup</Text>
 
-          <TextInput
-            testID="counter-phone-input"
-            value={phone}
-            onChangeText={(value) => setPhone(normalizePhone(value))}
-            placeholder="Customer phone number"
-            placeholderTextColor={COLORS.textMuted}
-            keyboardType="number-pad"
-            maxLength={MAX_PHONE_DIGITS}
-            style={styles.input}
-            editable={!otpSent}
-          />
+          <Text style={styles.muted}>
+            Find the customer first. For a sale, the single OTP is requested
+            after the membership is selected. For a manual redemption, it is
+            requested after the exact benefits are selected.
+          </Text>
 
-          {!otpSent ? (
-            <Pressable
-              testID="counter-send-otp"
-              disabled={normalizePhone(phone).length !== MAX_PHONE_DIGITS}
-              onPress={sendOtp}
-              style={[
-                styles.primaryBtn,
-                normalizePhone(phone).length !== MAX_PHONE_DIGITS &&
-                  styles.btnDisabled,
-              ]}
-            >
-              <Text style={styles.primaryBtnText}>Send OTP</Text>
-            </Pressable>
-          ) : (
+          {!customer ? (
             <>
-              <Text style={styles.tiny}>Dev code: {devCode}</Text>
-
               <TextInput
-                testID="counter-otp-input"
-                value={otpCode}
-                onChangeText={(value) => setOtpCode(normalizeOtp(value))}
-                placeholder="Enter OTP"
+                testID="counter-phone-input"
+                value={phone}
+                onChangeText={(value) => setPhone(normalizePhone(value))}
+                placeholder="Customer phone number"
                 placeholderTextColor={COLORS.textMuted}
                 keyboardType="number-pad"
-                maxLength={OTP_LENGTH}
+                maxLength={MAX_PHONE_DIGITS}
                 style={styles.input}
               />
 
               <Pressable
-                testID="counter-verify-otp"
-                disabled={
-                  otpVerifying || normalizeOtp(otpCode).length !== OTP_LENGTH
-                }
-                onPress={verifyOtp}
+                testID="counter-find-phone"
+                disabled={normalizePhone(phone).length !== MAX_PHONE_DIGITS}
+                onPress={findCustomerByPhone}
                 style={[
                   styles.primaryBtn,
-                  (otpVerifying ||
-                    normalizeOtp(otpCode).length !== OTP_LENGTH) &&
+                  normalizePhone(phone).length !== MAX_PHONE_DIGITS &&
                     styles.btnDisabled,
                 ]}
               >
-                <Text style={styles.primaryBtnText}>
-                  {otpVerifying ? "Verifying..." : "Verify"}
-                </Text>
+                <Text style={styles.primaryBtnText}>Find Customer</Text>
               </Pressable>
             </>
-          )}
+          ) : null}
 
           {afterIdentify(RedemptionMethod.OTP)}
         </View>
@@ -1663,149 +1727,59 @@ export default function StaffCounter() {
           <Text style={styles.cardTitle}>New Customer</Text>
 
           <Text style={styles.muted}>
-            Add the complete customer details, verify the mobile number by OTP,
-            and complete the membership purchase to save the customer.
+            Add the customer details and choose a membership. The customer will
+            receive one purchase-bound OTP after the membership is selected. The
+            customer is created only when that verified purchase completes.
           </Text>
 
           {!customer ? (
-            !newOtpSent ? (
-              countries.length > 0 && userStatuses.length > 0 ? (
-                <CustomerForm
-                  organizationId={orgId}
-                  stores={[]}
-                  initialSourceStoreId={store?.id}
-                  hideAcquisitionSection
-                  hideUserStatusSection
-                  countries={countries}
-                  userStatuses={userStatuses}
-                  activeUserStatusId={
-                    userStatuses.find(
-                      (status) =>
-                        status.statusCode?.trim().toUpperCase() === "ACTIVE",
-                    )?.id ?? ""
-                  }
-                  mode="add"
-                  onSave={handleNewCustomerFormSave}
-                  onCancel={() => {
-                    setNewCustomerDraft(null);
-                    setNewCustomerWasExisting(false);
-                    setNewOtpRequestId("");
-                    setNewDevCode("");
-                    setNewOtpCode("");
-                    setNewOtpSent(false);
-                    setError("");
-                  }}
-                />
-              ) : (
-                <Text style={styles.muted}>
-                  Loading customer reference data...
-                </Text>
-              )
+            countries.length > 0 && userStatuses.length > 0 ? (
+              <CustomerForm
+                organizationId={orgId}
+                stores={[]}
+                initialSourceStoreId={store?.id}
+                hideAcquisitionSection
+                hideUserStatusSection
+                countries={countries}
+                userStatuses={userStatuses}
+                activeUserStatusId={
+                  userStatuses.find(
+                    (status) =>
+                      status.statusCode?.trim().toUpperCase() === "ACTIVE",
+                  )?.id ?? ""
+                }
+                mode="add"
+                onSave={handleNewCustomerFormSave}
+                onCancel={() => {
+                  counterCheckout.clear();
+                  setNewCustomerWasExisting(false);
+                  setError("");
+                }}
+              />
             ) : (
-              <View style={styles.otpSection}>
-                <Text style={styles.label}>Mobile Verification</Text>
-
-                <Text style={styles.muted}>
-                  A verification code has been sent to the customer&apos;s
-                  mobile number.
-                </Text>
-
-                {newCustomerDraft?.user.primaryPhone ? (
-                  <Text style={styles.identified}>
-                    {newCustomerDraft.user.primaryPhone.callingCode}{" "}
-                    {newCustomerDraft.user.primaryPhone.number}
-                  </Text>
-                ) : null}
-
-                <Text style={styles.tiny}>Dev code: {newDevCode}</Text>
-
-                <TextInput
-                  testID="counter-new-otp"
-                  value={newOtpCode}
-                  onChangeText={(value) => setNewOtpCode(normalizeOtp(value))}
-                  placeholder="Enter OTP"
-                  placeholderTextColor={COLORS.textMuted}
-                  keyboardType="number-pad"
-                  maxLength={OTP_LENGTH}
-                  style={styles.input}
-                />
-
-                <Pressable
-                  testID="counter-new-verify-otp"
-                  disabled={
-                    newOtpVerifying ||
-                    normalizeOtp(newOtpCode).length !== OTP_LENGTH
-                  }
-                  onPress={verifyNewCustomerOtp}
-                  style={[
-                    styles.primaryBtn,
-                    newOtpVerifying ||
-                    normalizeOtp(newOtpCode).length !== OTP_LENGTH
-                      ? styles.btnDisabled
-                      : undefined,
-                  ]}
-                >
-                  <Text style={styles.primaryBtnText}>
-                    {newOtpVerifying ? "Verifying..." : "Verify Phone"}
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  testID="counter-new-resend-otp"
-                  disabled={newOtpVerifying}
-                  onPress={() => {
-                    setNewCustomerWasExisting(false);
-                    setNewOtpRequestId("");
-                    setNewDevCode("");
-                    setNewOtpCode("");
-                    setNewOtpSent(false);
-                    setError("");
-                  }}
-                  style={styles.secondaryBtn}
-                >
-                  <Text style={styles.secondaryBtnText}>Request New OTP</Text>
-                </Pressable>
-
-                <Pressable
-                  testID="counter-new-cancel-otp"
-                  onPress={() => {
-                    setNewCustomerDraft(null);
-                    setNewCustomerWasExisting(false);
-                    setNewOtpRequestId("");
-                    setNewDevCode("");
-                    setNewOtpCode("");
-                    setNewOtpSent(false);
-                    setError("");
-                  }}
-                  style={styles.secondaryBtn}
-                >
-                  <Text style={styles.secondaryBtnText}>
-                    Back to Customer Details
-                  </Text>
-                </Pressable>
-              </View>
+              <Text style={styles.muted}>
+                Loading customer reference data...
+              </Text>
             )
           ) : (
             <View style={styles.customerSavedBox}>
               <Text style={styles.identified}>
                 {newCustomerWasExisting
-                  ? "Existing customer found — ready at Counter"
-                  : "New customer verified and ready to purchase"}
+                  ? "Existing customer found — choose a membership"
+                  : "Customer details ready — choose a membership"}
               </Text>
 
               {newCustomerWasExisting ? (
                 <Text style={styles.muted}>
-                  This phone number already belongs to an existing customer. The
-                  existing customer was opened instead of creating a duplicate.
+                  This phone number already belongs to an existing customer, so
+                  the existing customer will be used.
                 </Text>
               ) : null}
 
               <Text style={styles.muted}>{customer.fullName}</Text>
-
               {customer.phone ? (
                 <Text style={styles.tiny}>{customer.phone}</Text>
               ) : null}
-
               {customer.email ? (
                 <Text style={styles.tiny}>{customer.email}</Text>
               ) : null}

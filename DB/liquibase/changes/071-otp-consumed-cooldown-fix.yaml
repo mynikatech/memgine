@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 071-otp-consumed-cooldown-fix
+      author: mynikatech
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/071-otp-consumed-cooldown-fix.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

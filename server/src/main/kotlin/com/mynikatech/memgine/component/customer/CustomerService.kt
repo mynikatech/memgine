@@ -20,6 +20,14 @@ import com.mynikatech.memgine.net.dto.StoreDto
 import com.mynikatech.memgine.component.membership.MembershipProductService
 import com.mynikatech.memgine.component.benefit.BenefitService
 import com.mynikatech.memgine.component.store.StoreService
+import com.mynikatech.memgine.component.otp.BusinessOtpService
+import com.mynikatech.memgine.component.otp.OtpPurpose
+import com.mynikatech.memgine.component.otp.OtpRequestResult
+import com.mynikatech.memgine.net.dto.CustomerPurchaseOtpCompleteDto
+import com.mynikatech.memgine.net.dto.CustomerPurchaseOtpRequestDto
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 import org.postgresql.util.PSQLException
 
 class CustomerService(
@@ -27,7 +35,8 @@ class CustomerService(
     private val memberships: MembershipProductService,
     private val benefits: BenefitService,
     private val stores: StoreService,
-    private val devIdentityEnabled: Boolean
+    private val devIdentityEnabled: Boolean,
+    private val businessOtp: BusinessOtpService
 ) {
     // Existing Org Admin components use this development actor until request auth is wired.
     fun list(organizationId: String, actorUserId: String): List<OrgAdminCustomerDto> {
@@ -164,6 +173,76 @@ class CustomerService(
             }
         }
     }
+
+    fun requestPurchaseOtp(organizationId: String, input: CustomerPurchaseOtpRequestDto, authenticatedUserId: String?): OtpRequestResult {
+        val request = input.purchase
+        if (request.planId.isBlank() || request.planId.length > 40) throw BadRequestException("Valid membership plan is required")
+        if (authenticatedUserId != null && sql.hasActiveRelationship(organizationId, authenticatedUserId)) throw BadRequestException("An active customer relationship does not require purchase verification")
+        val phone = if (authenticatedUserId != null) {
+            sql.userPhone(authenticatedUserId)
+                ?: throw BadRequestException("Customer phone number is unavailable")
+        } else {
+            request.primaryPhone
+                ?: throw BadRequestException("Phone number is required for purchase verification")
+        }
+
+        if (request.customerUserId != null ||
+            (authenticatedUserId == null &&
+                (request.firstName.isNullOrBlank() ||
+                 request.lastName.isNullOrBlank() ||
+                 request.primaryPhone.isNullOrBlank()))) {
+            throw BadRequestException("Valid new customer purchase details are required")
+        }
+
+        return businessOtp.request(
+            phone,
+            input.regionCode,
+            OtpPurpose.APP_MEMBERSHIP_PURCHASE_VERIFY,
+            organizationId,
+            null,
+            request.planId,
+            null,
+            authenticatedUserId,
+            null,
+            null,
+            Json.encodeToString(request)
+        )
+    }
+
+    fun completePurchaseOtp(organizationId: String, input: CustomerPurchaseOtpCompleteDto, authenticatedUserId: String?): CounterPurchaseResult {
+        val context = businessOtp.verifyAndResolve(
+            input.challengeId,
+            input.otp,
+            OtpPurpose.APP_MEMBERSHIP_PURCHASE_VERIFY
+        )
+        if (context.organizationId != organizationId || context.userId != authenticatedUserId) {
+            throw ForbiddenException("Business verification does not match this purchase")
+        }
+
+        val request = Json.decodeFromString<CustomerPurchaseRequestDto>(context.payload)
+        if (context.planId != request.planId) {
+            throw BadRequestException("Business verification context is invalid")
+        }
+
+        if (authenticatedUserId != null) {
+            val canonicalPhone = sql.userPhone(authenticatedUserId)
+                ?: throw BadRequestException("Customer phone number is unavailable")
+            if (context.normalizedPhone != canonicalPhone) {
+                throw BadRequestException("Business verification context is invalid")
+            }
+        }
+
+        val result = if (authenticatedUserId != null) {
+            purchaseAuthenticated(organizationId, authenticatedUserId, request)
+        } else {
+            purchase(organizationId, null, request)
+        }
+
+        businessOtp.consume(input.challengeId, OtpPurpose.APP_MEMBERSHIP_PURCHASE_VERIFY)
+        return result
+    }
+
+    fun hasActiveRelationship(organizationId: String, userId: String): Boolean = sql.hasActiveRelationship(organizationId, userId)
 
     fun preference(organizationId: String, userId: String, code: String): String? {
         authorizeCustomer(organizationId, userId)
