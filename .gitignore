@@ -106,3 +106,10 @@ server/replay_pid3912.log
 server/hs_err_pid3912.log
 replay_pid36856.log
 hs_err_pid36856.log
+
+# Terraform local state and real local variables
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+infra/**/terraform.tfvars
