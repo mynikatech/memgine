@@ -21,6 +21,9 @@ import com.mynikatech.memgine.component.counter.CounterService
 import com.mynikatech.memgine.component.counter.counterRoutes
 import com.mynikatech.memgine.component.notificationconfiguration.NotificationConfigurationService
 import com.mynikatech.memgine.component.notificationconfiguration.notificationConfigurationRoutes
+import com.mynikatech.memgine.component.notification.NotificationService
+import com.mynikatech.memgine.component.notification.NotificationSql
+import com.mynikatech.memgine.component.notification.notificationRoutes
 import com.mynikatech.memgine.component.integrationconfiguration.IntegrationConfigurationService
 import com.mynikatech.memgine.component.integrationconfiguration.integrationConfigurationRoutes
 import com.mynikatech.memgine.component.asset.brandingAssetRoutes
@@ -128,6 +131,7 @@ fun Application.configureRouting(
         membershipProductService, benefitService, storeService, customerDevIdentityEnabled, businessOtpService)
     val counterService = CounterService(database.jdbi, businessOtpService)
     val notificationConfigurationService = NotificationConfigurationService(database.jdbi)
+    val notificationService = NotificationService(database.jdbi.onDemand(NotificationSql::class.java))
     val integrationConfigurationService = IntegrationConfigurationService(database.jdbi)
     val customerExperienceReleaseService =
     CustomerExperienceReleaseService(database.jdbi.onDemand(CustomerExperienceReleaseSql::class.java)
@@ -166,6 +170,7 @@ fun Application.configureRouting(
             customerSelfServiceRoutes(customerService)
             counterRoutes(counterService)
             notificationConfigurationRoutes(notificationConfigurationService)
+            notificationRoutes(notificationService)
             integrationConfigurationRoutes(integrationConfigurationService)
             customerExperienceReleaseRoutes(
                 customerExperienceReleaseService

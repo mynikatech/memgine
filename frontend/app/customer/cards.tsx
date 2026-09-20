@@ -10,6 +10,7 @@ import { BusinessThemeScope, useBusiness, useCustomerContext, useTranslation } f
 import { buildTheme, type Theme } from "@/src/theme/theme";
 import { Badge, Card, Header, Section, StateView, Text } from "@/src/ui";
 import { MembershipCard } from "@/src/ui/domain";
+import { CustomerNotificationBell } from "@/src/ui/domain/CustomerNotificationBell";
 
 type CardVM = {
   subscription: Subscription;
@@ -111,7 +112,7 @@ export default function MyCards() {
 
   return (
     <Screen testID="customer-cards-screen" edges={["top"]}
-      header={<Header title={t("cards.title")} subtitle={t("cards.subtitle")} testID="cards-header" />}>
+      header={<Header title={t("cards.title")} subtitle={t("cards.subtitle")} right={<CustomerNotificationBell />} testID="cards-header" />}>
       {customersLoading || loading ? (
         <StateView kind="loading" message={t("common.loading")} testID="cards-state" />
       ) : customersError || error ? (

@@ -3,6 +3,7 @@ import { View } from "react-native";
 import { Screen } from "@/src/layout";
 import { useAuth, useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
 import { Card, Header, ListRow, Section, StateView, Text } from "@/src/ui";
+import { CustomerNotificationBell } from "@/src/ui/domain/CustomerNotificationBell";
 
 export default function Profile() {
   const { theme } = useBusiness();
@@ -29,6 +30,7 @@ export default function Profile() {
         <Header
           title={t("profile.title")}
           subtitle={t("profile.subtitle")}
+          right={<CustomerNotificationBell />}
           testID="profile-header"
         />
       }

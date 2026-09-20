@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 072-in-app-notifications
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/072-in-app-notifications.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

@@ -1,0 +1,3 @@
+import { NotificationApi, type AppNotification } from "@/src/data/api/notification-api";
+import type { ApiResult } from "@/src/data/api/result";
+export class ServerNotificationService { constructor(private api=new NotificationApi()){}; private unwrap<T>(r:ApiResult<T>):T {if(!r.success) throw new Error(r.error.message); return r.data;} list():Promise<AppNotification[]>{return this.api.list().then(r=>this.unwrap(r));} unreadCount():Promise<number>{return this.api.unreadCount().then(r=>this.unwrap(r).count);} markRead(id:string):Promise<{updated:boolean}>{return this.api.markRead(id).then(r=>this.unwrap(r));} markAllRead():Promise<{updated:number}>{return this.api.markAllRead().then(r=>this.unwrap(r));} }
