@@ -25,3 +25,4 @@ rootProject.name = "Memgine"
 
 include(":server")
 include(":DB")
+include(":lambda:email-processor")
