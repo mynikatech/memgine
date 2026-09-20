@@ -24,6 +24,9 @@ import com.mynikatech.memgine.component.notificationconfiguration.notificationCo
 import com.mynikatech.memgine.component.notification.NotificationService
 import com.mynikatech.memgine.component.notification.NotificationSql
 import com.mynikatech.memgine.component.notification.notificationRoutes
+import com.mynikatech.memgine.component.notification.NotificationDispatchService
+import com.mynikatech.memgine.component.notification.NotificationDispatchSql
+import com.mynikatech.memgine.component.notification.NoopExternalNotificationPublisher
 import com.mynikatech.memgine.component.integrationconfiguration.IntegrationConfigurationService
 import com.mynikatech.memgine.component.integrationconfiguration.integrationConfigurationRoutes
 import com.mynikatech.memgine.component.asset.brandingAssetRoutes
@@ -132,6 +135,10 @@ fun Application.configureRouting(
     val counterService = CounterService(database.jdbi, businessOtpService)
     val notificationConfigurationService = NotificationConfigurationService(database.jdbi)
     val notificationService = NotificationService(database.jdbi.onDemand(NotificationSql::class.java))
+    val notificationDispatchService = NotificationDispatchService(
+        database.jdbi.onDemand(NotificationDispatchSql::class.java), notificationService,
+        NoopExternalNotificationPublisher()
+    )
     val integrationConfigurationService = IntegrationConfigurationService(database.jdbi)
     val customerExperienceReleaseService =
     CustomerExperienceReleaseService(database.jdbi.onDemand(CustomerExperienceReleaseSql::class.java)

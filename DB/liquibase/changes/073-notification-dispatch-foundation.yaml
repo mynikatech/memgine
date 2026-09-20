@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 073-notification-dispatch-foundation
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/073-notification-dispatch-foundation.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
