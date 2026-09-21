@@ -247,6 +247,7 @@ export interface NotificationConfiguration {
   whatsappEnabled: boolean;
   pushEnabled: boolean;
   inAppEnabled: boolean;
+  otpDeliveryChannel: "SMS" | "EMAIL" | "WHATSAPP";
 
   notificationStatusId: ID;
 

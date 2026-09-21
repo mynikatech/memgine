@@ -26,7 +26,8 @@ import com.mynikatech.memgine.component.notification.NotificationSql
 import com.mynikatech.memgine.component.notification.notificationRoutes
 import com.mynikatech.memgine.component.notification.NotificationDispatchService
 import com.mynikatech.memgine.component.notification.NotificationDispatchSql
-import com.mynikatech.memgine.component.notification.NoopExternalNotificationPublisher
+import com.mynikatech.memgine.component.notification.SnsExternalNotificationPublisher
+import com.mynikatech.memgine.component.notification.UnavailableExternalNotificationPublisher
 import com.mynikatech.memgine.component.integrationconfiguration.IntegrationConfigurationService
 import com.mynikatech.memgine.component.integrationconfiguration.integrationConfigurationRoutes
 import com.mynikatech.memgine.component.asset.brandingAssetRoutes
@@ -88,10 +89,14 @@ fun Application.configureRouting(
         "AWS", "AWS_SMS", "AWS_END_USER_MESSAGING_SMS" -> AwsEndUserMessagingSmsProvider(config.otp)
         else -> error("Unsupported OTP provider: ${config.otp.provider}")
     }
-    val otpService = OtpService(
-        database.jdbi.onDemand(OtpSql::class.java), phoneNormalizer,
-        OtpProviderRouter(config.otp, otpProvider), config.otp
+    val notificationService = NotificationService(database.jdbi.onDemand(NotificationSql::class.java))
+    val notificationDispatchService = NotificationDispatchService(
+        database.jdbi.onDemand(NotificationDispatchSql::class.java), notificationService,
+        config.otp.notificationEventsTopicArn.takeIf { it.isNotBlank() }?.let(::SnsExternalNotificationPublisher)
+            ?: UnavailableExternalNotificationPublisher()
     )
+    val otpService = OtpService(database.jdbi.onDemand(OtpSql::class.java), phoneNormalizer,
+        OtpProviderRouter(config.otp, otpProvider), config.otp, notificationDispatchService)
     val businessOtpService = BusinessOtpService(otpService, database.jdbi.onDemand(BusinessOtpSql::class.java))
     val authenticationService = AuthenticationService(
         database.jdbi.onDemand(AuthenticationSql::class.java), otpService,
@@ -132,13 +137,8 @@ fun Application.configureRouting(
     val redemptionService = RedemptionService(database.jdbi.onDemand(RedemptionSql::class.java))
     val customerService = CustomerService(database.jdbi.onDemand(CustomerSql::class.java),
         membershipProductService, benefitService, storeService, customerDevIdentityEnabled, businessOtpService)
-    val counterService = CounterService(database.jdbi, businessOtpService)
+    val counterService = CounterService(database.jdbi, businessOtpService, phoneNormalizer)
     val notificationConfigurationService = NotificationConfigurationService(database.jdbi)
-    val notificationService = NotificationService(database.jdbi.onDemand(NotificationSql::class.java))
-    val notificationDispatchService = NotificationDispatchService(
-        database.jdbi.onDemand(NotificationDispatchSql::class.java), notificationService,
-        NoopExternalNotificationPublisher()
-    )
     val integrationConfigurationService = IntegrationConfigurationService(database.jdbi)
     val customerExperienceReleaseService =
     CustomerExperienceReleaseService(database.jdbi.onDemand(CustomerExperienceReleaseSql::class.java)

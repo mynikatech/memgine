@@ -101,6 +101,9 @@ data class AppConfig(
                 "memgine.otp.awsOriginationIdentity",
                 "MEMGINE_OTP_AWS_ORIGINATION_IDENTITY"
             ).orEmpty()
+            val notificationEventsTopicArn = optionalValue("memgine.otp.notificationEventsTopicArn", "MEMGINE_NOTIFICATION_EVENTS_TOPIC_ARN").orEmpty()
+            val whatsappTemplateName = optionalValue("memgine.otp.whatsappTemplateName", "MEMGINE_OTP_WHATSAPP_TEMPLATE_NAME").orEmpty()
+            val whatsappTemplateLanguage = optionalValue("memgine.otp.whatsappTemplateLanguage", "MEMGINE_OTP_WHATSAPP_TEMPLATE_LANGUAGE") ?: "en"
 
             if (otpProvider == "AWS_END_USER_MESSAGING_SMS") {
                 require(awsRegion.isNotBlank()) {
@@ -207,7 +210,10 @@ data class AppConfig(
                     allowedRegions = allowedRegions,
                     awsRegion = awsRegion,
                     awsConfigurationSet = awsConfigurationSet,
-                    awsOriginationIdentity = awsOriginationIdentity
+                    awsOriginationIdentity = awsOriginationIdentity,
+                    notificationEventsTopicArn = notificationEventsTopicArn,
+                    whatsappTemplateName = whatsappTemplateName,
+                    whatsappTemplateLanguage = whatsappTemplateLanguage
                 )
             )
         }
@@ -243,7 +249,10 @@ data class OtpConfig(
     val allowedRegions: Set<String>,
     val awsRegion: String,
     val awsConfigurationSet: String,
-    val awsOriginationIdentity: String
+    val awsOriginationIdentity: String,
+    val notificationEventsTopicArn: String,
+    val whatsappTemplateName: String,
+    val whatsappTemplateLanguage: String
 )
 
 data class DatabaseConfig(

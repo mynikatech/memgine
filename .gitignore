@@ -116,3 +116,7 @@ infra/**/terraform.tfvars
 email-test.json
 whatsapp-test.json
 sms-test.json
+hs_err_pid35404.log
+hs_err_pid42044.log
+replay_pid35404.log
+.kotlin/sessions/kotlin-compiler-8377087837501079015.salive

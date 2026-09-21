@@ -109,9 +109,8 @@ resource "aws_lambda_function" "sms" {
 
   environment {
     variables = {
-      SMS_PROVIDER             = "AWS_END_USER_MESSAGING_SMS"
-      SMS_MESSAGE_TYPE         = "TRANSACTIONAL"
-      SMS_ORIGINATION_IDENTITY = aws_pinpointsmsvoicev2_phone_number.sms_simulator.phone_number
+      SMS_PROVIDER     = "AWS_END_USER_MESSAGING_SMS"
+      SMS_MESSAGE_TYPE = "TRANSACTIONAL"
     }
   }
 }

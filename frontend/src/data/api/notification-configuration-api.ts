@@ -35,6 +35,7 @@ export class NotificationConfigurationApi {
         whatsappEnabled: configuration.whatsappEnabled,
         pushEnabled: configuration.pushEnabled,
         inAppEnabled: configuration.inAppEnabled,
+        otpDeliveryChannel: configuration.otpDeliveryChannel,
         notificationStatusId: await entityStatusApi.resolveEntityStatusId(
           "NOTIFICATION_CONFIGURATION", configuration.notificationStatusId,
         ),

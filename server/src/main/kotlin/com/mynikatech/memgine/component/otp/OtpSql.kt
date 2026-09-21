@@ -12,6 +12,8 @@ data class OtpChallengeRow(
     var expiresAt: String = ""
 )
 
+data class OtpDeliveryRecipient(var userId: String = "", var email: String? = null)
+
 interface OtpSql {
     @SqlQuery("""SELECT otp_create_challenge(:challengeId, :destination, :destinationRegion, :purpose,
         :channel, :provider, :otpHash, :otpSalt, CAST(:contextJson AS jsonb),
@@ -37,4 +39,11 @@ interface OtpSql {
 
     @SqlQuery("SELECT otp_mark_delivery_failed(:challengeId)")
     fun markDeliveryFailed(@Bind("challengeId") challengeId: String): Boolean
+
+    @SqlQuery("SELECT get_organization_otp_delivery_channel(:organizationId)")
+    fun organizationChannel(@Bind("organizationId") organizationId: String): String
+
+    @SqlQuery("SELECT * FROM otp_delivery_recipient(:destination)")
+    @RegisterBeanMapper(OtpDeliveryRecipient::class)
+    fun recipient(@Bind("destination") destination: String): OtpDeliveryRecipient?
 }

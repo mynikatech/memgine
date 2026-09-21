@@ -85,6 +85,8 @@ picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
 aws-sns = { module = "software.amazon.awssdk:sns", version.ref = "aws-sdk" }
 aws-sqs = { module = "software.amazon.awssdk:sqs", version.ref = "aws-sdk" }
 aws-ses = { module = "software.amazon.awssdk:ses", version.ref = "aws-sdk" }
+aws-sso = { module = "software.amazon.awssdk:sso", version.ref = "aws-sdk" }
+aws-ssooidc = { module = "software.amazon.awssdk:ssooidc", version.ref = "aws-sdk" }
 aws-pinpoint-sms-voice-v2 = { module = "software.amazon.awssdk:pinpointsmsvoicev2", version.ref = "aws-sdk" }
 libphonenumber = { module = "com.googlecode.libphonenumber:libphonenumber", version.ref = "libphonenumber" }
 argon2-jvm = { module = "de.mkammerer:argon2-jvm", version.ref = "argon2" }

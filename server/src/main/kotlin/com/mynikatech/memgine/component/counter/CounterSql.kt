@@ -28,6 +28,18 @@ interface CounterSql {
         @Bind("actorUserId") actorUserId: String
     ): List<OrgAdminCustomerDto>
 
+    @SqlQuery("""SELECT create_organization_prospective_customer(
+        :organizationId, :firstName, NULL, :lastName, NULL,
+        :primaryEmail, :primaryPhone, :actorUserId)""")
+    fun createProspectiveCustomer(
+        @Bind("organizationId") organizationId: String,
+        @Bind("firstName") firstName: String,
+        @Bind("lastName") lastName: String,
+        @Bind("primaryEmail") primaryEmail: String?,
+        @Bind("primaryPhone") primaryPhone: String,
+        @Bind("actorUserId") actorUserId: String
+    ): String
+
     @SqlQuery("SELECT * FROM get_counter_subscriptions(:organizationId, :actorUserId)")
     fun subscriptions(@Bind("organizationId") organizationId: String,
                       @Bind("actorUserId") actorUserId: String): List<CounterSubscriptionDto>

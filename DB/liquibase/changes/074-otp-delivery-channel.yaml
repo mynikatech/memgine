@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 074-otp-delivery-channel
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/074-otp-delivery-channel.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

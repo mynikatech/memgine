@@ -194,6 +194,7 @@ const NOTIFICATION_CONFIGURATIONS: NotificationConfiguration[] = [
     whatsappEnabled: true,
     pushEnabled: true,
     inAppEnabled: true,
+    otpDeliveryChannel: "WHATSAPP",
 
     notificationStatusId: "status-active",
 

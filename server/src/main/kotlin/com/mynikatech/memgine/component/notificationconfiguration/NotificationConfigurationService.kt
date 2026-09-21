@@ -26,7 +26,7 @@ class NotificationConfigurationService(private val jdbi: Jdbi) {
                 NotificationConfigurationSqlParams(
                     organizationId, request.configurationName.trim(), request.emailEnabled,
                     request.smsEnabled, request.whatsappEnabled, request.pushEnabled,
-                    request.inAppEnabled, request.notificationStatusId,
+                    request.inAppEnabled, request.otpDeliveryChannel, request.notificationStatusId,
                     request.versionNo, actorUserId
                 )
             )

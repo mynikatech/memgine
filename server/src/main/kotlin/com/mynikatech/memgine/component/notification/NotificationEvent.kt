@@ -8,7 +8,7 @@ data class NotificationTemplate(val name: String, val languageCode: String = "en
 data class NotificationEvent(
     val eventType: String,
     val organizationId: String? = null,
-    val recipientUserId: String,
+    val recipientUserId: String? = null,
     val channels: Set<NotificationChannel> = setOf(NotificationChannel.IN_APP),
     val title: String,
     val message: String,

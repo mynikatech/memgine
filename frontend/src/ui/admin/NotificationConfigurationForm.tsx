@@ -36,10 +36,11 @@ function createEmptyConfiguration(
     organizationId,
     configurationName: "Default Notifications",
     emailEnabled: true,
-    smsEnabled: false,
+    smsEnabled: true,
     whatsappEnabled: true,
     pushEnabled: true,
     inAppEnabled: true,
+    otpDeliveryChannel: "SMS",
     notificationStatusId: defaultStatusId,
     createdAt: now,
     createdBy,
@@ -169,6 +170,10 @@ export function NotificationConfigurationForm({
     setIsEditing(false);
   };
 
+  const updateOtpChannel = (channel: NotificationConfiguration["otpDeliveryChannel"]) => {
+    update("otpDeliveryChannel", channel);
+  };
+
   const save = async () => {
     setSaving(true);
     setSaveMessage(null);
@@ -243,6 +248,30 @@ export function NotificationConfigurationForm({
                 onChange={(value) => update("notificationStatusId", value)}
                 placeholder="Please select"
               />
+            </View>
+          </View>
+        </Section>
+      </Card>
+
+      <Card padding={narrow ? "md" : "lg"} elevation="sm">
+        <Section title="One-Time Passcode Delivery">
+          <View style={{ gap: theme.spacing.md }}>
+            <Text variant="bodySmall" color="textSecondary">
+              Select one enabled channel for verification codes.
+            </Text>
+            <View style={styles.otpChoices}>
+              <Button label="SMS" size="sm"
+                variant={form.otpDeliveryChannel === "SMS" ? "primary" : "outline"}
+                disabled={!isEditing || !form.smsEnabled}
+                onPress={() => updateOtpChannel("SMS")} />
+              <Button label="Email" size="sm"
+                variant={form.otpDeliveryChannel === "EMAIL" ? "primary" : "outline"}
+                disabled={!isEditing || !form.emailEnabled}
+                onPress={() => updateOtpChannel("EMAIL")} />
+              <Button label="WhatsApp" size="sm"
+                variant={form.otpDeliveryChannel === "WHATSAPP" ? "primary" : "outline"}
+                disabled={!isEditing || !form.whatsappEnabled}
+                onPress={() => updateOtpChannel("WHATSAPP")} />
             </View>
           </View>
         </Section>
@@ -353,5 +382,11 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     gap: 12,
     paddingBottom: 24,
+  },
+
+  otpChoices: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
 });

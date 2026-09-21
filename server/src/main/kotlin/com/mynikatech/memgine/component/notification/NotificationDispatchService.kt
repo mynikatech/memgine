@@ -5,11 +5,11 @@ class NotificationDispatchService(
     private val notifications: NotificationService,
     private val externalPublisher: ExternalNotificationPublisher
 ) {
-    fun dispatch(event: NotificationEvent) {
-        require(event.recipientUserId.isNotBlank()) { "Notification recipient is required" }
-        val enabled = enabledChannels(event)
+    fun dispatch(event: NotificationEvent, applyOrganizationChannelSettings: Boolean = true) {
+        val enabled = if (applyOrganizationChannelSettings) enabledChannels(event) else event.channels
         if (NotificationChannel.IN_APP in enabled) {
-            notifications.createNotification(event.organizationId, event.recipientUserId,
+            val recipientUserId = requireNotNull(event.recipientUserId) { "Notification recipient is required" }
+            notifications.createNotification(event.organizationId, recipientUserId,
                 event.eventType, event.title, event.message, event.context)
         }
         val external = enabled - NotificationChannel.IN_APP

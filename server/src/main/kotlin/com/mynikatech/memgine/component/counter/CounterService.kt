@@ -13,10 +13,15 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import com.mynikatech.memgine.security.AuthenticatedPrincipal
+import com.mynikatech.memgine.security.PhoneNormalizer
 import org.jdbi.v3.core.Jdbi
 import org.postgresql.util.PSQLException
 
-class CounterService(private val jdbi: Jdbi, private val businessOtp: BusinessOtpService) {
+class CounterService(
+    private val jdbi: Jdbi,
+    private val businessOtp: BusinessOtpService,
+    private val phoneNormalizer: PhoneNormalizer = PhoneNormalizer()
+) {
     private fun sql(): CounterSql = jdbi.onDemand(CounterSql::class.java)
 
     private fun id(value: String, name: String) {
@@ -107,18 +112,20 @@ class CounterService(private val jdbi: Jdbi, private val businessOtp: BusinessOt
 
     fun requestPurchaseOtp(org: String, input: CounterBusinessOtpRequest,
                            principal: AuthenticatedPrincipal): OtpRequestResult {
-        val request = input.purchase ?: throw BadRequestException("Purchase details are required")
+        val requestedPurchase = input.purchase ?: throw BadRequestException("Purchase details are required")
         if (input.redemption != null) throw BadRequestException("Only one Counter action may be verified")
-        validatePurchase(org, request, principal)
-        val verificationPhone = if (request.customerUserId != null) {
-            sql().customers(org, principal.userId)
-                .firstOrNull { it.userId == request.customerUserId }
-                ?.primaryPhone
-                ?: throw BadRequestException("Customer is not active in this organization")
+        validatePurchase(org, requestedPurchase, principal)
+        val request = if (requestedPurchase.customerUserId == null) {
+            resolveProspectiveCustomer(org, requestedPurchase, input.regionCode, principal)
         } else {
-            request.primaryPhone
-                ?: throw BadRequestException("New customer phone is required")
+            requestedPurchase
         }
+        val customerUserId = request.customerUserId
+            ?: throw BadRequestException("Prospective customer could not be resolved")
+        val verificationPhone = sql().customers(org, principal.userId)
+            .firstOrNull { it.userId == customerUserId }
+            ?.primaryPhone
+            ?: throw BadRequestException("Customer is not active in this organization")
 
         return businessOtp.request(
             verificationPhone,
@@ -133,6 +140,38 @@ class CounterService(private val jdbi: Jdbi, private val businessOtp: BusinessOt
             null,
             Json.encodeToString(request)
         )
+    }
+
+    /**
+     * Counter onboarding uses the existing prospective-customer upsert before
+     * delivery. That workflow serializes canonical phone identity, preserves an
+     * existing user's profile, and creates the CUSTOMER relationship when needed.
+     */
+    private fun resolveProspectiveCustomer(
+        org: String,
+        request: CounterPurchaseRequest,
+        regionCode: String?,
+        principal: AuthenticatedPrincipal
+    ): CounterPurchaseRequest {
+        val canonicalPhone = phoneNormalizer.normalize(
+            request.primaryPhone ?: throw BadRequestException("New customer phone is required"),
+            regionCode
+        ).e164
+        val firstName = request.firstName?.trim().orEmpty()
+        val lastName = request.lastName?.trim().orEmpty()
+        val email = request.primaryEmail?.trim()?.takeIf { it.isNotEmpty() }
+
+        translate {
+            sql().createProspectiveCustomer(
+                org, firstName, lastName, email, canonicalPhone, principal.userId
+            )
+        }
+
+        val customer = sql().customers(org, principal.userId)
+            .firstOrNull { it.primaryPhone == canonicalPhone }
+            ?: throw BadRequestException("Prospective customer could not be resolved")
+
+        return request.copy(customerUserId = customer.userId, primaryPhone = canonicalPhone)
     }
 
     /**

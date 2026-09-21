@@ -9,7 +9,7 @@ data class NotificationConfigurationSqlParams(
     val organizationId: String, val configurationName: String,
     val emailEnabled: Boolean, val smsEnabled: Boolean,
     val whatsappEnabled: Boolean, val pushEnabled: Boolean,
-    val inAppEnabled: Boolean, val notificationStatusId: String,
+    val inAppEnabled: Boolean, val otpDeliveryChannel: String, val notificationStatusId: String,
     val versionNo: Int, val actorUserId: String
 )
 
@@ -24,7 +24,7 @@ interface NotificationConfigurationSql {
 
     @SqlQuery("""SELECT save_organization_notification_configuration(
         :organizationId, :configurationName, :emailEnabled, :smsEnabled,
-        :whatsappEnabled, :pushEnabled, :inAppEnabled,
+        :whatsappEnabled, :pushEnabled, :inAppEnabled, :otpDeliveryChannel,
         :notificationStatusId, :versionNo, :actorUserId)""")
     fun save(@BindBean params: NotificationConfigurationSqlParams): Boolean
 }
