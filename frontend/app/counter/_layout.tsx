@@ -28,8 +28,9 @@ export default function CounterLayout() {
   if (loading) return null;
   if (!session) return <Redirect href={APP_ROUTES.counterUnlock} />;
   const pos = session.posContext;
-  if (pos && organizationId && pos.organizationId !== organizationId) return <Redirect href={APP_ROUTES.counter.organization(pos.organizationId) as never} />;
-  if (!hasCapability("COUNTER_ACCESS", pos?.organizationId ?? organizationId)) return <Redirect href="/access-denied" />;
+  if (!pos) return <Redirect href={APP_ROUTES.counterUnlock} />;
+  if (organizationId && pos.organizationId !== organizationId) return <Redirect href={APP_ROUTES.counter.organization(pos.organizationId) as never} />;
+  if (!hasCapability("COUNTER_ACCESS", pos.organizationId)) return <Redirect href="/access-denied" />;
   return <CounterShell />;
 }
 
