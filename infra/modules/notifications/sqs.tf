@@ -10,7 +10,7 @@ resource "aws_sqs_queue" "email_dlq" {
 
 resource "aws_sqs_queue" "email" {
   name                       = "${local.prefix}-email-queue"
-  visibility_timeout_seconds = 120
+  visibility_timeout_seconds = 60
   sqs_managed_sse_enabled    = true
 
   redrive_policy = jsonencode({
@@ -35,7 +35,7 @@ resource "aws_sqs_queue" "whatsapp_dlq" {
 
 resource "aws_sqs_queue" "whatsapp" {
   name                       = "${local.prefix}-whatsapp-queue"
-  visibility_timeout_seconds = 120
+  visibility_timeout_seconds = 60
   sqs_managed_sse_enabled    = true
 
   redrive_policy = jsonencode({

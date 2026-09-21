@@ -28,6 +28,16 @@ $BackendFile = Join-Path $EnvDir "backend.hcl"
 $VarFile = Join-Path $EnvDir "$Environment.tfvars"
 $PlanFile = Join-Path $EnvDir "$Environment.tfplan"
 
+if (-not (Test-Path $EnvDir)) {
+    Write-Error "Environment directory does not exist: $EnvDir"
+    exit 1
+}
+
+if (-not (Test-Path $BackendFile)) {
+    Write-Error "Backend configuration not found: $BackendFile"
+    exit 1
+}
+
 if (-not (Test-Path $VarFile)) {
     Write-Error "Terraform variable file not found: $VarFile"
     exit 1
@@ -43,38 +53,27 @@ Write-Host "AWS Account : $ExpectedAccountId"
 Write-Host "Directory   : $EnvDir"
 Write-Host ""
 
-if (-not (Test-Path $EnvDir)) {
-    Write-Error "Environment directory does not exist: $EnvDir"
-    exit 1
-}
-
-if (-not (Test-Path $BackendFile)) {
-    Write-Error "Backend configuration not found: $BackendFile"
-    exit 1
-}
-
 Write-Host "Checking AWS identity..."
 
-try {
-    $IdentityJson = aws sts get-caller-identity `
-        --profile $AwsProfile `
-        --output json
+$PreviousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 
-    if ($LASTEXITCODE -ne 0) {
-        throw "AWS CLI identity check failed."
-    }
+$IdentityJson = aws sts get-caller-identity --profile $AwsProfile --output json 2>&1
+$IdentityExitCode = $LASTEXITCODE
 
-    $Identity = $IdentityJson | ConvertFrom-Json
-}
-catch {
+$ErrorActionPreference = $PreviousErrorActionPreference
+
+if ($IdentityExitCode -ne 0) {
     Write-Host ""
-    Write-Host "AWS SSO session is unavailable or expired."
+    Write-Host "AWS session is unavailable or expired."
     Write-Host ""
-    Write-Host "Run:"
+    Write-Host "Authenticate first with:"
     Write-Host "  aws sso login --profile $AwsProfile"
     Write-Host ""
     exit 1
 }
+
+$Identity = $IdentityJson | ConvertFrom-Json
 
 if ($Identity.Account -ne $ExpectedAccountId) {
     Write-Error "Wrong AWS account. Expected $ExpectedAccountId but authenticated to $($Identity.Account)."
@@ -89,10 +88,9 @@ Write-Host ""
 Push-Location $EnvDir
 
 try {
-
     if ($Action -eq "plan") {
-
         Write-Host "Running terraform init..."
+
         terraform init "-backend-config=$BackendFile"
 
         if ($LASTEXITCODE -ne 0) {
@@ -101,6 +99,7 @@ try {
 
         Write-Host ""
         Write-Host "Running terraform fmt..."
+
         terraform fmt -recursive ..\..
 
         if ($LASTEXITCODE -ne 0) {
@@ -109,6 +108,7 @@ try {
 
         Write-Host ""
         Write-Host "Running terraform validate..."
+
         terraform validate
 
         if ($LASTEXITCODE -ne 0) {
@@ -121,6 +121,7 @@ try {
 
         Write-Host ""
         Write-Host "Creating saved Terraform plan..."
+
         terraform plan "-var-file=$VarFile" "-out=$PlanFile"
 
         if ($LASTEXITCODE -ne 0) {
@@ -141,9 +142,7 @@ try {
         Write-Host "  .\infra\scripts\deploy.ps1 $Environment apply"
         Write-Host ""
     }
-
     elseif ($Action -eq "apply") {
-
         if (-not (Test-Path $PlanFile)) {
             Write-Error "Saved Terraform plan not found: $PlanFile"
             Write-Host ""
@@ -167,8 +166,8 @@ try {
         Write-Host "Terraform deployment completed."
         Write-Host "========================================"
         Write-Host ""
-
         Write-Host "Terraform outputs:"
+
         terraform output
 
         if ($LASTEXITCODE -ne 0) {

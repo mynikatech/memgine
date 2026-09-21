@@ -113,3 +113,5 @@ hs_err_pid36856.log
 *.tfstate.*
 *.tfplan
 infra/**/terraform.tfvars
+email-test.json
+whatsapp-test.json
