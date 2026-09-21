@@ -47,3 +47,28 @@ resource "aws_sqs_queue" "whatsapp" {
     Purpose = "notification-whatsapp"
   })
 }
+
+resource "aws_sqs_queue" "sms_dlq" {
+  name                      = "${local.prefix}-sms-dlq"
+  message_retention_seconds = 1209600
+  sqs_managed_sse_enabled   = true
+
+  tags = merge(local.tags, {
+    Purpose = "notification-sms-dlq"
+  })
+}
+
+resource "aws_sqs_queue" "sms" {
+  name                       = "${local.prefix}-sms-queue"
+  visibility_timeout_seconds = 60
+  sqs_managed_sse_enabled    = true
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.sms_dlq.arn
+    maxReceiveCount     = 5
+  })
+
+  tags = merge(local.tags, {
+    Purpose = "notification-sms"
+  })
+}

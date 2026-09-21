@@ -115,3 +115,4 @@ hs_err_pid36856.log
 infra/**/terraform.tfvars
 email-test.json
 whatsapp-test.json
+sms-test.json

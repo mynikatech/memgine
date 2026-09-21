@@ -75,3 +75,50 @@ resource "aws_lambda_event_source_mapping" "whatsapp" {
   batch_size       = 1
   enabled          = true
 }
+
+resource "aws_cloudwatch_log_group" "sms" {
+  name              = "/aws/lambda/memgine-dev-sms-processor"
+  retention_in_days = 14
+  tags = merge(local.lambda_tags, {
+    Purpose = "notification-sms-processor"
+  })
+}
+
+module "sms_role" {
+  source        = "../../modules/iam/lambda-sms-role"
+  role_name     = "memgine-dev-sms-lambda-role"
+  queue_arn     = module.notifications.sms_queue_arn
+  log_group_arn = aws_cloudwatch_log_group.sms.arn
+
+  sms_send_message_resources = [aws_pinpointsmsvoicev2_phone_number.sms_simulator.arn]
+}
+
+resource "aws_lambda_function" "sms" {
+  function_name    = "memgine-dev-sms-processor"
+  role             = module.sms_role.role_arn
+  runtime          = "java21"
+  handler          = "com.mynikatech.memgine.lambda.sms.SmsProcessorHandler"
+  filename         = "${path.module}/../../../lambda/sms-processor/build/libs/memgine-sms-processor.jar"
+  source_code_hash = filebase64sha256("${path.module}/../../../lambda/sms-processor/build/libs/memgine-sms-processor.jar")
+  timeout          = 30
+  memory_size      = 512
+  depends_on       = [aws_cloudwatch_log_group.sms]
+  tags = merge(local.lambda_tags, {
+    Purpose = "notification-sms-processor"
+  })
+
+  environment {
+    variables = {
+      SMS_PROVIDER             = "AWS_END_USER_MESSAGING_SMS"
+      SMS_MESSAGE_TYPE         = "TRANSACTIONAL"
+      SMS_ORIGINATION_IDENTITY = aws_pinpointsmsvoicev2_phone_number.sms_simulator.phone_number
+    }
+  }
+}
+
+resource "aws_lambda_event_source_mapping" "sms" {
+  event_source_arn = module.notifications.sms_queue_arn
+  function_name    = aws_lambda_function.sms.arn
+  batch_size       = 1
+  enabled          = true
+}

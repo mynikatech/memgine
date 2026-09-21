@@ -69,3 +69,34 @@ resource "aws_sns_topic_subscription" "whatsapp" {
   protocol  = "sqs"
   endpoint  = aws_sqs_queue.whatsapp.arn
 }
+
+data "aws_iam_policy_document" "sms_sns" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["sns.amazonaws.com"]
+    }
+
+    actions   = ["sqs:SendMessage"]
+    resources = [aws_sqs_queue.sms.arn]
+
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [aws_sns_topic.events.arn]
+    }
+  }
+}
+
+resource "aws_sqs_queue_policy" "sms_sns" {
+  queue_url = aws_sqs_queue.sms.id
+  policy    = data.aws_iam_policy_document.sms_sns.json
+}
+
+resource "aws_sns_topic_subscription" "sms" {
+  topic_arn = aws_sns_topic.events.arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.sms.arn
+}
