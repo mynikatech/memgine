@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 076-poynt-timestamps-utc
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/076-poynt-timestamps-utc.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

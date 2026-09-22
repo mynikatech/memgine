@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" 
+xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        tools:replace="android:allowBackup"
+        android:label="Memgine Loyalty"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <service
+            android:name=".loyalty.MemgineLoyaltyService"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="co.poynt.capability.PAYMENT">
+            <intent-filter>
+                <action android:name="co.poynt.os.services.v1.IPoyntLoyaltyService" />
+            </intent-filter>
+            <meta-data
+                android:name="co.poynt.os.service.capability"
+                android:resource="@xml/loyalty_capability" />
+        </service>
+
+        <activity
+            android:name=".loyalty.MemgineLoyaltyActivity"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+    </application>
+</manifest>

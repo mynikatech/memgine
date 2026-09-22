@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<capability>
+    <appid>com.mynikatech.memgine.poynt</appid>
+    <type>LOYALTY</type>
+    <provider>Memgine Loyalty</provider>
+    <entry_method type="CUSTOM" />
+</capability>

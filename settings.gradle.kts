@@ -9,6 +9,9 @@ pluginManagement {
             }
         }
         mavenCentral()
+        maven {
+            url = uri("https://nexus.poynt.com/content/repositories/releases")
+        }
         gradlePluginPortal()
     }
 }
@@ -17,7 +20,11 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
 
     repositories {
+        google()
         mavenCentral()
+        maven {
+            url = uri("https://nexus.poynt.com/content/repositories/releases")
+        }
     }
 }
 
@@ -28,3 +35,4 @@ include(":DB")
 include(":lambda:email-processor")
 include(":lambda:whatsapp-processor")
 include(":lambda:sms-processor")
+include(":poynt-app")

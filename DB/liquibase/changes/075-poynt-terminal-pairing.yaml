@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 075-poynt-terminal-pairing
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/075-poynt-terminal-pairing.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

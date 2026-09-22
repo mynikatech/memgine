@@ -16,6 +16,15 @@ import io.ktor.server.routing.route
 
 fun Route.counterRoutes(service: CounterService) {
     route("/organizations/{organizationId}/counter") {
+        post("/customers/lookup") {
+            val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
+            val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
+            call.respond(ApiResponse.success(
+                service.lookupCustomer(org, store, staff, call.receive(), call.authenticatedPrincipal()),
+                call.callId
+            ))
+        }
         get("/customers") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
@@ -26,7 +35,12 @@ fun Route.counterRoutes(service: CounterService) {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
             val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
-            call.respond(ApiResponse.success(service.subscriptions(org, store, staff, call.authenticatedPrincipal()), call.callId))
+            val principal = call.authenticatedPrincipal()
+            val customerUserId = call.request.queryParameters["customerUserId"]
+            val subscriptions = customerUserId?.let {
+                service.subscriptionsForCustomer(org, store, staff, it, principal)
+            } ?: service.subscriptions(org, store, staff, principal)
+            call.respond(ApiResponse.success(subscriptions, call.callId))
         }
         get("/subscriptions/{subscriptionId}/benefits") {
             val org =

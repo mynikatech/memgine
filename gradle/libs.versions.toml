@@ -1,5 +1,6 @@
 [versions]
 kotlin = "2.4.20"
+android-gradle-plugin = "8.13.2"
 ktor = "3.5.2"
 kotlinx-serialization = "1.11.0"
 logback = "1.5.34"
@@ -95,5 +96,7 @@ argon2-jvm = { module = "de.mkammerer:argon2-jvm", version.ref = "argon2" }
 
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+android-application = { id = "com.android.application", version.ref = "android-gradle-plugin" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 ktor-io = { id = "io.ktor.plugin", version.ref = "ktor" }
 liquibase-gradle = { id = "org.liquibase.gradle", version.ref = "liquibase-gradle" }

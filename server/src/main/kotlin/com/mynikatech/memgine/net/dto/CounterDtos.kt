@@ -45,6 +45,19 @@ data class CounterRedemptionResult(
 data class CounterEligibilityDto(val benefitId: String, val reason: String? = null)
 
 @Serializable
+data class CounterCustomerLookupRequest(
+    val phone: String,
+    val regionCode: String? = null
+)
+
+@Serializable
+data class CounterCustomerLookupDto(
+    val userId: String,
+    val displayName: String,
+    val primaryPhone: String
+)
+
+@Serializable
 data class CounterQrDto(
     val token: String, val qrCodeTypeId: String, val subscriptionId: String,
     val customerUserId: String, val customerName: String

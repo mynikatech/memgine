@@ -47,9 +47,33 @@ class CounterService(
         return sql().customers(org, principal.userId)
     }
 
+    fun lookupCustomer(
+        org: String,
+        store: String,
+        staff: String,
+        request: CounterCustomerLookupRequest,
+        principal: AuthenticatedPrincipal
+    ): CounterCustomerLookupDto? {
+        authorize(org, store, staff, principal)
+        val phone = phoneNormalizer.normalize(request.phone, request.regionCode).e164
+        return sql().lookupCustomer(org, phone, principal.userId)
+    }
+
     fun subscriptions(org: String, store: String, staff: String, principal: AuthenticatedPrincipal): List<CounterSubscriptionDto> {
         authorize(org, store, staff, principal)
         return sql().subscriptions(org, principal.userId)
+    }
+
+    fun subscriptionsForCustomer(
+        org: String,
+        store: String,
+        staff: String,
+        customerUserId: String,
+        principal: AuthenticatedPrincipal
+    ): List<CounterSubscriptionDto> {
+        id(customerUserId, "customer user id")
+        return subscriptions(org, store, staff, principal)
+            .filter { it.userId == customerUserId }
     }
     
     fun subscriptionBenefits(
