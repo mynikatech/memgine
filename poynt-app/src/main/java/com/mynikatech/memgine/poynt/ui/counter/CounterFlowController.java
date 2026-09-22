@@ -26,6 +26,9 @@ import com.mynikatech.memgine.poynt.scanner.QrScanner;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Locale;
 import co.poynt.os.model.Intents;
 
 import java.util.concurrent.Callable;
@@ -362,7 +365,27 @@ public final class CounterFlowController {
         EditText email = input("e.g. john@example.com");
         text("Country *");
         Spinner country = new Spinner(host);
-        country.setAdapter(new ArrayAdapter<>(host, android.R.layout.simple_spinner_dropdown_item, new String[]{"Canada (+1)"}));
+
+        List<CountryOption> countries = buildCountryOptions();
+
+        ArrayAdapter<CountryOption> countryAdapter = new ArrayAdapter<>(
+                host,
+                android.R.layout.simple_spinner_item,
+                countries
+        );
+        countryAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+
+        country.setAdapter(countryAdapter);
+
+        int canadaPosition = 0;
+        for (int i = 0; i < countries.size(); i++) {
+            if ("CA".equals(countries.get(i).isoCode)) {
+                canadaPosition = i;
+                break;
+            }
+        }
+
+        country.setSelection(canadaPosition);
         content.addView(country);
         text("Phone *");
         EditText phone = input("Customer phone number");
@@ -370,18 +393,19 @@ public final class CounterFlowController {
         button("Choose Membership", () -> {
             if (firstName.getText().toString().trim().isEmpty()
                     || lastName.getText().toString().trim().isEmpty()
-                    || normalizedPhone(phone.getText().toString()).length() != 10) {
+                    || !isValidInternationalPhone(phone.getText().toString())) {
                 setStatus("First name, last name, and a 10-digit phone number are required.");
                 return;
             }
+            CountryOption selectedCountry = (CountryOption) country.getSelectedItem();
             Customer customer = new Customer(
                     null,
                     firstName.getText().toString().trim() + " " + lastName.getText().toString().trim(),
-                    normalizedPhone(phone.getText().toString()),
+                    internationalPhoneDigits(phone.getText().toString()),
                     firstName.getText().toString().trim(),
                     lastName.getText().toString().trim(),
                     email.getText().toString().trim(),
-                    "CA"
+                    selectedCountry.isoCode
             );
             loadPlans(terminal, customer);
         });
@@ -615,6 +639,52 @@ public final class CounterFlowController {
         String digits = value.replaceAll("\\D", "");
         return digits.length() <= 10 ? digits : digits.substring(digits.length() - 10);
     }
+    private static String internationalPhoneDigits(String value) {
+    return value == null ? "" : value.replaceAll("\\D", "");
+        }
+
+        private static boolean isValidInternationalPhone(String value) {
+            int length = internationalPhoneDigits(value).length();
+            return length >= 7 && length <= 15;
+        }
+
+        private static List<CountryOption> buildCountryOptions() {
+            List<CountryOption> countries = new ArrayList<>();
+
+            for (String isoCode : Locale.getISOCountries()) {
+                Locale locale = new Locale("", isoCode);
+                String name = locale.getDisplayCountry();
+
+                if (!name.isEmpty()) {
+                    countries.add(new CountryOption(isoCode, name));
+                }
+            }
+
+            Collections.sort(
+                    countries,
+                    Comparator.comparing(
+                            country -> country.displayName,
+                            String.CASE_INSENSITIVE_ORDER
+                    )
+            );
+
+            return countries;
+        }
+
+        private static final class CountryOption {
+            final String isoCode;
+            final String displayName;
+
+            CountryOption(String isoCode, String displayName) {
+                this.isoCode = isoCode;
+                this.displayName = displayName;
+            }
+
+            @Override
+            public String toString() {
+                return displayName;
+            }
+        }
 
     private void configurePhoneInput(EditText input) {
         input.setInputType(InputType.TYPE_CLASS_PHONE);
