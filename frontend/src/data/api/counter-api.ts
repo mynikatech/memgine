@@ -45,6 +45,21 @@ export type CounterPurchaseResult = {
   currencyCode: string;
 };
 
+export type PaymentIntent = {
+  paymentIntentId: ID;
+  providerCode: string;
+  status: string;
+  amount: number;
+  currencyCode: string;
+  providerReferenceId?: string | null;
+  finalizedSubscriptionId?: ID | null;
+};
+
+export type PaymentConfirmation = {
+  payment: PaymentIntent;
+  subscription?: CounterPurchaseResult | null;
+};
+
 export type CounterRedemption = {
   redemptionId: ID;
   benefitId: ID;
@@ -242,6 +257,47 @@ export class CounterApi {
     return httpClient.post(this.path(ctx, "purchases/otp/finalize"), {
       challengeId,
     });
+  }
+
+  startPurchasePayment(
+    ctx: CounterContext,
+    challengeId: string,
+    idempotencyKey: string,
+  ): Promise<ApiResult<PaymentIntent>> {
+    return httpClient.post(this.path(ctx, "purchases/payment/start"), {
+      challengeId,
+      idempotencyKey,
+    });
+  }
+
+  startCashPayment(
+    ctx: CounterContext,
+    challengeId: string,
+    idempotencyKey: string,
+  ): Promise<ApiResult<PaymentIntent>> {
+    return httpClient.post(this.path(ctx, "purchases/payment/cash/start"), {
+      challengeId,
+      idempotencyKey,
+    });
+  }
+
+  confirmCashPayment(
+    ctx: CounterContext,
+    paymentIntentId: ID,
+  ): Promise<ApiResult<PaymentConfirmation>> {
+    return httpClient.post(this.path(ctx, "purchases/payment/cash/confirm"), {
+      paymentIntentId,
+    });
+  }
+
+  confirmTestPayment(
+    organizationId: ID,
+    paymentIntentId: ID,
+  ): Promise<ApiResult<PaymentConfirmation>> {
+    return httpClient.post(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/payments/${encodeURIComponent(paymentIntentId)}/test-result`,
+      { status: "SUCCEEDED" },
+    );
   }
 
   // Kept only for compatibility; the backend deliberately rejects direct manual redemptions.

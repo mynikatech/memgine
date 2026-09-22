@@ -81,6 +81,26 @@ export class CounterService {
       .then((result) => this.unwrap(result));
   }
 
+  startPurchasePayment(ctx: CounterContext, challengeId: string, idempotencyKey: string) {
+    return this.api.startPurchasePayment(ctx, challengeId, idempotencyKey)
+      .then((result) => this.unwrap(result));
+  }
+
+  startCashPayment(ctx: CounterContext, challengeId: string, idempotencyKey: string) {
+    return this.api.startCashPayment(ctx, challengeId, idempotencyKey)
+      .then((result) => this.unwrap(result));
+  }
+
+  confirmCashPayment(ctx: CounterContext, paymentIntentId: ID) {
+    return this.api.confirmCashPayment(ctx, paymentIntentId)
+      .then((result) => this.unwrap(result));
+  }
+
+  confirmTestPayment(organizationId: ID, paymentIntentId: ID) {
+    return this.api.confirmTestPayment(organizationId, paymentIntentId)
+      .then((result) => this.unwrap(result));
+  }
+
   redeem(ctx: CounterContext, subscriptionId: ID, benefitIds: ID[]) {
     return this.api
       .redeem(ctx, subscriptionId, benefitIds)

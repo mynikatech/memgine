@@ -122,6 +122,28 @@ fun Route.counterRoutes(service: CounterService) {
                 call.callId
             ))
         }
+        post("/purchases/payment/start") {
+            val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            call.respond(ApiResponse.success(
+                service.startPurchasePayment(org, call.receive<PaymentStartRequestDto>(), call.authenticatedPrincipal()),
+                call.callId
+            ))
+        }
+        post("/purchases/payment/cash/start") {
+            val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            call.respond(ApiResponse.success(
+                service.startCashPayment(org, call.receive<PaymentStartRequestDto>(), call.authenticatedPrincipal()),
+                call.callId
+            ))
+        }
+        post("/purchases/payment/cash/confirm") {
+            val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            val confirmation = call.receive<CounterCashPaymentConfirmDto>()
+            call.respond(HttpStatusCode.Created, ApiResponse.success(
+                service.confirmCashPayment(org, confirmation.paymentIntentId, call.authenticatedPrincipal()),
+                call.callId
+            ))
+        }
 
         // Phone/manual redemption uses one action-bound OTP. QR remains OTP-free.
         post("/redemptions") {

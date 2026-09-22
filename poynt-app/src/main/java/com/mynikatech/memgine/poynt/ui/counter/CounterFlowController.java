@@ -2,6 +2,8 @@ package com.mynikatech.memgine.poynt.ui.counter;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextWatcher;
@@ -37,8 +39,10 @@ import java.util.concurrent.Executors;
 
 /** Coordinates classic native Counter screens; the Poynt Activity only hosts this workflow. */
 public final class CounterFlowController {
+    private static final long OTP_RESEND_COOLDOWN_MS = 30_000L;
     private final MemgineApiClient api = new MemgineApiClient();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final TerminalCredentialStore terminalCredentials;
     private final StaffSessionStore staffSession;
     private LinearLayout content;
@@ -478,7 +482,14 @@ public final class CounterFlowController {
         text("Request the purchase-bound OTP before payment. The membership is not created until the later payment-completion phase.");
         button("Request OTP", () -> background(
                 () -> api.requestPurchaseOtp(terminal, staffSession.staffId(), staffSession.token(), customer, plan.id),
-                challenge -> showPurchaseOtpCode(terminal, customer, plan, challenge)
+                challenge -> showPurchaseOtpCode(
+                        terminal,
+                        customer,
+                        plan,
+                        challenge,
+                        System.currentTimeMillis() + OTP_RESEND_COOLDOWN_MS,
+                        null
+                )
         ));
         button("Back", () -> loadPlans(terminal, customer));
         cancelButton();
@@ -488,7 +499,9 @@ public final class CounterFlowController {
             TerminalContext terminal,
             Customer customer,
             Plan plan,
-            OtpChallenge challenge
+            OtpChallenge challenge,
+            long resendAvailableAt,
+            String message
     ) {
         render("Sell · Enter Verification Code");
         text("Enter the six-digit code sent to the customer.");
@@ -500,21 +513,107 @@ public final class CounterFlowController {
                 setStatus("Enter the complete 6-digit verification code");
                 return;
             }
+            setStatus("");
             background(
                     () -> api.completePurchaseOtp(terminal, staffSession.staffId(), staffSession.token(),
                             challenge.challengeId, code),
-                    ignored -> showPaymentPending(terminal, customer, plan)
+                    ignored -> {
+                        setStatus("");
+                        showPaymentPending(terminal, customer, plan, challenge);
+                    }
             );
         });
+        text("Didn't receive the code?");
+        final Button[] resend = new Button[1];
+        resend[0] = button("Resend OTP", () -> {
+            long nextResendAt = System.currentTimeMillis() + OTP_RESEND_COOLDOWN_MS;
+            updateResendButton(resend[0], nextResendAt);
+            background(
+                    () -> api.requestPurchaseOtp(terminal, staffSession.staffId(), staffSession.token(), customer, plan.id),
+                    replacement -> showPurchaseOtpCode(
+                            terminal,
+                            customer,
+                            plan,
+                            replacement,
+                            System.currentTimeMillis() + OTP_RESEND_COOLDOWN_MS,
+                            "A new verification code has been sent."
+                    )
+            );
+        });
+        updateResendButton(resend[0], resendAvailableAt);
         button("Back", () -> showPurchaseOtp(terminal, customer, plan));
+        cancelButton();
+        if (message != null) {
+            setStatus(message);
+        }
+    }
+
+    private void showPaymentPending(TerminalContext terminal, Customer customer, Plan plan, OtpChallenge challenge) {
+        render("Membership Payment");
+        text(customer.displayName);
+        text(plan.name + " · " + formatPrice(plan.price, plan.currencyCode));
+        text("Customer verification is complete. Choose how the purchase is paid.");
+        button("Pay", () -> background(
+                () -> api.startPurchasePayment(
+                        terminal,
+                        staffSession.token(),
+                        challenge.challengeId,
+                        challenge.challengeId + ":poynt"
+                ),
+                intent -> showTerminalPaymentDeferred(terminal, customer, plan)
+        ));
+        button("Pay By Cash and Subscribe", () -> background(
+                () -> api.startCashPayment(
+                        terminal,
+                        staffSession.token(),
+                        challenge.challengeId,
+                        challenge.challengeId + ":cash"
+                ),
+                intent -> showCashConfirmation(terminal, customer, plan, challenge, intent)
+        ));
+        button("Back", () -> showPurchaseOtpCode(
+                terminal,
+                customer,
+                plan,
+                challenge,
+                System.currentTimeMillis() + OTP_RESEND_COOLDOWN_MS,
+                null
+        ));
         cancelButton();
     }
 
-    private void showPaymentPending(TerminalContext terminal, Customer customer, Plan plan) {
-        render("Membership Ready for Payment");
+    private void showTerminalPaymentDeferred(TerminalContext terminal, Customer customer, Plan plan) {
+        render("Terminal Payment");
+        text(plan.name + " · " + formatPrice(plan.price, plan.currencyCode));
+        text("Terminal payment integration is not available yet.");
+        text("No subscription has been created.");
+        button("Back", () -> showCounterHome(terminal));
+        cancelButton();
+    }
+
+    private void showCashConfirmation(
+            TerminalContext terminal,
+            Customer customer,
+            Plan plan,
+            OtpChallenge challenge,
+            PaymentIntent intent
+    ) {
+        render("Confirm Cash Received");
+        text(customer.displayName);
+        text("Confirm " + formatPrice(intent.amount, intent.currencyCode) + " cash received.");
+        button("Confirm Cash Received", () -> background(
+                () -> api.confirmCashPayment(terminal, staffSession.token(), intent.id),
+                ignored -> showCashSuccess(terminal, customer, plan)
+        ));
+        button("Back", () -> showPaymentPending(terminal, customer, plan, challenge));
+        cancelButton();
+    }
+
+    private void showCashSuccess(TerminalContext terminal, Customer customer, Plan plan) {
+        render("Membership Sold");
         text(customer.displayName);
         text(plan.name + " · " + formatPrice(plan.price, plan.currencyCode));
-        text("Customer verification is complete. Poynt payment binding and the server purchase-finalization call are intentionally deferred to the next phase.");
+        text("Cash payment confirmed and membership created.");
         button("Back to Counter Home", () -> showCounterHome(terminal));
         cancelButton();
     }
@@ -712,6 +811,25 @@ public final class CounterFlowController {
             }
             @Override public void afterTextChanged(Editable value) { }
         };
+    }
+
+    private void updateResendButton(Button resend, long resendAvailableAt) {
+        if (resend.getParent() == null) {
+            return;
+        }
+        long remainingMillis = resendAvailableAt - System.currentTimeMillis();
+        if (remainingMillis <= 0) {
+            resend.setEnabled(true);
+            resend.setText("Resend OTP");
+            return;
+        }
+        long remainingSeconds = (remainingMillis + 999L) / 1_000L;
+        resend.setEnabled(false);
+        resend.setText("Resend OTP (" + remainingSeconds + "s)");
+        mainHandler.postDelayed(
+                () -> updateResendButton(resend, resendAvailableAt),
+                Math.min(1_000L, remainingMillis)
+        );
     }
 
     private void render(String title) {

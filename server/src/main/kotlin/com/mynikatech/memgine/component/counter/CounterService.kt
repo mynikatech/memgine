@@ -8,6 +8,7 @@ import com.mynikatech.memgine.component.otp.BusinessOtpContextRow
 import com.mynikatech.memgine.component.otp.BusinessOtpService
 import com.mynikatech.memgine.component.otp.OtpPurpose
 import com.mynikatech.memgine.component.otp.OtpRequestResult
+import com.mynikatech.memgine.component.payment.PaymentService
 import com.mynikatech.memgine.net.dto.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
@@ -20,6 +21,7 @@ import org.postgresql.util.PSQLException
 class CounterService(
     private val jdbi: Jdbi,
     private val businessOtp: BusinessOtpService,
+    private val payments: PaymentService,
     private val phoneNormalizer: PhoneNormalizer = PhoneNormalizer()
 ) {
     private fun sql(): CounterSql = jdbi.onDemand(CounterSql::class.java)
@@ -187,7 +189,14 @@ class CounterService(
 
         translate {
             sql().createProspectiveCustomer(
-                org, firstName, lastName, email, canonicalPhone, principal.userId
+            org,
+            request.storeId,
+            request.staffId,
+            firstName,
+            lastName,
+            email,
+            canonicalPhone,
+            principal.userId
             )
         }
 
@@ -219,14 +228,36 @@ class CounterService(
      */
     fun finalizePurchaseOtp(org: String, input: CounterBusinessOtpFinalizeRequest,
                             principal: AuthenticatedPrincipal): CounterPurchaseResult {
-        val context = businessOtp.resolveVerified(
-            input.challengeId,
-            OtpPurpose.COUNTER_PURCHASE_VERIFY
-        )
-        val request = validatePurchaseContext(org, context, principal)
-        val result = purchase(org, request, principal)
-        businessOtp.consume(input.challengeId, OtpPurpose.COUNTER_PURCHASE_VERIFY)
-        return result
+        throw BadRequestException("Membership purchase requires verified payment confirmation")
+    }
+
+    fun startPurchasePayment(
+        org: String,
+        request: PaymentStartRequestDto,
+        principal: AuthenticatedPrincipal
+    ): PaymentIntentDto {
+        val context = businessOtp.resolveVerified(request.challengeId, OtpPurpose.COUNTER_PURCHASE_VERIFY)
+        validatePurchaseContext(org, context, principal)
+        return payments.startMembershipPayment(org, request, principal.userId)
+    }
+
+    fun startCashPayment(
+        org: String,
+        request: PaymentStartRequestDto,
+        principal: AuthenticatedPrincipal
+    ): PaymentIntentDto {
+        val context = businessOtp.resolveVerified(request.challengeId, OtpPurpose.COUNTER_PURCHASE_VERIFY)
+        validatePurchaseContext(org, context, principal)
+        return payments.startCounterCashPayment(org, request, principal.userId)
+    }
+
+    fun confirmCashPayment(
+        org: String,
+        paymentIntentId: String,
+        principal: AuthenticatedPrincipal
+    ): PaymentConfirmationDto {
+        val result = payments.confirmCounterCashAndFinalize(org, paymentIntentId, principal.userId)
+        return PaymentConfirmationDto(result.first, result.second)
     }
 
     private fun validatePurchaseContext(

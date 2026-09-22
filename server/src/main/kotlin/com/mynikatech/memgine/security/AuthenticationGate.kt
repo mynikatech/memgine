@@ -120,6 +120,17 @@ private fun protectOrganizationPath(
         return
     }
 
+    if (resource == "payments" && method == HttpMethod.Post && parts.getOrNull(6) == "test-result") {
+        val authenticated = principal ?: throw UnauthorizedException("Authentication is required")
+        if (
+            authenticated.has("COUNTER_ACCESS", organizationId) ||
+            authenticated.has("ORG_ADMIN_ACCESS", organizationId)
+        ) {
+            return
+        }
+        throw ForbiddenException("Access is not permitted")
+    }
+
     val counterReadResources = setOf(
         "stores",
         "staff",

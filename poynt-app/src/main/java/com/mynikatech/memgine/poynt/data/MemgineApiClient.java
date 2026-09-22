@@ -310,15 +310,82 @@ public final class MemgineApiClient {
             JSONObject request = new JSONObject();
             request.put("challengeId", challengeId);
             request.put("otp", otp);
-            call(
+            Object data = callData(
                     "POST",
                     "/api/v1/organizations/" + terminal.organizationId + "/counter/purchases/otp/complete",
                     null,
                     sessionToken,
                     request
             );
+            if (!(data instanceof Boolean) || !((Boolean) data)) {
+                throw new ApiException("OTP verification was not completed");
+            }
             return true;
         }
+
+    public PaymentIntent startPurchasePayment(
+            TerminalContext terminal,
+            String sessionToken,
+            String challengeId,
+            String idempotencyKey
+    ) throws Exception {
+        JSONObject request = new JSONObject();
+        request.put("challengeId", challengeId);
+        request.put("idempotencyKey", idempotencyKey);
+        JSONObject data = call(
+                "POST",
+                "/api/v1/organizations/" + terminal.organizationId + "/counter/purchases/payment/start",
+                null,
+                sessionToken,
+                request
+        );
+        return paymentIntent(data);
+    }
+
+    public PaymentIntent startCashPayment(
+            TerminalContext terminal,
+            String sessionToken,
+            String challengeId,
+            String idempotencyKey
+    ) throws Exception {
+        JSONObject request = new JSONObject();
+        request.put("challengeId", challengeId);
+        request.put("idempotencyKey", idempotencyKey);
+        JSONObject data = call(
+                "POST",
+                "/api/v1/organizations/" + terminal.organizationId + "/counter/purchases/payment/cash/start",
+                null,
+                sessionToken,
+                request
+        );
+        return paymentIntent(data);
+    }
+
+    public boolean confirmCashPayment(
+            TerminalContext terminal,
+            String sessionToken,
+            String paymentIntentId
+    ) throws Exception {
+        JSONObject request = new JSONObject();
+        request.put("paymentIntentId", paymentIntentId);
+        call(
+                "POST",
+                "/api/v1/organizations/" + terminal.organizationId + "/counter/purchases/payment/cash/confirm",
+                null,
+                sessionToken,
+                request
+        );
+        return true;
+    }
+
+    private PaymentIntent paymentIntent(JSONObject data) throws Exception {
+        return new PaymentIntent(
+                data.getString("paymentIntentId"),
+                data.getString("providerCode"),
+                data.getDouble("amount"),
+                data.getString("currencyCode")
+        );
+    }
 
         private JSONObject call(
                 String method,
@@ -327,40 +394,7 @@ public final class MemgineApiClient {
                 String sessionToken,
                 JSONObject request
         ) throws Exception {
-            if (BuildConfig.MEMGINE_BASE_URL == null || BuildConfig.MEMGINE_BASE_URL.trim().isEmpty()) {
-                throw new ApiException("Memgine server URL is not configured");
-            }
-            HttpURLConnection connection = (HttpURLConnection) new URL(
-                    BuildConfig.MEMGINE_BASE_URL.replaceAll("/$", "") + path
-            ).openConnection();
-            connection.setRequestMethod(method);
-            connection.setConnectTimeout(10_000);
-            connection.setReadTimeout(15_000);
-            connection.setRequestProperty("Accept", "application/json");
-            if (terminalCredential != null) {
-                connection.setRequestProperty("X-Memgine-Poynt-Terminal", terminalCredential);
-            }
-            if (sessionToken != null) {
-                connection.setRequestProperty("X-Memgine-Session", sessionToken);
-            }
-            if (request != null) {
-                connection.setDoOutput(true);
-                connection.setRequestProperty("Content-Type", "application/json");
-                try (OutputStream output = connection.getOutputStream()) {
-                    output.write(request.toString().getBytes(StandardCharsets.UTF_8));
-                }
-            }
-            int status = connection.getResponseCode();
-            BufferedReader reader = new BufferedReader(new java.io.InputStreamReader(
-                    status >= 200 && status < 300 ? connection.getInputStream() : connection.getErrorStream(),
-                    StandardCharsets.UTF_8
-            ));
-            StringBuilder body = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                body.append(line);
-            }
-            Object data = responseData(status, body.toString());
+            Object data = callData(method, path, terminalCredential, sessionToken, request);
             if (data == null) {
                 return null;
             }
@@ -370,7 +404,7 @@ public final class MemgineApiClient {
             return (JSONObject) data;
         }
 
-        private JSONArray callArray(
+        private Object callData(
                 String method,
                 String path,
                 String terminalCredential,
@@ -410,7 +444,17 @@ public final class MemgineApiClient {
             while ((line = reader.readLine()) != null) {
                 body.append(line);
             }
-            Object data = responseData(status, body.toString());
+            return responseData(status, body.toString());
+        }
+
+        private JSONArray callArray(
+                String method,
+                String path,
+                String terminalCredential,
+                String sessionToken,
+                JSONObject request
+        ) throws Exception {
+            Object data = callData(method, path, terminalCredential, sessionToken, request);
             if (!(data instanceof JSONArray)) {
                 throw new ApiException("Unexpected Memgine response");
             }
@@ -435,5 +479,3 @@ public final class MemgineApiClient {
             return envelope.get("data");
         }
     }
-
-

@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 079-counter-cash-payment
+      author: mynikatech
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/079-counter-cash-payment.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

@@ -3,7 +3,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Modal, Pressable, View } from "react-native";
 
-import { PaymentMethod } from "@/src/core";
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
 import type {
   Benefit,
@@ -105,26 +104,6 @@ const normalizePhone = (value: string): string =>
 const normalizeOtp = (value: string): string =>
   value.replace(/\D/g, "").slice(0, OTP_LENGTH);
 
-/*
- * --------------------------------------------------------------
- * Payment methods
- * --------------------------------------------------------------
- *
- * The selected payment method is currently presentation/UI state.
- *
- * The actual payment is always delegated to services.payment.
- *
- * When the PaymentService contract is extended with provider-specific
- * payment-method information, this state can be passed to the service
- * without changing the rest of the purchase workflow.
- */
-
-const PAYMENT_METHODS: PaymentMethod[] = [
-  PaymentMethod.UPI,
-  PaymentMethod.CARD,
-  PaymentMethod.CASH,
-];
-
 export default function JoinFlow() {
   const router = useRouter();
 
@@ -209,6 +188,7 @@ export default function JoinFlow() {
   const [purchaseOtpCode, setPurchaseOtpCode] = useState("");
   const [purchaseOtpVerified, setPurchaseOtpVerified] = useState(false);
   const [purchaseOtpBusy, setPurchaseOtpBusy] = useState(false);
+  const [purchaseOtpNotice, setPurchaseOtpNotice] = useState<string | undefined>();
 
   /*
    * Subscription / payment state
@@ -217,9 +197,11 @@ export default function JoinFlow() {
 
   const [reference, setReference] = useState("");
 
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
-    PaymentMethod.UPI,
-  );
+  const [cashPayment, setCashPayment] = useState<{
+    paymentIntentId: string;
+    amount: number;
+    currencyCode: string;
+  } | null>(null);
 
   /*
    * --------------------------------------------------------------
@@ -634,9 +616,10 @@ export default function JoinFlow() {
     orgId,
   ]);
 
-  const requestCounterPurchaseOtp = useCallback(async () => {
+  const requestCounterPurchaseOtp = useCallback(async (isResend = false) => {
     try {
       setOtpError(undefined);
+      setPurchaseOtpNotice(undefined);
       setPurchaseOtpBusy(true);
 
       const { context, phone, purchase } = counterPurchasePayload();
@@ -651,13 +634,22 @@ export default function JoinFlow() {
       setPurchaseOtpCode("");
       setPurchaseOtpVerified(false);
       setStep("purchaseOtp");
+      if (isResend) {
+        setPurchaseOtpNotice("A new verification code has been sent.");
+      }
     } catch (error) {
-      setOtpError(
+      const message =
         error instanceof Error
           ? error.message
-          : "Unable to send purchase verification code.",
+          : "Unable to send purchase verification code.";
+      setOtpError(
+        /cooldown/i.test(message)
+          ? "Please wait before requesting another code."
+          : message,
       );
-      setStep("review");
+      if (!isResend) {
+        setStep("review");
+      }
     } finally {
       setPurchaseOtpBusy(false);
     }
@@ -700,26 +692,35 @@ export default function JoinFlow() {
     }
   }, [counterPurchasePayload, purchaseOtpChallengeId, purchaseOtpCode]);
 
-  /*
-   * --------------------------------------------------------------
-   * CREATE SUBSCRIPTION
-   * --------------------------------------------------------------
-   *
-   * The business workflow is intentionally provider-neutral:
-   *
-   *   JoinFlow
-   *       ↓
-   *   services.payment.pay()
-   *       ↓
-   *   PaymentService
-   *       ↓
-   *   local / real payment implementation
-   *
-   * There is NO mock payment implementation in this screen.
-   *
-   * Subscription creation happens only after PaymentService
-   * reports PAID.
-   */
+  const finishSubscription = useCallback((saved: {
+    subscriptionId: string; subscriptionNumber: string; organizationUserId: string;
+    subscriptionPlanId: string; subscriptionDate: string; startDate: string; endDate: string;
+    subscriptionStatusId: string; totalAmount: number; currencyCode: string;
+  }, paymentReference: string) => {
+    if (isStaffSale) {
+      counterCheckout.clear();
+      setPurchaseOtpChallengeId("");
+      setPurchaseOtpDevCode("");
+      setPurchaseOtpCode("");
+      setPurchaseOtpVerified(false);
+    }
+    const sub = {
+      id: saved.subscriptionId,
+      subscriptionNumber: saved.subscriptionNumber,
+      organizationUserId: saved.organizationUserId,
+      subscriptionPlanId: saved.subscriptionPlanId,
+      subscriptionDate: saved.subscriptionDate,
+      startDate: saved.startDate,
+      endDate: saved.endDate,
+      subscriptionStatusId: saved.subscriptionStatusId,
+      totalAmount: { amountMinor: Math.round(saved.totalAmount * 100), currency: saved.currencyCode },
+      isDeleted: false,
+    } as Subscription;
+    setSubscription(sub);
+    setReference(paymentReference);
+    setActiveContext(orgId, sub.id);
+    setStep("success");
+  }, [isStaffSale, orgId, setActiveContext]);
 
   const payAndSubscribe = useCallback(async () => {
     if (
@@ -739,93 +740,47 @@ export default function JoinFlow() {
     setStep("processing");
 
     try {
-      const payment = await services.payment.pay({
-        amountMinor: plan.price.amountMinor,
-        currency: plan.price.currency,
-        description: product.membershipProductName,
-      });
-
-      if (payment.status !== "PAID") {
-        throw new Error("Payment was not completed.");
-      }
-
       if (isStaffSale) {
         if (!purchaseOtpChallengeId) {
           throw new Error("Purchase verification is required before payment.");
         }
 
         const { context } = counterPurchasePayload();
-        const saved = await services.counter.finalizePurchaseOtp(
+        const intent = await services.counter.startPurchasePayment(
           context,
           purchaseOtpChallengeId,
+          `${purchaseOtpChallengeId}:provider`,
         );
-
-        counterCheckout.clear();
-        setPurchaseOtpChallengeId("");
-        setPurchaseOtpDevCode("");
-        setPurchaseOtpCode("");
-        setPurchaseOtpVerified(false);
-
-        const sub = {
-          id: saved.subscriptionId,
-          subscriptionNumber: saved.subscriptionNumber,
-          organizationUserId: saved.organizationUserId,
-          subscriptionPlanId: saved.subscriptionPlanId,
-          subscriptionDate: saved.subscriptionDate,
-          startDate: saved.startDate,
-          endDate: saved.endDate,
-          subscriptionStatusId: saved.subscriptionStatusId,
-          totalAmount: {
-            amountMinor: Math.round(saved.totalAmount * 100),
-            currency: saved.currencyCode,
-          },
-          isDeleted: false,
-        } as Subscription;
-
-        setSubscription(sub);
-        setReference(payment.reference);
-        setActiveContext(orgId, sub.id);
-        setStep("success");
+        if (intent.providerCode !== "TEST") {
+          throw new Error("Provider checkout is not configured yet.");
+        }
+        const confirmed = await services.counter.confirmTestPayment(orgId, intent.paymentIntentId);
+        if (confirmed.payment.status !== "SUCCEEDED" || !confirmed.subscription) {
+          throw new Error("Payment is pending or was not completed.");
+        }
+        finishSubscription(
+          confirmed.subscription,
+          confirmed.payment.providerReferenceId ?? confirmed.payment.paymentIntentId,
+        );
         return;
       }
 
-      // Authenticated customer purchases do not require a second business OTP.
-      if (!customerId && (!phoneVerified || !customer)) {
-        throw new Error("Verify the customer phone before purchasing.");
+      const intent = await services.customerData.startAuthenticatedPayment(
+        orgId,
+        plan.id,
+        `${orgId}:${plan.id}:provider`,
+      );
+      if (intent.providerCode !== "TEST") {
+        throw new Error("Provider checkout is not configured yet.");
       }
-
-      const saved = await services.customerData.purchase(orgId, {
-        planId: plan.id,
-        ...(customerId
-          ? { customerUserId: customerId }
-          : {
-              firstName: firstName.trim(),
-              lastName: lastName.trim(),
-              primaryEmail: email.trim() || undefined,
-              primaryPhone: customer!.phone,
-            }),
-      });
-
-      const sub = {
-        id: saved.subscriptionId,
-        subscriptionNumber: saved.subscriptionNumber,
-        organizationUserId: saved.organizationUserId,
-        subscriptionPlanId: saved.subscriptionPlanId,
-        subscriptionDate: saved.subscriptionDate,
-        startDate: saved.startDate,
-        endDate: saved.endDate,
-        subscriptionStatusId: saved.subscriptionStatusId,
-        totalAmount: {
-          amountMinor: Math.round(saved.totalAmount * 100),
-          currency: saved.currencyCode,
-        },
-        isDeleted: false,
-      } as Subscription;
-
-      setSubscription(sub);
-      setReference(payment.reference);
-      setActiveContext(orgId, sub.id);
-      setStep("success");
+      const confirmed = await services.customerData.confirmTestPayment(orgId, intent.paymentIntentId);
+      if (confirmed.payment.status !== "SUCCEEDED" || !confirmed.subscription) {
+        throw new Error("Payment is pending or was not completed.");
+      }
+      finishSubscription(
+        confirmed.subscription,
+        confirmed.payment.providerReferenceId ?? confirmed.payment.paymentIntentId,
+      );
     } catch (error) {
       setStep("review");
       setOtpError(
@@ -837,21 +792,57 @@ export default function JoinFlow() {
   }, [
     product,
     plan,
-    organizationUserId,
     isStaffSale,
     purchaseOtpVerified,
     requestCounterPurchaseOtp,
     purchaseOtpChallengeId,
     counterPurchasePayload,
     orgId,
-    customerId,
-    setActiveContext,
-    phoneVerified,
-    customer,
-    firstName,
-    lastName,
-    email,
+    finishSubscription,
   ]);
+
+  const requestCashPayment = useCallback(async () => {
+    if (!isStaffSale || !purchaseOtpVerified || !purchaseOtpChallengeId) {
+      await requestCounterPurchaseOtp();
+      return;
+    }
+    try {
+      setOtpError(undefined);
+      const { context } = counterPurchasePayload();
+      const intent = await services.counter.startCashPayment(
+        context,
+        purchaseOtpChallengeId,
+        `${purchaseOtpChallengeId}:cash`,
+      );
+      setCashPayment({
+        paymentIntentId: intent.paymentIntentId,
+        amount: intent.amount,
+        currencyCode: intent.currencyCode,
+      });
+    } catch (error) {
+      setOtpError(error instanceof Error ? error.message : "Unable to start cash payment.");
+    }
+  }, [counterPurchasePayload, isStaffSale, purchaseOtpChallengeId, purchaseOtpVerified, requestCounterPurchaseOtp]);
+
+  const confirmCashReceived = useCallback(async () => {
+    if (!cashPayment) return;
+    setCashPayment(null);
+    setStep("processing");
+    try {
+      const { context } = counterPurchasePayload();
+      const confirmed = await services.counter.confirmCashPayment(context, cashPayment.paymentIntentId);
+      if (confirmed.payment.status !== "SUCCEEDED" || !confirmed.subscription) {
+        throw new Error("Cash payment is pending or was not completed.");
+      }
+      finishSubscription(
+        confirmed.subscription,
+        confirmed.payment.providerReferenceId ?? confirmed.payment.paymentIntentId,
+      );
+    } catch (error) {
+      setStep("review");
+      setOtpError(error instanceof Error ? error.message : "Unable to confirm cash payment.");
+    }
+  }, [cashPayment, counterPurchasePayload, finishSubscription]);
 
   /*
    * --------------------------------------------------------------
@@ -887,7 +878,15 @@ export default function JoinFlow() {
    * Direct customer purchase does not need this action.
    */
   const goToCounter = () => {
-    router.back();
+    router.replace({
+      pathname: APP_ROUTES.counter.root,
+      params: {
+        organizationId: orgId,
+        storeId: params.storeId ?? "",
+        staffId: params.staffId ?? "",
+        source: "STAFF_ASSISTED",
+      },
+    });
   };
 
   const headerRight = (
@@ -1306,6 +1305,12 @@ export default function JoinFlow() {
             />
           ) : null}
 
+          {purchaseOtpNotice ? (
+            <Text variant="bodySmall" color="success">
+              {purchaseOtpNotice}
+            </Text>
+          ) : null}
+
           <Input
             label="Verification code"
             value={purchaseOtpCode}
@@ -1328,10 +1333,10 @@ export default function JoinFlow() {
           />
 
           <Button
-            label="Send New Code"
+            label="Resend OTP"
             fullWidth
             disabled={purchaseOtpBusy}
-            onPress={requestCounterPurchaseOtp}
+            onPress={() => requestCounterPurchaseOtp(true)}
             testID="join-purchase-otp-resend"
           />
         </View>
@@ -1383,53 +1388,6 @@ export default function JoinFlow() {
             totalMinor={plan.price.amountMinor}
           />
 
-          {isStaffSale ? (
-            <Section title={t("join.paymentMethod")}>
-              <View
-                style={{
-                  flexDirection: "row",
-                  gap: theme.spacing.sm,
-                }}
-              >
-                {PAYMENT_METHODS.map((method) => {
-                  const selected = method === paymentMethod;
-
-                  return (
-                    <Pressable
-                      key={method}
-                      testID={`join-pay-${method}`}
-                      onPress={() => setPaymentMethod(method)}
-                      style={{
-                        flex: 1,
-                        paddingVertical: 12,
-                        alignItems: "center",
-                        borderRadius: theme.radius.md,
-                        borderWidth: 1,
-                        borderColor: selected
-                          ? theme.colors.primary
-                          : theme.colors.border,
-                        backgroundColor: selected
-                          ? theme.colors.primarySoft
-                          : theme.colors.background,
-                      }}
-                    >
-                      <Text
-                        variant="bodyStrong"
-                        color={selected ? "primary" : "textMuted"}
-                      >
-                        {method === PaymentMethod.CARD
-                          ? "Card"
-                          : method === PaymentMethod.CASH
-                            ? "Cash"
-                            : "UPI"}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </Section>
-          ) : null}
-
           <Section title={t("join.includedBenefits")}>
             <Card padding="lg">
               <View style={{ gap: 14 }}>
@@ -1472,6 +1430,14 @@ export default function JoinFlow() {
             onPress={payAndSubscribe}
             testID="join-pay"
           />
+          {isStaffSale && purchaseOtpVerified ? (
+            <Button
+              label="Pay By Cash and Subscribe"
+              fullWidth
+              onPress={requestCashPayment}
+              testID="join-pay-cash"
+            />
+          ) : null}
         </View>
       ) : null}
 
@@ -1570,15 +1536,6 @@ export default function JoinFlow() {
                 } · ${intervalLabel}`,
               },
 
-              ...(isStaffSale
-                ? [
-                    {
-                      label: t("join.paymentMethod"),
-                      value: paymentMethod,
-                    },
-                  ]
-                : []),
-
               {
                 label: t("join.date"),
                 value: formatDate(subscription.startDate),
@@ -1615,12 +1572,50 @@ export default function JoinFlow() {
             <Button
               label={t("common.done")}
               fullWidth
-              onPress={() => router.replace(APP_ROUTES.counter.root)}
+              onPress={goToCounter}
               testID="join-done"
             />
           ) : null}
         </View>
       ) : null}
+      <Modal
+        transparent
+        visible={cashPayment !== null}
+        animationType="fade"
+        onRequestClose={() => setCashPayment(null)}
+      >
+        <View
+          style={{
+            flex: 1,
+            justifyContent: "center",
+            padding: theme.spacing.lg,
+            backgroundColor: "rgba(0,0,0,0.35)",
+          }}
+        >
+          <Card padding="lg">
+            <View style={{ gap: theme.spacing.md }}>
+              <Text variant="h2">Confirm cash received</Text>
+              <Text>
+                Confirm {cashPayment
+                  ? formatMoney(Math.round(cashPayment.amount * 100))
+                  : ""} cash received.
+              </Text>
+              <Button
+                label="Confirm Cash Received"
+                fullWidth
+                onPress={confirmCashReceived}
+                testID="join-confirm-cash"
+              />
+              <Button
+                label={t("common.cancel")}
+                fullWidth
+                onPress={() => setCashPayment(null)}
+                testID="join-cancel-cash"
+              />
+            </View>
+          </Card>
+        </View>
+      </Modal>
     </Screen>
   );
 }

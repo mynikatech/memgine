@@ -19,6 +19,8 @@ import com.mynikatech.memgine.component.customer.customerRoutes
 import com.mynikatech.memgine.component.customer.customerSelfServiceRoutes
 import com.mynikatech.memgine.component.counter.CounterService
 import com.mynikatech.memgine.component.counter.counterRoutes
+import com.mynikatech.memgine.component.payment.PaymentService
+import com.mynikatech.memgine.component.payment.paymentRoutes
 import com.mynikatech.memgine.component.notificationconfiguration.NotificationConfigurationService
 import com.mynikatech.memgine.component.notificationconfiguration.notificationConfigurationRoutes
 import com.mynikatech.memgine.component.notification.NotificationService
@@ -141,9 +143,10 @@ fun Application.configureRouting(
     val offerService = OfferService(database.jdbi)
     val subscriptionService = SubscriptionService(database.jdbi.onDemand(SubscriptionSql::class.java))
     val redemptionService = RedemptionService(database.jdbi.onDemand(RedemptionSql::class.java))
+    val paymentService = PaymentService(database.jdbi, config.server.environment)
     val customerService = CustomerService(database.jdbi.onDemand(CustomerSql::class.java),
-        membershipProductService, benefitService, storeService, customerDevIdentityEnabled, businessOtpService)
-    val counterService = CounterService(database.jdbi, businessOtpService, phoneNormalizer)
+        membershipProductService, benefitService, storeService, customerDevIdentityEnabled, businessOtpService, paymentService)
+    val counterService = CounterService(database.jdbi, businessOtpService, paymentService, phoneNormalizer)
     val notificationConfigurationService = NotificationConfigurationService(database.jdbi)
     val integrationConfigurationService = IntegrationConfigurationService(database.jdbi)
     val customerExperienceReleaseService =
@@ -183,6 +186,7 @@ fun Application.configureRouting(
             customerRoutes(customerService)
             customerSelfServiceRoutes(customerService)
             counterRoutes(counterService)
+            paymentRoutes(paymentService)
             notificationConfigurationRoutes(notificationConfigurationService)
             notificationRoutes(notificationService)
             integrationConfigurationRoutes(integrationConfigurationService)

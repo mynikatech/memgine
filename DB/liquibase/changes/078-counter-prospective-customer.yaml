@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 078-counter-prospective-customer
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/078-counter-prospective-customer.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

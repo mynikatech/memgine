@@ -95,7 +95,12 @@ export default function StaffCounter() {
 
   const router = useRouter();
 
-  const params = useLocalSearchParams<{ organizationId?: string }>();
+  const params = useLocalSearchParams<{
+    organizationId?: string;
+    staffId?: string;
+    storeId?: string;
+    source?: string;
+  }>();
 
   const { t, formatMoney } = useTranslation();
 
@@ -306,10 +311,19 @@ export default function StaffCounter() {
     setCounterOrganization(null);
     setActiveStaffMembers([]);
     setStaffNamesById({});
-    const existingSession =
-      counterSessionContext?.organizationId === orgId
-        ? counterSessionContext
+    const routeSession =
+      params.staffId && params.storeId
+        ? {
+            organizationId: orgId,
+            staffId: params.staffId,
+            storeId: params.storeId,
+          }
         : null;
+    const existingSession =
+      routeSession ??
+      (counterSessionContext?.organizationId === orgId
+        ? counterSessionContext
+        : null);
     if (counterSessionContext && !existingSession) {
       setCounterSessionContext(null);
     }
@@ -442,7 +456,6 @@ export default function StaffCounter() {
     setCounterStaffName("");
     setStore(null);
     setSamples([]);
-    setCounterSessionContext(null);
     setError(
       activeStaffMembers.length === 0
         ? "No active staff available for this organization."
@@ -454,10 +467,10 @@ export default function StaffCounter() {
       (session?.posContext
         ? counterStores.find((item) => item.id === session.posContext?.storeId)
         : null) ??
-      eligibleStores?.primary ??
       (selectedStoreId
         ? storeChoices.find((item) => item.id === selectedStoreId)
         : undefined) ??
+      eligibleStores?.primary ??
       (storeChoices.length === 1 ? storeChoices[0] : null);
     if (!resolvedStore) {
       if (storeChoices.length === 0)

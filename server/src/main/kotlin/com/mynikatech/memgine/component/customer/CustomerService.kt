@@ -23,8 +23,12 @@ import com.mynikatech.memgine.component.store.StoreService
 import com.mynikatech.memgine.component.otp.BusinessOtpService
 import com.mynikatech.memgine.component.otp.OtpPurpose
 import com.mynikatech.memgine.component.otp.OtpRequestResult
+import com.mynikatech.memgine.component.payment.PaymentService
 import com.mynikatech.memgine.net.dto.CustomerPurchaseOtpCompleteDto
 import com.mynikatech.memgine.net.dto.CustomerPurchaseOtpRequestDto
+import com.mynikatech.memgine.net.dto.AuthenticatedMembershipPaymentStartDto
+import com.mynikatech.memgine.net.dto.PaymentIntentDto
+import com.mynikatech.memgine.net.dto.PaymentStartRequestDto
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -36,7 +40,8 @@ class CustomerService(
     private val benefits: BenefitService,
     private val stores: StoreService,
     private val devIdentityEnabled: Boolean,
-    private val businessOtp: BusinessOtpService
+    private val businessOtp: BusinessOtpService,
+    private val payments: PaymentService
 ) {
     // Existing Org Admin components use this development actor until request auth is wired.
     fun list(organizationId: String, actorUserId: String): List<OrgAdminCustomerDto> {
@@ -209,7 +214,7 @@ class CustomerService(
         )
     }
 
-    fun completePurchaseOtp(organizationId: String, input: CustomerPurchaseOtpCompleteDto, authenticatedUserId: String?): CounterPurchaseResult {
+    fun completePurchaseOtp(organizationId: String, input: CustomerPurchaseOtpCompleteDto, authenticatedUserId: String?): Boolean {
         val context = businessOtp.verifyAndResolve(
             input.challengeId,
             input.otp,
@@ -232,14 +237,35 @@ class CustomerService(
             }
         }
 
-        val result = if (authenticatedUserId != null) {
-            purchaseAuthenticated(organizationId, authenticatedUserId, request)
-        } else {
-            purchase(organizationId, null, request)
-        }
+        return true
+    }
 
-        businessOtp.consume(input.challengeId, OtpPurpose.APP_MEMBERSHIP_PURCHASE_VERIFY)
-        return result
+    fun startPurchasePayment(
+        organizationId: String,
+        request: PaymentStartRequestDto,
+        authenticatedUserId: String
+    ): PaymentIntentDto {
+        val context = businessOtp.resolveVerified(
+            request.challengeId,
+            OtpPurpose.APP_MEMBERSHIP_PURCHASE_VERIFY
+        )
+        if (context.organizationId != organizationId || context.userId != authenticatedUserId) {
+            throw ForbiddenException("Business verification does not match this purchase")
+        }
+        return payments.startMembershipPayment(organizationId, request, authenticatedUserId)
+    }
+
+    fun startAuthenticatedPurchasePayment(
+        organizationId: String,
+        customerUserId: String,
+        request: AuthenticatedMembershipPaymentStartDto
+    ): PaymentIntentDto {
+        return payments.startAuthenticatedMembershipPayment(
+            organizationId,
+            request.planId,
+            customerUserId,
+            request.idempotencyKey
+        )
     }
 
     fun hasActiveRelationship(organizationId: String, userId: String): Boolean = sql.hasActiveRelationship(organizationId, userId)

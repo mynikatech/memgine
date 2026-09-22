@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 080-payment-return-type-fix
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/080-payment-return-type-fix.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

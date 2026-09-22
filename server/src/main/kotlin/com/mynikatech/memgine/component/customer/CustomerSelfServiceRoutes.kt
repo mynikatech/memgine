@@ -4,6 +4,8 @@ import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.model.common.ApiResponse
 import com.mynikatech.memgine.net.dto.CustomerPurchaseRequestDto
 import com.mynikatech.memgine.net.dto.CustomerPreferenceValueDto
+import com.mynikatech.memgine.net.dto.AuthenticatedMembershipPaymentStartDto
+import com.mynikatech.memgine.net.dto.PaymentStartRequestDto
 import com.mynikatech.memgine.security.AuthenticatedPrincipalKey
 import com.mynikatech.memgine.security.authenticatedPrincipal
 import io.ktor.http.HttpStatusCode
@@ -66,12 +68,7 @@ fun Route.customerSelfServiceRoutes(service: CustomerService) {
                 call.respond(ApiResponse.success(service.stores(call.organizationId(), call.userId()), call.callId))
             }
             post("/purchases") {
-                val input = call.receive<CustomerPurchaseRequestDto>()
-                val principal = call.attributes.getOrNull(AuthenticatedPrincipalKey)
-                if (principal == null || !service.hasActiveRelationship(call.organizationId(), principal.userId))
-                    throw BadRequestException("Membership purchase requires business OTP verification")
-                val result = service.purchaseAuthenticated(call.organizationId(), principal.userId, input)
-                call.respond(HttpStatusCode.Created, ApiResponse.success(result, call.callId))
+                throw BadRequestException("Membership purchase requires verified payment confirmation")
             }
             post("/purchases/otp/request") {
                 val principal = call.attributes.getOrNull(AuthenticatedPrincipalKey)
@@ -79,7 +76,27 @@ fun Route.customerSelfServiceRoutes(service: CustomerService) {
             }
             post("/purchases/otp/complete") {
                 val principal = call.attributes.getOrNull(AuthenticatedPrincipalKey)
-                call.respond(HttpStatusCode.Created, ApiResponse.success(service.completePurchaseOtp(call.organizationId(), call.receive(), principal?.userId), call.callId))
+                call.respond(ApiResponse.success(service.completePurchaseOtp(call.organizationId(), call.receive(), principal?.userId), call.callId))
+            }
+            post("/purchases/payment/start") {
+                call.respond(ApiResponse.success(
+                    service.startPurchasePayment(
+                        call.organizationId(),
+                        call.receive<PaymentStartRequestDto>(),
+                        call.authenticatedPrincipal().userId
+                    ),
+                    call.callId
+                ))
+            }
+            post("/purchases/payment/start-authenticated") {
+                call.respond(ApiResponse.success(
+                    service.startAuthenticatedPurchasePayment(
+                        call.organizationId(),
+                        call.authenticatedPrincipal().userId,
+                        call.receive<AuthenticatedMembershipPaymentStartDto>()
+                    ),
+                    call.callId
+                ))
             }
             get("/preferences/{code}") {
                 val code = call.parameters["code"] ?: throw BadRequestException("Preference code is required")

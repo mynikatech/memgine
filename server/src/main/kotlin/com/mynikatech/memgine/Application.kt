@@ -35,7 +35,6 @@ fun main() {
 fun Application.module() {
     val config = AppConfig.load(environment.config)
     val database = DatabaseFactory.create(config.database)
-
     monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
         database.close()
     }

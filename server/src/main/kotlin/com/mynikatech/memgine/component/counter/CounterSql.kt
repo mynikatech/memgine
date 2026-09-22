@@ -35,11 +35,26 @@ interface CounterSql {
         @Bind("actorUserId") actorUserId: String
     ): CounterCustomerLookupDto?
 
-    @SqlQuery("""SELECT create_organization_prospective_customer(
-        :organizationId, :firstName, NULL, :lastName, NULL,
-        :primaryEmail, :primaryPhone, :actorUserId)""")
+    @SqlQuery(
+        """
+        SELECT counter_create_prospective_customer(
+            :organizationId,
+            :storeId,
+            :staffId,
+            :firstName,
+            NULL,
+            :lastName,
+            NULL,
+            :primaryEmail,
+            :primaryPhone,
+            :actorUserId
+        )
+        """
+    )
     fun createProspectiveCustomer(
         @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String,
+        @Bind("staffId") staffId: String,
         @Bind("firstName") firstName: String,
         @Bind("lastName") lastName: String,
         @Bind("primaryEmail") primaryEmail: String?,

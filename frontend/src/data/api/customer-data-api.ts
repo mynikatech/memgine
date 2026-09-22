@@ -1,6 +1,7 @@
 import type { ID } from "@/src/core";
 import type { Benefit, BenefitUsageRule, MembershipProduct, Offer, Store } from "@/src/core";
 import type { CounterPurchaseResult, CounterSubscription } from "./counter-api";
+import type { PaymentConfirmation, PaymentIntent } from "./counter-api";
 import type { OrgAdminRedemption } from "./org-admin-transaction-api";
 import type { CustomerChoice, CustomerProfile } from "@/src/core/services/customer-data-service";
 import { entityStatusApi } from "./entity-status-api";
@@ -30,6 +31,27 @@ export class CustomerDataApi {
     const { customerUserId: _customerUserId, ...request } = input;
     return httpClient.post(
       `${base(organizationId)}/purchases`, request,
+    );
+  }
+
+  startAuthenticatedPayment(
+    organizationId: ID,
+    planId: ID,
+    idempotencyKey: string,
+  ): Promise<ApiResult<PaymentIntent>> {
+    return httpClient.post(`${base(organizationId)}/purchases/payment/start-authenticated`, {
+      planId,
+      idempotencyKey,
+    });
+  }
+
+  confirmTestPayment(
+    organizationId: ID,
+    paymentIntentId: ID,
+  ): Promise<ApiResult<PaymentConfirmation>> {
+    return httpClient.post(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/payments/${encodeURIComponent(paymentIntentId)}/test-result`,
+      { status: "SUCCEEDED" },
     );
   }
 
