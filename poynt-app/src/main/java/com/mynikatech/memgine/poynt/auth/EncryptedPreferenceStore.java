@@ -1,0 +1,3 @@
+package com.mynikatech.memgine.poynt.auth;
+import android.content.Context; import android.content.SharedPreferences; import androidx.security.crypto.EncryptedSharedPreferences; import androidx.security.crypto.MasterKey;
+abstract class EncryptedPreferenceStore { final SharedPreferences preferences; EncryptedPreferenceStore(Context context,String name){try{MasterKey key=new MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build();preferences=EncryptedSharedPreferences.create(context,name,key,EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM);}catch(Exception e){throw new IllegalStateException("Unable to secure terminal credentials",e);}} }

@@ -1,0 +1,2 @@
+package com.mynikatech.memgine.poynt.model;
+public final class Plan { public final String id,name,description,currencyCode,periodUnit; public final double price; public final boolean isDeleted; public Plan(String id,String name,String description,double price,String currencyCode,String periodUnit,boolean isDeleted){this.id=id;this.name=name;this.description=description;this.price=price;this.currencyCode=currencyCode;this.periodUnit=periodUnit;this.isDeleted=isDeleted;} }

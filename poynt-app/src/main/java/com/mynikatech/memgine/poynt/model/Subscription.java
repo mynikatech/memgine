@@ -1,0 +1,2 @@
+package com.mynikatech.memgine.poynt.model;
+public final class Subscription { public final String id,membershipProductId,subscriptionPlanId,membershipProductName,subscriptionPlanName,statusName; public Subscription(String id,String membershipProductId,String subscriptionPlanId,String membershipProductName,String subscriptionPlanName,String statusName){this.id=id;this.membershipProductId=membershipProductId;this.subscriptionPlanId=subscriptionPlanId;this.membershipProductName=membershipProductName;this.subscriptionPlanName=subscriptionPlanName;this.statusName=statusName;} }
