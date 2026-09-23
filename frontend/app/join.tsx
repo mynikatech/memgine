@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
-import { Modal, Pressable, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Modal, Platform, Pressable, View } from "react-native";
 
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
 import type {
@@ -69,6 +69,7 @@ type Step =
   | "otp"
   | "purchaseOtp"
   | "review"
+  | "monerisCard"
   | "processing"
   | "success";
 
@@ -97,6 +98,7 @@ const DEFAULT_COUNTRY = COUNTRY_OPTIONS[0];
 
 const MAX_PHONE_DIGITS = 10;
 const OTP_LENGTH = 6;
+const MonerisFrame = "iframe" as any;
 
 const normalizePhone = (value: string): string =>
   value.replace(/\D/g, "").slice(0, MAX_PHONE_DIGITS);
@@ -114,6 +116,8 @@ export default function JoinFlow() {
     staffId?: string;
     storeId?: string;
     source?: string;
+    paymentIntentId?: string;
+    paymentCancelled?: string;
   }>();
 
   const { organization, configuration, theme } = useBusiness();
@@ -131,6 +135,7 @@ export default function JoinFlow() {
    * source. It is not persisted on Subscription.
    */
   const isStaffSale = params.source === "STAFF_ASSISTED";
+  const returnedPaymentIntentId = params.paymentIntentId;
 
   const [loading, setLoading] = useState(true);
 
@@ -188,7 +193,9 @@ export default function JoinFlow() {
   const [purchaseOtpCode, setPurchaseOtpCode] = useState("");
   const [purchaseOtpVerified, setPurchaseOtpVerified] = useState(false);
   const [purchaseOtpBusy, setPurchaseOtpBusy] = useState(false);
-  const [purchaseOtpNotice, setPurchaseOtpNotice] = useState<string | undefined>();
+  const [purchaseOtpNotice, setPurchaseOtpNotice] = useState<
+    string | undefined
+  >();
 
   /*
    * Subscription / payment state
@@ -202,6 +209,27 @@ export default function JoinFlow() {
     amount: number;
     currencyCode: string;
   } | null>(null);
+  const [monerisPayment, setMonerisPayment] = useState<{
+    paymentIntentId: string;
+    hostedTokenizationProfileId: string;
+    hostedTokenizationUrl: string;
+  } | null>(null);
+  const monerisFrameRef = useRef<any>(null);
+
+  const redirectToStripeCheckout = useCallback((checkoutUrl: string) => {
+    if (typeof window === "undefined") {
+      throw new Error("Stripe Checkout is available in the Web Counter only.");
+    }
+    window.location.assign(checkoutUrl);
+  }, []);
+
+  const monerisOrigin =
+    monerisPayment && Platform.OS === "web"
+      ? new URL(monerisPayment.hostedTokenizationUrl).origin
+      : undefined;
+  const monerisIframeUrl = monerisPayment
+    ? `${monerisPayment.hostedTokenizationUrl}?id=${encodeURIComponent(monerisPayment.hostedTokenizationProfileId)}&pmmsg=true&enable_exp=1&enable_cvd=1&enable_exp_formatting=1&enable_cc_formatting=1&display_labels=1`
+    : undefined;
 
   /*
    * --------------------------------------------------------------
@@ -616,44 +644,47 @@ export default function JoinFlow() {
     orgId,
   ]);
 
-  const requestCounterPurchaseOtp = useCallback(async (isResend = false) => {
-    try {
-      setOtpError(undefined);
-      setPurchaseOtpNotice(undefined);
-      setPurchaseOtpBusy(true);
+  const requestCounterPurchaseOtp = useCallback(
+    async (isResend = false) => {
+      try {
+        setOtpError(undefined);
+        setPurchaseOtpNotice(undefined);
+        setPurchaseOtpBusy(true);
 
-      const { context, phone, purchase } = counterPurchasePayload();
-      const result = await services.counter.requestPurchaseOtp(
-        context,
-        phone,
-        purchase,
-      );
+        const { context, phone, purchase } = counterPurchasePayload();
+        const result = await services.counter.requestPurchaseOtp(
+          context,
+          phone,
+          purchase,
+        );
 
-      setPurchaseOtpChallengeId(result.challengeId);
-      setPurchaseOtpDevCode(String(result.devCode ?? ""));
-      setPurchaseOtpCode("");
-      setPurchaseOtpVerified(false);
-      setStep("purchaseOtp");
-      if (isResend) {
-        setPurchaseOtpNotice("A new verification code has been sent.");
+        setPurchaseOtpChallengeId(result.challengeId);
+        setPurchaseOtpDevCode(String(result.devCode ?? ""));
+        setPurchaseOtpCode("");
+        setPurchaseOtpVerified(false);
+        setStep("purchaseOtp");
+        if (isResend) {
+          setPurchaseOtpNotice("A new verification code has been sent.");
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unable to send purchase verification code.";
+        setOtpError(
+          /cooldown/i.test(message)
+            ? "Please wait before requesting another code."
+            : message,
+        );
+        if (!isResend) {
+          setStep("review");
+        }
+      } finally {
+        setPurchaseOtpBusy(false);
       }
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Unable to send purchase verification code.";
-      setOtpError(
-        /cooldown/i.test(message)
-          ? "Please wait before requesting another code."
-          : message,
-      );
-      if (!isResend) {
-        setStep("review");
-      }
-    } finally {
-      setPurchaseOtpBusy(false);
-    }
-  }, [counterPurchasePayload]);
+    },
+    [counterPurchasePayload],
+  );
 
   const verifyCounterPurchaseOtp = useCallback(async () => {
     try {
@@ -692,35 +723,216 @@ export default function JoinFlow() {
     }
   }, [counterPurchasePayload, purchaseOtpChallengeId, purchaseOtpCode]);
 
-  const finishSubscription = useCallback((saved: {
-    subscriptionId: string; subscriptionNumber: string; organizationUserId: string;
-    subscriptionPlanId: string; subscriptionDate: string; startDate: string; endDate: string;
-    subscriptionStatusId: string; totalAmount: number; currencyCode: string;
-  }, paymentReference: string) => {
-    if (isStaffSale) {
-      counterCheckout.clear();
-      setPurchaseOtpChallengeId("");
-      setPurchaseOtpDevCode("");
-      setPurchaseOtpCode("");
-      setPurchaseOtpVerified(false);
+  const finishSubscription = useCallback(
+    (
+      saved: {
+        subscriptionId: string;
+        subscriptionNumber: string;
+        organizationUserId: string;
+        subscriptionPlanId: string;
+        subscriptionDate: string;
+        startDate: string;
+        endDate: string;
+        subscriptionStatusId: string;
+        totalAmount: number;
+        currencyCode: string;
+      },
+      paymentReference: string,
+    ) => {
+      if (isStaffSale) {
+        counterCheckout.clear();
+        setPurchaseOtpChallengeId("");
+        setPurchaseOtpDevCode("");
+        setPurchaseOtpCode("");
+        setPurchaseOtpVerified(false);
+      }
+      const sub = {
+        id: saved.subscriptionId,
+        subscriptionNumber: saved.subscriptionNumber,
+        organizationUserId: saved.organizationUserId,
+        subscriptionPlanId: saved.subscriptionPlanId,
+        subscriptionDate: saved.subscriptionDate,
+        startDate: saved.startDate,
+        endDate: saved.endDate,
+        subscriptionStatusId: saved.subscriptionStatusId,
+        totalAmount: {
+          amountMinor: Math.round(saved.totalAmount * 100),
+          currency: saved.currencyCode,
+        },
+        isDeleted: false,
+      } as Subscription;
+      setSubscription(sub);
+      setReference(paymentReference);
+      setActiveContext(orgId, sub.id);
+      setStep("success");
+    },
+    [isStaffSale, orgId, setActiveContext],
+  );
+
+  const confirmMonerisToken = useCallback(
+    async (temporaryToken: string) => {
+      if (!monerisPayment || !temporaryToken) return;
+      setOtpError(undefined);
+      setStep("processing");
+      try {
+        const confirmed = isStaffSale
+          ? await services.counter.confirmMonerisPayment(
+              orgId,
+              monerisPayment.paymentIntentId,
+              temporaryToken,
+            )
+          : await services.customerData.confirmMonerisPayment(
+              orgId,
+              monerisPayment.paymentIntentId,
+              temporaryToken,
+            );
+        if (
+          confirmed.payment.status !== "SUCCEEDED" ||
+          !confirmed.subscription
+        ) {
+          throw new Error("Payment is pending or was not completed.");
+        }
+        setMonerisPayment(null);
+        finishSubscription(
+          confirmed.subscription,
+          confirmed.payment.providerReferenceId ??
+            confirmed.payment.paymentIntentId,
+        );
+      } catch (error) {
+        setStep("monerisCard");
+        setOtpError(
+          error instanceof Error
+            ? error.message
+            : "Unable to complete the Moneris payment.",
+        );
+      }
+    },
+    [finishSubscription, isStaffSale, monerisPayment, orgId],
+  );
+
+  useEffect(() => {
+    if (!monerisOrigin || Platform.OS !== "web") return;
+    const receiveToken = (event: MessageEvent) => {
+      if (event.origin !== monerisOrigin) return;
+      try {
+        const response =
+          typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+
+        console.log("Moneris Hosted Tokenization response", {
+          origin: event.origin,
+          responseCode: response?.responseCode,
+          hasDataKey: typeof response?.dataKey === "string",
+          dataKeyPrefix:
+            typeof response?.dataKey === "string"
+              ? response.dataKey.substring(0, 6)
+              : null,
+          dataKeyLength:
+            typeof response?.dataKey === "string"
+              ? response.dataKey.length
+              : null,
+        });
+
+        const responseCodes = Array.isArray(response?.responseCode)
+          ? response.responseCode.map(String)
+          : [String(response?.responseCode ?? "")];
+        if (
+          responseCodes.includes("001") &&
+          typeof response?.dataKey === "string"
+        ) {
+          void confirmMonerisToken(response.dataKey);
+        } else {
+          setOtpError(
+            "Card details could not be verified. Please check them and try again.",
+          );
+        }
+      } catch {
+        setOtpError("Card details could not be verified. Please try again.");
+      }
+    };
+    window.addEventListener("message", receiveToken);
+    return () => window.removeEventListener("message", receiveToken);
+  }, [confirmMonerisToken, monerisOrigin]);
+
+  const requestMonerisToken = useCallback(() => {
+    if (!monerisOrigin || !monerisFrameRef.current?.contentWindow) {
+      setOtpError("Moneris card entry is unavailable.");
+      return;
     }
-    const sub = {
-      id: saved.subscriptionId,
-      subscriptionNumber: saved.subscriptionNumber,
-      organizationUserId: saved.organizationUserId,
-      subscriptionPlanId: saved.subscriptionPlanId,
-      subscriptionDate: saved.subscriptionDate,
-      startDate: saved.startDate,
-      endDate: saved.endDate,
-      subscriptionStatusId: saved.subscriptionStatusId,
-      totalAmount: { amountMinor: Math.round(saved.totalAmount * 100), currency: saved.currencyCode },
-      isDeleted: false,
-    } as Subscription;
-    setSubscription(sub);
-    setReference(paymentReference);
-    setActiveContext(orgId, sub.id);
-    setStep("success");
-  }, [isStaffSale, orgId, setActiveContext]);
+    setOtpError(undefined);
+    monerisFrameRef.current.contentWindow.postMessage(
+      "tokenize",
+      monerisOrigin,
+    );
+  }, [monerisOrigin]);
+
+  useEffect(() => {
+    if (!returnedPaymentIntentId || !product) return;
+    if (params.paymentCancelled === "true") {
+      setOtpError("Payment was canceled. No membership was created.");
+      setStep("review");
+      return;
+    }
+
+    let active = true;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
+
+    const poll = async () => {
+      try {
+        const result = await services.counter.payment(
+          orgId,
+          returnedPaymentIntentId,
+        );
+        if (!active) return;
+        if (result.payment.status === "SUCCEEDED" && result.subscription) {
+          finishSubscription(
+            result.subscription,
+            result.payment.providerReferenceId ??
+              result.payment.paymentIntentId,
+          );
+          return;
+        }
+        if (
+          result.payment.status === "FAILED" ||
+          result.payment.status === "CANCELED"
+        ) {
+          setOtpError("Payment was not completed. No membership was created.");
+          setStep("review");
+          return;
+        }
+        attempts += 1;
+        if (attempts >= 10) {
+          setOtpError(
+            "Payment confirmation is still processing. Please wait and try again.",
+          );
+          setStep("review");
+          return;
+        }
+        setStep("processing");
+        retryTimer = setTimeout(poll, 2_000);
+      } catch (error) {
+        if (!active) return;
+        setOtpError(
+          error instanceof Error
+            ? error.message
+            : "Unable to read payment status.",
+        );
+        setStep("review");
+      }
+    };
+
+    void poll();
+    return () => {
+      active = false;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [
+    finishSubscription,
+    orgId,
+    params.paymentCancelled,
+    product,
+    returnedPaymentIntentId,
+  ]);
 
   const payAndSubscribe = useCallback(async () => {
     if (
@@ -750,17 +962,48 @@ export default function JoinFlow() {
           context,
           purchaseOtpChallengeId,
           `${purchaseOtpChallengeId}:provider`,
+          product.id,
         );
+        if (intent.providerCode === "STRIPE" && intent.checkoutUrl) {
+          redirectToStripeCheckout(intent.checkoutUrl);
+          return;
+        }
+        if (
+          intent.providerCode === "MONERIS" &&
+          intent.monerisHostedTokenizationProfileId &&
+          intent.monerisHostedTokenizationUrl
+        ) {
+          if (Platform.OS !== "web") {
+            throw new Error(
+              "Moneris card payments are available in the Web Counter only.",
+            );
+          }
+          setMonerisPayment({
+            paymentIntentId: intent.paymentIntentId,
+            hostedTokenizationProfileId:
+              intent.monerisHostedTokenizationProfileId,
+            hostedTokenizationUrl: intent.monerisHostedTokenizationUrl,
+          });
+          setStep("monerisCard");
+          return;
+        }
         if (intent.providerCode !== "TEST") {
           throw new Error("Provider checkout is not configured yet.");
         }
-        const confirmed = await services.counter.confirmTestPayment(orgId, intent.paymentIntentId);
-        if (confirmed.payment.status !== "SUCCEEDED" || !confirmed.subscription) {
+        const confirmed = await services.counter.confirmTestPayment(
+          orgId,
+          intent.paymentIntentId,
+        );
+        if (
+          confirmed.payment.status !== "SUCCEEDED" ||
+          !confirmed.subscription
+        ) {
           throw new Error("Payment is pending or was not completed.");
         }
         finishSubscription(
           confirmed.subscription,
-          confirmed.payment.providerReferenceId ?? confirmed.payment.paymentIntentId,
+          confirmed.payment.providerReferenceId ??
+            confirmed.payment.paymentIntentId,
         );
         return;
       }
@@ -769,17 +1012,45 @@ export default function JoinFlow() {
         orgId,
         plan.id,
         `${orgId}:${plan.id}:provider`,
+        product.id,
       );
+      if (intent.providerCode === "STRIPE" && intent.checkoutUrl) {
+        redirectToStripeCheckout(intent.checkoutUrl);
+        return;
+      }
+      if (
+        intent.providerCode === "MONERIS" &&
+        intent.monerisHostedTokenizationProfileId &&
+        intent.monerisHostedTokenizationUrl
+      ) {
+        if (Platform.OS !== "web") {
+          throw new Error(
+            "Moneris card payments are available in the Web Counter only.",
+          );
+        }
+        setMonerisPayment({
+          paymentIntentId: intent.paymentIntentId,
+          hostedTokenizationProfileId:
+            intent.monerisHostedTokenizationProfileId,
+          hostedTokenizationUrl: intent.monerisHostedTokenizationUrl,
+        });
+        setStep("monerisCard");
+        return;
+      }
       if (intent.providerCode !== "TEST") {
         throw new Error("Provider checkout is not configured yet.");
       }
-      const confirmed = await services.customerData.confirmTestPayment(orgId, intent.paymentIntentId);
+      const confirmed = await services.customerData.confirmTestPayment(
+        orgId,
+        intent.paymentIntentId,
+      );
       if (confirmed.payment.status !== "SUCCEEDED" || !confirmed.subscription) {
         throw new Error("Payment is pending or was not completed.");
       }
       finishSubscription(
         confirmed.subscription,
-        confirmed.payment.providerReferenceId ?? confirmed.payment.paymentIntentId,
+        confirmed.payment.providerReferenceId ??
+          confirmed.payment.paymentIntentId,
       );
     } catch (error) {
       setStep("review");
@@ -799,6 +1070,7 @@ export default function JoinFlow() {
     counterPurchasePayload,
     orgId,
     finishSubscription,
+    redirectToStripeCheckout,
   ]);
 
   const requestCashPayment = useCallback(async () => {
@@ -820,9 +1092,19 @@ export default function JoinFlow() {
         currencyCode: intent.currencyCode,
       });
     } catch (error) {
-      setOtpError(error instanceof Error ? error.message : "Unable to start cash payment.");
+      setOtpError(
+        error instanceof Error
+          ? error.message
+          : "Unable to start cash payment.",
+      );
     }
-  }, [counterPurchasePayload, isStaffSale, purchaseOtpChallengeId, purchaseOtpVerified, requestCounterPurchaseOtp]);
+  }, [
+    counterPurchasePayload,
+    isStaffSale,
+    purchaseOtpChallengeId,
+    purchaseOtpVerified,
+    requestCounterPurchaseOtp,
+  ]);
 
   const confirmCashReceived = useCallback(async () => {
     if (!cashPayment) return;
@@ -830,17 +1112,25 @@ export default function JoinFlow() {
     setStep("processing");
     try {
       const { context } = counterPurchasePayload();
-      const confirmed = await services.counter.confirmCashPayment(context, cashPayment.paymentIntentId);
+      const confirmed = await services.counter.confirmCashPayment(
+        context,
+        cashPayment.paymentIntentId,
+      );
       if (confirmed.payment.status !== "SUCCEEDED" || !confirmed.subscription) {
         throw new Error("Cash payment is pending or was not completed.");
       }
       finishSubscription(
         confirmed.subscription,
-        confirmed.payment.providerReferenceId ?? confirmed.payment.paymentIntentId,
+        confirmed.payment.providerReferenceId ??
+          confirmed.payment.paymentIntentId,
       );
     } catch (error) {
       setStep("review");
-      setOtpError(error instanceof Error ? error.message : "Unable to confirm cash payment.");
+      setOtpError(
+        error instanceof Error
+          ? error.message
+          : "Unable to confirm cash payment.",
+      );
     }
   }, [cashPayment, counterPurchasePayload, finishSubscription]);
 
@@ -1442,10 +1732,66 @@ export default function JoinFlow() {
       ) : null}
 
       {/* PROCESSING */}
+      {step === "monerisCard" && monerisPayment && monerisIframeUrl ? (
+        <View style={{ gap: theme.spacing.lg }} testID="join-moneris-card">
+          <View>
+            <Text variant="h2" color="text">
+              Pay securely by card
+            </Text>
+            <Text
+              variant="body"
+              color="textMuted"
+              style={{ marginTop: theme.spacing.sm }}
+            >
+              Enter card details in the secure Moneris form.
+            </Text>
+          </View>
+          <Card padding="lg">
+            <View style={{ gap: theme.spacing.md }}>
+              <MonerisFrame
+                ref={monerisFrameRef}
+                title="Secure Moneris card entry"
+                src={monerisIframeUrl}
+                style={{
+                  width: "100%",
+                  height: 180,
+                  borderWidth: 0,
+                  borderStyle: "none",
+                }}
+              />
+              {otpError ? (
+                <Text variant="bodySmall" color="textMuted">
+                  {otpError}
+                </Text>
+              ) : null}
+              <Button
+                label="Pay & Subscribe"
+                fullWidth
+                onPress={requestMonerisToken}
+                testID="join-moneris-pay"
+              />
+              <Button
+                label={t("common.back")}
+                fullWidth
+                onPress={() => {
+                  setOtpError(undefined);
+                  setStep("review");
+                }}
+                testID="join-moneris-back"
+              />
+            </View>
+          </Card>
+        </View>
+      ) : null}
+
       {step === "processing" ? (
         <StateView
           kind="loading"
-          message={t("join.processing")}
+          message={
+            returnedPaymentIntentId
+              ? "Payment confirmation is processing..."
+              : t("join.processing")
+          }
           testID="join-processing"
         />
       ) : null}
@@ -1596,9 +1942,11 @@ export default function JoinFlow() {
             <View style={{ gap: theme.spacing.md }}>
               <Text variant="h2">Confirm cash received</Text>
               <Text>
-                Confirm {cashPayment
+                Confirm{" "}
+                {cashPayment
                   ? formatMoney(Math.round(cashPayment.amount * 100))
-                  : ""} cash received.
+                  : ""}{" "}
+                cash received.
               </Text>
               <Button
                 label="Confirm Cash Received"

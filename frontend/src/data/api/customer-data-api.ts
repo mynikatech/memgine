@@ -38,10 +38,12 @@ export class CustomerDataApi {
     organizationId: ID,
     planId: ID,
     idempotencyKey: string,
+    productId?: ID,
   ): Promise<ApiResult<PaymentIntent>> {
     return httpClient.post(`${base(organizationId)}/purchases/payment/start-authenticated`, {
       planId,
       idempotencyKey,
+      returnContext: productId ? { productId } : undefined,
     });
   }
 
@@ -52,6 +54,17 @@ export class CustomerDataApi {
     return httpClient.post(
       `/api/v1/organizations/${encodeURIComponent(organizationId)}/payments/${encodeURIComponent(paymentIntentId)}/test-result`,
       { status: "SUCCEEDED" },
+    );
+  }
+
+  confirmMonerisPayment(
+    organizationId: ID,
+    paymentIntentId: ID,
+    temporaryToken: string,
+  ): Promise<ApiResult<PaymentConfirmation>> {
+    return httpClient.post(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/payments/${encodeURIComponent(paymentIntentId)}/moneris/confirm`,
+      { temporaryToken },
     );
   }
 

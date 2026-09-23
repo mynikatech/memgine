@@ -238,7 +238,18 @@ class CounterService(
     ): PaymentIntentDto {
         val context = businessOtp.resolveVerified(request.challengeId, OtpPurpose.COUNTER_PURCHASE_VERIFY)
         validatePurchaseContext(org, context, principal)
-        return payments.startMembershipPayment(org, request, principal.userId)
+        return payments.startMembershipPayment(
+            org,
+            request.copy(
+                returnContext = PaymentReturnContextDto(
+                    productId = request.returnContext?.productId,
+                    storeId = context.storeId,
+                    staffId = context.staffId,
+                    source = "STAFF_ASSISTED"
+                )
+            ),
+            principal.userId
+        )
     }
 
     fun startCashPayment(

@@ -85,8 +85,9 @@ export class CustomerDataService {
     organizationId: ID,
     planId: ID,
     idempotencyKey: string,
+    productId?: ID,
   ): Promise<PaymentIntent> {
-    const result = await this.api.startAuthenticatedPayment(organizationId, planId, idempotencyKey);
+    const result = await this.api.startAuthenticatedPayment(organizationId, planId, idempotencyKey, productId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
@@ -96,6 +97,16 @@ export class CustomerDataService {
     paymentIntentId: ID,
   ): Promise<PaymentConfirmation> {
     const result = await this.api.confirmTestPayment(organizationId, paymentIntentId);
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
+  }
+
+  async confirmMonerisPayment(
+    organizationId: ID,
+    paymentIntentId: ID,
+    temporaryToken: string,
+  ): Promise<PaymentConfirmation> {
+    const result = await this.api.confirmMonerisPayment(organizationId, paymentIntentId, temporaryToken);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }

@@ -34,6 +34,11 @@ fun Application.installAuthenticationGate(
             return@intercept
         }
 
+        // Stripe authenticates this callback with its signed raw request body.
+        if (path == "/api/v1/payments/providers/stripe/webhook") {
+            return@intercept
+        }
+
         when {
             path.startsWith("/api/v1/platform/") -> require(principal, "PLATFORM_ADMIN_ACCESS")
             path.startsWith("/api/v1/dev/rbac") -> require(principal, "PLATFORM_ADMIN_ACCESS")
@@ -129,6 +134,20 @@ private fun protectOrganizationPath(
             return
         }
         throw ForbiddenException("Access is not permitted")
+    }
+
+    if (resource == "payments" && method == HttpMethod.Get) {
+        // The payment function performs the final creator/customer ownership check.
+        // This permits a signed-in customer to poll only their own Checkout result.
+        if (principal == null) throw UnauthorizedException("Authentication is required")
+        return
+    }
+
+    if (resource == "payments" && method == HttpMethod.Post && parts.getOrNull(6) == "moneris") {
+        // The confirmation service first reads through payment_get_intent, which
+        // enforces creator/customer ownership before the one-time token is sent.
+        if (principal == null) throw UnauthorizedException("Authentication is required")
+        return
     }
 
     val counterReadResources = setOf(

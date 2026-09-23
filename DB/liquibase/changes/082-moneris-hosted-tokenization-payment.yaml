@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 082-moneris-hosted-tokenization-payment
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/082-moneris-hosted-tokenization-payment.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

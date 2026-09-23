@@ -49,22 +49,58 @@ class OtpService(
         val salt = randomBytes(24)
         val expiresAt = LocalDateTime.now(clock).plusSeconds(config.ttlSeconds)
         val otpHash = hash(challengeId, canonical.e164, purpose, code, salt)
+
+        val isDevProvider = config.provider.equals("DEV", ignoreCase = true)
+        val actualChannel = if (isDevProvider) OtpChannel.SMS else resolvedChannel
+        val providerCode = if (isDevProvider) "DEV" else "NOTIFICATION_PIPELINE"
+
         val resendAt = try {
             sql.create(
-                challengeId = challengeId, destination = canonical.e164,
-                destinationRegion = canonical.regionCode, purpose = purpose.name,
-                channel = resolvedChannel.name, provider = "NOTIFICATION_PIPELINE", otpHash = otpHash,
-                otpSalt = salt, contextJson = contextJson, expiresAt = expiresAt.toString(),
-                maxAttempts = config.maxAttempts, cooldownSeconds = config.cooldownSeconds
+                challengeId = challengeId,
+                destination = canonical.e164,
+                destinationRegion = canonical.regionCode,
+                purpose = purpose.name,
+                channel = actualChannel.name,
+                provider = providerCode,
+                otpHash = otpHash,
+                otpSalt = salt,
+                contextJson = contextJson,
+                expiresAt = expiresAt.toString(),
+                maxAttempts = config.maxAttempts,
+                cooldownSeconds = config.cooldownSeconds
             )
         } catch (error: Exception) {
             val postgres = postgres(error)
-            if (postgres?.sqlState == "P0001") throw ConflictException("Please wait before requesting another code")
+            if (postgres?.sqlState == "P0001") {
+                throw ConflictException("Please wait before requesting another code")
+            }
             throw error
         }
 
         val delivered = try {
-            deliverThroughNotificationPipeline(organizationId, recipientUserId, recipient, canonical.e164, purpose, resolvedChannel, code, challengeId)
+            if (isDevProvider) {
+                val provider = providerRouter.resolve(canonical.regionCode, OtpChannel.SMS)
+                provider.send(
+                    OtpDelivery(
+                        destination = canonical.e164,
+                        regionCode = canonical.regionCode,
+                        purpose = purpose,
+                        channel = OtpChannel.SMS,
+                        code = code
+                    )
+                )
+            } else {
+                deliverThroughNotificationPipeline(
+                    organizationId,
+                    recipientUserId,
+                    recipient,
+                    canonical.e164,
+                    purpose,
+                    resolvedChannel,
+                    code,
+                    challengeId
+                )
+            }
         } catch (error: Exception) {
             sql.markDeliveryFailed(challengeId)
             throw ConflictException("Verification code could not be delivered. Please try again later")

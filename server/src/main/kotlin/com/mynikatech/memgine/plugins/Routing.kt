@@ -143,7 +143,7 @@ fun Application.configureRouting(
     val offerService = OfferService(database.jdbi)
     val subscriptionService = SubscriptionService(database.jdbi.onDemand(SubscriptionSql::class.java))
     val redemptionService = RedemptionService(database.jdbi.onDemand(RedemptionSql::class.java))
-    val paymentService = PaymentService(database.jdbi, config.server.environment)
+    val paymentService = PaymentService(database.jdbi, config.server.environment, config.payment)
     val customerService = CustomerService(database.jdbi.onDemand(CustomerSql::class.java),
         membershipProductService, benefitService, storeService, customerDevIdentityEnabled, businessOtpService, paymentService)
     val counterService = CounterService(database.jdbi, businessOtpService, paymentService, phoneNormalizer)

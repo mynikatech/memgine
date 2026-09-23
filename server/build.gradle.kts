@@ -64,6 +64,7 @@ dependencies {
     // Authentication and canonical international phone identity.
     implementation(libs.libphonenumber)
     implementation(libs.argon2.jvm)
+    implementation(libs.stripe.java)
 
     // -------------------------
     // Tests

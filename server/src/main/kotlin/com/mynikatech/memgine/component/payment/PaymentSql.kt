@@ -81,6 +81,42 @@ interface PaymentSql {
         @Bind("providerReferenceId") providerReferenceId: String,
         @Bind("actorUserId") actorUserId: String
     ): CounterPaymentFinalizationRow?
+
+    @SqlQuery("SELECT payment_set_provider_reference(:intentId, :providerCode, :providerReferenceId, :actorUserId)")
+    fun setProviderReference(
+        @Bind("intentId") intentId: String,
+        @Bind("providerCode") providerCode: String,
+        @Bind("providerReferenceId") providerReferenceId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): String?
+
+    @SqlQuery("""SELECT * FROM payment_confirm_provider_success(
+        :intentId, :organizationId, :providerCode, :providerReferenceId, :amountMinor, :currencyCode)""")
+    fun confirmProviderSuccess(
+        @Bind("intentId") intentId: String,
+        @Bind("organizationId") organizationId: String,
+        @Bind("providerCode") providerCode: String,
+        @Bind("providerReferenceId") providerReferenceId: String,
+        @Bind("amountMinor") amountMinor: Long,
+        @Bind("currencyCode") currencyCode: String
+    ): CounterPaymentFinalizationRow?
+
+    @SqlQuery("SELECT payment_record_provider_failure(:intentId, :organizationId, :providerCode, :providerReferenceId, :status, :failureCode)")
+    fun recordProviderFailure(
+        @Bind("intentId") intentId: String,
+        @Bind("organizationId") organizationId: String,
+        @Bind("providerCode") providerCode: String,
+        @Bind("providerReferenceId") providerReferenceId: String,
+        @Bind("status") status: String,
+        @Bind("failureCode") failureCode: String
+    ): Boolean
+
+    @SqlQuery("SELECT * FROM payment_get_finalized_membership(:organizationId, :intentId, :actorUserId)")
+    fun finalizedMembership(
+        @Bind("organizationId") organizationId: String,
+        @Bind("intentId") intentId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): CounterPaymentFinalizationRow?
 }
 
 data class CounterPaymentFinalizationRow(

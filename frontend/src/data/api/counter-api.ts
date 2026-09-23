@@ -53,6 +53,9 @@ export type PaymentIntent = {
   currencyCode: string;
   providerReferenceId?: string | null;
   finalizedSubscriptionId?: ID | null;
+  checkoutUrl?: string | null;
+  monerisHostedTokenizationProfileId?: string | null;
+  monerisHostedTokenizationUrl?: string | null;
 };
 
 export type PaymentConfirmation = {
@@ -263,11 +266,22 @@ export class CounterApi {
     ctx: CounterContext,
     challengeId: string,
     idempotencyKey: string,
+    productId?: ID,
   ): Promise<ApiResult<PaymentIntent>> {
     return httpClient.post(this.path(ctx, "purchases/payment/start"), {
       challengeId,
       idempotencyKey,
+      returnContext: productId ? { productId } : undefined,
     });
+  }
+
+  payment(
+    organizationId: ID,
+    paymentIntentId: ID,
+  ): Promise<ApiResult<PaymentConfirmation>> {
+    return httpClient.get(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/payments/${encodeURIComponent(paymentIntentId)}`,
+    );
   }
 
   startCashPayment(
@@ -297,6 +311,17 @@ export class CounterApi {
     return httpClient.post(
       `/api/v1/organizations/${encodeURIComponent(organizationId)}/payments/${encodeURIComponent(paymentIntentId)}/test-result`,
       { status: "SUCCEEDED" },
+    );
+  }
+
+  confirmMonerisPayment(
+    organizationId: ID,
+    paymentIntentId: ID,
+    temporaryToken: string,
+  ): Promise<ApiResult<PaymentConfirmation>> {
+    return httpClient.post(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/payments/${encodeURIComponent(paymentIntentId)}/moneris/confirm`,
+      { temporaryToken },
     );
   }
 

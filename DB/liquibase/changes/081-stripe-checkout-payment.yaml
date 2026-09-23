@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 081-stripe-checkout-payment
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/081-stripe-checkout-payment.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

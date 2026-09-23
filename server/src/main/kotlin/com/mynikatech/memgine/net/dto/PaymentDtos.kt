@@ -3,10 +3,26 @@ package com.mynikatech.memgine.net.dto
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class PaymentStartRequestDto(val challengeId: String, val idempotencyKey: String)
+data class PaymentReturnContextDto(
+    val productId: String? = null,
+    val storeId: String? = null,
+    val staffId: String? = null,
+    val source: String? = null
+)
 
 @Serializable
-data class AuthenticatedMembershipPaymentStartDto(val planId: String, val idempotencyKey: String)
+data class PaymentStartRequestDto(
+    val challengeId: String,
+    val idempotencyKey: String,
+    val returnContext: PaymentReturnContextDto? = null
+)
+
+@Serializable
+data class AuthenticatedMembershipPaymentStartDto(
+    val planId: String,
+    val idempotencyKey: String,
+    val returnContext: PaymentReturnContextDto? = null
+)
 
 @Serializable
 data class TestPaymentConfirmationDto(
@@ -29,7 +45,15 @@ data class PaymentIntentDto(
     val membershipPlanId: String,
     val customerUserId: String? = null,
     val finalizedSubscriptionId: String? = null,
-    val createdAt: String
+    val createdAt: String,
+    val checkoutUrl: String? = null,
+    val monerisHostedTokenizationProfileId: String? = null,
+    val monerisHostedTokenizationUrl: String? = null
+)
+
+@Serializable
+data class MonerisPaymentConfirmationDto(
+    val temporaryToken: String
 )
 
 @Serializable

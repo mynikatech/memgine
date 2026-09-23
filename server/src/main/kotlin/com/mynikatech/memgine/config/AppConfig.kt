@@ -7,7 +7,8 @@ data class AppConfig(
     val server: ServerConfig,
     val database: DatabaseConfig,
     val authentication: AuthenticationConfig,
-    val otp: OtpConfig
+    val otp: OtpConfig,
+    val payment: PaymentConfig
 ) {
     companion object {
         fun load(config: ApplicationConfig? = null): AppConfig {
@@ -214,6 +215,20 @@ data class AppConfig(
                     notificationEventsTopicArn = notificationEventsTopicArn,
                     whatsappTemplateName = whatsappTemplateName,
                     whatsappTemplateLanguage = whatsappTemplateLanguage
+                ),
+
+                payment = PaymentConfig(
+                    providerCode = value("memgine.payment.provider", "MEMGINE_PAYMENT_PROVIDER", "TEST").uppercase(),
+                    stripeSecretKey = optionalValue("memgine.payment.stripeSecretKey", "STRIPE_SECRET_KEY").orEmpty(),
+                    stripeWebhookSecret = optionalValue("memgine.payment.stripeWebhookSecret", "STRIPE_WEBHOOK_SECRET").orEmpty(),
+                    webBaseUrl = value("memgine.payment.webBaseUrl", "MEMGINE_WEB_BASE_URL", "").trim().trimEnd('/'),
+                    monerisClientId = optionalValue("memgine.payment.monerisClientId", "MONERIS_CLIENT_ID").orEmpty(),
+                    monerisClientSecret = optionalValue("memgine.payment.monerisClientSecret", "MONERIS_CLIENT_SECRET").orEmpty(),
+                    monerisMerchantId = optionalValue("memgine.payment.monerisMerchantId", "MONERIS_MERCHANT_ID").orEmpty(),
+                    monerisBaseUrl = value("memgine.payment.monerisBaseUrl", "MONERIS_BASE_URL", "https://api.sb.moneris.io").trim().trimEnd('/'),
+                    monerisApiVersion = value("memgine.payment.monerisApiVersion", "MONERIS_API_VERSION", "2026-08-14").trim(),
+                    monerisHostedTokenizationProfileId = optionalValue("memgine.payment.monerisHostedTokenizationProfileId", "MONERIS_HOSTED_TOKENIZATION_PROFILE_ID").orEmpty(),
+                    monerisHostedTokenizationUrl = value("memgine.payment.monerisHostedTokenizationUrl", "MONERIS_HOSTED_TOKENIZATION_URL", "https://esqa.moneris.com/HPPtoken/index.php").trim()
                 )
             )
         }
@@ -253,6 +268,20 @@ data class OtpConfig(
     val notificationEventsTopicArn: String,
     val whatsappTemplateName: String,
     val whatsappTemplateLanguage: String
+)
+
+data class PaymentConfig(
+    val providerCode: String,
+    val stripeSecretKey: String,
+    val stripeWebhookSecret: String,
+    val webBaseUrl: String,
+    val monerisClientId: String,
+    val monerisClientSecret: String,
+    val monerisMerchantId: String,
+    val monerisBaseUrl: String,
+    val monerisApiVersion: String,
+    val monerisHostedTokenizationProfileId: String,
+    val monerisHostedTokenizationUrl: String
 )
 
 data class DatabaseConfig(

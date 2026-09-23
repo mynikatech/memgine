@@ -121,3 +121,5 @@ hs_err_pid42044.log
 replay_pid35404.log
 .kotlin/sessions/kotlin-compiler-8377087837501079015.salive
 docs/~WRL1374.tmp
+server/scripts/env/local/set-stripe-local-env.ps1
+server/scripts/env/local/moneris-local.bat

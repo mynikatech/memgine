@@ -16,6 +16,7 @@ picocli="4.6.1"
 aws-sdk = "2.25.47"
 libphonenumber = "8.13.47"
 argon2 = "2.11"
+stripe = "29.5.0"
 
 [libraries]
 
@@ -91,6 +92,7 @@ aws-ssooidc = { module = "software.amazon.awssdk:ssooidc", version.ref = "aws-sd
 aws-pinpoint-sms-voice-v2 = { module = "software.amazon.awssdk:pinpointsmsvoicev2", version.ref = "aws-sdk" }
 libphonenumber = { module = "com.googlecode.libphonenumber:libphonenumber", version.ref = "libphonenumber" }
 argon2-jvm = { module = "de.mkammerer:argon2-jvm", version.ref = "argon2" }
+stripe-java = { module = "com.stripe:stripe-java", version.ref = "stripe" }
 
 [plugins]
 
