@@ -56,42 +56,67 @@ export const APP_ROUTES = {
 
   orgAdmin: {
     root: "/org-admin",
+
     organization: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}`,
+
     business: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/business`,
+
     branding: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/branding`,
+
     stores: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/stores`,
+
     staffMembers: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/staff-members`,
+
     benefits: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/benefits`,
+
     memberships: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/memberships`,
+
     offers: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/offers`,
+
     customers: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/customers`,
+
     subscriptions: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/subscriptions`,
+
     redemptions: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/redemptions`,
+
     customerExperience: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/customer-experience`,
+
     customerExperiencePreview: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/customer-experience-preview`,
+
     customerExperienceSection: (organizationId: string, section: string) =>
-      `/org-admin/${encodeURIComponent(organizationId)}/customer-experience/${encodeURIComponent(section)}`,
+      `/org-admin/${encodeURIComponent(
+        organizationId,
+      )}/customer-experience/${encodeURIComponent(section)}`,
 
     settings: {
       root: (organizationId: string) =>
         `/org-admin/${encodeURIComponent(organizationId)}/settings`,
+
+      fixedPos: (organizationId: string) =>
+        `/org-admin/${encodeURIComponent(organizationId)}/settings/fixed-pos`,
+
       notifications: (organizationId: string) =>
-        `/org-admin/${encodeURIComponent(organizationId)}/settings/notifications`,
+        `/org-admin/${encodeURIComponent(
+          organizationId,
+        )}/settings/notifications`,
+
       integrations: (organizationId: string) =>
-        `/org-admin/${encodeURIComponent(organizationId)}/settings/integrations`,
+        `/org-admin/${encodeURIComponent(
+          organizationId,
+        )}/settings/integrations`,
     },
   },
 
@@ -105,13 +130,6 @@ export const APP_ROUTES = {
 
     organizationCustomers: (organizationId: string) =>
       `/counter/customers?organizationId=${encodeURIComponent(organizationId)}`,
-
-    configuration: "/counter/configuration",
-
-    organizationConfiguration: (organizationId: string) =>
-      `/counter/configuration?organizationId=${encodeURIComponent(
-        organizationId,
-      )}`,
   },
 
   customer: {
@@ -179,12 +197,6 @@ export const COUNTER_ROUTES: CounterRoute[] = [
     title: "Customers",
     href: APP_ROUTES.counter.customers,
     icon: "people-outline",
-  },
-  {
-    name: "configuration",
-    title: "Configuration",
-    href: APP_ROUTES.counter.configuration,
-    icon: "settings-outline",
   },
 ];
 
@@ -255,6 +267,11 @@ export const createOrgAdminRoutes = (organizationId: string): AdminRoute[] => [
     href: APP_ROUTES.orgAdmin.settings.root(organizationId),
     icon: "settings-outline",
     children: [
+      {
+        title: "Fixed POS",
+        href: APP_ROUTES.orgAdmin.settings.fixedPos(organizationId),
+        icon: "desktop-outline",
+      },
       {
         title: "Notifications",
         href: APP_ROUTES.orgAdmin.settings.notifications(organizationId),
