@@ -36,5 +36,5 @@ Start-Process `
     -WorkingDirectory $FrontendPath `
     -ArgumentList @(
         "/k",
-        "npx expo start --web --port $Port"
+        "npx expo start --port $Port"
     ) | Out-Null

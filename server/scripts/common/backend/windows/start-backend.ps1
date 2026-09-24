@@ -45,6 +45,6 @@ Start-Process `
     -FilePath "cmd.exe" `
     -WorkingDirectory $RepositoryRoot `
     -ArgumentList @(
-        "/k",
+        "/c",
         "`"$gradle`" :server:run --no-daemon"
     ) | Out-Null
