@@ -2,7 +2,7 @@ import { Redirect } from "expo-router";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import type { ReactNode } from "react";
 
-import { APP_ROUTES } from "@/src/constants/navigation";
+import { unauthenticatedLanding } from "@/src/core/auth/auth-navigation";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { COLORS } from "@/src/theme/colors";
 
@@ -26,7 +26,7 @@ export function AuthGuard({
   }
 
   if (!session) {
-    return <Redirect href={APP_ROUTES.login} />;
+    return <Redirect href={unauthenticatedLanding() as never} />;
   }
 
   if (!hasCapability(capability, organizationId)) {

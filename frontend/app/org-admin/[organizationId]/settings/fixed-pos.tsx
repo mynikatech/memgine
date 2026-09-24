@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { services } from "@/src/core";
 import { APP_ROUTES } from "@/src/constants/navigation";
-import { posApi, type PosDevice } from "@/src/data/api/pos-api";
+import { posApi, type PosDevice, type PoyntPairingCode } from "@/src/data/api/pos-api";
 import { useAuth } from "@/src/providers";
 import {
   Button,
@@ -26,6 +26,8 @@ export default function FixedPosConfiguration() {
   const [devices, setDevices] = useState<PosDevice[]>([]);
   const [storeId, setStoreId] = useState("");
   const [name, setName] = useState("");
+  const [poyntStoreId, setPoyntStoreId] = useState("");
+  const [poyntPairing, setPoyntPairing] = useState<PoyntPairingCode | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -116,6 +118,17 @@ export default function FixedPosConfiguration() {
     await load();
   };
 
+  const createPoyntPairingCode = async () => {
+    setError("");
+    setPoyntPairing(null);
+    const result = await posApi.createPoyntPairingCode(organizationId, poyntStoreId);
+    if (!result.success) {
+      setError(result.error.message);
+      return;
+    }
+    setPoyntPairing(result.data);
+  };
+
   return (
     <View style={{ padding: 24, gap: 16 }}>
       <Header
@@ -155,6 +168,36 @@ export default function FixedPosConfiguration() {
           onPress={() => void register()}
           disabled={!storeId || !name.trim()}
         />
+      </Card>
+
+      <Card padding="md">
+        <Text variant="title">Pair a Poynt terminal</Text>
+        <Text color="textMuted">
+          Generate a one-time code for the Poynt terminal. The code fixes that terminal to this organization and store.
+        </Text>
+
+        <ReferenceSelect
+          label="Store"
+          value={poyntStoreId}
+          items={stores}
+          onChange={setPoyntStoreId}
+          placeholder="Select store"
+        />
+
+        <Button
+          label="Generate Poynt pairing code"
+          onPress={() => void createPoyntPairingCode()}
+          disabled={!poyntStoreId}
+        />
+
+        {poyntPairing ? (
+          <View style={{ gap: 4 }}>
+            <Text variant="title">{poyntPairing.pairingCode}</Text>
+            <Text color="textMuted">
+              Enter this code on the Poynt terminal. It expires at {poyntPairing.expiresAt} and can be used once.
+            </Text>
+          </View>
+        ) : null}
       </Card>
 
       {loading ? (

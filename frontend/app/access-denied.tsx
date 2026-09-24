@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { StyleSheet, View } from "react-native";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
+import { unauthenticatedLanding } from "@/src/core/auth/auth-navigation";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { Button, Text } from "@/src/ui";
 
@@ -34,7 +35,7 @@ export default function AccessDeniedScreen() {
             onPress={() =>
               void auth
                 .logout()
-                .then(() => router.replace(APP_ROUTES.login as never))
+                .then(() => router.replace(unauthenticatedLanding() as never))
             }
           />
         </View>

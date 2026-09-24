@@ -16,6 +16,7 @@ import { Screen } from "@/src/layout";
 import {
   useBusiness,
   useCustomerContext,
+  useAuth,
   useTranslation,
 } from "@/src/providers";
 import {
@@ -121,6 +122,7 @@ export default function JoinFlow() {
   }>();
 
   const { organization, configuration, theme } = useBusiness();
+  const { session } = useAuth();
 
   const { setActiveContext } = useCustomerContext();
 
@@ -128,13 +130,13 @@ export default function JoinFlow() {
 
   const orgId = params.organizationId ?? organization.id;
 
-  const customerId = params.customerId ?? "";
-
   /*
    * Staff-assisted purchase is identified only by the navigation
    * source. It is not persisted on Subscription.
    */
   const isStaffSale = params.source === "STAFF_ASSISTED";
+  const suppliedCustomerId = params.customerId ?? "";
+  const customerId = suppliedCustomerId || (!isStaffSale ? session?.userId ?? "" : "");
   const returnedPaymentIntentId = params.paymentIntentId;
 
   const [loading, setLoading] = useState(true);
@@ -393,18 +395,20 @@ export default function JoinFlow() {
               (item) =>
                 item.userId === customerId && item.organizationId === orgId,
             );
-            if (!profile)
+            if (!profile && suppliedCustomerId)
               throw new Error("Customer is not active in this organization.");
-            cust = {
-              id: profile.userId,
-              fullName:
-                profile.displayName?.trim() ||
-                [profile.firstName, profile.lastName].filter(Boolean).join(" "),
-              email: profile.primaryEmail ?? undefined,
-              phone: profile.primaryPhone,
-              createdAt: profile.joiningDate,
-            };
-            resolvedOrganizationUserId = profile.organizationUserId;
+            if (profile) {
+              cust = {
+                id: profile.userId,
+                fullName:
+                  profile.displayName?.trim() ||
+                  [profile.firstName, profile.lastName].filter(Boolean).join(" "),
+                email: profile.primaryEmail ?? undefined,
+                phone: profile.primaryPhone,
+                createdAt: profile.joiningDate,
+              };
+              resolvedOrganizationUserId = profile.organizationUserId;
+            }
           }
         }
 
@@ -457,6 +461,7 @@ export default function JoinFlow() {
     params.storeId,
     orgId,
     customerId,
+    suppliedCustomerId,
   ]);
 
   const plan = product?.plans[0];

@@ -89,24 +89,69 @@ public final class CounterFlowController {
             showPairing();
             return;
         }
-        background(() -> api.context(credential), terminal -> {
-            activeTerminal = terminal;
-            if (staffSession.token() == null || staffSession.staffId() == null) {
-                showStaffSelection(terminal);
-            } else {
-                showCounterHome(terminal);
-            }
-        });
+        background(
+                () -> api.context(credential),
+                terminal -> {
+                    activeTerminal = terminal;
+                    String token = staffSession.token();
+                    if (token == null || staffSession.staffId() == null) {
+                        activeStaff = null;
+                        showStaffSelection(terminal);
+                        return;
+                    }
+                    restoreOperatorSession(terminal, token);
+                },
+                exception -> {
+                    if (exception instanceof ApiException
+                            && ((ApiException) exception).sessionExpired) {
+                        clearTerminalRegistration();
+                        showPairing();
+                        setStatus("This terminal is no longer registered.");
+                        return;
+                    }
+                    setStatus(apiErrorMessage(exception));
+                }
+        );
+    }
+
+    private void restoreOperatorSession(TerminalContext terminal, String token) {
+        background(
+                () -> api.validateOperatorSession(token, terminal),
+                staff -> {
+                    staffSession.save(token, staff.staffId);
+                    activeStaff = staff;
+                    showCounterHome(terminal);
+                },
+                exception -> {
+                    if (exception instanceof ApiException
+                            && ((ApiException) exception).sessionExpired) {
+                        staffSession.clear();
+                    }
+                    activeStaff = null;
+                    showStaffSelection(terminal);
+                    setStatus(exception instanceof ApiException
+                            ? "Counter is locked. Select an eligible operator and enter the POS PIN."
+                            : "Unable to restore the Counter session. Select an operator to unlock.");
+                }
+        );
+    }
+
+    private void clearTerminalRegistration() {
+        terminalCredentials.clear();
+        staffSession.clear();
+        activeTerminal = null;
+        activeStaff = null;
     }
 
     private void showPairing() {
-        render("Pair this Poynt terminal");
+        render("Terminal not registered");
+        text("Pair this Poynt terminal with an Organization Admin pairing code.");
         EditText code = input("Pairing code");
         EditText business = input("Poynt business ID");
         EditText store = input("Poynt store ID");
         EditText terminal = input("Poynt terminal ID");
         EditText name = input("Terminal name");
-        button("Pair terminal", () -> background(
+        button("Register terminal", () -> background(
                 () -> api.completePairing(
                         code.getText().toString(),
                         business.getText().toString(),
@@ -119,12 +164,14 @@ public final class CounterFlowController {
                     refresh();
                 }
         ));
-        text("Pairing codes are single-use and expire after ten minutes.");
+        text("Pairing codes are single-use and expire after ten minutes. Pairing fixes this terminal to the selected organization and store.");
         cancelButton();
     }
 
     private void showStaffSelection(TerminalContext terminal) {
-        render("Memgine · " + terminal.storeName);
+        render("Memgine Counter");
+        text("Business: " + terminal.organizationName);
+        text("Store: " + terminal.storeName + " · " + terminal.deviceName);
         text("Select staff and enter the four-digit Memgine POS PIN.");
         for (Staff staff : terminal.staff) {
             Button select = button(
@@ -151,6 +198,7 @@ public final class CounterFlowController {
                 setStatus("PIN must be exactly 4 digits");
                 return;
             }
+            pin.setText("");
             background(
                     () -> api.unlock(terminalCredentials.get(), staff.staffId, value),
                     token -> {
@@ -875,6 +923,20 @@ public final class CounterFlowController {
     }
 
     private <T> void background(Callable<T> request, Success<T> success) {
+        background(request, success, exception -> {
+            if (exception instanceof ApiException
+                    && ((ApiException) exception).sessionExpired
+                    && activeTerminal != null) {
+                staffSession.clear();
+                activeStaff = null;
+                showStaffSelection(activeTerminal);
+                return;
+            }
+            setStatus(apiErrorMessage(exception));
+        });
+    }
+
+    private <T> void background(Callable<T> request, Success<T> success, Failure failure) {
         setStatus("Working…");
         executor.execute(() -> {
             try {
@@ -885,19 +947,16 @@ public final class CounterFlowController {
                 });
             } catch (Exception exception) {
                 host.runOnUiThread(() -> {
-                    if (exception instanceof ApiException
-                            && ((ApiException) exception).sessionExpired
-                            && activeTerminal != null) {
-                        staffSession.clear();
-                        showStaffSelection(activeTerminal);
-                        return;
-                    }
-                    setStatus(exception instanceof ApiException
-                            ? exception.getMessage()
-                            : "Memgine request failed");
+                    failure.accept(exception);
                 });
             }
         });
+    }
+
+    private String apiErrorMessage(Exception exception) {
+        return exception instanceof ApiException
+                ? exception.getMessage()
+                : "Memgine request failed";
     }
 
     private void setStatus(String value) {
@@ -921,6 +980,10 @@ public final class CounterFlowController {
 
     private interface Success<T> {
         void accept(T value);
+    }
+
+    private interface Failure {
+        void accept(Exception exception);
     }
 
 

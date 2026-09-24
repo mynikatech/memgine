@@ -12,8 +12,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useState } from "react";
 import type { AdminRoute } from "@/src/constants/navigation";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
-import { APP_ROUTES } from "@/src/constants/navigation";
 import { useAuth } from "@/src/providers/AuthProvider";
+import { unauthenticatedLanding } from "@/src/core/auth/auth-navigation";
 
 /**
  * AdminShell — a reusable, desktop-first responsive admin layout shared by the
@@ -189,7 +189,7 @@ export function AdminShell({ title, subtitle, icon, items }: Props) {
             <Pressable
               onPress={() =>
                 void logout().then(() =>
-                  router.replace(APP_ROUTES.login as never),
+                  router.replace(unauthenticatedLanding() as never),
                 )
               }
               style={styles.accountAction}
@@ -224,7 +224,7 @@ export function AdminShell({ title, subtitle, icon, items }: Props) {
               <Pressable
                 onPress={() =>
                   void logout().then(() =>
-                    router.replace(APP_ROUTES.login as never),
+                  router.replace(unauthenticatedLanding() as never),
                   )
                 }
                 style={styles.mobileAccountAction}

@@ -50,8 +50,33 @@ public final class MemgineApiClient {
                     data.getString("organizationName"),
                     data.getString("storeId"),
                     data.getString("storeName"),
+                    data.getString("deviceId"),
+                    data.getString("deviceName"),
                     staff
             );
+        }
+
+    /**
+     * Confirms that the stored operator session is still a POS session for this
+     * registered terminal, then checks the current server-provided eligibility list.
+     */
+    public Staff validateOperatorSession(String sessionToken, TerminalContext terminal) throws Exception {
+            JSONObject session = call("GET", "/api/v1/auth/session", null, sessionToken, null);
+            JSONObject posContext = session.optJSONObject("posContext");
+            if (posContext == null
+                    || !terminal.deviceId.equals(posContext.optString("deviceId"))
+                    || !terminal.organizationId.equals(posContext.optString("organizationId"))
+                    || !terminal.storeId.equals(posContext.optString("storeId"))) {
+                throw new ApiException("Counter session is no longer valid", true);
+            }
+
+            String staffId = posContext.optString("staffId");
+            for (Staff staff : terminal.staff) {
+                if (staff.staffId.equals(staffId) && staff.pinConfigured) {
+                    return staff;
+                }
+            }
+            throw new ApiException("Counter operator is no longer eligible", true);
         }
 
     public String unlock(String terminalCredential, String staffId, String pin) throws Exception {

@@ -1,11 +1,14 @@
+import { useRouter } from "expo-router";
 import { View } from "react-native";
 
 import { Screen } from "@/src/layout";
 import { useAuth, useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
 import { Card, Header, ListRow, Section, StateView, Text } from "@/src/ui";
 import { CustomerNotificationBell } from "@/src/ui/domain/CustomerNotificationBell";
+import { unauthenticatedLanding } from "@/src/core/auth/auth-navigation";
 
 export default function Profile() {
+  const router = useRouter();
   const { theme } = useBusiness();
   const { t, locale, currency, timezone } = useTranslation();
   const { customerId, profiles, customersLoading, customersError, refreshCustomers } = useCustomerContext();
@@ -119,7 +122,7 @@ export default function Profile() {
             testID="profile-about"
           />
 
-          <ListRow label="Sign out" icon="log-out-outline" onPress={() => { void logout(); }}
+          <ListRow label="Sign out" icon="log-out-outline" onPress={() => { void logout().then(() => router.replace(unauthenticatedLanding() as never)); }}
             testID="profile-sign-out" />
         </Card>
       </Section>

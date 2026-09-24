@@ -1,12 +1,12 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, View } from "react-native";
 
 import { QRScanResult, services } from "@/src/core";
 import { LocalQRResolutionService } from "@/src/core/services/qr-resolution-service";
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
-import { useTranslation } from "@/src/providers";
+import { useAuth, useTranslation } from "@/src/providers";
 import { Button, Card, StateView, Text } from "@/src/ui";
 
 const qrResolutionService = new LocalQRResolutionService(
@@ -16,6 +16,7 @@ const qrResolutionService = new LocalQRResolutionService(
 
 export default function QRResolutionScreen() {
   const router = useRouter();
+  const auth = useAuth();
 
   const params = useLocalSearchParams<{
     token?: string | string[];
@@ -101,24 +102,17 @@ export default function QRResolutionScreen() {
          * membership product for the organization, which is already
          * supported by the existing JoinFlow implementation.
          */
-        if (journey.membershipProductId) {
-          router.replace({
-            pathname: APP_ROUTES.join.root,
-            params: {
-              organizationId: journey.organizationId,
-              productId: journey.membershipProductId,
-              source: "QR",
-            },
-          });
-        } else {
-          router.replace({
-            pathname: APP_ROUTES.join.root,
-            params: {
-              organizationId: journey.organizationId,
-              source: "QR",
-            },
-          });
+        const destination = journey.membershipProductId
+          ? `${APP_ROUTES.join.membership(journey.organizationId, journey.membershipProductId)}&source=QR`
+          : `${APP_ROUTES.join.organization(journey.organizationId)}&source=QR`;
+
+        if (Platform.OS !== "web" && auth.loading) return;
+        if (Platform.OS !== "web" && (!auth.session || auth.mobileSessionMode !== "customer")) {
+          router.replace({ pathname: APP_ROUTES.customerLogin, params: { returnTo: destination } });
+          return;
         }
+
+        router.replace(destination as never);
       } catch (resolutionError) {
         console.error("QR RESOLUTION ERROR", resolutionError);
 
@@ -147,7 +141,7 @@ export default function QRResolutionScreen() {
     return () => {
       mounted = false;
     };
-  }, [router, token]);
+  }, [auth.mobileSessionMode, auth.session, router, token]);
 
   if (loading) {
     return (

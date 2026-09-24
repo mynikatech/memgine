@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { Platform } from "react-native";
 
 import {
   authApi,
@@ -15,10 +16,16 @@ import {
 } from "@/src/data/api/auth-api";
 import type { ApiResult } from "@/src/data/api/result";
 import { saveNativeSessionToken } from "@/src/data/api/http-client";
+import { storage } from "@/src/utils/storage";
+
+export type MobileSessionMode = "customer" | "business";
+
+const NATIVE_SESSION_MODE_KEY = "memgine.native.session-mode";
 
 type AuthContextValue = {
   session: AuthSession | null;
   loading: boolean;
+  mobileSessionMode: MobileSessionMode | null;
   refresh: () => Promise<AuthSession | null>;
   passwordLogin: (
     phone: string,
@@ -32,6 +39,7 @@ type AuthContextValue = {
   unlockPos: (staffId: string, pin: string) => Promise<AuthSession>;
   setPassword: (password: string) => Promise<void>;
   logout: () => Promise<void>;
+  setMobileSessionMode: (mode: MobileSessionMode) => Promise<void>;
   hasCapability: (capability: string, organizationId?: string) => boolean;
 };
 
@@ -45,19 +53,42 @@ function unwrap<T>(result: ApiResult<T>): T {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mobileSessionMode, setMobileSessionModeState] = useState<MobileSessionMode | null>(null);
+
+  const saveMobileSessionMode = useCallback(async (mode: MobileSessionMode | null) => {
+    if (Platform.OS === "web") return;
+    setMobileSessionModeState(mode);
+    if (mode) await storage.secureSet(NATIVE_SESSION_MODE_KEY, mode);
+    else await storage.secureRemove(NATIVE_SESSION_MODE_KEY);
+  }, []);
+
+  const inferredMobileMode = useCallback((candidate: AuthSession): MobileSessionMode =>
+    candidate.access.some((context) => context.capabilities.some((capability) =>
+      capability === "PLATFORM_ADMIN_ACCESS" || capability === "ORG_ADMIN_ACCESS" || capability === "COUNTER_ACCESS",
+    )) ? "business" : "customer", []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const result = await authApi.session();
       const current = result.success ? result.data : null;
-      if (!current) await saveNativeSessionToken(null);
+      if (!current) {
+        await saveNativeSessionToken(null);
+        await saveMobileSessionMode(null);
+      } else if (Platform.OS !== "web") {
+        const stored = await storage.secureGet<MobileSessionMode | null>(NATIVE_SESSION_MODE_KEY, null);
+        const mode = stored === "customer" || stored === "business"
+          ? stored
+          : inferredMobileMode(current);
+        setMobileSessionModeState(mode);
+        if (!stored) await storage.secureSet(NATIVE_SESSION_MODE_KEY, mode);
+      }
       setSession(current);
       return current;
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [inferredMobileMode, saveMobileSessionMode]);
 
   useEffect(() => {
     void refresh();
@@ -67,11 +98,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       session,
       loading,
+      mobileSessionMode,
       refresh,
       passwordLogin: async (phone, regionCode, password) => {
         const next = unwrap<AuthSession>(
           await authApi.passwordLogin(phone, regionCode, password),
         );
+        await saveNativeSessionToken(next.sessionToken ?? null);
         setSession(next);
         return next;
       },
@@ -81,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const next = unwrap<AuthSession>(
           await authApi.verifyOtp(challengeId, otp),
         );
+        await saveNativeSessionToken(next.sessionToken ?? null);
         setSession(next);
         return next;
       },
@@ -107,7 +141,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const result = await authApi.logout();
         if (!result.success) throw new Error(result.error.message);
         await saveNativeSessionToken(null);
+        await saveMobileSessionMode(null);
         setSession(null);
+      },
+      setMobileSessionMode: async (mode) => {
+        await saveMobileSessionMode(mode);
       },
       hasCapability: (capability, organizationId) =>
         session?.access.some(
@@ -117,7 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               context.organizationId === organizationId),
         ) ?? false,
     }),
-    [loading, refresh, session],
+    [loading, mobileSessionMode, refresh, saveMobileSessionMode, session],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,7 +1,7 @@
 import { Redirect, useRouter } from "expo-router";
 import { Pressable, StyleSheet, View } from "react-native";
 
-import { authWorkspaces } from "@/src/core/auth/auth-navigation";
+import { authWorkspaces, unauthenticatedLanding } from "@/src/core/auth/auth-navigation";
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { Button, Text } from "@/src/ui";
@@ -19,7 +19,7 @@ export default function WorkspacesScreen() {
   }
 
   if (!auth.session) {
-    return <Redirect href={APP_ROUTES.login} />;
+    return <Redirect href={unauthenticatedLanding() as never} />;
   }
 
   const workspaces = authWorkspaces(auth.session);
@@ -48,7 +48,7 @@ export default function WorkspacesScreen() {
               onPress={() =>
                 void auth
                   .logout()
-                  .then(() => router.replace(APP_ROUTES.login as never))
+                  .then(() => router.replace(unauthenticatedLanding() as never))
               }
             />
           </View>

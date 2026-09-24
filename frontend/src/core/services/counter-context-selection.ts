@@ -10,7 +10,7 @@ export function selectCounterStaff(
     : undefined;
   if (principalStaff) return principalStaff;
   if (selectedStaffId) return activeStaff.find((staff) => staff.id === selectedStaffId) ?? null;
-  return activeStaff.length === 1 ? activeStaff[0] : null;
+  return null;
 }
 
 export function eligibleCounterStores(

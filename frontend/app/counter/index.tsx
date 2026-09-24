@@ -91,7 +91,7 @@ const RESULT_STYLE: Record<CounterResult["kind"], { fg: string; bg: string }> =
 
 export default function StaffCounter() {
   const { organization } = useBusiness();
-  const { session } = useAuth();
+  const { session, hasCapability } = useAuth();
 
   const router = useRouter();
 
@@ -148,20 +148,12 @@ export default function StaffCounter() {
   const principalStaffIsCurrent =
     loadedOrgId === orgId &&
     activeStaffMembers.some((item) => item.id === authenticatedStaffId);
-  const canSelectOperationalStaff =
-    !session?.posContext &&
-    (session?.access.some(
-      (context) =>
-        context.organizationId === orgId &&
-        context.capabilities.includes("ORG_ADMIN_ACCESS"),
-    ) ??
-      false);
   const selectedStaff =
     loadedOrgId === orgId
       ? selectCounterStaff(
           activeStaffMembers,
           authenticatedStaffId,
-          authenticatedStaffId || selectedStaffId,
+          session?.posContext?.staffId ?? authenticatedStaffId,
         )
       : null;
   const eligibleStores =
@@ -459,7 +451,9 @@ export default function StaffCounter() {
     setError(
       activeStaffMembers.length === 0
         ? "No active staff available for this organization."
-        : "",
+        : !selectedStaff && !session?.posContext
+          ? "Counter access requires your active Counter Operator profile and store assignment."
+          : "",
     );
 
     if (!selectedStaff) return;
@@ -1351,11 +1345,67 @@ export default function StaffCounter() {
   const afterIdentify = (method: RedemptionMethod) =>
     action === "sell" ? renderSaleCatalog() : renderBenefitSelection(method);
 
+  const fixedPosContextReady = Boolean(
+    session?.posContext &&
+      loadedOrgId === orgId &&
+      counterStaff &&
+      store &&
+      staffId &&
+      storeId,
+  );
+  const normalContextReady = Boolean(
+    session &&
+      loadedOrgId === orgId &&
+      principalStaffIsCurrent &&
+      counterStaff &&
+      store &&
+      staffId &&
+      storeId,
+  );
+  const counterContextReady = session?.posContext
+    ? fixedPosContextReady
+    : normalContextReady;
+  const blockedCounterMessage = loadedOrgId !== orgId
+    ? "Resolving your Counter access…"
+    : !authenticatedStaffId
+      ? "Counter access requires an active Counter Operator profile linked to your account."
+      : !principalStaffIsCurrent
+        ? "Your Counter Operator profile is inactive or unavailable."
+        : !storeId
+          ? "Your Counter Operator profile needs an active eligible store assignment."
+          : "Counter access requires an active Counter Operator profile and store assignment.";
+
   /*
    * ------------------------------------------------------------
    * Render
    * ------------------------------------------------------------
    */
+
+  if (!counterContextReady) {
+    return (
+      <ScrollView
+        testID="staff-counter-blocked-screen"
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+      >
+        <Text style={styles.h1}>Counter</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Counter unavailable</Text>
+          <Text style={styles.muted}>{blockedCounterMessage}</Text>
+          {hasCapability("ORG_ADMIN_ACCESS", orgId) ? (
+            <Pressable
+              testID="counter-configure-access"
+              onPress={() => router.push(APP_ROUTES.orgAdmin.usersAccess(orgId) as never)}
+              style={styles.secondaryBtn}
+            >
+              <Text style={styles.secondaryBtnText}>Configure Users &amp; Access</Text>
+            </Pressable>
+          ) : null}
+        </View>
+        {error ? <Text testID="counter-error" style={styles.errorText}>{error}</Text> : null}
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView
@@ -1403,9 +1453,7 @@ export default function StaffCounter() {
 
         <View style={styles.ctxRow}>
           <Text style={styles.ctxLabel}>Staff</Text>
-          {!canSelectOperationalStaff ||
-          principalStaffIsCurrent ||
-          activeStaffMembers.length <= 1 ? (
+          {session?.posContext || principalStaffIsCurrent || !selectedStaff ? (
             <Text style={styles.ctxValue}>
               {counterStaff
                 ? `${counterStaffName || "Staff"} · ${counterStaff.role}`

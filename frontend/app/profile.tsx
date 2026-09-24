@@ -2,7 +2,7 @@ import { Redirect, useRouter } from "expo-router";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 
-import { APP_ROUTES } from "@/src/constants/navigation";
+import { unauthenticatedLanding } from "@/src/core/auth/auth-navigation";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { Button, Input, Text } from "@/src/ui";
 
@@ -22,7 +22,7 @@ export default function ProfileScreen() {
   }
 
   if (!auth.session) {
-    return <Redirect href={APP_ROUTES.login} />;
+    return <Redirect href={unauthenticatedLanding() as never} />;
   }
 
   const passwordConfigured = auth.session.passwordConfigured;

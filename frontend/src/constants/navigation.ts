@@ -37,6 +37,7 @@ export const APP_ROUTES = {
   root: "/",
   login: "/login",
   customerLogin: "/customer-login",
+  mobileEntry: "/mobile-entry",
   counterUnlock: "/counter-unlock",
   workspaces: "/workspaces",
 
@@ -71,6 +72,9 @@ export const APP_ROUTES = {
 
     staffMembers: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/staff-members`,
+
+    usersAccess: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/users-access`,
 
     benefits: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/benefits`,
@@ -226,6 +230,11 @@ export const createOrgAdminRoutes = (organizationId: string): AdminRoute[] => [
     title: "Staff",
     href: APP_ROUTES.orgAdmin.staffMembers(organizationId),
     icon: "people-outline",
+  },
+  {
+    title: "Users & Access",
+    href: APP_ROUTES.orgAdmin.usersAccess(organizationId),
+    icon: "people-circle-outline",
   },
   {
     title: "Benefits",

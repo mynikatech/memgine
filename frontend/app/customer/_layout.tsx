@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, Tabs } from "expo-router";
+import { Platform } from "react-native";
 
 import { useAuth, useTheme, useTranslation } from "@/src/providers";
 
@@ -12,7 +13,7 @@ export default function CustomerLayout() {
   const { t } = useTranslation();
   const { loading, session } = useAuth();
 
-  if (!loading && !session) return <Redirect href="/customer-login" />;
+  if (!loading && !session) return <Redirect href={Platform.OS === "web" ? "/customer-login" : "/mobile-entry"} />;
 
   return (
     <Tabs

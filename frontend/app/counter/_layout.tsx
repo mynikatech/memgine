@@ -8,6 +8,7 @@ import {
 } from "expo-router";
 import {
   Pressable,
+  Platform,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -18,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { APP_ROUTES, COUNTER_ROUTES } from "@/src/constants/navigation";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
 import { useAuth } from "@/src/providers/AuthProvider";
+import { unauthenticatedLanding } from "@/src/core/auth/auth-navigation";
 
 export default function CounterLayout() {
   const { organizationId } = useGlobalSearchParams<{
@@ -26,11 +28,20 @@ export default function CounterLayout() {
 
   const { loading, session, hasCapability } = useAuth();
   if (loading) return null;
-  if (!session) return <Redirect href={APP_ROUTES.counterUnlock} />;
+  if (!session) return <Redirect href={Platform.OS === "web" ? APP_ROUTES.counterUnlock : APP_ROUTES.mobileEntry} />;
+
   const pos = session.posContext;
-  if (!pos) return <Redirect href={APP_ROUTES.counterUnlock} />;
-  if (organizationId && pos.organizationId !== organizationId) return <Redirect href={APP_ROUTES.counter.organization(pos.organizationId) as never} />;
-  if (!hasCapability("COUNTER_ACCESS", pos.organizationId)) return <Redirect href="/access-denied" />;
+  const normalOrganizationId = organizationId ??
+    session.access.find((context) => context.capabilities.includes("COUNTER_ACCESS"))?.organizationId;
+  const activeOrganizationId = pos?.organizationId ?? normalOrganizationId;
+
+  if (!activeOrganizationId) return <Redirect href={APP_ROUTES.workspaces} />;
+  if (pos && organizationId && pos.organizationId !== organizationId) {
+    return <Redirect href={APP_ROUTES.counter.organization(pos.organizationId) as never} />;
+  }
+  if (!hasCapability("COUNTER_ACCESS", activeOrganizationId)) {
+    return <Redirect href="/access-denied" />;
+  }
   return <CounterShell />;
 }
 
@@ -42,7 +53,7 @@ function CounterShell() {
     organizationId?: string;
   }>();
   const { width } = useWindowDimensions();
-  const { logout, session, hasCapability } = useAuth();
+  const { logout, session } = useAuth();
   const isWide = width >= 900;
 
   const go = (href: (typeof COUNTER_ROUTES)[number]["href"]) => {
@@ -57,19 +68,13 @@ function CounterShell() {
         );
         return;
       }
-      if (href === "/counter/configuration") {
-        router.push(
-          APP_ROUTES.counter.organizationConfiguration(organizationId) as never,
-        );
-        return;
-      }
     }
     router.push(href as never);
   };
 
   const Nav = ({ horizontal }: { horizontal?: boolean }) => (
     <View style={horizontal ? styles.navRow : styles.nav}>
-      {COUNTER_ROUTES.filter((route) => route.name !== "configuration" || hasCapability("ORG_ADMIN_ACCESS", organizationId)).map((route) => {
+      {COUNTER_ROUTES.map((route) => {
         const active = pathname === route.href;
         return (
           <Pressable
@@ -140,7 +145,7 @@ function CounterShell() {
             <Pressable
               onPress={() =>
                 void logout().then(() =>
-                  router.replace((session?.posContext ? APP_ROUTES.counterUnlock : APP_ROUTES.login) as never),
+                  router.replace((Platform.OS === "web" && session?.posContext ? APP_ROUTES.counterUnlock : unauthenticatedLanding()) as never),
                 )
               }
               style={styles.accountAction}
@@ -175,7 +180,7 @@ function CounterShell() {
               <Pressable
                 onPress={() =>
                   void logout().then(() =>
-                    router.replace((session?.posContext ? APP_ROUTES.counterUnlock : APP_ROUTES.login) as never),
+                  router.replace((Platform.OS === "web" && session?.posContext ? APP_ROUTES.counterUnlock : unauthenticatedLanding()) as never),
                   )
                 }
                 style={styles.mobileAccountAction}

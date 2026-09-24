@@ -1,5 +1,6 @@
 import type { AuthSession } from "@/src/data/api/auth-api";
 import { APP_ROUTES } from "@/src/constants/navigation";
+import { Platform } from "react-native";
 
 export type AuthWorkspace = {
   key: string;
@@ -39,4 +40,9 @@ export function authWorkspaces(session: AuthSession): AuthWorkspace[] {
 export function landingFor(session: AuthSession): string {
   const choices = authWorkspaces(session);
   return choices.length === 1 ? choices[0].href : APP_ROUTES.workspaces;
+}
+
+/** Keep native sign-out and unauthenticated guards in the neutral entry flow. */
+export function unauthenticatedLanding(): string {
+  return Platform.OS === "web" ? APP_ROUTES.login : APP_ROUTES.mobileEntry;
 }

@@ -22,6 +22,7 @@ import { OrganizationUserApi } from "./api/organization-user-api";
 import { NotificationConfigurationApi } from "./api/notification-configuration-api";
 import { IntegrationConfigurationApi } from "./api/integration-configuration-api";
 import { OrganizationMaintenanceApi } from "./api/organization-maintenance-api";
+import { OrganizationAccessApi } from "./api/organization-access-api";
 
 import { LocalBrandingRepository } from "./repositories/branding/branding-repository.local";
 import { LocalOrganizationMembersRepository } from "./repositories/organization/organization-members.repository.local";
@@ -110,4 +111,5 @@ export const apis = {
   ),
   organizationUser: new OrganizationUserApi(),
   organizationMaintenance: new OrganizationMaintenanceApi(),
+  organizationAccess: new OrganizationAccessApi(),
 } as const;

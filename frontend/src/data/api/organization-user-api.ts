@@ -15,6 +15,20 @@ export interface OrganizationUserSnapshot {
   users: User[];
 }
 
+export type UpsertOrganizationUserRequest = {
+  userId: ID;
+  userCode: string;
+  firstName: string;
+  middleName?: string;
+  lastName?: string;
+  displayName?: string;
+  primaryEmail?: string;
+  primaryPhone: string;
+  organizationUserId: ID;
+  organizationUserTypeId: ID;
+  joiningDate?: string;
+};
+
 export class OrganizationUserApi {
   async list(organizationId: ID): Promise<ApiResult<OrganizationUserSnapshot>> {
     const result = await httpClient.get<OrganizationUserServerDto[]>(
@@ -34,5 +48,15 @@ export class OrganizationUserApi {
 
       users: mapped.map((item) => item.user),
     });
+  }
+
+  async upsert(
+    organizationId: ID,
+    request: UpsertOrganizationUserRequest,
+  ): Promise<ApiResult<unknown>> {
+    return httpClient.put<UpsertOrganizationUserRequest, unknown>(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/users`,
+      request,
+    );
   }
 }

@@ -1,6 +1,6 @@
-import { Redirect, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { services, type CountryReference } from "@/src/core";
@@ -10,6 +10,7 @@ import { Button, Input, PhoneField, Text, type PhoneValue } from "@/src/ui";
 export default function CustomerLoginScreen() {
   const router = useRouter();
   const auth = useAuth();
+  const params = useLocalSearchParams<{ returnTo?: string | string[] }>();
   const [countries, setCountries] = useState<CountryReference[]>([]);
   const [phone, setPhone] = useState<PhoneValue>({
     countryId: "",
@@ -44,8 +45,21 @@ export default function CustomerLoginScreen() {
     [countries, phone.countryId],
   );
   const regionCode = country?.countryCode ?? "CA";
-  if (!auth.loading && auth.session)
-    return <Redirect href={APP_ROUTES.customer.cards} />;
+  const requestedReturnTo = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
+  const returnTo = requestedReturnTo?.startsWith("/join") || requestedReturnTo?.startsWith("/discover/")
+    ? requestedReturnTo
+    : APP_ROUTES.customer.cards;
+  if (!auth.loading && auth.session) {
+    if (Platform.OS !== "web" && auth.mobileSessionMode === "business") {
+      return <View style={styles.page}><View style={styles.card}>
+        <Text variant="title">Continue as Customer?</Text>
+        <Text color="textMuted">You are currently signed in for business access. Continuing signs out that session before customer sign in.</Text>
+        <Button label="Continue as Customer" fullWidth onPress={() => void auth.logout()} />
+        <Button label="Cancel" variant="ghost" onPress={() => router.replace(APP_ROUTES.root as never)} />
+      </View></View>;
+    }
+    return <Redirect href={returnTo as never} />;
+  }
 
   const requestOtp = async () => {
     setBusy(true);
@@ -70,7 +84,8 @@ export default function CustomerLoginScreen() {
     setError(null);
     try {
       await auth.verifyCustomerOtp(challengeId, otp);
-      router.replace(APP_ROUTES.customer.cards);
+      if (Platform.OS !== "web") await auth.setMobileSessionMode("customer");
+      router.replace(returnTo as never);
     } catch (cause) {
       setError(
         cause instanceof Error

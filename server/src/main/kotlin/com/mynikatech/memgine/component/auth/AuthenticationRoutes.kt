@@ -22,8 +22,11 @@ fun Route.authenticationRoutes(service: AuthenticationService, config: Authentic
             val created = service.passwordLogin(
                 call.receive(), call.clientIp(), call.request.headers[HttpHeaders.UserAgent]
             )
-            call.setSessionCookie(config, created.token)
-            call.respond(ApiResponse.success(service.toDto(created.principal), call.callId))
+            val native = call.isNativeAuthenticationClient()
+            if (!native) call.setSessionCookie(config, created.token)
+            call.respond(ApiResponse.success(
+                service.toDto(created.principal, if (native) created.token else null), call.callId
+            ))
         }
         post("/otp/request") {
             call.respond(ApiResponse.success(service.requestLoginOtp(call.receive()), call.callId))
@@ -32,8 +35,11 @@ fun Route.authenticationRoutes(service: AuthenticationService, config: Authentic
             val created = service.verifyLoginOtp(
                 call.receive(), call.clientIp(), call.request.headers[HttpHeaders.UserAgent]
             )
-            call.setSessionCookie(config, created.token)
-            call.respond(ApiResponse.success(service.toDto(created.principal), call.callId))
+            val native = call.isNativeAuthenticationClient()
+            if (!native) call.setSessionCookie(config, created.token)
+            call.respond(ApiResponse.success(
+                service.toDto(created.principal, if (native) created.token else null), call.callId
+            ))
         }
         post("/customer/otp/request") {
             call.respond(ApiResponse.success(service.requestCustomerLoginOtp(call.receive()), call.callId))

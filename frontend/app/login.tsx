@@ -1,6 +1,6 @@
 import { Redirect, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
 
 import { services, type CountryReference } from "@/src/core";
 import { landingFor } from "@/src/core/auth/auth-navigation";
@@ -49,18 +49,29 @@ export default function LoginScreen() {
     [countries, phone.countryId],
   );
 
-  if (!auth.loading && auth.session)
+  if (!auth.loading && auth.session) {
+    if (Platform.OS !== "web" && auth.mobileSessionMode === "customer") {
+      return <View style={styles.page}><View style={styles.card}>
+        <Text variant="title">Continue as Business / Staff?</Text>
+        <Text color="textMuted">You are currently signed in as a customer. Continuing signs out that session before business sign in.</Text>
+        <Button label="Continue as Business / Staff" fullWidth onPress={() => void auth.logout()} />
+        <Button label="Cancel" variant="ghost" onPress={() => router.replace(APP_ROUTES.customer.cards as never)} />
+      </View></View>;
+    }
     return <Redirect href={landingFor(auth.session) as never} />;
+  }
 
   const regionCode = selectedCountry?.countryCode ?? "CA";
-  const complete = (session: Awaited<ReturnType<typeof auth.passwordLogin>>) =>
+  const complete = async (session: Awaited<ReturnType<typeof auth.passwordLogin>>) => {
+    if (Platform.OS !== "web") await auth.setMobileSessionMode("business");
     router.replace(landingFor(session) as never);
+  };
 
   const submitPassword = async () => {
     setBusy(true);
     setError(null);
     try {
-      complete(await auth.passwordLogin(phone.number, regionCode, password));
+      await complete(await auth.passwordLogin(phone.number, regionCode, password));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Login failed.");
     } finally {
@@ -87,7 +98,7 @@ export default function LoginScreen() {
     setBusy(true);
     setError(null);
     try {
-      complete(await auth.verifyOtp(challengeId, otp));
+      await complete(await auth.verifyOtp(challengeId, otp));
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "OTP verification failed.",
