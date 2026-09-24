@@ -14,10 +14,10 @@ type ServerApiResponse<T> = {
 };
 
 function resolveApiBaseUrl(): string {
-  const configuredUrl =
-    Platform.OS === "web"
+  const configuredUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim() ||
+    (Platform.OS === "web"
       ? process.env.EXPO_PUBLIC_MEMGINE_API_BASE_URL_WEB?.trim()
-      : process.env.EXPO_PUBLIC_MEMGINE_API_BASE_URL_NATIVE?.trim();
+      : process.env.EXPO_PUBLIC_MEMGINE_API_BASE_URL_NATIVE?.trim());
 
   if (!configuredUrl) {
     throw new Error(

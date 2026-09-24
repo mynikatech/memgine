@@ -123,3 +123,18 @@ replay_pid35404.log
 docs/~WRL1374.tmp
 server/scripts/env/local/set-stripe-local-env.ps1
 server/scripts/env/local/moneris-local.bat
+
+# Environment-first HTTPS runtime material (examples and .gitkeep files remain tracked)
+server/scripts/env/*/https/memgine.env
+server/scripts/env/*/https/frontend.env
+server/scripts/env/*/https/certs/*.crt
+server/scripts/env/*/https/certs/*.key
+server/scripts/env/*/https/certs/*.pem
+server/scripts/env/local/https/logs/*
+!server/scripts/env/local/https/logs/.gitkeep
+server/scripts/env/local/https/runtime/*
+!server/scripts/env/local/https/runtime/.gitkeep
+server/scripts/env/local/http/memgine.env
+server/scripts/env/local/http/frontend.env
+server/scripts/env/*/https/temp/*
+!server/scripts/env/*/https/temp/.gitkeep

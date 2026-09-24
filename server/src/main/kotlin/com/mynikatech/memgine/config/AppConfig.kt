@@ -128,10 +128,17 @@ data class AppConfig(
                     ).toInt(),
                     enforceHttps = enforceHttps,
                     environment = environment,
-                    corsAllowedHosts = value(
-                        "memgine.server.corsAllowedHosts",
-                        "MEMGINE_CORS_ALLOWED_HOSTS"
-                    )
+                    corsAllowedHosts = (
+                        System.getenv("MEMGINE_ALLOWED_ORIGINS")
+                            ?: localProperties.getProperty("MEMGINE_ALLOWED_ORIGINS")
+                            ?: System.getenv("MEMGINE_CORS_ALLOWED_HOSTS")
+                            ?: localProperties.getProperty("MEMGINE_CORS_ALLOWED_HOSTS")
+                            ?: config?.propertyOrNull("memgine.server.allowedOrigins")?.getString()
+                            ?: value(
+                                "memgine.server.corsAllowedHosts",
+                                "MEMGINE_CORS_ALLOWED_HOSTS"
+                            )
+                        )
                         .split(',')
                         .map(String::trim)
                         .filter(String::isNotEmpty)
