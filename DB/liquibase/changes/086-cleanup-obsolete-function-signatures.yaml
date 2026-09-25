@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 086-cleanup-obsolete-function-signatures
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/086-cleanup-obsolete-function-signatures.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
