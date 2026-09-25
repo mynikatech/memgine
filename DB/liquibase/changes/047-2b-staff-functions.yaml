@@ -2,7 +2,6 @@ databaseChangeLog:
   - changeSet:
       id: 047-2b-staff-functions
       author: mynikatech
-      runOnChange: true
       changes:
         - sqlFile:
             path: ../sql/047-2b-staff-functions.sql

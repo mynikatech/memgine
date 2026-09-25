@@ -1,30 +1,19 @@
 # PROD HTTPS (Linux)
 
-PROD uses Nginx for static Expo Web output and `memgine-prod.service` for the Ktor backend. The ignored `memgine.env` and `frontend.env` files are loaded by systemd/build scripts; do not place secrets in `.example` files.
+PROD uses the same shared EC2 deployment, Nginx, systemd, and Certbot scripts as DEV. This directory supplies only production domains and non-secret configuration. The Route53 and Terraform backend values remain placeholders until the production account and state bucket are approved.
 
-First host preparation, after real env files, certificates, the backend fat JAR, Nginx, Java 21, Node/npm, and the non-root `memgine` user exist:
-
-```bash
-sudo ./server/scripts/env/prod/https/setup.sh
-```
-
-Build static frontend output, then start/stop normally:
+After the approved production Terraform state configuration exists, the host flow is:
 
 ```bash
-./server/scripts/env/prod/https/build-frontend.sh
-sudo ./server/scripts/env/prod/https/start-all.sh
-sudo ./server/scripts/env/prod/https/stop-all.sh
+sudo /usr/local/bin/memgine-sync-scripts
+sudo /opt/memgine/scripts/setup-https.sh prod
+sudo /opt/memgine/scripts/deploy.sh prod <release-id>
 ```
 
-Individual operations:
+Run the separately approved Liquibase deployment from the deployment workstation before application deployment:
 
-```bash
-sudo ./server/scripts/env/prod/https/start-backend.sh
-sudo ./server/scripts/env/prod/https/stop-backend.sh
-sudo ./server/scripts/env/prod/https/restart-backend.sh
-sudo ./server/scripts/env/prod/https/start-nginx.sh
-sudo ./server/scripts/env/prod/https/reload-nginx.sh
-sudo ./server/scripts/env/prod/https/stop-nginx.sh
+```powershell
+.\infra\scripts\deploy-db.ps1 prod
 ```
 
-Normal redeployment builds frontend, restarts backend, and reloads Nginx only when Nginx configuration changes. Let's Encrypt certificate paths remain the planned TLS source.
+Do not put certificate keys, database passwords, provider tokens, or any other secrets in the ignored environment files or in the deployment bucket. Certbot maintains private keys below `/etc/letsencrypt` on the EC2 host.

@@ -66,6 +66,16 @@ fun requiredProperty(name: String): String {
         )
 }
 
+fun configuredProperty(
+    gradleProperty: String,
+    environmentVariable: String,
+    fileProperty: String
+): String {
+    return project.findProperty(gradleProperty)?.toString()
+        ?: System.getenv(environmentVariable)
+        ?: requiredProperty(fileProperty)
+}
+
 /*
  * Password resolution:
  *
@@ -84,12 +94,24 @@ val liquibasePassword =
         ?: System.getenv("LIQUIBASE_PASSWORD")
         ?: requiredProperty("password")
 
+val liquibaseUrl = configuredProperty(
+    "liquibaseUrl",
+    "LIQUIBASE_URL",
+    "url"
+)
+
+val liquibaseUsername = configuredProperty(
+    "liquibaseUsername",
+    "LIQUIBASE_USERNAME",
+    "username"
+)
+
 liquibase {
     activities {
         create("main") {
             arguments = mapOf(
-                "url" to requiredProperty("url"),
-                "username" to requiredProperty("username"),
+                "url" to liquibaseUrl,
+                "username" to liquibaseUsername,
                 "password" to liquibasePassword,
                 "defaultSchemaName" to requiredProperty(
                     "defaultSchemaName"

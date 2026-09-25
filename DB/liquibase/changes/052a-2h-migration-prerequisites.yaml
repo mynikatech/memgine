@@ -2,7 +2,6 @@ databaseChangeLog:
   - changeSet:
       id: 052a-2h-migration-prerequisites
       author: mynikatech
-      runOnChange: true
       changes:
         - sqlFile:
             path: ../sql/052a-2h-migration-prerequisites.sql

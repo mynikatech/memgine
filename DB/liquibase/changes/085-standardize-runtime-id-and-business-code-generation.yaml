@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 085-standardize-runtime-id-and-business-code-generation
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/085-standardize-runtime-id-and-business-code-generation.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

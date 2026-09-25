@@ -1,30 +1,27 @@
 # DEV HTTPS (Linux)
 
-DEV uses Nginx for static Expo Web output and `memgine-dev.service` for the Ktor backend. The ignored `memgine.env` and `frontend.env` files are loaded by systemd/build scripts; do not place secrets in `.example` files.
+The DEV host uses the shared deployment and TLS scripts under `server/scripts/common`. This directory holds only DEV values: domains, non-secret frontend configuration, and Nginx runtime configuration.
 
-First host preparation, after real env files, certificates, the backend fat JAR, Nginx, Java 21, Node/npm, and the non-root `memgine` user exist:
-
-```bash
-sudo ./server/scripts/env/dev/https/setup.sh
-```
-
-Build static frontend output, then start/stop normally:
+After Terraform creates the host, upload a release, then use SSM to run:
 
 ```bash
-./server/scripts/env/dev/https/build-frontend.sh
-sudo ./server/scripts/env/dev/https/start-all.sh
-sudo ./server/scripts/env/dev/https/stop-all.sh
+sudo /usr/local/bin/memgine-sync-scripts
+sudo /opt/memgine/scripts/setup-https.sh dev
+sudo /opt/memgine/scripts/deploy.sh dev <release-id>
 ```
 
-Individual operations:
+Run the separate Liquibase step from the approved deployment workstation before `deploy.sh`:
+
+```powershell
+.\infra\scripts\deploy-db.ps1 dev
+```
+
+The ignored files `memgine.env`, `frontend.env`, and `deployment.properties` are initialized from their examples by `memgine-sync-scripts`. Set `MEMGINE_EXPECTED_PUBLIC_IP` from Terraform's `app_elastic_ip` output before TLS setup. Secrets are supplied through Secrets Manager/SSM or protected host files, never through S3 config.
+
+Certificate maintenance:
 
 ```bash
-sudo ./server/scripts/env/dev/https/start-backend.sh
-sudo ./server/scripts/env/dev/https/stop-backend.sh
-sudo ./server/scripts/env/dev/https/restart-backend.sh
-sudo ./server/scripts/env/dev/https/start-nginx.sh
-sudo ./server/scripts/env/dev/https/reload-nginx.sh
-sudo ./server/scripts/env/dev/https/stop-nginx.sh
+sudo /opt/memgine/scripts/check-certificates.sh dev
+sudo /opt/memgine/scripts/renew-certificates.sh dev
+sudo certbot renew --dry-run
 ```
-
-Normal redeployment builds frontend, restarts backend, and reloads Nginx only when Nginx configuration changes. Let's Encrypt certificate paths remain the planned TLS source.

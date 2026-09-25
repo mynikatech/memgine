@@ -8,6 +8,7 @@ User=__APP_USER__
 Group=__APP_USER__
 WorkingDirectory=__WORKING_DIRECTORY__
 EnvironmentFile=__ENV_FILE__
+EnvironmentFile=-__SECRETS_ENV_FILE__
 ExecStart=/usr/bin/java -jar __JAR_PATH__
 Restart=on-failure
 RestartSec=5

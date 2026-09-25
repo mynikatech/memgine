@@ -1,0 +1,10 @@
+# Non-secret deployment configuration. Copy to deployment.properties on the EC2.
+MEMGINE_ENVIRONMENT=prod
+MEMGINE_APP_USER=memgine
+MEMGINE_APP_ROOT=/opt/memgine
+MEMGINE_WEB_ROOT=/var/www/memgine-prod
+MEMGINE_DEPLOY_BUCKET=memgine-prod-deploy
+# Set from Terraform's sensitive app_database_runtime_secret_arn output.
+MEMGINE_DB_SECRET_ARN=REPLACE_WITH_RUNTIME_DB_SECRET_ARN
+# Set from the Terraform app_elastic_ip output before first TLS setup.
+MEMGINE_EXPECTED_PUBLIC_IP=REPLACE_WITH_APP_ELASTIC_IP

@@ -2,7 +2,6 @@ databaseChangeLog:
   - changeSet:
       id: 067-business-sms-otp
       author: mynikatech
-      runOnChange: true
       changes:
         - sqlFile:
             path: ../sql/067-business-sms-otp.sql

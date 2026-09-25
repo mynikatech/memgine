@@ -1,52 +1,42 @@
-
+# Memgine Liquibase Database Update
 #
-# Applies pending Liquibase changesets to the selected database.
-# Unlike liquibase-update-sql.ps1, this script DOES modify the database.
+# Applies pending Liquibase changesets.
 #
-# Supported environments:
-#   local
-#   dev
-#   prod
+# LOCAL:
+#   Uses liquibase.local.properties.
 #
-# Usage from repository root:
-#
-#   .\DB\scripts\liquibase-update.ps1 -Environment local
-#   .\DB\scripts\liquibase-update.ps1 -Environment dev
-#   .\DB\scripts\liquibase-update.ps1 -Environment prod
-#
-# IMPORTANT:
-#   Do NOT commit a properties file containing a real password.
+# DEV / PROD:
+#   Retrieves Liquibase credentials from AWS Secrets Manager.
+#   Passwords are never written to a properties file.
 
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $false)]
     [ValidateSet("local", "dev", "prod")]
-    [string]$Environment = "local"
+    [string]$Environment = "local",
+
+    [string]$AwsProfile = "memgine",
+
+    [string]$AwsRegion = "ca-central-1",
+
+    [string]$DatabaseHost = "127.0.0.1",
+
+    [int]$DatabasePort
 )
 
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = (Get-Location).Path
 
-$GradleWrapper = Join-Path `
-    $RepoRoot `
-    "gradlew.bat"
+$GradleWrapper = Join-Path $RepoRoot "gradlew.bat"
 
 if (-not (Test-Path $GradleWrapper)) {
     throw "gradlew.bat was not found. Run this script from the Memgine repository root."
 }
 
-$EnvironmentDirectory = Join-Path `
-    $RepoRoot `
-    "DB\env\$Environment"
-
-$PropertiesFile = Join-Path `
-    $EnvironmentDirectory `
-    "liquibase.$Environment.properties"
-
-$MasterChangelog = Join-Path `
-    $EnvironmentDirectory `
-    "db.changelog-master.$Environment.yaml"
+$EnvironmentDirectory = Join-Path $RepoRoot "DB\env\$Environment"
+$PropertiesFile = Join-Path $EnvironmentDirectory "liquibase.$Environment.properties"
+$MasterChangelog = Join-Path $EnvironmentDirectory "db.changelog-master.$Environment.yaml"
 
 if (-not (Test-Path $PropertiesFile)) {
     throw "Liquibase properties file not found: $PropertiesFile"
@@ -55,6 +45,14 @@ if (-not (Test-Path $PropertiesFile)) {
 if (-not (Test-Path $MasterChangelog)) {
     throw "Liquibase master changelog not found: $MasterChangelog"
 }
+
+$EnvironmentHelper = Join-Path $PSScriptRoot "liquibase-environment.ps1"
+
+if (-not (Test-Path $EnvironmentHelper)) {
+    throw "Liquibase environment helper not found: $EnvironmentHelper"
+}
+
+. $EnvironmentHelper
 
 Write-Host ""
 Write-Host "=============================================================="
@@ -71,7 +69,6 @@ if ($Environment -eq "prod") {
     Write-Host "=============================================================="
     Write-Host " PRODUCTION DATABASE"
     Write-Host "=============================================================="
-    Write-Host "You are about to apply Liquibase changes to PROD."
     Write-Host ""
 
     $Confirmation = Read-Host "Type APPLY-PROD to continue"
@@ -85,22 +82,34 @@ if ($Environment -eq "prod") {
     Write-Host ""
 }
 
-Write-Host "Applying pending Liquibase changes..."
-Write-Host ""
+try {
+    Set-MemgineLiquibaseEnvironment `
+        -Environment $Environment `
+        -AwsProfile $AwsProfile `
+        -AwsRegion $AwsRegion `
+        -DatabaseHost $DatabaseHost `
+        -DatabasePort $DatabasePort
 
-& $GradleWrapper `
-    :DB:update `
-    "-PdbEnvironment=$Environment"
+    Write-Host "Applying pending Liquibase changes..."
+    Write-Host ""
 
-if ($LASTEXITCODE -ne 0) {
-    throw "Liquibase update failed with exit code $LASTEXITCODE."
+    & $GradleWrapper `
+        :DB:update `
+        "-PdbEnvironment=$Environment"
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Liquibase update failed with exit code $LASTEXITCODE."
+    }
+
+    Write-Host ""
+    Write-Host "=============================================================="
+    Write-Host " Liquibase DATABASE UPDATE Complete"
+    Write-Host "=============================================================="
+    Write-Host "Environment : $Environment"
+    Write-Host ""
+    Write-Host "Pending Liquibase changes have been applied successfully."
+    Write-Host ""
 }
-
-Write-Host ""
-Write-Host "=============================================================="
-Write-Host " Liquibase DATABASE UPDATE Complete"
-Write-Host "=============================================================="
-Write-Host "Environment : $Environment"
-Write-Host ""
-Write-Host "Pending Liquibase changes have been applied successfully."
-Write-Host ""
+finally {
+    Clear-MemgineLiquibaseEnvironment
+}

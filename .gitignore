@@ -127,6 +127,8 @@ server/scripts/env/local/moneris-local.bat
 # Environment-first HTTPS runtime material (examples and .gitkeep files remain tracked)
 server/scripts/env/*/https/memgine.env
 server/scripts/env/*/https/frontend.env
+server/scripts/env/*/https/deployment.properties
+server/scripts/env/*/https/backend-secrets.env
 server/scripts/env/*/https/certs/*.crt
 server/scripts/env/*/https/certs/*.key
 server/scripts/env/*/https/certs/*.pem

@@ -6,6 +6,10 @@ nginx_binary="$1"
 prefix="$2"
 config_path="$3"
 
+if [[ "$nginx_binary" != /* ]]; then
+  nginx_binary="$(command -v "$nginx_binary" || true)"
+fi
+
 mkdir -p \
   "$prefix/logs" \
   "$prefix/runtime" \
@@ -15,7 +19,7 @@ mkdir -p \
   "$prefix/temp/uwsgi_temp" \
   "$prefix/temp/scgi_temp"
 
-if [[ ! -x "$nginx_binary" ]]; then
+if [[ -z "$nginx_binary" || ! -x "$nginx_binary" ]]; then
   echo "Nginx executable was not found or is not executable: $nginx_binary" >&2
   exit 1
 fi

@@ -2,7 +2,6 @@ databaseChangeLog:
   - changeSet:
       id: 043-organization-administration-foundation
       author: memgine
-      runOnChange: true
       changes:
         - sqlFile:
             path: ../sql/043-organization-administration-foundation.sql

@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 084-standardize-internal-code-columns
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/084-standardize-internal-code-columns.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

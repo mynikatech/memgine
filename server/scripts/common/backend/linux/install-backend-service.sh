@@ -6,6 +6,7 @@ app_user="$2"
 working_directory="$3"
 env_file="$4"
 jar_path="$5"
+secrets_env_file="${6:-/dev/null}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 template="$script_dir/memgine.service.template"
 target="/etc/systemd/system/${service_name}.service"
@@ -21,6 +22,7 @@ sed \
   -e "s|__APP_USER__|$app_user|g" \
   -e "s|__WORKING_DIRECTORY__|$working_directory|g" \
   -e "s|__ENV_FILE__|$env_file|g" \
+  -e "s|__SECRETS_ENV_FILE__|$secrets_env_file|g" \
   -e "s|__JAR_PATH__|$jar_path|g" \
   "$template" > "$target"
 systemctl daemon-reload

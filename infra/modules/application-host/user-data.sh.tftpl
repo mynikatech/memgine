@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+dnf -y update
+dnf -y install \
+  java-21-amazon-corretto-headless \
+  nginx \
+  awscli \
+  gettext \
+  jq \
+  tar \
+  unzip \
+  certbot \
+  python3-certbot-nginx
+
+id -u ${app_name} >/dev/null 2>&1 || useradd --system --create-home --shell /sbin/nologin ${app_name}
+
+install -d -o ${app_name} -g ${app_name} -m 0750 /opt/${app_name}
+install -d -o ${app_name} -g ${app_name} -m 0750 /opt/${app_name}/server
+install -d -o ${app_name} -g ${app_name} -m 0750 /opt/${app_name}/releases
+install -d -o ${app_name} -g ${app_name} -m 0750 /opt/${app_name}/config
+install -d -o nginx -g nginx -m 0755 /var/www/${app_name}-${environment}
+
+cat > /usr/local/bin/${app_name}-sync-scripts <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+aws s3 sync --delete "s3://${deploy_bucket}/scripts/" /opt/${app_name}/scripts/
+find /opt/${app_name}/scripts -type f -name '*.sh' -exec chmod 0750 {} +
+
+for env_file in \
+  /opt/${app_name}/scripts/env/${environment}/https/memgine.env \
+  /opt/${app_name}/scripts/env/${environment}/https/frontend.env \
+  /opt/${app_name}/scripts/env/${environment}/https/deployment.properties; do
+  example="$${env_file}.example"
+  [[ -f "$${env_file}" || ! -f "$${example}" ]] || cp "$${example}" "$${env_file}"
+done
+SCRIPT
+chmod 0750 /usr/local/bin/${app_name}-sync-scripts
+
+systemctl enable nginx
