@@ -8,7 +8,11 @@ import com.mynikatech.memgine.exception.NotFoundException
 import java.util.UUID
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.postgresql.util.PSQLException
@@ -16,13 +20,19 @@ import org.postgresql.util.PSQLException
 class OrganizationAccessService(
     private val sql: OrganizationAccessSql,
     private val pinSetter: (String, String, String, String) -> Boolean,
+    private val environment: String = "local",
     private val json: Json = Json { encodeDefaults = false; explicitNulls = false }
 ) {
-    constructor(sql: OrganizationAccessSql, posAuthenticationService: PosAuthenticationService) :
-        this(sql, posAuthenticationService::setPin)
+    constructor(sql: OrganizationAccessSql, posAuthenticationService: PosAuthenticationService, environment: String = "local") :
+        this(sql, posAuthenticationService::setPin, environment)
 
-    fun list(org: String, actor: String): JsonElement =
-        read { json.parseToJsonElement(sql.list(id(org, "Organization"), id(actor, "Actor"))) }
+    fun list(org: String, actor: String): JsonElement = read {
+        val users = json.parseToJsonElement(sql.list(id(org, "Organization"), id(actor, "Actor"))) as JsonArray
+        JsonArray(users.map { element ->
+            val user = element as JsonObject
+            JsonObject(user + ("otpDeliveryMode" to JsonPrimitive(sql.userDeliveryMode(user.getValue("userId").jsonPrimitive.content))))
+        })
+    }
 
     fun setOrgAdmin(org: String, organizationUserId: String, enabled: Boolean, actor: String) =
         write { sql.setOrgAdmin(id(org, "Organization"), id(organizationUserId, "Organization user"), enabled, id(actor, "Actor")) }
@@ -67,6 +77,17 @@ class OrganizationAccessService(
         val safeActor = id(actor, "Actor")
         val staffId = sql.staffId(safeOrg, id(organizationUserId, "Organization user"), safeActor)
         pinSetter(safeOrg, staffId, pin, safeActor)
+    }
+
+    fun setOtpDeliveryMode(org: String, organizationUserId: String, mode: String, actor: String): Boolean {
+        val normalized = mode.trim().uppercase()
+        if (normalized !in setOf("DEFAULT", "MOCK", "LIVE")) {
+            throw BadRequestException("OTP delivery mode must be DEFAULT, MOCK, or LIVE")
+        }
+        if (environment == "prod" && normalized == "MOCK") {
+            throw BadRequestException("Mock OTP delivery is not available in production")
+        }
+        return write { sql.setOtpDeliveryMode(id(org, "Organization"), id(organizationUserId, "Organization user"), normalized, id(actor, "Actor")) }
     }
 
     private fun <T> read(action: () -> T): T = write(action)

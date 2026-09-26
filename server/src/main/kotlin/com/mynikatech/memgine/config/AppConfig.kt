@@ -98,21 +98,24 @@ data class AppConfig(
                 "MEMGINE_OTP_AWS_CONFIGURATION_SET"
             ).orEmpty()
 
-            val awsOriginationIdentity = optionalValue(
-                "memgine.otp.awsOriginationIdentity",
-                "MEMGINE_OTP_AWS_ORIGINATION_IDENTITY"
+            val awsCanadaOriginationIdentity = optionalValue(
+                "memgine.otp.awsCanadaOriginationIdentity",
+                "MEMGINE_OTP_AWS_ORIGINATION_IDENTITY_CA"
             ).orEmpty()
+            val allowLiveSms = booleanValue("memgine.otp.allowLiveSms", "MEMGINE_ALLOW_LIVE_SMS", false)
             val notificationEventsTopicArn = optionalValue("memgine.otp.notificationEventsTopicArn", "MEMGINE_NOTIFICATION_EVENTS_TOPIC_ARN").orEmpty()
             val whatsappTemplateName = optionalValue("memgine.otp.whatsappTemplateName", "MEMGINE_OTP_WHATSAPP_TEMPLATE_NAME").orEmpty()
             val whatsappTemplateLanguage = optionalValue("memgine.otp.whatsappTemplateLanguage", "MEMGINE_OTP_WHATSAPP_TEMPLATE_LANGUAGE") ?: "en"
 
-            if (otpProvider == "AWS_END_USER_MESSAGING_SMS") {
+            if (environment == "prod" || allowLiveSms) {
                 require(awsRegion.isNotBlank()) {
-                    "MEMGINE_OTP_AWS_REGION is required when AWS SMS provider is enabled"
+                    "MEMGINE_OTP_AWS_REGION is required when live SMS is enabled"
                 }
+            }
 
-                require(awsOriginationIdentity.isNotBlank()) {
-                    "MEMGINE_OTP_AWS_ORIGINATION_IDENTITY is required when AWS SMS provider is enabled"
+            if (environment == "prod") {
+                require(awsCanadaOriginationIdentity.isNotBlank()) {
+                    "MEMGINE_OTP_AWS_ORIGINATION_IDENTITY_CA is required in production for Canadian live SMS"
                 }
             }
 
@@ -198,6 +201,7 @@ data class AppConfig(
                 ),
 
                 otp = OtpConfig(
+                    environment = environment,
                     provider = otpProvider,
                     pepper = otpPepper,
                     ttlSeconds = value(
@@ -218,7 +222,8 @@ data class AppConfig(
                     allowedRegions = allowedRegions,
                     awsRegion = awsRegion,
                     awsConfigurationSet = awsConfigurationSet,
-                    awsOriginationIdentity = awsOriginationIdentity,
+                    awsCanadaOriginationIdentity = awsCanadaOriginationIdentity,
+                    allowLiveSms = allowLiveSms,
                     notificationEventsTopicArn = notificationEventsTopicArn,
                     whatsappTemplateName = whatsappTemplateName,
                     whatsappTemplateLanguage = whatsappTemplateLanguage
@@ -263,6 +268,7 @@ data class AuthenticationConfig(
 )
 
 data class OtpConfig(
+    val environment: String,
     val provider: String,
     val pepper: String,
     val ttlSeconds: Long,
@@ -271,7 +277,8 @@ data class OtpConfig(
     val allowedRegions: Set<String>,
     val awsRegion: String,
     val awsConfigurationSet: String,
-    val awsOriginationIdentity: String,
+    val awsCanadaOriginationIdentity: String,
+    val allowLiveSms: Boolean,
     val notificationEventsTopicArn: String,
     val whatsappTemplateName: String,
     val whatsappTemplateLanguage: String

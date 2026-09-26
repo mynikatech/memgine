@@ -17,6 +17,13 @@ frontend_host="${frontend_host%%/*}"
 api_host="${MEMGINE_API_BASE_URL#*://}"
 api_host="${api_host%%/*}"
 
+missing_certificate_hosts=()
+for host in "$frontend_host" "$api_host"; do
+  if [[ ! -f "/etc/letsencrypt/live/$host/fullchain.pem" || ! -f "/etc/letsencrypt/live/$host/privkey.pem" ]]; then
+    missing_certificate_hosts+=("$host")
+  fi
+done
+
 if [[ -n "${MEMGINE_EXPECTED_PUBLIC_IP:-}" ]]; then
   for host in "$frontend_host" "$api_host"; do
     getent ahostsv4 "$host" | awk '{ print $1 }' | sort -u | grep -Fx "$MEMGINE_EXPECTED_PUBLIC_IP" >/dev/null || {
@@ -26,17 +33,21 @@ if [[ -n "${MEMGINE_EXPECTED_PUBLIC_IP:-}" ]]; then
   done
 fi
 
-"$scripts_root/common/deployment/linux/configure-nginx.sh" "$environment_dir" http
-certbot certonly --webroot \
-  --webroot-path "${MEMGINE_WEB_ROOT:-/var/www/memgine-${MEMGINE_ENVIRONMENT}}" \
-  --domain "$frontend_host" \
-  --domain "$api_host" \
-  --email "$MEMGINE_CERTBOT_EMAIL" \
-  --agree-tos \
-  --non-interactive
+if (( ${#missing_certificate_hosts[@]} > 0 )); then
+  "$scripts_root/common/deployment/linux/configure-nginx.sh" "$environment_dir" http
+  for host in "${missing_certificate_hosts[@]}"; do
+    certbot certonly --webroot \
+      --webroot-path "${MEMGINE_WEB_ROOT:-/var/www/memgine-${MEMGINE_ENVIRONMENT}}" \
+      --cert-name "$host" \
+      --domain "$host" \
+      --email "$MEMGINE_CERTBOT_EMAIL" \
+      --agree-tos \
+      --non-interactive
+  done
+fi
 
 "$scripts_root/common/deployment/linux/configure-nginx.sh" "$environment_dir" https
-systemctl enable --now certbot-renew.timer
+"$scripts_root/common/https/linux/certbot-renewal.sh" ensure
 install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
 cat > /etc/letsencrypt/renewal-hooks/deploy/memgine-nginx-reload <<EOF
 #!/usr/bin/env bash

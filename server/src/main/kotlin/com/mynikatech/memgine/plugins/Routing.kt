@@ -92,11 +92,11 @@ fun Application.configureRouting(
 ) {
     val customerDevIdentityEnabled = config.server.environment in setOf("local", "dev", "development")
     val phoneNormalizer = PhoneNormalizer()
-    val otpProvider: OtpProvider = when (config.otp.provider) {
-        "DEV" -> DevOtpProvider(config.server.environment)
-        "AWS", "AWS_SMS", "AWS_END_USER_MESSAGING_SMS" -> AwsEndUserMessagingSmsProvider(config.otp)
-        else -> error("Unsupported OTP provider: ${config.otp.provider}")
-    }
+    val mockOtpProvider = config.server.environment
+        .takeIf { it in setOf("local", "dev", "development") }
+        ?.let(::DevOtpProvider)
+    val liveOtpProvider = config.otp.awsRegion.takeIf(String::isNotBlank)
+        ?.let { AwsEndUserMessagingSmsProvider(config.otp) }
     val notificationService = NotificationService(database.jdbi.onDemand(NotificationSql::class.java))
     val notificationDispatchService = NotificationDispatchService(
         database.jdbi.onDemand(NotificationDispatchSql::class.java), notificationService,
@@ -104,7 +104,7 @@ fun Application.configureRouting(
             ?: UnavailableExternalNotificationPublisher()
     )
     val otpService = OtpService(database.jdbi.onDemand(OtpSql::class.java), phoneNormalizer,
-        OtpProviderRouter(config.otp, otpProvider), config.otp, notificationDispatchService)
+        OtpProviderRouter(config.otp, mockOtpProvider, liveOtpProvider), config.otp, notificationDispatchService)
     val businessOtpService = BusinessOtpService(otpService, database.jdbi.onDemand(BusinessOtpSql::class.java))
     val authenticationService = AuthenticationService(
         database.jdbi.onDemand(AuthenticationSql::class.java), otpService,
@@ -128,7 +128,8 @@ fun Application.configureRouting(
         )
     val organizationAccessService = OrganizationAccessService(
         database.jdbi.onDemand(OrganizationAccessSql::class.java),
-        posAuthenticationService
+        posAuthenticationService,
+        config.server.environment
     )
     val rbacService = RbacService(database.jdbi.onDemand(RbacSql::class.java))
     val organizationMaintenanceService =

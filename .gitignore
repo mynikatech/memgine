@@ -140,3 +140,5 @@ server/scripts/env/local/http/memgine.env
 server/scripts/env/local/http/frontend.env
 server/scripts/env/*/https/temp/*
 !server/scripts/env/*/https/temp/.gitkeep
+docs/~WRL1798.tmp
+frontend/dist-web/_expo/static/js/web/entry-1739cf9f762e87104252b00bfb66625f.js

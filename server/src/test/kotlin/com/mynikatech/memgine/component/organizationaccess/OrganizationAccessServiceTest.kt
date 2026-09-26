@@ -78,6 +78,20 @@ class OrganizationAccessServiceTest {
         }
     }
 
+    @Test
+    fun `otp delivery mode is an admin mutation`() {
+        assertTrue(service.setOtpDeliveryMode("org-a", "ou-staff", "LIVE", "admin"))
+        assertEquals(listOf("org-a", "ou-staff", "LIVE", "admin"), sql.otpModeCall)
+    }
+
+    @Test
+    fun `production rejects mock otp mode`() {
+        val production = OrganizationAccessService(sql, { _, _, _, _ -> true }, "prod")
+        assertFailsWith<BadRequestException> {
+            production.setOtpDeliveryMode("org-a", "ou-staff", "MOCK", "admin")
+        }
+    }
+
     private fun postgres(state: String, message: String) =
         PSQLException(ServerErrorMessage("SERROR\u0000C$state\u0000M$message\u0000\u0000"))
 
@@ -87,6 +101,7 @@ class OrganizationAccessServiceTest {
         var counterOrganizationUserId: String? = null
         var counterOperatorCalled = false
         var failure: PSQLException? = null
+        var otpModeCall: List<String>? = null
 
         override fun list(org: String, actor: String): String {
             failure?.let { throw it }
@@ -109,5 +124,10 @@ class OrganizationAccessServiceTest {
         }
         override fun setStores(org: String, organizationUserId: String, primaryStoreId: String?, additionalStoreIds: String, actor: String) = true
         override fun staffId(org: String, organizationUserId: String, actor: String) = "staff-existing"
+        override fun userDeliveryMode(userId: String) = "DEFAULT"
+        override fun setOtpDeliveryMode(org: String, organizationUserId: String, mode: String, actor: String): Boolean {
+            otpModeCall = listOf(org, organizationUserId, mode, actor)
+            return true
+        }
     }
 }

@@ -40,6 +40,10 @@ fun Route.organizationAccessRoutes(service: OrganizationAccessService) {
             val (org, actor) = call.accessContext()
             call.respond(ApiResponse.success(service.setPin(org, call.organizationUserId(), call.receive<SetPosPinRequest>().pin, actor), call.callId))
         }
+        put("/{organizationUserId}/otp-delivery-mode") {
+            val (org, actor) = call.accessContext()
+            call.respond(ApiResponse.success(service.setOtpDeliveryMode(org, call.organizationUserId(), call.receive<SetOtpDeliveryModeRequest>().mode, actor), call.callId))
+        }
     }
 }
 

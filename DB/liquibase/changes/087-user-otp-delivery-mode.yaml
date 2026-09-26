@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 087-user-otp-delivery-mode
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/087-user-otp-delivery-mode.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

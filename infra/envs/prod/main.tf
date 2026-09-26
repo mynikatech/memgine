@@ -24,5 +24,9 @@ module "application_host" {
   db_deletion_protection      = var.db_deletion_protection
   db_skip_final_snapshot      = var.db_skip_final_snapshot
   runtime_db_secret_arn       = aws_secretsmanager_secret.db_runtime.arn
-  additional_secret_arns      = var.additional_secret_arns
+  live_sms_enabled            = var.allow_live_sms
+  additional_secret_arns = concat(
+    [aws_secretsmanager_secret.otp_pepper.arn],
+    var.additional_secret_arns,
+  )
 }

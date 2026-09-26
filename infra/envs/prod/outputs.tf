@@ -32,3 +32,20 @@ output "app_database_runtime_secret_arn" {
   value     = aws_secretsmanager_secret.db_runtime.arn
   sensitive = true
 }
+
+output "app_otp_pepper_secret_arn" {
+  value     = aws_secretsmanager_secret.otp_pepper.arn
+  sensitive = true
+}
+
+output "otp_sms_canada_origination_identity" {
+  value = var.otp_sms_canada_origination_identity
+}
+
+output "otp_allow_live_sms" {
+  value = var.allow_live_sms
+}
+
+output "app_database_port" {
+  value = module.application_host.database_port
+}

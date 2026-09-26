@@ -23,3 +23,6 @@ data class SetStaffStoresRequest(
 
 @Serializable
 data class SetPosPinRequest(val pin: String)
+
+@Serializable
+data class SetOtpDeliveryModeRequest(val mode: String)

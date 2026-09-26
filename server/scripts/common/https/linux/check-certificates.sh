@@ -3,8 +3,7 @@ set -euo pipefail
 
 environment_dir="$1"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd "$script_dir/../../../.." && pwd)"
-scripts_root="${MEMGINE_SCRIPTS_ROOT:-$repo_root/server/scripts}"
+scripts_root="${MEMGINE_SCRIPTS_ROOT:-$(cd "$script_dir/../../.." && pwd)}"
 . "$scripts_root/common/env/linux/load-environment.sh"
 
 env_file="$environment_dir/memgine.env"

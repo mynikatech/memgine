@@ -91,3 +91,14 @@ variable "additional_secret_arns" {
   default     = []
   description = "Existing production Secrets Manager secret ARNs needed by the runtime."
 }
+
+# Set from the environment's verified AWS End User Messaging origin; never use a simulator identity.
+variable "otp_sms_canada_origination_identity" {
+  type    = string
+  default = ""
+}
+
+variable "allow_live_sms" {
+  type    = bool
+  default = true
+}

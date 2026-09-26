@@ -8,3 +8,4 @@ db_max_allocated_storage_gb = 30
 db_backup_retention_days    = 7
 db_deletion_protection      = false
 db_skip_final_snapshot      = true
+allow_live_sms              = true

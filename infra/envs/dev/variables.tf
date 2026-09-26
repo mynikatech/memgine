@@ -97,3 +97,8 @@ variable "meta_graph_api_version" {
   type    = string
   default = "v22.0"
 }
+
+variable "allow_live_sms" {
+  type    = bool
+  default = false
+}

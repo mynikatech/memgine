@@ -14,10 +14,13 @@ type ServerApiResponse<T> = {
 };
 
 function resolveApiBaseUrl(): string {
-  const configuredUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim() ||
-    (Platform.OS === "web"
+  const platformUrl =
+    Platform.OS === "web"
       ? process.env.EXPO_PUBLIC_MEMGINE_API_BASE_URL_WEB?.trim()
-      : process.env.EXPO_PUBLIC_MEMGINE_API_BASE_URL_NATIVE?.trim());
+      : process.env.EXPO_PUBLIC_MEMGINE_API_BASE_URL_NATIVE?.trim();
+
+  const configuredUrl =
+    platformUrl || process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
 
   if (!configuredUrl) {
     throw new Error(
@@ -41,7 +44,9 @@ async function currentNativeSessionToken(): Promise<string | null> {
   return nativeSessionToken;
 }
 
-export async function saveNativeSessionToken(token: string | null): Promise<void> {
+export async function saveNativeSessionToken(
+  token: string | null,
+): Promise<void> {
   if (Platform.OS === "web") return;
   nativeSessionToken = token;
   if (token) await SecureStore.setItemAsync(NATIVE_SESSION_KEY, token);

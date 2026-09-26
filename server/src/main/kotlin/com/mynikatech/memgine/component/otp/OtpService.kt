@@ -29,6 +29,8 @@ class OtpService(
     private val clock: Clock = Clock.systemUTC(),
     private val random: SecureRandom = SecureRandom()
 ) {
+    private val deliveryModeResolver = OtpDeliveryModeResolver(config.environment, config.allowLiveSms)
+
     fun request(
         phone: String,
         regionCode: String?,
@@ -44,15 +46,24 @@ class OtpService(
             OtpChannel.WHATSAPP -> if (config.whatsappTemplateName.isBlank()) OtpChannel.SMS else OtpChannel.WHATSAPP
             OtpChannel.SMS -> OtpChannel.SMS
         }
+        val selectedUserId = recipientUserId?.takeIf { it.isNotBlank() } ?: recipient?.userId?.takeIf { it.isNotBlank() }
+        val deliveryMode = try {
+            deliveryModeResolver.resolve(selectedUserId?.let(sql::userDeliveryMode))
+        } catch (_: IllegalStateException) {
+            throw ConflictException("Live SMS is disabled for this environment")
+        }
         val challengeId = UUID.randomUUID().toString()
         val code = (random.nextInt(900_000) + 100_000).toString()
         val salt = randomBytes(24)
         val expiresAt = LocalDateTime.now(clock).plusSeconds(config.ttlSeconds)
         val otpHash = hash(challengeId, canonical.e164, purpose, code, salt)
 
-        val isDevProvider = config.provider.equals("DEV", ignoreCase = true)
-        val actualChannel = if (isDevProvider) OtpChannel.SMS else resolvedChannel
-        val providerCode = if (isDevProvider) "DEV" else "NOTIFICATION_PIPELINE"
+        val actualChannel = if (deliveryMode == OtpDeliveryMode.MOCK) OtpChannel.SMS else resolvedChannel
+        val providerCode = when {
+            deliveryMode == OtpDeliveryMode.MOCK -> "DEV"
+            actualChannel == OtpChannel.SMS -> "AWS_END_USER_MESSAGING_SMS"
+            else -> "NOTIFICATION_PIPELINE"
+        }
 
         val resendAt = try {
             sql.create(
@@ -78,8 +89,8 @@ class OtpService(
         }
 
         val delivered = try {
-            if (isDevProvider) {
-                val provider = providerRouter.resolve(canonical.regionCode, OtpChannel.SMS)
+            if (deliveryMode == OtpDeliveryMode.MOCK || actualChannel == OtpChannel.SMS) {
+                val provider = providerRouter.resolve(deliveryMode, canonical.regionCode, OtpChannel.SMS)
                 provider.send(
                     OtpDelivery(
                         destination = canonical.e164,
@@ -96,13 +107,16 @@ class OtpService(
                     recipient,
                     canonical.e164,
                     purpose,
-                    resolvedChannel,
+                    actualChannel,
                     code,
                     challengeId
                 )
             }
         } catch (error: Exception) {
             sql.markDeliveryFailed(challengeId)
+            if (error is IllegalStateException) {
+                throw ConflictException(error.message ?: "Live SMS is not configured for this destination")
+            }
             throw ConflictException("Verification code could not be delivered. Please try again later")
         }
         return OtpRequestResult(

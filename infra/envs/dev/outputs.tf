@@ -40,6 +40,15 @@ output "sms_simulator_origination_arn" {
   value = aws_pinpointsmsvoicev2_phone_number.sms_simulator.arn
 }
 
+output "otp_sms_canada_origination_identity" {
+  # SendTextMessage currently accepts the E.164 phone number, as used by the existing sender.
+  value = aws_pinpointsmsvoicev2_phone_number.otp_canada.phone_number
+}
+
+output "otp_allow_live_sms" {
+  value = var.allow_live_sms
+}
+
 output "app_ec2_instance_id" {
   value = module.application_host.ec2_instance_id
 }
@@ -73,4 +82,13 @@ output "app_database_liquibase_secret_arn" {
 output "app_database_runtime_secret_arn" {
   value     = aws_secretsmanager_secret.db_runtime.arn
   sensitive = true
+}
+
+output "app_otp_pepper_secret_arn" {
+  value     = aws_secretsmanager_secret.otp_pepper.arn
+  sensitive = true
+}
+
+output "app_database_port" {
+  value = module.application_host.database_port
 }

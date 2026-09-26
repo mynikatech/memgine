@@ -46,4 +46,7 @@ interface OtpSql {
     @SqlQuery("SELECT * FROM otp_delivery_recipient(:destination)")
     @RegisterBeanMapper(OtpDeliveryRecipient::class)
     fun recipient(@Bind("destination") destination: String): OtpDeliveryRecipient?
+
+    @SqlQuery("SELECT otp_user_delivery_mode(:userId)")
+    fun userDeliveryMode(@Bind("userId") userId: String): String
 }

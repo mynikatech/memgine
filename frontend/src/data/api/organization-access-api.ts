@@ -29,6 +29,7 @@ export type OrganizationAccessUser = {
   primaryStore: OrganizationAccessStore | null;
   additionalStoreAssignments: OrganizationAccessStoreAssignment[];
   posPinConfigured: boolean;
+  otpDeliveryMode: "DEFAULT" | "MOCK" | "LIVE";
 };
 
 export type SetCounterOperatorRequest = {
@@ -89,5 +90,13 @@ export class OrganizationAccessApi {
     pin: string,
   ): Promise<ApiResult<boolean>> {
     return httpClient.put(`${this.base(organizationId)}/${encodeURIComponent(organizationUserId)}/pos-pin`, { pin });
+  }
+
+  async setOtpDeliveryMode(
+    organizationId: ID,
+    organizationUserId: string,
+    mode: "DEFAULT" | "MOCK" | "LIVE",
+  ): Promise<ApiResult<boolean>> {
+    return httpClient.put(`${this.base(organizationId)}/${encodeURIComponent(organizationUserId)}/otp-delivery-mode`, { mode });
   }
 }

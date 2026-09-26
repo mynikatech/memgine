@@ -73,6 +73,11 @@ variable "additional_secret_arns" {
   default = []
 }
 
+variable "live_sms_enabled" {
+  type    = bool
+  default = false
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

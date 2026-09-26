@@ -28,5 +28,11 @@ interface OrganizationAccessSql {
     @SqlQuery("SELECT organization_access_staff_id(:org, :organizationUserId, :actor)")
     fun staffId(@Bind("org") org: String, @Bind("organizationUserId") organizationUserId: String,
                 @Bind("actor") actor: String): String
-}
 
+    @SqlQuery("SELECT otp_user_delivery_mode(:userId)")
+    fun userDeliveryMode(@Bind("userId") userId: String): String
+
+    @SqlQuery("SELECT organization_access_set_otp_delivery_mode(:org, :organizationUserId, :mode, :actor)")
+    fun setOtpDeliveryMode(@Bind("org") org: String, @Bind("organizationUserId") organizationUserId: String,
+                           @Bind("mode") mode: String, @Bind("actor") actor: String): Boolean
+}

@@ -355,6 +355,17 @@ data "aws_iam_policy_document" "ec2" {
       "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.app_name}/${var.environment}/*",
     ]
   }
+
+  dynamic "statement" {
+    for_each = var.live_sms_enabled ? [true] : []
+
+    content {
+      sid     = "SendLiveOtpSms"
+      actions = ["sms-voice:SendTextMessage"]
+      # AWS End User Messaging SMS does not support scoping this API to a supplied phone identity.
+      resources = ["*"]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "ec2" {

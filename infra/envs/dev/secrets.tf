@@ -21,3 +21,9 @@ resource "aws_secretsmanager_secret" "db_runtime" {
   description = "Memgine DEV application runtime database credentials"
   tags        = local.lambda_tags
 }
+
+resource "aws_secretsmanager_secret" "otp_pepper" {
+  name        = "memgine/dev/otp-pepper"
+  description = "Memgine DEV OTP pepper"
+  tags        = local.lambda_tags
+}

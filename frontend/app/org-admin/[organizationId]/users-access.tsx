@@ -38,6 +38,16 @@ function storesList(user: OrganizationAccessUser): string {
     : "—";
 }
 
+const otpDeliveryModeLabels: Record<OrganizationAccessUser["otpDeliveryMode"], string> = {
+  DEFAULT: "Default (environment policy)",
+  MOCK: "Mock OTP",
+  LIVE: "Live SMS",
+};
+
+const otpDeliveryModeOptions: OrganizationAccessUser["otpDeliveryMode"][] = process.env.EXPO_PUBLIC_APP_ENV === "prod"
+  ? ["DEFAULT", "LIVE"]
+  : ["DEFAULT", "MOCK", "LIVE"];
+
 export default function OrganizationUsersAccess() {
   const { organization } = useBusiness();
   return <OrganizationUsersAccessScreen organizationId={organization.id} />;
@@ -195,6 +205,11 @@ function OrganizationUsersAccessScreen({ organizationId }: { organizationId: str
     );
   }
 
+  function setOtpDeliveryMode(mode: OrganizationAccessUser["otpDeliveryMode"]): void {
+    if (!selected || mode === selected.otpDeliveryMode) return;
+    void mutate(() => apis.organizationAccess.setOtpDeliveryMode(organizationId, selected.organizationUserId, mode));
+  }
+
   function saveCounterOperator(enabled: boolean): void {
     if (!selected) return;
     if (enabled && !primaryStoreId && !selected.primaryStore) {
@@ -308,7 +323,7 @@ function OrganizationUsersAccessScreen({ organizationId }: { organizationId: str
       {selected ? <View style={styles.modalContent}>
         {mutationError ? <View style={styles.errorBox}><Text variant="bodySmall" color="danger">{mutationError}</Text></View> : null}
         {!editing ? <>
-          <View style={styles.summary}><Text variant="bodySmall" color="textMuted">Email</Text><Text variant="body" color="text">{selected.email ?? "—"}</Text><Text variant="bodySmall" color="textMuted">Phone</Text><Text variant="body" color="text">{selected.phone ?? "—"}</Text><Text variant="bodySmall" color="textMuted">Membership</Text><Text variant="body" color="text">{selected.membershipStatus}</Text><Text variant="bodySmall" color="textMuted">Roles</Text><Text variant="body" color="text">{displayList(selected.roles)}</Text><Text variant="bodySmall" color="textMuted">Capabilities</Text><Text variant="body" color="text">{displayList(selected.capabilities)}</Text></View>
+          <View style={styles.summary}><Text variant="bodySmall" color="textMuted">Email</Text><Text variant="body" color="text">{selected.email ?? "—"}</Text><Text variant="bodySmall" color="textMuted">Phone</Text><Text variant="body" color="text">{selected.phone ?? "—"}</Text><Text variant="bodySmall" color="textMuted">Membership</Text><Text variant="body" color="text">{selected.membershipStatus}</Text><Text variant="bodySmall" color="textMuted">Roles</Text><Text variant="body" color="text">{displayList(selected.roles)}</Text><Text variant="bodySmall" color="textMuted">Capabilities</Text><Text variant="body" color="text">{displayList(selected.capabilities)}</Text><Text variant="bodySmall" color="textMuted">OTP delivery</Text><Text variant="body" color="text">{otpDeliveryModeLabels[selected.otpDeliveryMode]}</Text></View>
           <View style={styles.section}><Text variant="h2" color="text">Organization Administrator</Text><Text variant="body" color="text">{isOrgAdmin(selected) ? "Yes" : "No"}</Text></View>
           <View style={styles.section}><Text variant="h2" color="text">Counter Operator</Text><Text variant="body" color="text">{selected.counterOperatorEnabled ? "Enabled" : "Not enabled"}</Text><Text variant="bodySmall" color="textMuted">Staff Code</Text><Text variant="body" color="text">{selected.staffCode ?? "—"}</Text><Text variant="bodySmall" color="textMuted">Designation</Text><Text variant="body" color="text">{selected.designation ?? "—"}</Text><Text variant="bodySmall" color="textMuted">Primary Store</Text><Text variant="body" color="text">{selected.primaryStore?.storeName ?? "—"}</Text><Text variant="bodySmall" color="textMuted">Additional Stores</Text><Text variant="body" color="text">{storesList(selected)}</Text></View>
           <View style={styles.section}><Text variant="h2" color="text">POS PIN</Text><Text variant="body" color="text">{selected.posPinConfigured ? "••••" : "Not configured"}</Text></View>
@@ -317,6 +332,7 @@ function OrganizationUsersAccessScreen({ organizationId }: { organizationId: str
           <View style={styles.summary}><Text variant="bodySmall" color="textMuted">Email</Text><Text variant="body" color="text">{selected.email ?? "—"}</Text><Text variant="bodySmall" color="textMuted">Phone</Text><Text variant="body" color="text">{selected.phone ?? "—"}</Text><Text variant="bodySmall" color="textMuted">Roles</Text><Text variant="body" color="text">{displayList(selected.roles)}</Text><Text variant="bodySmall" color="textMuted">Capabilities</Text><Text variant="body" color="text">{displayList(selected.capabilities)}</Text></View>
           <View style={styles.section}><Text variant="h2" color="text">Organization membership</Text><Text variant="bodySmall" color="textMuted">Status: {selected.membershipStatus}</Text><Button label={isActiveMembership(selected) ? "Inactivate membership" : "Activate membership"} variant={isActiveMembership(selected) ? "outline" : "primary"} disabled={saving} onPress={() => setMembership(!isActiveMembership(selected))} /></View>
           <View style={styles.section}><Text variant="h2" color="text">Organization Administrator</Text><Text variant="bodySmall" color="textMuted">{isOrgAdmin(selected) ? "This user has organization administration access." : "This user does not have organization administration access."}</Text><Button label={isOrgAdmin(selected) ? "Remove Org Admin" : "Grant Org Admin"} variant={isOrgAdmin(selected) ? "outline" : "primary"} disabled={saving} onPress={() => setAdmin(!isOrgAdmin(selected))} /></View>
+          <View style={styles.section}><Text variant="h2" color="text">OTP Delivery</Text><Text variant="bodySmall" color="textMuted">Default follows the environment policy. Live SMS requires that environment to permit it.</Text><ReferenceSelect label="Delivery mode" value={selected.otpDeliveryMode} onChange={(value) => setOtpDeliveryMode(value as OrganizationAccessUser["otpDeliveryMode"])} items={otpDeliveryModeOptions} getItemId={(mode) => mode} renderItemLabel={(mode) => otpDeliveryModeLabels[mode]} placeholder="Select OTP delivery mode" disabled={saving} /></View>
           <View style={styles.section}><Text variant="h2" color="text">Counter Operator</Text><Text variant="bodySmall" color="textMuted">{selected.counterOperatorEnabled ? "Enabled. This operational profile is independent of Org Admin." : "Enable an operational profile for Counter access."}</Text><Text variant="bodySmall" color="textMuted">Staff Code</Text><Text variant="body" color="text">{selected.staffCode ?? "Generated when Counter Operator is enabled"}</Text><Input label="Designation" value={designation} onChangeText={setDesignation} placeholder="e.g. Barista" maxLength={100} editable={!saving} /><ReferenceSelect label="Primary store" value={primaryStoreId} onChange={changePrimaryStore} items={stores} getItemId={(store) => store.id} renderItemLabel={(store) => store.name} placeholder="Select primary store" disabled={saving} /><View style={styles.additionalStores}><Text variant="label" color="textSecondary">Additional store assignments</Text><Text variant="caption" color="textMuted">Primary store cannot also be an additional assignment.</Text>{stores.filter((store) => store.id !== primaryStoreId).map((store) => <Checkbox key={store.id} value={additionalStoreIds.includes(store.id)} onValueChange={() => toggleAdditionalStore(store.id)} label={store.name} disabled={saving} />)}</View><View style={styles.actions}>{selected.counterOperatorEnabled ? <><Button label="Save Counter Settings" disabled={saving} onPress={saveCounterSettings} /><Button label="Disable Counter Operator" variant="outline" disabled={saving} onPress={() => Alert.alert("Disable Counter Operator?", "This disables Counter access but retains Organization Admin access.", [{ text: "Cancel", style: "cancel" }, { text: "Disable", style: "destructive", onPress: () => saveCounterOperator(false) }])} /></> : <Button label="Enable Counter Operator" disabled={saving} onPress={saveCounterSettings} />}</View></View>
           {selected.counterOperatorEnabled ? <View style={styles.section}><Text variant="h2" color="text">POS PIN</Text><Text variant="bodySmall" color="textMuted">{selected.posPinConfigured ? "A POS PIN is configured." : "No POS PIN is configured."}</Text><Button label={selected.posPinConfigured ? "Reset PIN" : "Set PIN"} disabled={saving} onPress={() => { setPin(""); setConfirmPin(""); setPinEntryVisible(true); }} /></View> : null}
           <Button label="Cancel" variant="secondary" disabled={saving} onPress={cancelEdit} />

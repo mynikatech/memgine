@@ -6,6 +6,25 @@ import software.amazon.awssdk.services.pinpointsmsvoicev2.PinpointSmsVoiceV2Clie
 import software.amazon.awssdk.services.pinpointsmsvoicev2.model.MessageType
 import software.amazon.awssdk.services.pinpointsmsvoicev2.model.SendTextMessageRequest
 
+enum class OtpLiveSmsRoute { CANADA_DEDICATED, INDIA_ILDO }
+
+data class OtpLiveSmsRouteSelection(
+    val route: OtpLiveSmsRoute,
+    val originationIdentity: String?
+)
+
+class OtpSmsRouteResolver(private val canadaOriginationIdentity: String) {
+    fun resolve(destination: String): OtpLiveSmsRouteSelection = when {
+        destination.startsWith("+1") -> {
+            val identity = canadaOriginationIdentity.takeIf(String::isNotBlank)
+                ?: throw IllegalStateException("Canadian live SMS requires MEMGINE_OTP_AWS_ORIGINATION_IDENTITY_CA")
+            OtpLiveSmsRouteSelection(OtpLiveSmsRoute.CANADA_DEDICATED, identity)
+        }
+        destination.startsWith("+91") -> OtpLiveSmsRouteSelection(OtpLiveSmsRoute.INDIA_ILDO, null)
+        else -> throw IllegalStateException("Live SMS is not configured for this destination")
+    }
+}
+
 class DevOtpProvider(private val environment: String) : OtpProvider {
     init {
         require(environment in setOf("local", "dev", "development")) {
@@ -20,6 +39,7 @@ class DevOtpProvider(private val environment: String) : OtpProvider {
 
 class AwsEndUserMessagingSmsProvider(
     private val config: OtpConfig,
+    private val routeResolver: OtpSmsRouteResolver = OtpSmsRouteResolver(config.awsCanadaOriginationIdentity),
     private val client: PinpointSmsVoiceV2Client = PinpointSmsVoiceV2Client.builder()
         .region(Region.of(config.awsRegion)).build()
 ) : OtpProvider {
@@ -28,12 +48,13 @@ class AwsEndUserMessagingSmsProvider(
         channel == OtpChannel.SMS && regionCode in config.allowedRegions
 
     override fun send(delivery: OtpDelivery): OtpDeliveryResult {
+        val route = routeResolver.resolve(delivery.destination)
         val builder = SendTextMessageRequest.builder()
             .destinationPhoneNumber(delivery.destination)
             .messageBody("Your Memgine verification code is ${delivery.code}. It expires shortly.")
             .messageType(MessageType.TRANSACTIONAL)
         config.awsConfigurationSet.takeIf(String::isNotBlank)?.let(builder::configurationSetName)
-        config.awsOriginationIdentity.takeIf(String::isNotBlank)?.let(builder::originationIdentity)
+        route.originationIdentity?.let(builder::originationIdentity)
         client.sendTextMessage(builder.build())
         return OtpDeliveryResult(providerCode)
     }
@@ -41,10 +62,16 @@ class AwsEndUserMessagingSmsProvider(
 
 class OtpProviderRouter(
     private val config: OtpConfig,
-    private val provider: OtpProvider
+    private val mockProvider: OtpProvider?,
+    private val liveProvider: OtpProvider?
 ) {
-    fun resolve(regionCode: String, channel: OtpChannel): OtpProvider {
+    fun resolve(mode: OtpDeliveryMode, regionCode: String, channel: OtpChannel): OtpProvider {
         require(regionCode in config.allowedRegions) { "OTP delivery is not configured for this region" }
+        val provider = when (mode) {
+            OtpDeliveryMode.MOCK -> mockProvider
+            OtpDeliveryMode.LIVE -> liveProvider
+            OtpDeliveryMode.DEFAULT -> error("OTP delivery mode must be resolved before provider selection")
+        } ?: throw IllegalStateException("OTP delivery provider is not configured")
         require(provider.supports(regionCode, channel)) { "OTP delivery channel is unavailable" }
         return provider
     }
