@@ -1,9 +1,12 @@
 package com.mynikatech.memgine.component.asset
 
-import java.nio.file.Path
-
 data class StoredAsset(
     val path: String
+)
+
+data class StoredAssetContent(
+    val bytes: ByteArray,
+    val contentType: String?
 )
 
 interface AssetStorageService {
@@ -11,12 +14,13 @@ interface AssetStorageService {
     fun store(
         relativeDirectory: String,
         fileName: String,
+        contentType: String?,
         bytes: ByteArray
     ): StoredAsset
 
-    fun resolve(
+    fun load(
         publicPath: String
-    ): Path?
+    ): StoredAssetContent?
 
     fun delete(
         publicPath: String

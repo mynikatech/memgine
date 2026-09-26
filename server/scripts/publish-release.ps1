@@ -96,6 +96,8 @@ try {
     Copy-Item $FrontendOutputDirectory (Join-Path $staging "frontend") -Recurse
 
     $bucket = Terraform-Output "app_deploy_bucket"
+    $appDataBucket = Terraform-Output "app_data_bucket"
+    $awsRegion = Terraform-Output "app_aws_region"
     $runtimeSecretArn = Terraform-Output "app_database_runtime_secret_arn"
     $otpPepperSecretArn = Terraform-Output "app_otp_pepper_secret_arn"
 
@@ -123,6 +125,9 @@ try {
         "MEMGINE_DB_SECRET_ARN=$runtimeSecretArn",
         "MEMGINE_DB_HOST=$databaseHost",
         "MEMGINE_DB_PORT=$databasePort",
+        "MEMGINE_ASSET_STORAGE_PROVIDER=S3",
+        "MEMGINE_APP_DATA_BUCKET=$appDataBucket",
+        "MEMGINE_AWS_REGION=$awsRegion",
         "MEMGINE_OTP_PEPPER_SECRET_ARN=$otpPepperSecretArn",
         "MEMGINE_EXPECTED_PUBLIC_IP=$ip"
     ) -join "`n"

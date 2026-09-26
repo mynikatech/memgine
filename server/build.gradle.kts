@@ -57,6 +57,7 @@ dependencies {
     implementation(libs.aws.sns)
     implementation(libs.aws.sqs)
     implementation(libs.aws.ses)
+    implementation(libs.aws.s3)
     implementation(libs.aws.sso)
     implementation(libs.aws.ssooidc)
     implementation(libs.aws.pinpoint.sms.voice.v2)

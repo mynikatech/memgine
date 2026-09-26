@@ -5,7 +5,6 @@ import { router } from "expo-router";
 import {
   services,
   type Benefit,
-  type Customer,
   type Redemption,
   type Status,
   type Store,
@@ -34,7 +33,7 @@ import { Text } from "@/src/ui";
  * ------------------------------------------------------------------ */
 
 type DashboardData = {
-  customers: Customer[];
+  customersCount: number;
   productsCount: number;
   benefits: Benefit[];
   stores: Store[];
@@ -64,7 +63,7 @@ export default function OrgAdminDashboard() {
       try {
         const [customers, products, benefits, stores, staff, subscriptions] =
           await Promise.all([
-            services.customer.findCustomers({}),
+            services.orgAdminCustomers.list(organization.id),
 
             services.membershipProduct.listProducts(organization.id),
 
@@ -135,7 +134,7 @@ export default function OrgAdminDashboard() {
         }
 
         setData({
-          customers,
+          customersCount: customers.length,
 
           productsCount: products.filter((product) => !product.isDeleted)
             .length,
@@ -392,7 +391,7 @@ export default function OrgAdminDashboard() {
       <View style={styles.cardsGrid}>
         <MetricCard
           label="Customers"
-          value={data.customers.length}
+          value={data.customersCount}
           href={APP_ROUTES.orgAdmin.customers(organization.id)}
         />
 

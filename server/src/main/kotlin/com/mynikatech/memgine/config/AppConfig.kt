@@ -8,7 +8,8 @@ data class AppConfig(
     val database: DatabaseConfig,
     val authentication: AuthenticationConfig,
     val otp: OtpConfig,
-    val payment: PaymentConfig
+    val payment: PaymentConfig,
+    val assets: AssetStorageConfig
 ) {
     companion object {
         fun load(config: ApplicationConfig? = null): AppConfig {
@@ -54,6 +55,35 @@ data class AppConfig(
                 "memgine.server.enforceHttps",
                 "MEMGINE_ENFORCE_HTTPS"
             )
+
+            val assetStorageProvider = value(
+                "memgine.assets.storageProvider",
+                "MEMGINE_ASSET_STORAGE_PROVIDER",
+                "LOCAL"
+            ).uppercase()
+
+            require(assetStorageProvider in setOf("LOCAL", "S3")) {
+                "MEMGINE_ASSET_STORAGE_PROVIDER must be LOCAL or S3"
+            }
+
+            val appDataBucket = optionalValue(
+                "memgine.assets.appDataBucket",
+                "MEMGINE_APP_DATA_BUCKET"
+            ).orEmpty()
+
+            val assetAwsRegion = optionalValue(
+                "memgine.assets.awsRegion",
+                "MEMGINE_AWS_REGION"
+            ).orEmpty()
+
+            if (assetStorageProvider == "S3") {
+                require(appDataBucket.isNotBlank()) {
+                    "MEMGINE_APP_DATA_BUCKET is required for S3 asset storage"
+                }
+                require(assetAwsRegion.isNotBlank()) {
+                    "MEMGINE_AWS_REGION is required for S3 asset storage"
+                }
+            }
 
             val otpProvider = value(
                 "memgine.otp.provider",
@@ -241,6 +271,12 @@ data class AppConfig(
                     monerisApiVersion = value("memgine.payment.monerisApiVersion", "MONERIS_API_VERSION", "2026-08-14").trim(),
                     monerisHostedTokenizationProfileId = optionalValue("memgine.payment.monerisHostedTokenizationProfileId", "MONERIS_HOSTED_TOKENIZATION_PROFILE_ID").orEmpty(),
                     monerisHostedTokenizationUrl = value("memgine.payment.monerisHostedTokenizationUrl", "MONERIS_HOSTED_TOKENIZATION_URL", "https://esqa.moneris.com/HPPtoken/index.php").trim()
+                ),
+
+                assets = AssetStorageConfig(
+                    provider = assetStorageProvider,
+                    appDataBucket = appDataBucket,
+                    awsRegion = assetAwsRegion
                 )
             )
         }
@@ -296,6 +332,12 @@ data class PaymentConfig(
     val monerisApiVersion: String,
     val monerisHostedTokenizationProfileId: String,
     val monerisHostedTokenizationUrl: String
+)
+
+data class AssetStorageConfig(
+    val provider: String,
+    val appDataBucket: String,
+    val awsRegion: String
 )
 
 data class DatabaseConfig(

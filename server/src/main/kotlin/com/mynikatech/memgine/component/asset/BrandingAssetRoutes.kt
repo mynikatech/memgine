@@ -20,7 +20,6 @@ import io.ktor.server.routing.route
 import io.ktor.utils.io.readRemaining
 import kotlinx.io.readByteArray
 import kotlinx.serialization.Serializable
-import java.nio.file.Files
 
 @Serializable
 data class BrandingAssetUploadResponseDto(
@@ -144,14 +143,10 @@ fun Route.brandingAssetRoutes(
                 "/api/v1/assets/" +
                     pathParts.joinToString("/")
 
-            val file =
-                service.resolve(publicPath)
+            val asset =
+                service.load(publicPath)
 
-            if (
-                file == null ||
-                !Files.exists(file) ||
-                !Files.isRegularFile(file)
-            ) {
+            if (asset == null) {
                 call.respond(
                     HttpStatusCode.NotFound
                 )
@@ -159,11 +154,8 @@ fun Route.brandingAssetRoutes(
                 return@get
             }
 
-            val detectedContentType =
-                Files.probeContentType(file)
-
             val responseContentType =
-                detectedContentType
+                asset.contentType
                     ?.let {
                         runCatching {
                             ContentType.parse(it)
@@ -178,7 +170,7 @@ fun Route.brandingAssetRoutes(
 
             call.respondBytes(
                 bytes =
-                    Files.readAllBytes(file),
+                    asset.bytes,
 
                 contentType =
                     responseContentType,

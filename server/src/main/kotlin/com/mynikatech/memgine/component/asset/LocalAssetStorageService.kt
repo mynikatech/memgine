@@ -19,6 +19,7 @@ class LocalAssetStorageService(
     override fun store(
         relativeDirectory: String,
         fileName: String,
+        contentType: String?,
         bytes: ByteArray
     ): StoredAsset {
 
@@ -104,7 +105,32 @@ class LocalAssetStorageService(
         )
     }
 
-    override fun resolve(
+    override fun load(
+        publicPath: String
+    ): StoredAssetContent? {
+
+        val resolved = resolvePath(publicPath) ?: return null
+
+        if (!Files.isRegularFile(resolved)) {
+            return null
+        }
+
+        return StoredAssetContent(
+            bytes = Files.readAllBytes(resolved),
+            contentType = Files.probeContentType(resolved)
+        )
+    }
+
+    override fun delete(
+        publicPath: String
+    ): Boolean {
+
+        val resolved = resolvePath(publicPath) ?: return false
+
+        return Files.deleteIfExists(resolved)
+    }
+
+    private fun resolvePath(
         publicPath: String
     ): Path? {
 
@@ -143,21 +169,6 @@ class LocalAssetStorageService(
         }
 
         return resolved
-    }
-
-    override fun delete(
-        publicPath: String
-    ): Boolean {
-
-        val resolved =
-            resolve(
-                publicPath
-            )
-                ?: return false
-
-        return Files.deleteIfExists(
-            resolved
-        )
     }
 
     private fun sanitizeDirectory(

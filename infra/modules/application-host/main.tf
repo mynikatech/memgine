@@ -335,6 +335,7 @@ data "aws_iam_policy_document" "ec2" {
     actions = [
       "s3:GetObject",
       "s3:PutObject",
+      "s3:DeleteObject",
     ]
     resources = [for prefix in local.application_prefixes : "${aws_s3_bucket.app_data.arn}/${prefix}*"]
   }

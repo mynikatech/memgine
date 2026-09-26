@@ -65,6 +65,10 @@ output "app_data_bucket" {
   value = module.application_host.app_data_bucket_name
 }
 
+output "app_aws_region" {
+  value = var.aws_region
+}
+
 output "app_database_endpoint" {
   value = module.application_host.database_endpoint
 }

@@ -1,7 +1,9 @@
 package com.mynikatech.memgine
 
 import com.mynikatech.memgine.component.asset.BrandingAssetService
+import com.mynikatech.memgine.component.asset.AssetStorageService
 import com.mynikatech.memgine.component.asset.LocalAssetStorageService
+import com.mynikatech.memgine.component.asset.S3AssetStorageService
 import com.mynikatech.memgine.component.entitystatus.EntityStatusCache
 import com.mynikatech.memgine.component.entitystatus.EntityStatusService
 import com.mynikatech.memgine.component.entitystatus.EntityStatusSql
@@ -73,14 +75,17 @@ fun Application.module() {
     referenceDataService.refresh()
     entityStatusService.refresh()
 
-    val assetStorageService =
-        LocalAssetStorageService(
-            rootDirectory =
-                Paths.get(
-                    "server-data",
-                    "uploads"
-                )
-        )
+    val assetStorageService: AssetStorageService =
+        when (config.assets.provider) {
+            "LOCAL" -> LocalAssetStorageService(
+                rootDirectory = Paths.get("server-data", "uploads")
+            )
+            "S3" -> S3AssetStorageService(
+                bucket = config.assets.appDataBucket,
+                region = config.assets.awsRegion
+            )
+            else -> error("Unsupported asset storage provider")
+        }
 
     val brandingAssetService =
         BrandingAssetService(

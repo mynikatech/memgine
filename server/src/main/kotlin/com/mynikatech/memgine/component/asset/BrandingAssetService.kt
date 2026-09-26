@@ -1,7 +1,6 @@
 package com.mynikatech.memgine.component.asset
 
 import com.mynikatech.memgine.exception.BadRequestException
-import java.nio.file.Path
 
 class BrandingAssetService(
     private val storage:
@@ -61,15 +60,17 @@ class BrandingAssetService(
                     assetType,
             fileName =
                 fileName,
+            contentType =
+                contentType,
             bytes =
                 bytes
         )
     }
 
-    fun resolve(
+    fun load(
         publicPath: String
-    ): Path? =
-        storage.resolve(
+    ): StoredAssetContent? =
+        storage.load(
             publicPath
         )
 

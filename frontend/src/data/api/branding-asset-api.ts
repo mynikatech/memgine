@@ -64,6 +64,7 @@ export class BrandingAssetApi {
         )}`,
         {
           method: "POST",
+          credentials: "include",
           body: formData,
         },
       );
