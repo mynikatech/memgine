@@ -181,6 +181,7 @@ sync_release_frontend() {
 
   aws s3 sync \
     --delete \
+    --exact-timestamps \
     "s3://${MEMGINE_DEPLOY_BUCKET}/releases/${target_release_id}/frontend/" \
     "$web_root/"
 }
