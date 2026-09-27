@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BusinessProvider } from "@/src/providers";
 
 import { APP_ROUTES, COUNTER_ROUTES } from "@/src/constants/navigation";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
@@ -28,21 +29,42 @@ export default function CounterLayout() {
 
   const { loading, session, hasCapability } = useAuth();
   if (loading) return null;
-  if (!session) return <Redirect href={Platform.OS === "web" ? APP_ROUTES.counterUnlock : APP_ROUTES.mobileEntry} />;
+  if (!session)
+    return (
+      <Redirect
+        href={
+          Platform.OS === "web"
+            ? APP_ROUTES.counterUnlock
+            : APP_ROUTES.mobileEntry
+        }
+      />
+    );
 
   const pos = session.posContext;
-  const normalOrganizationId = organizationId ??
-    session.access.find((context) => context.capabilities.includes("COUNTER_ACCESS"))?.organizationId;
+  const normalOrganizationId =
+    organizationId ??
+    session.access.find((context) =>
+      context.capabilities.includes("COUNTER_ACCESS"),
+    )?.organizationId;
   const activeOrganizationId = pos?.organizationId ?? normalOrganizationId;
 
   if (!activeOrganizationId) return <Redirect href={APP_ROUTES.workspaces} />;
   if (pos && organizationId && pos.organizationId !== organizationId) {
-    return <Redirect href={APP_ROUTES.counter.organization(pos.organizationId) as never} />;
+    return (
+      <Redirect
+        href={APP_ROUTES.counter.organization(pos.organizationId) as never}
+      />
+    );
   }
   if (!hasCapability("COUNTER_ACCESS", activeOrganizationId)) {
     return <Redirect href="/access-denied" />;
   }
-  return <CounterShell />;
+
+  return (
+    <BusinessProvider organizationId={activeOrganizationId}>
+      <CounterShell />
+    </BusinessProvider>
+  );
 }
 
 function CounterShell() {
@@ -145,7 +167,11 @@ function CounterShell() {
             <Pressable
               onPress={() =>
                 void logout().then(() =>
-                  router.replace((Platform.OS === "web" && session?.posContext ? APP_ROUTES.counterUnlock : unauthenticatedLanding()) as never),
+                  router.replace(
+                    (Platform.OS === "web" && session?.posContext
+                      ? APP_ROUTES.counterUnlock
+                      : unauthenticatedLanding()) as never,
+                  ),
                 )
               }
               style={styles.accountAction}
@@ -155,7 +181,9 @@ function CounterShell() {
                 size={18}
                 color={COLORS.textMuted}
               />
-              <Text style={styles.accountActionText}>{session?.posContext ? "Lock counter" : "Sign out"}</Text>
+              <Text style={styles.accountActionText}>
+                {session?.posContext ? "Lock counter" : "Sign out"}
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -180,7 +208,11 @@ function CounterShell() {
               <Pressable
                 onPress={() =>
                   void logout().then(() =>
-                  router.replace((Platform.OS === "web" && session?.posContext ? APP_ROUTES.counterUnlock : unauthenticatedLanding()) as never),
+                    router.replace(
+                      (Platform.OS === "web" && session?.posContext
+                        ? APP_ROUTES.counterUnlock
+                        : unauthenticatedLanding()) as never,
+                    ),
                   )
                 }
                 style={styles.mobileAccountAction}
@@ -190,7 +222,9 @@ function CounterShell() {
                   size={18}
                   color={COLORS.textMuted}
                 />
-                <Text style={styles.accountActionText}>{session?.posContext ? "Lock counter" : "Sign out"}</Text>
+                <Text style={styles.accountActionText}>
+                  {session?.posContext ? "Lock counter" : "Sign out"}
+                </Text>
               </Pressable>
             </View>
           </View>

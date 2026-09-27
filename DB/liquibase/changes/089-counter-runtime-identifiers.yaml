@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 089-counter-runtime-identifiers
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/089-counter-runtime-identifiers.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

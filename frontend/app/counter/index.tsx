@@ -1347,33 +1347,34 @@ export default function StaffCounter() {
 
   const fixedPosContextReady = Boolean(
     session?.posContext &&
-      loadedOrgId === orgId &&
-      counterStaff &&
-      store &&
-      staffId &&
-      storeId,
+    loadedOrgId === orgId &&
+    counterStaff &&
+    store &&
+    staffId &&
+    storeId,
   );
   const normalContextReady = Boolean(
     session &&
-      loadedOrgId === orgId &&
-      principalStaffIsCurrent &&
-      counterStaff &&
-      store &&
-      staffId &&
-      storeId,
+    loadedOrgId === orgId &&
+    principalStaffIsCurrent &&
+    counterStaff &&
+    store &&
+    staffId &&
+    storeId,
   );
   const counterContextReady = session?.posContext
     ? fixedPosContextReady
     : normalContextReady;
-  const blockedCounterMessage = loadedOrgId !== orgId
-    ? "Resolving your Counter access…"
-    : !authenticatedStaffId
-      ? "Counter access requires an active Counter Operator profile linked to your account."
-      : !principalStaffIsCurrent
-        ? "Your Counter Operator profile is inactive or unavailable."
-        : !storeId
-          ? "Your Counter Operator profile needs an active eligible store assignment."
-          : "Counter access requires an active Counter Operator profile and store assignment.";
+  const blockedCounterMessage =
+    loadedOrgId !== orgId
+      ? "Resolving your Counter access…"
+      : !authenticatedStaffId
+        ? "Counter access requires an active Counter Operator profile linked to your account."
+        : !principalStaffIsCurrent
+          ? "Your Counter Operator profile is inactive or unavailable."
+          : !storeId
+            ? "Your Counter Operator profile needs an active eligible store assignment."
+            : "Counter access requires an active Counter Operator profile and store assignment.";
 
   /*
    * ------------------------------------------------------------
@@ -1395,14 +1396,22 @@ export default function StaffCounter() {
           {hasCapability("ORG_ADMIN_ACCESS", orgId) ? (
             <Pressable
               testID="counter-configure-access"
-              onPress={() => router.push(APP_ROUTES.orgAdmin.usersAccess(orgId) as never)}
+              onPress={() =>
+                router.push(APP_ROUTES.orgAdmin.usersAccess(orgId) as never)
+              }
               style={styles.secondaryBtn}
             >
-              <Text style={styles.secondaryBtnText}>Configure Users &amp; Access</Text>
+              <Text style={styles.secondaryBtnText}>
+                Configure Users &amp; Access
+              </Text>
             </Pressable>
           ) : null}
         </View>
-        {error ? <Text testID="counter-error" style={styles.errorText}>{error}</Text> : null}
+        {error ? (
+          <Text testID="counter-error" style={styles.errorText}>
+            {error}
+          </Text>
+        ) : null}
       </ScrollView>
     );
   }
