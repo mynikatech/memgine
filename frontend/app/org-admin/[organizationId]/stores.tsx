@@ -281,7 +281,12 @@ export default function OrgAdminStores() {
      *
      * This also looks at deleted stores so a deleted Store Code is not reused.
      */
-    const usedSequences = stores
+    const storesForSequence =
+      storeWorkingSession?.organizationId === organization.id
+        ? storeWorkingSession.proposedStores
+        : stores;
+
+    const usedSequences = storesForSequence
       .map((store) => {
         const storeCode = store.storeCode.trim().toUpperCase();
         const prefixWithDash = `${prefix}-`;
@@ -448,20 +453,25 @@ export default function OrgAdminStores() {
      */
     const existing = stores.some((item) => item.id === store.id);
 
-    setStores((current) => {
-      const nextStores = existing
-        ? current.map((item) => (item.id === store.id ? store : item))
-        : [...current, store];
+    const nextStores = existing
+      ? stores.map((item) => (item.id === store.id ? store : item))
+      : [...stores, store];
 
-      if (storeWorkingSession) {
-        storeWorkingSession = {
-          ...storeWorkingSession,
-          proposedStores: cloneStores(nextStores),
-        };
-      }
+    /*
+     * Update the working session synchronously.
+     *
+     * The next Add Store operation uses proposedStores when calculating
+     * the next Store Code, so a Store added during this edit session is
+     * immediately included even before the main Save Changes operation.
+     */
+    if (storeWorkingSession) {
+      storeWorkingSession = {
+        ...storeWorkingSession,
+        proposedStores: cloneStores(nextStores),
+      };
+    }
 
-      return nextStores;
-    });
+    setStores(nextStores);
 
     setFormVisible(false);
     setEditingStore(null);

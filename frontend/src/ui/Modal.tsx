@@ -54,8 +54,7 @@ export function Modal({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <Pressable
-        onPress={onClose}
+      <View
         style={{
           flex: 1,
           backgroundColor: theme.colors.overlay,
@@ -63,9 +62,8 @@ export function Modal({
           padding: theme.spacing.lg,
         }}
       >
-        <Pressable
+        <View
           testID={testID}
-          onPress={() => {}}
           style={[
             {
               backgroundColor: theme.colors.card,
@@ -87,8 +85,8 @@ export function Modal({
           ) : (
             children
           )}
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </RNModal>
   );
 }

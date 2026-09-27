@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Image, Pressable, StyleSheet, View } from "react-native";
+import { DateInput } from "../DateInput";
 import * as ImagePicker from "expo-image-picker";
 import type { PickedBrandingAsset } from "@/src/core/brandingAssetPicker";
 import { resolveAssetUrl } from "@/src/data/api/asset-url";
@@ -30,7 +31,11 @@ type OfferFormProps = {
   isNewOffer?: boolean;
   readOnly?: boolean;
 
-  onSave: (offer: Offer, usageRules: OfferUsageRule[], image?: PickedBrandingAsset) => Promise<void>;
+  onSave: (
+    offer: Offer,
+    usageRules: OfferUsageRule[],
+    image?: PickedBrandingAsset,
+  ) => Promise<void>;
   onCancel: () => void;
 };
 
@@ -274,7 +279,9 @@ export function OfferForm({
   onCancel,
 }: OfferFormProps) {
   const [draft, setDraft] = useState<Offer>(offer);
-  const [pendingImage, setPendingImage] = useState<PickedBrandingAsset | undefined>();
+  const [pendingImage, setPendingImage] = useState<
+    PickedBrandingAsset | undefined
+  >();
   const [rules, setRules] = useState<OfferUsageRule[]>(() =>
     cloneRules(usageRules),
   );
@@ -825,21 +832,20 @@ export function OfferForm({
           Validity
         </Text>
 
-        <Input
+        <DateInput
           label="Effective Date"
           required
           value={draft.effectiveDate}
-          onChangeText={(value) => update("effectiveDate", value)}
-          placeholder="YYYY-MM-DD"
-          editable={!readOnly}
+          disabled={readOnly}
+          onChange={(value) => update("effectiveDate", value ?? "")}
         />
 
-        <Input
+        <DateInput
           label="Expiry Date"
-          value={draft.expiryDate ?? ""}
-          onChangeText={(value) => update("expiryDate", value || undefined)}
-          placeholder="YYYY-MM-DD"
-          editable={!readOnly}
+          value={draft.expiryDate}
+          disabled={readOnly}
+          minimumDate={draft.effectiveDate}
+          onChange={(value) => update("expiryDate", value)}
         />
       </View>
 
@@ -1054,25 +1060,22 @@ export function OfferForm({
                 disabled={readOnly}
               />
 
-              <Input
+              <DateInput
                 label="Effective Date"
                 required
                 value={rule.effectiveDate}
-                onChangeText={(value) =>
-                  updateRule(rule.id, "effectiveDate", value)
+                disabled={readOnly}
+                onChange={(value) =>
+                  updateRule(rule.id, "effectiveDate", value ?? "")
                 }
-                placeholder="YYYY-MM-DD"
-                editable={!readOnly}
               />
 
-              <Input
+              <DateInput
                 label="Expiry Date"
-                value={rule.expiryDate ?? ""}
-                onChangeText={(value) =>
-                  updateRule(rule.id, "expiryDate", value || undefined)
-                }
-                placeholder="YYYY-MM-DD"
-                editable={!readOnly}
+                value={rule.expiryDate}
+                disabled={readOnly}
+                minimumDate={rule.effectiveDate}
+                onChange={(value) => updateRule(rule.id, "expiryDate", value)}
               />
 
               <ReferenceSelect

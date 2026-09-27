@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 088-organization-user-unique-constraint
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/088-organization-user-unique-constraint.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
