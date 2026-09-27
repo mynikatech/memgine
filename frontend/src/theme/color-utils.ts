@@ -9,6 +9,39 @@ function parseHex(hex: string): { r: number; g: number; b: number } {
   return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
 }
 
+function linearize(channel: number): number {
+  const normalized = channel / 255;
+  return normalized <= 0.04045
+    ? normalized / 12.92
+    : Math.pow((normalized + 0.055) / 1.055, 2.4);
+}
+
+function contrastRatio(luminanceA: number, luminanceB: number): number {
+  const lighter = Math.max(luminanceA, luminanceB);
+  const darker = Math.min(luminanceA, luminanceB);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/** Chooses the more readable neutral foreground for a solid brand colour. */
+export function readableForeground(hex: string): "#FFFFFF" | "#111827" {
+  if (!/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex)) {
+    return "#FFFFFF";
+  }
+
+  const { r, g, b } = parseHex(hex);
+  const luminance =
+    0.2126 * linearize(r) +
+    0.7152 * linearize(g) +
+    0.0722 * linearize(b);
+  const whiteLuminance = 1;
+  const darkLuminance = 0.0097;
+
+  return contrastRatio(luminance, whiteLuminance) >=
+    contrastRatio(luminance, darkLuminance)
+    ? "#FFFFFF"
+    : "#111827";
+}
+
 function toHex(rgb: { r: number; g: number; b: number }): string {
   const { r, g, b } = rgb;
   return `#${((1 << 24) + (clampChannel(r) << 16) + (clampChannel(g) << 8) + clampChannel(b))

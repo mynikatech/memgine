@@ -1,6 +1,6 @@
 import type { BusinessBranding } from "@/src/core";
 
-import { shade, tint } from "./color-utils";
+import { readableForeground, shade, tint } from "./color-utils";
 import { BASE_COLORS, RADIUS, SHADOWS, SPACING, STATES, TYPOGRAPHY } from "./tokens";
 
 export type ThemeColors = {
@@ -22,6 +22,9 @@ export type ThemeColors = {
   secondary: string;
   secondarySoft: string;
   onSecondary: string;
+  accent: string;
+  accentSoft: string;
+  onAccent: string;
   success: string;
   successSoft: string;
   warning: string;
@@ -49,10 +52,14 @@ export type TypographyVariant = keyof typeof TYPOGRAPHY;
  * slots. All other tokens remain Memgine-owned.
  */
 export function buildTheme(
-  branding?: Pick<BusinessBranding, "primaryColor" | "secondaryColor">,
+  branding?: Partial<Pick<
+    BusinessBranding,
+    "primaryColor" | "secondaryColor" | "accentColor"
+  >>,
 ): Theme {
   const primary = branding?.primaryColor ?? BASE_COLORS.primary;
   const secondary = branding?.secondaryColor ?? BASE_COLORS.secondary;
+  const accent = branding?.accentColor ?? BASE_COLORS.accent;
 
   return {
     colors: {
@@ -70,10 +77,13 @@ export function buildTheme(
       primary,
       primarySoft: tint(primary, 0.85),
       primaryStrong: shade(primary, 0.18),
-      onPrimary: "#FFFFFF",
+      onPrimary: readableForeground(primary),
       secondary,
       secondarySoft: tint(secondary, 0.85),
-      onSecondary: "#FFFFFF",
+      onSecondary: readableForeground(secondary),
+      accent,
+      accentSoft: tint(accent, 0.85),
+      onAccent: readableForeground(accent),
       success: BASE_COLORS.success,
       successSoft: tint(BASE_COLORS.success, 0.85),
       warning: BASE_COLORS.warning,

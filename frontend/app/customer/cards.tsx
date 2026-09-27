@@ -85,8 +85,12 @@ export default function MyCards() {
           }));
           return {
             organizationId, organizationName: relationship.organizationName,
-            theme: buildTheme(branding?.primaryColor && branding.secondaryColor
-              ? { primaryColor: branding.primaryColor, secondaryColor: branding.secondaryColor }
+            theme: buildTheme(branding
+              ? {
+                  primaryColor: branding.primaryColor,
+                  secondaryColor: branding.secondaryColor,
+                  accentColor: branding.accentColor,
+                }
               : undefined),
             cardStyle: configuration.customerExperience.cardStyle ?? CardStyle.MODERN,
             logoUrl: branding?.logoUrl,

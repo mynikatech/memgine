@@ -6,7 +6,6 @@ import { OfferFrequencyType, type OfferUsageRule } from "@/src/core";
 import { services } from "@/src/core";
 import { useTheme } from "@/src/providers";
 
-import { Badge } from "../Badge";
 import { Button } from "../Button";
 import { Card } from "../Card";
 import { Text } from "../Text";
@@ -191,6 +190,22 @@ export function OfferCard({
 
   const usageLines = usageRules.flatMap(formatUsageRule);
 
+  const OfferHighlight = ({ label }: { label: string }) => (
+    <View
+      style={{
+        alignSelf: "flex-start",
+        backgroundColor: theme.colors.accentSoft,
+        paddingHorizontal: theme.spacing.md,
+        paddingVertical: 4,
+        borderRadius: theme.radius.pill,
+      }}
+    >
+      <Text variant="caption" style={{ color: theme.colors.accent }}>
+        {label}
+      </Text>
+    </View>
+  );
+
   const content = (
     <Card
       testID={testID}
@@ -243,7 +258,7 @@ export function OfferCard({
             }}
           >
             <View style={{ flex: 1, gap: theme.spacing.xs }}>
-              {badge ? <Badge label={badge} tone="brand" /> : null}
+              {badge ? <OfferHighlight label={badge} /> : null}
 
               <Text variant="bodyStrong" color="text">
                 {title}
@@ -251,7 +266,7 @@ export function OfferCard({
             </View>
 
             {discountPercentage !== undefined ? (
-              <Badge label={`${discountPercentage}% OFF`} tone="brand" />
+              <OfferHighlight label={`${discountPercentage}% OFF`} />
             ) : null}
           </View>
 

@@ -54,6 +54,7 @@ export const BASE_COLORS = {
   overlay: "rgba(17,24,39,0.45)",
   primary: "#0F766E",
   secondary: "#F59E0B",
+  accent: "#7C3AED",
   success: "#15803D",
   warning: "#B45309",
   danger: "#B91C1C",

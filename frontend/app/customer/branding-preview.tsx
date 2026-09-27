@@ -3,6 +3,7 @@ import { View } from "react-native";
 
 import { OrganizationBranding, services } from "@/src/core";
 import { useBusiness } from "@/src/providers";
+import { buildTheme } from "@/src/theme/theme";
 import { Button, Card, Text } from "@/src/ui";
 
 export default function BrandingPreview() {
@@ -45,34 +46,30 @@ export default function BrandingPreview() {
     );
   }
 
-  const primaryColor = branding.primaryColor ?? "#0F766E";
-
-  const secondaryColor = branding.secondaryColor ?? "#2563EB";
-
-  const accentColor = branding.accentColor ?? "#FFFFFF";
+  const theme = buildTheme(branding);
 
   return (
     <View
       style={{
         flex: 1,
-        backgroundColor: accentColor,
+        backgroundColor: theme.colors.background,
         padding: 24,
         gap: 20,
       }}
     >
       <View
         style={{
-          backgroundColor: primaryColor,
+          backgroundColor: theme.colors.primary,
           borderRadius: 20,
           padding: 24,
           gap: 8,
         }}
       >
-        <Text variant="h1" color="text">
+        <Text variant="h1" color="text" style={{ color: theme.colors.onPrimary }}>
           {organization.displayName}
         </Text>
 
-        <Text variant="body" color="text">
+        <Text variant="body" color="text" style={{ color: theme.colors.onPrimary }}>
           Welcome to your membership experience
         </Text>
       </View>
@@ -89,7 +86,9 @@ export default function BrandingPreview() {
 
           <View
             style={{
-              backgroundColor: secondaryColor,
+              backgroundColor: theme.colors.secondarySoft,
+              borderColor: theme.colors.secondary,
+              borderWidth: 1,
               borderRadius: 12,
               padding: 16,
             }}
@@ -100,6 +99,20 @@ export default function BrandingPreview() {
 
             <Text variant="bodySmall" color="text">
               Powered by the organization theme
+            </Text>
+          </View>
+
+          <View
+            style={{
+              alignSelf: "flex-start",
+              borderRadius: 999,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              backgroundColor: theme.colors.accentSoft,
+            }}
+          >
+            <Text variant="caption" style={{ color: theme.colors.accent }}>
+              Member reward
             </Text>
           </View>
 

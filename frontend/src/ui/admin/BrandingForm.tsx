@@ -23,6 +23,7 @@ import {
 import { brandingAssetApi } from "@/src/data/api/branding-asset-api";
 
 import { resolveAssetUrl } from "@/src/data/api/asset-url";
+import { buildTheme } from "@/src/theme/theme";
 
 import { useTheme } from "@/src/providers";
 
@@ -576,11 +577,15 @@ export function BrandingForm({
 
   const controlsDisabled = !isEditing || saving;
 
-  const primaryColor = form.primaryColor?.trim() || theme.colors.primary;
-
-  const secondaryColor = form.secondaryColor?.trim() || theme.colors.secondary;
-
-  const accentColor = form.accentColor?.trim() || theme.colors.primary;
+  const previewTheme = useMemo(
+    () =>
+      buildTheme({
+        primaryColor: form.primaryColor?.trim(),
+        secondaryColor: form.secondaryColor?.trim(),
+        accentColor: form.accentColor?.trim(),
+      }),
+    [form.accentColor, form.primaryColor, form.secondaryColor],
+  );
 
   const previewName =
     form.brandingName.trim() || organization.displayName || "Your Business";
@@ -848,8 +853,8 @@ export function BrandingForm({
             style={[
               styles.brandPreview,
               {
-                backgroundColor: primaryColor,
-                borderColor: secondaryColor,
+                backgroundColor: previewTheme.colors.surface,
+                borderColor: previewTheme.colors.border,
               },
             ]}
           >
@@ -858,8 +863,8 @@ export function BrandingForm({
                 style={[
                   styles.logoContainer,
                   {
-                    backgroundColor: theme.colors.background,
-                    borderColor: secondaryColor,
+                    backgroundColor: previewTheme.colors.card,
+                    borderColor: previewTheme.colors.secondary,
                   },
                 ]}
               >
@@ -876,14 +881,14 @@ export function BrandingForm({
                     style={[
                       styles.monogram,
                       {
-                        backgroundColor: primaryColor,
+                        backgroundColor: previewTheme.colors.primary,
                       },
                     ]}
                   >
                     <Text
                       variant="h2"
                       style={{
-                        color: accentColor,
+                        color: previewTheme.colors.onPrimary,
                         fontWeight: "700",
                       }}
                     >
@@ -894,11 +899,19 @@ export function BrandingForm({
               </View>
 
               <View style={styles.previewIdentity}>
-                <Text variant="h2" color="text">
+                <Text
+                  variant="h2"
+                  color="text"
+                  style={{ color: previewTheme.colors.text }}
+                >
                   {previewName}
                 </Text>
 
-                <Text variant="bodySmall" color="textSecondary">
+                <Text
+                  variant="bodySmall"
+                  color="textSecondary"
+                  style={{ color: previewTheme.colors.textSecondary }}
+                >
                   {form.tagline?.trim() || "Customer experience preview"}
                 </Text>
               </View>
@@ -908,16 +921,26 @@ export function BrandingForm({
               style={[
                 styles.previewMembership,
                 {
-                  backgroundColor: theme.colors.background,
+                  backgroundColor: previewTheme.colors.card,
+                  borderColor: previewTheme.colors.secondary,
+                  borderWidth: 1,
                 },
               ]}
             >
               <View style={styles.previewMembershipText}>
-                <Text variant="bodySmall" color="textMuted">
+                <Text
+                  variant="bodySmall"
+                  color="textMuted"
+                  style={{ color: previewTheme.colors.textMuted }}
+                >
                   MEMBERSHIP
                 </Text>
 
-                <Text variant="title" color="text">
+                <Text
+                  variant="title"
+                  color="text"
+                  style={{ color: previewTheme.colors.text }}
+                >
                   Member Experience
                 </Text>
               </View>
@@ -926,14 +949,14 @@ export function BrandingForm({
                 style={[
                   styles.previewAction,
                   {
-                    backgroundColor: accentColor,
+                    backgroundColor: previewTheme.colors.primary,
                   },
                 ]}
               >
                 <Text
                   variant="bodySmall"
                   style={{
-                    color: theme.colors.background,
+                    color: previewTheme.colors.onPrimary,
                     fontWeight: "600",
                   }}
                 >
@@ -942,15 +965,22 @@ export function BrandingForm({
               </View>
             </View>
 
-            {hasImage(form.heroImageUrl) ? (
-              <View style={styles.previewHero}>
-                <Image
-                  source={{ uri: resolveAssetUrl(form.heroImageUrl) }}
-                  resizeMode="cover"
-                  style={styles.previewHeroImage}
-                />
-              </View>
-            ) : null}
+            <View
+              style={{
+                alignSelf: "flex-start",
+                borderRadius: previewTheme.radius.pill,
+                paddingHorizontal: previewTheme.spacing.md,
+                paddingVertical: previewTheme.spacing.xs,
+                backgroundColor: previewTheme.colors.accentSoft,
+              }}
+            >
+              <Text
+                variant="caption"
+                style={{ color: previewTheme.colors.accent }}
+              >
+                Member reward
+              </Text>
+            </View>
 
             <View style={styles.colorSummary}>
               <View style={styles.colorSummaryItem}>
@@ -958,7 +988,7 @@ export function BrandingForm({
                   style={[
                     styles.colorCircle,
                     {
-                      backgroundColor: primaryColor,
+                      backgroundColor: previewTheme.colors.primary,
                     },
                   ]}
                 />
@@ -973,7 +1003,7 @@ export function BrandingForm({
                   style={[
                     styles.colorCircle,
                     {
-                      backgroundColor: secondaryColor,
+                      backgroundColor: previewTheme.colors.secondary,
                     },
                   ]}
                 />
@@ -988,7 +1018,7 @@ export function BrandingForm({
                   style={[
                     styles.colorCircle,
                     {
-                      backgroundColor: accentColor,
+                      backgroundColor: previewTheme.colors.accent,
                     },
                   ]}
                 />
@@ -1242,20 +1272,6 @@ const styles = StyleSheet.create({
   previewMembershipText: {
     flex: 1,
     gap: 4,
-  },
-
-  previewHero: {
-    width: "100%",
-    height: 180,
-    borderRadius: 14,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-
-  previewHeroImage: {
-    width: "100%",
-    height: "100%",
   },
 
   previewAction: {
