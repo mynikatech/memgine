@@ -1,5 +1,5 @@
 import { Image, Pressable, View } from "react-native";
-import { API_BASE_URL } from "@/src/data/api/http-client";
+import { resolveAssetUrl } from "@/src/data/api/asset-url";
 import { useEffect, useState } from "react";
 
 import { OfferFrequencyType, type OfferUsageRule } from "@/src/core";
@@ -149,6 +149,7 @@ export function OfferCard({
   usageRules: usageRulesOverride,
   testID,
 }: OfferCardProps) {
+  const resolvedImageUrl = resolveAssetUrl(imageUrl);
   const theme = useTheme();
   const [usageRules, setUsageRules] = useState<OfferUsageRule[]>([]);
 
@@ -207,7 +208,7 @@ export function OfferCard({
           gap: theme.spacing.md,
         }}
       >
-        {imageUrl ? (
+        {resolvedImageUrl ? (
           <View
             style={{
               width: 88,
@@ -221,8 +222,7 @@ export function OfferCard({
             }}
           >
             <Image
-              source={{ uri: imageUrl.startsWith("/api/v1/assets/")
-                ? `${API_BASE_URL}${imageUrl}` : imageUrl }}
+              source={{ uri: resolvedImageUrl }}
               resizeMode="contain"
               style={{
                 width: "100%",

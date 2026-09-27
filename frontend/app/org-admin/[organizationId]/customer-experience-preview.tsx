@@ -15,6 +15,7 @@ import type {
 } from "@/src/core";
 
 import { services } from "@/src/core";
+import { resolveAssetUrl } from "@/src/data/api/asset-url";
 
 import type { PreviewDomainData } from "@/src/experience/customer-experience-preview-data";
 import type { ExperienceTabKey } from "@/src/experience/resolve-experience";
@@ -1087,7 +1088,7 @@ function resolvePreviewConfiguration(
 /* ========================================================================== */
 
 function DiffVisualValue({ label, value }: { label: string; value?: unknown }) {
-  const uri = typeof value === "string" && value.trim() ? value.trim() : null;
+  const uri = typeof value === "string" ? resolveAssetUrl(value) : undefined;
 
   return (
     <View style={styles.diffVisualValue}>

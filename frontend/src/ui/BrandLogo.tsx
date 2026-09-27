@@ -1,6 +1,7 @@
 import { Image, View } from "react-native";
 
 import { useTheme } from "@/src/providers";
+import { resolveAssetUrl } from "@/src/data/api/asset-url";
 
 import { Text } from "./Text";
 
@@ -25,11 +26,11 @@ export function BrandLogo({
 
   const radius = borderRadius ?? theme.radius.md;
 
-  const normalizedLogoUrl = logoUrl?.trim();
+  const resolvedLogoUrl = resolveAssetUrl(logoUrl);
 
   const fallbackMonogram = monogram.trim().charAt(0).toUpperCase() || "?";
 
-  if (normalizedLogoUrl) {
+  if (resolvedLogoUrl) {
     return (
       <View
         testID={testID}
@@ -44,7 +45,7 @@ export function BrandLogo({
         }}
       >
         <Image
-          source={{ uri: normalizedLogoUrl }}
+          source={{ uri: resolvedLogoUrl }}
           resizeMode={fit}
           style={{
             width: "100%",

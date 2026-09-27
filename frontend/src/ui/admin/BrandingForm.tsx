@@ -22,7 +22,7 @@ import {
 
 import { brandingAssetApi } from "@/src/data/api/branding-asset-api";
 
-import { API_BASE_URL } from "@/src/data/api/http-client";
+import { resolveAssetUrl } from "@/src/data/api/asset-url";
 
 import { useTheme } from "@/src/providers";
 
@@ -118,20 +118,6 @@ function hasImage(value?: string): boolean {
     normalizedValue.startsWith("blob:") ||
     normalizedValue.startsWith("/api/v1/assets/")
   );
-}
-
-function getImageUri(value?: string): string | undefined {
-  if (!value?.trim()) {
-    return undefined;
-  }
-
-  const normalizedValue = value.trim();
-
-  if (normalizedValue.startsWith("/api/v1/assets/")) {
-    return `${API_BASE_URL}${normalizedValue}`;
-  }
-
-  return normalizedValue;
 }
 
 function getMonogram(value?: string): string {
@@ -245,7 +231,7 @@ function AssetPreview({
         {configured ? (
           <Image
             source={{
-              uri: getImageUri(value),
+              uri: resolveAssetUrl(value),
             }}
             resizeMode="contain"
             style={styles.image}
@@ -880,7 +866,7 @@ export function BrandingForm({
                 {hasImage(form.logoUrl) ? (
                   <Image
                     source={{
-                      uri: form.logoUrl,
+                      uri: resolveAssetUrl(form.logoUrl),
                     }}
                     resizeMode="contain"
                     style={styles.logo}
@@ -959,7 +945,7 @@ export function BrandingForm({
             {hasImage(form.heroImageUrl) ? (
               <View style={styles.previewHero}>
                 <Image
-                  source={{ uri: form.heroImageUrl }}
+                  source={{ uri: resolveAssetUrl(form.heroImageUrl) }}
                   resizeMode="cover"
                   style={styles.previewHeroImage}
                 />

@@ -29,6 +29,7 @@ import type {
 } from "@/src/core";
 
 import { services } from "@/src/core";
+import { resolveAssetUrl } from "@/src/data/api/asset-url";
 import {
   BusinessThemeScope,
   useBusiness,
@@ -905,10 +906,12 @@ export function BusinessExperience({
   }: {
     uri?: string;
     height?: number;
-  }) =>
-    uri ? (
+  }) => {
+    const resolvedUri = resolveAssetUrl(uri);
+
+    return resolvedUri ? (
       <Image
-        source={{ uri }}
+        source={{ uri: resolvedUri }}
         resizeMode="cover"
         style={{
           width: "100%",
@@ -918,6 +921,7 @@ export function BusinessExperience({
         }}
       />
     ) : null;
+  };
 
   const renderPromotionCard = (
     promo: NonNullable<typeof exp.heroPromotion>,

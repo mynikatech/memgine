@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Image, Pressable, StyleSheet, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import type { PickedBrandingAsset } from "@/src/core/brandingAssetPicker";
-import { API_BASE_URL } from "@/src/data/api/http-client";
+import { resolveAssetUrl } from "@/src/data/api/asset-url";
 
 import type {
   MembershipProduct,
@@ -684,9 +684,7 @@ export function OfferForm({
           {draft.promotionImageUrl ? (
             <Image
               source={{
-                uri: draft.promotionImageUrl.startsWith("/api/v1/assets/")
-                  ? `${API_BASE_URL}${draft.promotionImageUrl}`
-                  : draft.promotionImageUrl,
+                uri: resolveAssetUrl(draft.promotionImageUrl),
               }}
               style={styles.promotionImage}
               resizeMode="cover"
