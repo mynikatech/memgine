@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 096-coffee-chain-template-alignment
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/096-coffee-chain-template-alignment.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

@@ -9,6 +9,8 @@ import com.mynikatech.memgine.net.dto.UpdateOrganizationResponseDto
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import com.mynikatech.memgine.security.PhoneNormalizer
+import org.jdbi.v3.core.statement.UnableToExecuteStatementException
+import org.postgresql.util.PSQLException
 
 class OrganizationService(
     private val sql: OrganizationSql,
@@ -23,13 +25,20 @@ class OrganizationService(
         val owner = request.owner.copy(
             phone = request.owner.phone.copy(callingCode = canonicalOwnerPhone, number = "")
         )
-        return sql.createOrganization(
-            json.encodeToString(request.organization),
-            json.encodeToString(request.details),
-            json.encodeToString(request.branding),
-            json.encodeToString(owner),
-            actorUserId
-        )
+        try {
+            return sql.createOrganization(
+                json.encodeToString(request.organization),
+                json.encodeToString(request.details),
+                json.encodeToString(request.branding),
+                json.encodeToString(owner),
+                actorUserId
+            )
+        } catch (cause: UnableToExecuteStatementException) {
+            val databaseValidationError = findDatabaseValidationError(cause)
+                ?: throw cause
+
+            throw BadRequestException(databaseValidationError)
+        }
     }
 
     fun update(organizationId: String, request: UpdateOrganizationRequestDto, actorUserId: String): UpdateOrganizationResponseDto {
@@ -160,6 +169,21 @@ class OrganizationService(
     private fun validateOrganizationId(organizationId: String) {
         if (organizationId.isBlank()) throw BadRequestException("Organization id is required")
         if (organizationId.length > 64) throw BadRequestException("Organization id must not exceed 64 characters")
+    }
+
+    private fun findDatabaseValidationError(cause: Throwable): String? {
+        var current: Throwable? = cause
+
+        while (current != null) {
+            if (current is PSQLException && current.sqlState == "22023") {
+                return current.serverErrorMessage?.message
+                    ?: "The organization request contains invalid data"
+            }
+
+            current = current.cause
+        }
+
+        return null
     }
 
     private companion object {
