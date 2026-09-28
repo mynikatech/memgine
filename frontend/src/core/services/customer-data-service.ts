@@ -1,5 +1,9 @@
 import type { Benefit, BenefitUsageRule, ID, MembershipProduct, Offer, Store } from "@/src/core";
 import { CustomerDataApi } from "@/src/data/api/customer-data-api";
+import type {
+  CustomerDiscoverableOrganization,
+  CustomerDiscoveryDetail,
+} from "@/src/data/api/customer-data-api";
 import type { CounterPurchaseResult, CounterSubscription } from "@/src/data/api/counter-api";
 import type { MembershipPurchaseQuote, PaymentConfirmation, PaymentIntent } from "@/src/data/api/counter-api";
 import type { OrgAdminRedemption } from "@/src/data/api/org-admin-transaction-api";
@@ -22,6 +26,20 @@ export class CustomerDataService {
 
   async choices(): Promise<CustomerChoice[]> {
     const result = await this.api.choices();
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
+  }
+
+  async discoverOrganizations(): Promise<CustomerDiscoverableOrganization[]> {
+    const result = await this.api.discoverOrganizations();
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
+  }
+
+  async discoverOrganizationDetail(
+    organizationId: ID,
+  ): Promise<CustomerDiscoveryDetail> {
+    const result = await this.api.discoverOrganizationDetail(organizationId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }

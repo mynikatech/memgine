@@ -1,16 +1,32 @@
 package com.mynikatech.memgine.component.customer
 
 import com.mynikatech.memgine.net.dto.OrgAdminCustomerDto
+import com.mynikatech.memgine.net.dto.CustomerDiscoverableOrganizationDto
 import com.mynikatech.memgine.net.dto.CounterSubscriptionDto
 import com.mynikatech.memgine.net.dto.CounterPurchaseResult
 import com.mynikatech.memgine.net.dto.CustomerChoiceDto
 import com.mynikatech.memgine.net.dto.CustomerRelationshipDto
 import com.mynikatech.memgine.net.dto.OrgAdminRedemptionDto
 import com.mynikatech.memgine.net.dto.OfferDto
+import org.jdbi.v3.sqlobject.config.RegisterBeanMapper
 import org.jdbi.v3.sqlobject.customizer.Bind
 import org.jdbi.v3.sqlobject.statement.SqlQuery
 
+data class CustomerDiscoveryDetailRow(
+    var organizationId: String = "",
+    var detailJson: String = "{}",
+)
+
 interface CustomerSql {
+    @SqlQuery("SELECT * FROM get_customer_discoverable_organizations()")
+    fun discoverableOrganizations(): List<CustomerDiscoverableOrganizationDto>
+
+    @SqlQuery("SELECT * FROM get_customer_discoverable_organization(:organizationId)")
+    @RegisterBeanMapper(CustomerDiscoveryDetailRow::class)
+    fun discoverableOrganization(
+        @Bind("organizationId") organizationId: String,
+    ): CustomerDiscoveryDetailRow?
+
     @SqlQuery("SELECT primary_phone FROM \"user\" WHERE user_id = :userId AND is_deleted = false")
     fun userPhone(@Bind("userId") userId: String): String?
     @SqlQuery("SELECT can_administer_organization(:organizationId, :actorUserId)")

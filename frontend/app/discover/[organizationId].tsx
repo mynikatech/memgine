@@ -2,467 +2,147 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 
-import type {
-  Benefit,
-  MembershipProduct,
-  Offer,
-  Redemption,
-  Store,
-  Subscription,
-} from "@/src/core";
-import { getBusinessContent, services } from "@/src/core";
+import type { Benefit, MembershipProduct, Redemption, Subscription } from "@/src/core";
+import { RedemptionMethod, services } from "@/src/core";
+import type { TemplateDefinition } from "@/src/core/template/template-definition";
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
+import type { CustomerDiscoveryDetail } from "@/src/data/api/customer-data-api";
+import type { CounterSubscription } from "@/src/data/api/counter-api";
+import type { OrgAdminRedemption } from "@/src/data/api/org-admin-transaction-api";
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { BusinessExperience } from "@/src/experience";
-import {
-  useBusiness,
-  useCustomerContext,
-  useTheme,
-  useTranslation,
-} from "@/src/providers";
+import { useCustomerContext, useTheme, useTranslation } from "@/src/providers";
 import { Badge, Button, Modal, StateView, Text } from "@/src/ui";
 
-type Status = "loading" | "error" | "ready";
+type LoadStatus = "loading" | "error" | "ready";
+type MembershipBundle = { subscription: Subscription; product: MembershipProduct; benefits: Benefit[]; redemptions: Redemption[] };
 
-type MembershipBundle = {
-  subscription: Subscription;
-  product: MembershipProduct;
-  benefits: Benefit[];
-  redemptions: Redemption[];
-};
+function subscriptionFromProtectedRow(row: CounterSubscription): Subscription {
+  return {
+    id: row.id, subscriptionNumber: row.subscriptionNumber, subscriptionPlanId: row.subscriptionPlanId,
+    organizationUserId: row.organizationUserId, subscriptionDate: row.subscriptionDate,
+    startDate: row.startDate, endDate: row.endDate, subscriptionStatusId: row.subscriptionStatusId,
+    totalAmount: { amountMinor: Math.round(row.totalAmount * 100), currency: row.currencyCode as Subscription["totalAmount"]["currency"] },
+    createdAt: row.createdAt, createdBy: row.userId, updatedAt: row.createdAt, updatedBy: row.userId,
+    isDeleted: false, versionNo: 1,
+  };
+}
 
-/**
- * QR / deep-link gateway — organization-level entry.
- *
- * /discover/:organizationId
- *     -> business experience for that organization
- *
- * /discover/:organizationId?productId=...
- *     -> same experience + product detail modal
- *
- * The organization is supplied by the route and is never taken
- * directly from Subscription because organizationId is now derived
- * through OrganizationUser.
- */
+function redemptionFromProtectedRow(row: OrgAdminRedemption): Redemption {
+  return {
+    id: row.id, redemptionNumber: row.redemptionNumber, subscriptionId: row.subscriptionId,
+    benefitId: row.benefitId, storeId: row.storeId, staffId: row.staffId ?? undefined,
+    method: RedemptionMethod.QR, redemptionDateTime: row.redemptionDateTime, quantity: row.quantity,
+    redemptionStatusId: row.redemptionStatusId, remarks: row.remarks ?? undefined,
+    createdAt: row.createdAt, createdBy: row.createdBy, updatedAt: row.createdAt,
+    updatedBy: row.createdBy, versionNo: 1, isDeleted: false,
+  };
+}
+
+/** Customer-public discovery does not change the active business/workspace. */
 export default function DiscoverGateway() {
   const router = useRouter();
-
-  const { organizationId, productId, as } = useLocalSearchParams<{
-    organizationId: string;
-    productId?: string;
-    as?: string;
-  }>();
-
-  const { setActiveBusiness } = useBusiness();
-
-  const { customerId, setActiveContext } =
-    useCustomerContext();
-
+  const { organizationId, productId } = useLocalSearchParams<{ organizationId: string; productId?: string }>();
+  const { customerId, setActiveContext } = useCustomerContext();
   const { t, formatMoney } = useTranslation();
   const theme = useTheme();
-
-  const [status, setStatus] = useState<Status>("loading");
-
+  const [status, setStatus] = useState<LoadStatus>("loading");
+  const [detail, setDetail] = useState<CustomerDiscoveryDetail | null>(null);
   const [memberships, setMemberships] = useState<MembershipBundle[]>([]);
-
-  const [available, setAvailable] = useState<MembershipProduct[]>([]);
-
-  const [offers, setOffers] = useState<Offer[]>([]);
-
-  const [stores, setStores] = useState<Store[]>([]);
-
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
-
-  const [detailProduct, setDetailProduct] = useState<MembershipProduct | null>(
-    null,
-  );
-
-  const [detailBenefits, setDetailBenefits] = useState<Benefit[]>([]);
+  const [detailProduct, setDetailProduct] = useState<MembershipProduct | null>(null);
 
   const load = useCallback(async () => {
+    if (!organizationId) { setStatus("error"); return; }
     setStatus("loading");
-
     try {
-      /*
-       * ------------------------------------------------------------
-       * 1. Resolve the organization/business context.
-       * ------------------------------------------------------------
-       */
-      const context = organizationId
-        ? await services.organization.getBusinessContext(organizationId)
-        : null;
-
-      if (!context) {
-        setStatus("error");
-        return;
-      }
-
-      /*
-       * Load this organization's business context dynamically.
-       */
-      setActiveBusiness(organizationId);
-
-      /*
-       * ------------------------------------------------------------
-       * 2. Resolve the active customer.
-       *
-       * ?as=cust-new-demo is retained as the demo-persona override.
-       * ------------------------------------------------------------
-       */
-      const activeCustomerId = customerId;
-
-      /*
-       * ------------------------------------------------------------
-       * 3. Load all subscriptions belonging to the user.
-       *
-       * Subscription no longer contains:
-       *   - customerId
-       *   - organizationId
-       *   - membershipProductId
-       *
-       * Customer ownership is represented through:
-       *
-       *   User
-       *      -> OrganizationUser
-       *          -> Subscription
-       * ------------------------------------------------------------
-       */
-      const all = await services.subscription.listByCustomer(activeCustomerId);
-
-      /*
-       * ------------------------------------------------------------
-       * 4. Keep only subscriptions belonging to THIS organization.
-       *
-       * Subscription
-       *   -> organizationUserId
-       *      -> OrganizationUser.organizationId
-       * ------------------------------------------------------------
-       */
-      const organizationSubscriptions: Subscription[] = [];
-
-      for (const subscription of all) {
-        const organizationUser =
-          await services.organization.getOrganizationUser(
-            subscription.organizationUserId,
-          );
-
-        if (
-          organizationUser &&
-          organizationUser.organizationId === organizationId
-        ) {
-          organizationSubscriptions.push(subscription);
-        }
-      }
-
-      /*
-       * ------------------------------------------------------------
-       * 5. Resolve each subscription:
-       *
-       * Subscription
-       *   -> SubscriptionPlan
-       *      -> MembershipProduct
-       *         -> Benefits
-       *
-       * Subscription
-       *   -> Redemptions
-       * ------------------------------------------------------------
-       */
-      const resolvedBundles = await Promise.all(
-        organizationSubscriptions.map(async (subscription) => {
-          /*
-           * Subscription -> SubscriptionPlan
-           */
-          const plan = await services.subscriptionPlan.getPlan(
-            subscription.subscriptionPlanId,
-          );
-
-          if (!plan) {
-            return null;
-          }
-
-          /*
-           * SubscriptionPlan -> MembershipProduct
-           */
-          const product = await services.membershipProduct.getProduct(
-            plan.membershipProductId,
-          );
-
-          if (!product) {
-            return null;
-          }
-
-          /*
-           * MembershipProduct -> Benefits
-           */
-          const benefits = await services.benefit.listByProduct(
-            plan.membershipProductId,
-          );
-
-          /*
-           * Subscription -> Redemptions
-           */
-          const redemptions = await services.redemption.listBySubscription(
-            subscription.id,
-          );
-
-          return {
-            subscription,
-            product,
-            benefits,
-            redemptions,
-          };
-        }),
-      );
-
-      const bundles: MembershipBundle[] = resolvedBundles.filter(
-        (bundle): bundle is MembershipBundle => bundle !== null,
-      );
-
-      /*
-       * ------------------------------------------------------------
-       * 6. Load organization-level content.
-       * ------------------------------------------------------------
-       */
-      const [orgOffers, orgStores, catalog] = await Promise.all([
-        services.offer.listByOrganization(organizationId),
-
-        services.organization.listStores(organizationId),
-
-        services.membershipProduct.listProducts(organizationId),
+      const published = await services.customerData.discoverOrganizationDetail(organizationId);
+      const protectedReads = await Promise.allSettled([
+        services.customerData.subscriptions(organizationId, customerId),
+        services.customerData.redemptions(organizationId, customerId),
       ]);
-
-      /*
-       * ------------------------------------------------------------
-       * 7. Work out which membership products the customer already
-       * owns.
-       * ------------------------------------------------------------
-       */
-      const ownedProductIds = new Set(
-        bundles.map((bundle) => bundle.product.id),
-      );
-
-      /*
-       * Active products which the customer does not
-       * currently own.
-       */
-      const availableProducts = catalog.filter(
-        (product) =>
-          product.productStatusId === "product-status-active" &&
-          !ownedProductIds.has(product.id),
-      );
-
-      /*
-       * ------------------------------------------------------------
-       * 8. Product QR/deep-link.
-       *
-       * If productId is supplied, preload the product detail.
-       * ------------------------------------------------------------
-       */
-      if (productId) {
-        const detail =
-          catalog.find(
-            (product) =>
-              product.id === productId &&
-              product.productStatusId === "product-status-active",
-          ) ?? null;
-
-        setDetailProduct(detail);
-
-        setDetailBenefits(
-          detail ? await services.benefit.listByProduct(detail.id) : [],
-        );
-      } else {
-        setDetailProduct(null);
-        setDetailBenefits([]);
-      }
-
-      /*
-       * If the customer already owns a membership in this
-       * organization, make the first one the active context.
-       */
-      if (bundles.length > 0) {
-        setActiveContext(organizationId, bundles[0].subscription.id);
-      }
-
+      const subscriptions = protectedReads[0].status === "fulfilled" ? protectedReads[0].value : [];
+      const redemptions = protectedReads[1].status === "fulfilled"
+        ? protectedReads[1].value.map(redemptionFromProtectedRow) : [];
+      const bundles = subscriptions.flatMap((row) => {
+        const product = published.membershipProducts.find((candidate) =>
+          candidate.plans.some((plan) => plan.id === row.subscriptionPlanId));
+        if (!product) return [];
+        return [{
+          subscription: subscriptionFromProtectedRow(row), product,
+          benefits: published.benefits.filter((benefit) => product.benefitIds.includes(benefit.id)),
+          redemptions: redemptions.filter((redemption) => redemption.subscriptionId === row.id),
+        }];
+      });
+      setDetail(published);
       setMemberships(bundles);
-      setAvailable(availableProducts);
-      setOffers(orgOffers);
-      setStores(orgStores);
-
       setSelectedSubId(bundles[0]?.subscription.id ?? null);
-
+      setDetailProduct(productId ? published.membershipProducts.find((product) => product.id === productId) ?? null : null);
       setStatus("ready");
     } catch {
       setStatus("error");
     }
-  }, [
-    organizationId,
-    productId,
-    as,
-    customerId,
-    setActiveBusiness,
-    setActiveContext,
-  ]);
+  }, [customerId, organizationId, productId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
-  /*
-   * --------------------------------------------------------------
-   * Navigation
-   * --------------------------------------------------------------
-   */
-
-  const exit = () =>
-    router.canGoBack()
-      ? router.back()
-      : router.replace(APP_ROUTES.customer.cards);
-
-  /*
-   * Start the existing purchase flow.
-   */
-  const joinMembership = (pid: string) => {
+  const exit = () => router.canGoBack() ? router.back() : router.replace(APP_ROUTES.customer.cards);
+  const joinMembership = (id: string) => {
     setDetailProduct(null);
-
-    router.push(APP_ROUTES.join.membership(organizationId, pid) as never);
+    router.push(APP_ROUTES.join.membership(organizationId, id) as never);
   };
 
-  /*
-   * Display the first plan's price for the product.
-   */
-  const priceLabel = (product: MembershipProduct) => {
-    const plan = product.plans[0];
-
-    if (!plan) {
-      return "";
-    }
-
-    const interval = getSubscriptionPeriodLabel(plan);
-
-    return `${formatMoney(plan.price.amountMinor)} · ${interval}`;
-  };
-
-  /*
-   * Currently selected owned membership.
-   */
-  const focused =
-    memberships.find(
-      (membership) => membership.subscription.id === selectedSubId,
-    ) ?? memberships[0];
-
-  /*
-   * --------------------------------------------------------------
-   * READY
-   * --------------------------------------------------------------
-   */
-  if (status === "ready") {
-    return (
-      <View style={{ flex: 1 }}>
-        <BusinessExperience
-          content={getBusinessContent(organizationId)}
-          subscription={focused?.subscription}
-          product={focused?.product}
-          benefits={focused?.benefits ?? []}
-          offers={offers}
-          stores={stores}
-          redemptions={focused?.redemptions ?? []}
-          memberships={memberships.map((membership) => ({
-            subscription: membership.subscription,
-            product: membership.product,
-          }))}
-          selectedSubscriptionId={focused?.subscription.id ?? ""}
-          onSelectSubscription={(id) => {
-            setSelectedSubId(id);
-
-            setActiveContext(organizationId, id);
-          }}
-          availableMemberships={available}
-          onJoin={joinMembership}
-          onExit={exit}
-        />
-
-        <Modal
-          visible={!!detailProduct}
-          onClose={() => setDetailProduct(null)}
-          title={detailProduct?.membershipProductName ?? ""}
-          testID="discover-product-detail"
-        >
-          {detailProduct ? (
-            <View
-              style={{
-                gap: theme.spacing.md,
-              }}
-            >
-              {detailProduct.displayName ? (
-                <Badge label={detailProduct.displayName} tone="brand" />
-              ) : null}
-
-              {detailProduct.description ? (
-                <Text variant="body" color="textSecondary">
-                  {detailProduct.description}
-                </Text>
-              ) : null}
-
-              <Text variant="title" color="primary">
-                {priceLabel(detailProduct)}
-              </Text>
-
-              {detailBenefits.length > 0 ? (
-                <View
-                  style={{
-                    gap: 6,
-                  }}
-                >
-                  {detailBenefits.map((benefit) => (
-                    <Text key={benefit.id} variant="bodySmall" color="text">
-                      • {benefit.displayName ?? benefit.benefitName}
-                    </Text>
-                  ))}
-                </View>
-              ) : null}
-
-              <Button
-                label={t("experience.join")}
-                onPress={() => joinMembership(detailProduct.id)}
-                testID="discover-join"
-              />
-            </View>
-          ) : null}
-        </Modal>
-      </View>
-    );
+  if (status !== "ready" || !detail) {
+    return <View style={{ flex: 1, backgroundColor: theme.colors.background, justifyContent: "center", padding: theme.spacing.lg }}>
+      {status === "error"
+        ? <StateView kind="error" title={t("common.error")} actionLabel={t("common.retry")} onAction={load} testID="discover-state" />
+        : <StateView kind="loading" message={t("common.loading")} testID="discover-state" />}
+    </View>;
   }
 
-  /*
-   * --------------------------------------------------------------
-   * LOADING / ERROR
-   * --------------------------------------------------------------
-   */
-  return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: theme.colors.background,
-        justifyContent: "center",
-        padding: theme.spacing.lg,
-      }}
-    >
-      {status === "error" ? (
-        <StateView
-          kind="error"
-          title={t("common.error")}
-          actionLabel={t("common.retry")}
-          onAction={load}
-          testID="discover-state"
-        />
-      ) : (
-        <StateView
-          kind="loading"
-          message={t("common.loading")}
-          testID="discover-state"
-        />
-      )}
-    </View>
-  );
+  const focused = memberships.find((item) => item.subscription.id === selectedSubId) ?? memberships[0];
+  const owned = new Set(memberships.map((membership) => membership.product.id));
+  const available = detail.membershipProducts.filter((product) => !owned.has(product.id));
+  const productBenefits = detailProduct
+    ? detail.benefits.filter((benefit) => detailProduct.benefitIds.includes(benefit.id)) : [];
+  const priceLabel = (product: MembershipProduct) => {
+    const plan = product.plans[0];
+    return plan ? `${formatMoney(plan.price.amountMinor)} · ${getSubscriptionPeriodLabel(plan)}` : "";
+  };
+
+  return <View style={{ flex: 1 }}>
+    <BusinessExperience
+      content={detail.publishedExperience.definition.content}
+      configurationOverride={detail.publishedExperience.configuration}
+      templateOverride={detail.publishedExperience.template as TemplateDefinition}
+      organizationOverride={detail.organization as never}
+      detailsOverride={detail.publishedExperience.organizationDetails as never}
+      brandingOverride={detail.publishedExperience.organizationBranding as never}
+      previewDefinition={detail.publishedExperience.definition}
+      subscription={focused?.subscription}
+      product={focused?.product}
+      benefits={focused?.benefits ?? []}
+      benefitUsageRules={detail.benefitUsageRules as never}
+      offers={detail.offers}
+      offerUsageRules={detail.offerUsageRules as never}
+      stores={detail.stores}
+      redemptions={focused?.redemptions ?? []}
+      memberships={memberships.map(({ subscription, product }) => ({ subscription, product }))}
+      selectedSubscriptionId={focused?.subscription.id ?? ""}
+      onSelectSubscription={(id) => { setSelectedSubId(id); setActiveContext(organizationId, id); }}
+      availableMemberships={available}
+      onJoin={joinMembership}
+      onExit={exit}
+      customerUserId={customerId}
+    />
+    <Modal visible={!!detailProduct} onClose={() => setDetailProduct(null)} title={detailProduct?.membershipProductName ?? ""} testID="discover-product-detail">
+      {detailProduct ? <View style={{ gap: theme.spacing.md }}>
+        {detailProduct.displayName ? <Badge label={detailProduct.displayName} tone="brand" /> : null}
+        {detailProduct.description ? <Text variant="body" color="textSecondary">{detailProduct.description}</Text> : null}
+        <Text variant="title" color="primary">{priceLabel(detailProduct)}</Text>
+        {productBenefits.map((benefit) => <Text key={benefit.id} variant="bodySmall" color="text">• {benefit.displayName ?? benefit.benefitName}</Text>)}
+        <Button label={t("experience.join")} onPress={() => joinMembership(detailProduct.id)} testID="discover-join" />
+      </View> : null}
+    </Modal>
+  </View>;
 }

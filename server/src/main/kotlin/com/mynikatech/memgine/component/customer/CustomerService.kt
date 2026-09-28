@@ -3,6 +3,7 @@ package com.mynikatech.memgine.component.customer
 import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.exception.ConflictException
 import com.mynikatech.memgine.exception.ForbiddenException
+import com.mynikatech.memgine.exception.NotFoundException
 import com.mynikatech.memgine.net.dto.CreateProspectiveCustomerDto
 import com.mynikatech.memgine.net.dto.CounterSubscriptionDto
 import com.mynikatech.memgine.net.dto.CounterPurchaseResult
@@ -10,6 +11,8 @@ import com.mynikatech.memgine.net.dto.CustomerPurchaseRequestDto
 import com.mynikatech.memgine.net.dto.OrgAdminCustomerDto
 import com.mynikatech.memgine.net.dto.ProspectiveCustomerCreatedDto
 import com.mynikatech.memgine.net.dto.CustomerChoiceDto
+import com.mynikatech.memgine.net.dto.CustomerDiscoverableOrganizationDto
+import com.mynikatech.memgine.net.dto.CustomerDiscoveryDetailDto
 import com.mynikatech.memgine.net.dto.CustomerRelationshipDto
 import com.mynikatech.memgine.net.dto.OrgAdminRedemptionDto
 import com.mynikatech.memgine.net.dto.OfferDto
@@ -43,6 +46,8 @@ class CustomerService(
     private val businessOtp: BusinessOtpService,
     private val payments: PaymentService
 ) {
+    private val json = Json { ignoreUnknownKeys = true }
+
     // Existing Org Admin components use this development actor until request auth is wired.
     fun list(organizationId: String, actorUserId: String): List<OrgAdminCustomerDto> {
         authorize(organizationId, actorUserId)
@@ -63,6 +68,18 @@ class CustomerService(
     fun choices(): List<CustomerChoiceDto> {
         requireDevIdentity()
         return sql.choices()
+    }
+
+    fun discoverableOrganizations(): List<CustomerDiscoverableOrganizationDto> =
+        sql.discoverableOrganizations()
+
+    fun discoverableOrganization(organizationId: String): CustomerDiscoveryDetailDto {
+        if (organizationId.isBlank() || organizationId.length > 40) {
+            throw NotFoundException("Discoverable organization was not found")
+        }
+        val row = sql.discoverableOrganization(organizationId)
+            ?: throw NotFoundException("Discoverable organization was not found")
+        return json.decodeFromString(row.detailJson)
     }
 
     fun relationships(userId: String): List<CustomerRelationshipDto> {

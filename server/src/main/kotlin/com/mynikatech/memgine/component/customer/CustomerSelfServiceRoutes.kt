@@ -28,6 +28,17 @@ private fun ApplicationCall.userId(): String = authenticatedPrincipal().userId
 /** Customer use cases are separate from organization administration. */
 fun Route.customerSelfServiceRoutes(service: CustomerService) {
     route("/customer") {
+        route("/discover") {
+            get("/organizations") {
+                call.respond(ApiResponse.success(service.discoverableOrganizations(), call.callId))
+            }
+            get("/organizations/{organizationId}") {
+                call.respond(ApiResponse.success(
+                    service.discoverableOrganization(call.organizationId()),
+                    call.callId
+                ))
+            }
+        }
         get("/relationships") {
             call.respond(ApiResponse.success(service.relationships(call.userId()), call.callId))
         }

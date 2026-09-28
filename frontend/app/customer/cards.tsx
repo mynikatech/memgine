@@ -11,6 +11,7 @@ import { buildTheme, type Theme } from "@/src/theme/theme";
 import { Badge, Card, Header, Section, StateView, Text } from "@/src/ui";
 import { MembershipCard } from "@/src/ui/domain";
 import { CustomerNotificationBell } from "@/src/ui/domain/CustomerNotificationBell";
+import type { CustomerDiscoverableOrganization } from "@/src/data/api/customer-data-api";
 
 type CardVM = {
   subscription: Subscription;
@@ -38,6 +39,7 @@ export default function MyCards() {
   const [groups, setGroups] = useState<OrgGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [discoverable, setDiscoverable] = useState<CustomerDiscoverableOrganization[]>([]);
 
   useFocusEffect(useCallback(() => {
     if (!customerId || customersLoading || customersError) {
@@ -49,6 +51,7 @@ export default function MyCards() {
     setError(null);
     (async () => {
       try {
+        const [discoveries] = await Promise.all([services.customerData.discoverOrganizations()]);
         const relationships = profiles.filter((row) => row.userId === customerId);
         const loaded = await Promise.all(relationships.map(async (relationship): Promise<OrgGroup> => {
           const organizationId = relationship.organizationId;
@@ -97,10 +100,10 @@ export default function MyCards() {
             cards: cards.filter((card): card is CardVM => card !== null),
           };
         }));
-        if (active) setGroups(loaded);
+        if (active) { setGroups(loaded); setDiscoverable(discoveries); }
       } catch (failure) {
         if (active) {
-          setGroups([]);
+          setGroups([]); setDiscoverable([]);
           setError(failure instanceof Error ? failure.message : "Unable to load memberships.");
         }
       } finally { if (active) setLoading(false); }
@@ -114,6 +117,10 @@ export default function MyCards() {
     router.push(APP_ROUTES.business.subscription(card.subscription.id) as never);
   };
 
+  const openDiscovery = (organizationId: string) => {
+    router.push(APP_ROUTES.discover.organization(organizationId) as never);
+  };
+
   return (
     <Screen testID="customer-cards-screen" edges={["top"]}
       header={<Header title={t("cards.title")} subtitle={t("cards.subtitle")} right={<CustomerNotificationBell />} testID="cards-header" />}>
@@ -122,9 +129,23 @@ export default function MyCards() {
       ) : customersError || error ? (
         <StateView kind="error" title={t("common.error")} message={customersError || error || undefined}
           actionLabel={t("common.retry")} onAction={() => void refreshCustomers()} testID="cards-state" />
-      ) : !groups.some((group) => group.cards.length > 0) ? (
-        <StateView kind="empty" title={t("cards.empty")} message={t("cards.emptyBody")} testID="cards-state" />
-      ) : groups.map((group) => (
+      ) : <>
+        <Section title="Discover Businesses" testID="customer-discovery">
+          {discoverable.length === 0 ? (
+            <Text variant="body" color="textSecondary">No businesses are available to explore right now.</Text>
+          ) : discoverable.map((business) => (
+            <Pressable key={business.organizationId} onPress={() => openDiscovery(business.organizationId)} testID={`discover-${business.organizationId}`}>
+              <Card padding="md"><Text variant="title">{business.displayName || business.name}</Text>
+                {business.tagline ? <Text variant="bodySmall" color="textSecondary">{business.tagline}</Text> : null}
+                <Badge label="Explore memberships" tone="brand" />
+              </Card>
+            </Pressable>
+          ))}
+        </Section>
+        <Section title="My Memberships">
+        {!groups.some((group) => group.cards.length > 0) ? (
+          <StateView kind="empty" title={t("cards.empty")} message={t("cards.emptyBody")} testID="cards-state" />
+        ) : groups.map((group) => (
         <BusinessThemeScope key={group.organizationId} theme={group.theme}>
           <Section title={group.organizationName} testID={"cards-group-" + group.organizationId}>
             {group.cards.map((card) => {
@@ -150,7 +171,9 @@ export default function MyCards() {
             })}
           </Section>
         </BusinessThemeScope>
-      ))}
+        ))}
+        </Section>
+      </>}
     </Screen>
   );
 }

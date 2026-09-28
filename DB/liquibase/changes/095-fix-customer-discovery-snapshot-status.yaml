@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 095-fix-customer-discovery-snapshot-status
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/095-fix-customer-discovery-snapshot-status.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

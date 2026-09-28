@@ -1,5 +1,18 @@
-import type { ID } from "@/src/core";
-import type { Benefit, BenefitUsageRule, MembershipProduct, Offer, Store } from "@/src/core";
+import type {
+  Benefit,
+  BenefitUsageRule,
+  BusinessConfiguration,
+  CustomerExperienceDefinition,
+  ID,
+  MembershipProduct,
+  Offer,
+  OfferUsageRule,
+  Organization,
+  OrganizationBranding,
+  OrganizationDetails,
+  Store,
+} from "@/src/core";
+import type { TemplateDefinition } from "@/src/core/template/template-definition";
 import type { CounterPurchaseResult, CounterSubscription } from "./counter-api";
 import type { MembershipPurchaseQuote, PaymentConfirmation, PaymentIntent } from "./counter-api";
 import type { OrgAdminRedemption } from "./org-admin-transaction-api";
@@ -15,7 +28,59 @@ import { StoreApi } from "./store-api";
 const base = (organizationId: ID) =>
   `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}`;
 
+export type CustomerDiscoverableOrganization = {
+  organizationId: ID;
+  name: string;
+  displayName?: string | null;
+  logoUrl?: string | null;
+  tagline?: string | null;
+};
+
+export type CustomerDiscoveryDetail = {
+  organization: Pick<
+    Organization,
+    "id" | "name" | "displayName" | "website" | "primaryEmail" | "primaryPhone"
+  >;
+  publishedExperience: {
+    configuration: BusinessConfiguration;
+    template: Pick<TemplateDefinition, "id" | "sections" | "supportedCardStyles">;
+    definition: CustomerExperienceDefinition;
+    organizationBranding?: Pick<
+      OrganizationBranding,
+      | "logoUrl"
+      | "darkThemeLogoUrl"
+      | "faviconUrl"
+      | "splashScreenImageUrl"
+      | "tagline"
+      | "heroImageUrl"
+      | "primaryColor"
+      | "secondaryColor"
+      | "accentColor"
+    > | null;
+    organizationDetails?: Pick<
+      OrganizationDetails,
+      "aboutOrganization" | "supportEmail" | "supportPhone"
+    > | null;
+  };
+  membershipProducts: MembershipProduct[];
+  benefits: Benefit[];
+  benefitUsageRules: BenefitUsageRule[];
+  offers: Offer[];
+  offerUsageRules: OfferUsageRule[];
+  stores: Store[];
+};
+
 export class CustomerDataApi {
+  discoverOrganizations(): Promise<ApiResult<CustomerDiscoverableOrganization[]>> {
+    return httpClient.get("/api/v1/customer/discover/organizations");
+  }
+  discoverOrganizationDetail(
+    organizationId: ID,
+  ): Promise<ApiResult<CustomerDiscoveryDetail>> {
+    return httpClient.get(
+      `/api/v1/customer/discover/organizations/${encodeURIComponent(organizationId)}`,
+    );
+  }
   choices(): Promise<ApiResult<CustomerChoice[]>> {
     return httpClient.get("/api/v1/customer/dev/choices");
   }

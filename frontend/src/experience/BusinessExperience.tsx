@@ -180,6 +180,10 @@ type Props = {
   heroImageUrl?: string;
   /** Resolved by the customer self-service route; replaces local identity lookup. */
   customerUserId?: string;
+
+  /** Published public inputs used by customer discovery without changing workspace context. */
+  configurationOverride?: import("@/src/core").BusinessConfiguration;
+  templateOverride?: TemplateDefinition;
 };
 
 export function BusinessExperience({
@@ -215,14 +219,19 @@ export function BusinessExperience({
   tagline,
   heroImageUrl,
   customerUserId,
+  configurationOverride,
+  templateOverride,
 }: Props) {
   const isPreviewMode = renderMode !== "customer";
 
   const {
     organization: contextOrganization,
-    configuration,
-    template,
+    configuration: contextConfiguration,
+    template: contextTemplate,
   } = useBusiness();
+
+  const configuration = configurationOverride ?? contextConfiguration;
+  const template = templateOverride ?? contextTemplate;
 
   const { t, formatDate, formatMoney } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -422,7 +431,9 @@ export function BusinessExperience({
             detailsOverride === undefined
               ? services.organization.getOrganizationDetails(organization.id)
               : Promise.resolve(detailsOverride),
-            services.organization.getOrganization(organization.id),
+            organizationOverride === undefined
+              ? services.organization.getOrganization(organization.id)
+              : Promise.resolve(organizationOverride),
             services.customerData.preference(
               organization.id,
               customerUserId,
@@ -963,16 +974,6 @@ export function BusinessExperience({
     </Card>
   );
 
-  const planLabel = (p: MembershipProduct) => {
-    const plan = p.plans[0];
-
-    if (!plan) return "";
-
-    const interval = getSubscriptionPeriodLabel(plan);
-
-    return `${formatMoney(plan.price.amountMinor)} · ${interval}`;
-  };
-
   const renderTabPreviewLink = (tabKey: ExperienceTabKey) => {
     if (!isPreviewMode || !onPreviewTab || previewSection) {
       return null;
@@ -1251,9 +1252,16 @@ export function BusinessExperience({
                       </Text>
                     ) : null}
 
-                    <Text variant="bodySmall" color="primary">
-                      {planLabel(p)}
-                    </Text>
+                    {p.plans.map((plan) => (
+                      <View key={plan.id} style={{ gap: 2 }}>
+                        <Text variant="bodySmall" color="textMuted">
+                          {plan.subscriptionPlanName}
+                        </Text>
+                        <Text variant="bodySmall" color="primary">
+                          {`${formatMoney(plan.price.amountMinor)} · ${getSubscriptionPeriodLabel(plan)}`}
+                        </Text>
+                      </View>
+                    ))}
                   </View>
 
                   <Button

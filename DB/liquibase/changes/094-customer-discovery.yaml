@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 094-customer-discovery
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/094-customer-discovery.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
