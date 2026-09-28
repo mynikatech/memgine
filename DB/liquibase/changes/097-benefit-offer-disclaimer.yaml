@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 097-benefit-offer-disclaimer
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/097-benefit-offer-disclaimer.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

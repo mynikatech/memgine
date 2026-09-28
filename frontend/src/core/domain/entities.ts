@@ -599,6 +599,7 @@ export interface Benefit {
   benefitTypeId: ID;
 
   description?: string;
+  disclaimerText?: string;
 
   benefitStatusId: ID;
 
@@ -683,6 +684,7 @@ export interface Offer {
   promotionImageUrl: string;
   badgeText?: string;
   availabilityText?: string;
+  disclaimerText?: string;
 
   membershipProductId?: ID;
   storeId?: ID;

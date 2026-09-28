@@ -1108,6 +1108,7 @@ export function BusinessExperience({
                   testID={`experience-benefit-${b.id}`}
                   title={b.displayName ?? b.benefitName}
                   subtitle={b.description}
+                  disclaimerText={b.disclaimerText}
                   icon={benefitIconForType(b.benefitTypeId)}
                   usageRules={benefitUsageRules?.filter(
                     (rule) => rule.benefitId === b.id,
@@ -1319,6 +1320,7 @@ export function BusinessExperience({
                 imageUrl={offer.promotionImageUrl}
                 badge={offer.badgeText}
                 availabilityText={offer.availabilityText}
+                disclaimerText={offer.disclaimerText}
                 discountPercentage={offer.discountPercentage}
                 ctaLabel={offer.ctaLabel}
                 usageRules={offerUsageRules?.filter(
@@ -2302,6 +2304,7 @@ export function BusinessExperience({
                         testID={`experience-preview-benefit-${b.id}`}
                         title={b.displayName ?? b.benefitName}
                         subtitle={b.description}
+                        disclaimerText={b.disclaimerText}
                         icon={benefitIconForType(b.benefitTypeId)}
                         usageRules={benefitUsageRules?.filter(
                           (rule) => rule.benefitId === b.id,

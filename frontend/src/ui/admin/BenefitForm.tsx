@@ -580,7 +580,10 @@ export function BenefitForm({
 
     try {
       await onSave(
-        { ...form },
+        {
+          ...form,
+          disclaimerText: form.disclaimerText?.trim() || undefined,
+        },
         rules.map((rule) => ({
           ...rule,
           ruleName:
@@ -724,6 +727,14 @@ export function BenefitForm({
           value={form.description ?? ""}
           placeholder="Describe the benefit..."
           onChangeText={(value) => update("description", value || undefined)}
+        />
+
+        <TextArea
+          label="Disclaimer / Terms"
+          value={form.disclaimerText ?? ""}
+          placeholder="Optional customer-facing terms or restrictions"
+          maxLength={500}
+          onChangeText={(value) => update("disclaimerText", value || undefined)}
         />
       </View>
 

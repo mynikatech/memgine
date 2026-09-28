@@ -76,6 +76,7 @@ data class CustomerDiscoveryBenefitDto(
     val benefitName: String,
     val displayName: String? = null,
     val description: String? = null,
+    val disclaimerText: String? = null,
     val benefitTypeId: String,
 )
 
@@ -87,6 +88,7 @@ data class CustomerDiscoveryOfferDto(
     val promotionImageUrl: String? = null,
     val badgeText: String? = null,
     val availabilityText: String? = null,
+    val disclaimerText: String? = null,
     val membershipProductId: String? = null,
     val discountPercentage: Double? = null,
     val ctaLabel: String? = null,

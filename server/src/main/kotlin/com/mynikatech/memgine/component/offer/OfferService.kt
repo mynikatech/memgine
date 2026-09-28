@@ -42,6 +42,7 @@ class OfferService(private val jdbi: Jdbi) {
             request.promotionImageUrl.startsWith("data:") ||
             (request.badgeText?.length ?: 0) > 50 ||
             (request.availabilityText?.length ?: 0) > 100 ||
+            (request.disclaimerText?.length ?: 0) > 500 ||
             request.ctaLabel.isBlank() || request.ctaLabel.length > 50 ||
             request.ctaType !in setOf("REDEEM_OFFER", "SHOP") ||
             (request.ctaTarget?.length ?: 0) > 500 ||
@@ -88,7 +89,7 @@ class OfferService(private val jdbi: Jdbi) {
                 sql.save(OfferSqlParams(
                     organizationId, request.id, request.offerCode, request.offerName,
                     request.description, request.membershipProductId, request.storeId,
-                    request.promotionImageUrl, request.badgeText, request.availabilityText,
+                    request.promotionImageUrl, request.badgeText, request.availabilityText, request.disclaimerText,
                     request.ctaLabel, request.ctaType, request.ctaTarget,
                     request.discountPercentage, request.effectiveDate, request.expiryDate,
                     request.statusId, request.versionNo, actorUserId, create

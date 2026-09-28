@@ -10,7 +10,7 @@ data class OfferSqlParams(
     val organizationId: String, val id: String, val offerCode: String,
     val offerName: String, val description: String?, val membershipProductId: String?,
     val storeId: String?, val promotionImageUrl: String, val badgeText: String?,
-    val availabilityText: String?, val ctaLabel: String, val ctaType: String,
+    val availabilityText: String?, val disclaimerText: String?, val ctaLabel: String, val ctaType: String,
     val ctaTarget: String?, val discountPercentage: Double?, val effectiveDate: String,
     val expiryDate: String?, val statusId: String, val versionNo: Int,
     val actorUserId: String, val create: Boolean
@@ -47,7 +47,7 @@ interface OfferSql {
     @SqlQuery("""SELECT save_organization_offer(
         :organizationId, :id, :offerCode, :offerName, :description,
         :membershipProductId, :storeId, :promotionImageUrl, :badgeText,
-        :availabilityText, :ctaLabel, :ctaType, :ctaTarget,
+        :availabilityText, :disclaimerText, :ctaLabel, :ctaType, :ctaTarget,
         CAST(:discountPercentage AS numeric), CAST(:effectiveDate AS date),
         CAST(:expiryDate AS date), :statusId, :versionNo, :actorUserId, :create)""")
     fun save(@BindBean params: OfferSqlParams): Boolean

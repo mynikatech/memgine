@@ -10,7 +10,7 @@ import org.jdbi.v3.sqlobject.statement.SqlQuery
 data class BenefitSqlParams(
     val organizationId: String, val id: String, val benefitCode: String,
     val benefitName: String, val displayName: String?, val benefitCategoryId: String,
-    val benefitTypeId: String, val description: String?, val benefitStatusId: String,
+    val benefitTypeId: String, val description: String?, val disclaimerText: String?, val benefitStatusId: String,
     val productId: String?, val retailPrice: Double?, val cost: Double?,
     val effectiveDate: String, val expiryDate: String?, val actorUserId: String,
     val create: Boolean
@@ -63,7 +63,7 @@ interface BenefitSql {
 
     @SqlQuery("""SELECT save_organization_benefit(
         :organizationId, :id, :benefitCode, :benefitName, :displayName,
-        :benefitCategoryId, :benefitTypeId, :description, :benefitStatusId,
+        :benefitCategoryId, :benefitTypeId, :description, :disclaimerText, :benefitStatusId,
         :productId, CAST(:retailPrice AS numeric), CAST(:cost AS numeric),
         CAST(:effectiveDate AS date), CAST(:expiryDate AS date),
         :actorUserId, :create)""")

@@ -43,6 +43,7 @@ export function benefitIconForType(benefitTypeId: string): IoniconName {
 type BenefitItemProps = {
   title: string;
   subtitle?: string;
+  disclaimerText?: string;
   icon?: IoniconName;
   usageRules?: BenefitUsageRule[];
   testID?: string;
@@ -245,6 +246,7 @@ function formatAvailability(rule: BenefitUsageRule): string {
 export function BenefitItem({
   title,
   subtitle,
+  disclaimerText,
   icon = "gift-outline",
   usageRules: usageRulesOverride,
   testID,
@@ -344,6 +346,12 @@ export function BenefitItem({
           ) : subtitle ? (
             <Text variant="bodySmall" color="textMuted">
               {subtitle}
+            </Text>
+          ) : null}
+
+          {disclaimerText?.trim() ? (
+            <Text variant="caption" color="textMuted">
+              Terms: {disclaimerText.trim()}
             </Text>
           ) : null}
 

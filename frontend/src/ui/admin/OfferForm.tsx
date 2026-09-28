@@ -20,6 +20,7 @@ import { Input } from "../Input";
 import { Modal } from "../Modal";
 import { ReferenceSelect } from "../ReferenceSelect";
 import { Text } from "../Text";
+import { TextArea } from "../TextArea";
 
 type OfferFormProps = {
   offer: Offer;
@@ -603,6 +604,7 @@ export function OfferForm({
         offerCode: draft.offerCode.trim(),
         offerName: draft.offerName.trim(),
         description: draft.description?.trim() || undefined,
+        disclaimerText: draft.disclaimerText?.trim() || undefined,
         promotionImageUrl: draft.promotionImageUrl.trim(),
         badgeText: draft.badgeText?.trim() || undefined,
         availabilityText: draft.availabilityText?.trim() || undefined,
@@ -738,6 +740,15 @@ export function OfferForm({
             update("availabilityText", value || undefined)
           }
           placeholder="e.g. This weekend only"
+          editable={!readOnly}
+        />
+
+        <TextArea
+          label="Disclaimer / Terms"
+          value={draft.disclaimerText ?? ""}
+          onChangeText={(value) => update("disclaimerText", value || undefined)}
+          placeholder="Optional customer-facing terms or restrictions"
+          maxLength={500}
           editable={!readOnly}
         />
       </View>

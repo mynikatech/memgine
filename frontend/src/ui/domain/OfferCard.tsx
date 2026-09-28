@@ -17,6 +17,7 @@ type OfferCardProps = {
   imageUrl?: string;
   badge?: string;
   availabilityText?: string;
+  disclaimerText?: string;
   discountPercentage?: number;
   ctaLabel?: string;
   onPress?: () => void;
@@ -142,6 +143,7 @@ export function OfferCard({
   imageUrl,
   badge,
   availabilityText,
+  disclaimerText,
   discountPercentage,
   ctaLabel,
   onPress,
@@ -279,6 +281,12 @@ export function OfferCard({
           {availabilityText ? (
             <Text variant="caption" color="textMuted">
               {availabilityText}
+            </Text>
+          ) : null}
+
+          {disclaimerText?.trim() ? (
+            <Text variant="caption" color="textMuted">
+              Terms: {disclaimerText.trim()}
             </Text>
           ) : null}
 

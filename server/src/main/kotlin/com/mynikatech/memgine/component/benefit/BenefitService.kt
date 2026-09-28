@@ -48,6 +48,7 @@ class BenefitService(private val jdbi: Jdbi) {
             request.benefitName.length > 100 ||
             (request.displayName?.length ?: 0) > 100 ||
             (request.description?.length ?: 0) > 1000 ||
+            (request.disclaimerText?.length ?: 0) > 500 ||
             (request.retailPrice != null && request.retailPrice < 0) ||
             (request.cost != null && request.cost < 0)) {
             throw BadRequestException("Benefit exceeds a field limit or has a negative price")
@@ -96,7 +97,7 @@ class BenefitService(private val jdbi: Jdbi) {
             sql.save(BenefitSqlParams(
                 organizationId, request.id, request.benefitCode, request.benefitName,
                 request.displayName, request.benefitCategoryId, request.benefitTypeId,
-                request.description, request.benefitStatusId, request.productId,
+                request.description, request.disclaimerText, request.benefitStatusId, request.productId,
                 request.retailPrice, request.cost, request.effectiveDate,
                 request.expiryDate, actorUserId, create
             ))
