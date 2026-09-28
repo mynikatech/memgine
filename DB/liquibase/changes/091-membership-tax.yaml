@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 091-membership-tax
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/091-membership-tax.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

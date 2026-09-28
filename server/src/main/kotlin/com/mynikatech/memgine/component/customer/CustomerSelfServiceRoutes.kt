@@ -70,6 +70,14 @@ fun Route.customerSelfServiceRoutes(service: CustomerService) {
             post("/purchases") {
                 throw BadRequestException("Membership purchase requires verified payment confirmation")
             }
+            get("/purchases/quote") {
+                val planId = call.request.queryParameters["planId"]
+                    ?: throw BadRequestException("Membership plan id is required")
+                call.respond(ApiResponse.success(
+                    service.purchaseQuote(call.organizationId(), call.userId(), planId),
+                    call.callId
+                ))
+            }
             post("/purchases/otp/request") {
                 val principal = call.attributes.getOrNull(AuthenticatedPrincipalKey)
                 call.respond(ApiResponse.success(service.requestPurchaseOtp(call.organizationId(), call.receive(), principal?.userId), call.callId))

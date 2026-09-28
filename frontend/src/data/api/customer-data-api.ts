@@ -1,7 +1,7 @@
 import type { ID } from "@/src/core";
 import type { Benefit, BenefitUsageRule, MembershipProduct, Offer, Store } from "@/src/core";
 import type { CounterPurchaseResult, CounterSubscription } from "./counter-api";
-import type { PaymentConfirmation, PaymentIntent } from "./counter-api";
+import type { MembershipPurchaseQuote, PaymentConfirmation, PaymentIntent } from "./counter-api";
 import type { OrgAdminRedemption } from "./org-admin-transaction-api";
 import type { CustomerChoice, CustomerProfile } from "@/src/core/services/customer-data-service";
 import { entityStatusApi } from "./entity-status-api";
@@ -45,6 +45,15 @@ export class CustomerDataApi {
       idempotencyKey,
       returnContext: productId ? { productId } : undefined,
     });
+  }
+
+  purchaseQuote(
+    organizationId: ID,
+    planId: ID,
+  ): Promise<ApiResult<MembershipPurchaseQuote>> {
+    return httpClient.get(
+      `${base(organizationId)}/purchases/quote?planId=${encodeURIComponent(planId)}`,
+    );
   }
 
   confirmTestPayment(

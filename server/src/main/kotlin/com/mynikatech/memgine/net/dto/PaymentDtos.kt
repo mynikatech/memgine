@@ -18,6 +18,18 @@ data class PaymentStartRequestDto(
 )
 
 @Serializable
+data class MembershipPurchaseQuoteDto(
+    val planId: String,
+    val subtotalAmount: Double,
+    val taxRate: Double,
+    val taxAmount: Double,
+    val totalAmount: Double,
+    val currencyCode: String,
+    val taxCode: String? = null,
+    val taxName: String? = null
+)
+
+@Serializable
 data class AuthenticatedMembershipPaymentStartDto(
     val planId: String,
     val idempotencyKey: String,

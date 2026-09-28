@@ -10,6 +10,7 @@ import com.mynikatech.memgine.net.dto.CounterPurchaseResult
 import com.mynikatech.memgine.net.dto.PaymentIntentDto
 import com.mynikatech.memgine.net.dto.PaymentReturnContextDto
 import com.mynikatech.memgine.net.dto.PaymentStartRequestDto
+import com.mynikatech.memgine.net.dto.MembershipPurchaseQuoteDto
 import com.mynikatech.memgine.net.dto.TestPaymentConfirmationDto
 import com.stripe.model.Event
 import org.jdbi.v3.core.Jdbi
@@ -31,6 +32,16 @@ class PaymentService(
         else -> throw IllegalArgumentException("Unsupported payment provider configuration")
     }
     private fun sql() = jdbi.onDemand(PaymentSql::class.java)
+
+    /** Pricing comes from the database so every checkout uses the same tax rule. */
+    fun quoteMembership(org: String, planId: String): MembershipPurchaseQuoteDto {
+        validateId(org, "organization id")
+        validateId(planId, "membership plan id")
+        return translate {
+            sql().quote(org, planId)
+                ?: throw NotFoundException("Membership plan was not found")
+        }
+    }
 
     fun startMembershipPayment(org: String, request: PaymentStartRequestDto, actorUserId: String?): PaymentIntentDto {
         requirePaymentProvider()

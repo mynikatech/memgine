@@ -1,7 +1,7 @@
 import type { Benefit, BenefitUsageRule, ID, MembershipProduct, Offer, Store } from "@/src/core";
 import { CustomerDataApi } from "@/src/data/api/customer-data-api";
 import type { CounterPurchaseResult, CounterSubscription } from "@/src/data/api/counter-api";
-import type { PaymentConfirmation, PaymentIntent } from "@/src/data/api/counter-api";
+import type { MembershipPurchaseQuote, PaymentConfirmation, PaymentIntent } from "@/src/data/api/counter-api";
 import type { OrgAdminRedemption } from "@/src/data/api/org-admin-transaction-api";
 
 export type CustomerChoice = { userId: ID; displayName: string };
@@ -88,6 +88,12 @@ export class CustomerDataService {
     productId?: ID,
   ): Promise<PaymentIntent> {
     const result = await this.api.startAuthenticatedPayment(organizationId, planId, idempotencyKey, productId);
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
+  }
+
+  async purchaseQuote(organizationId: ID, planId: ID): Promise<MembershipPurchaseQuote> {
+    const result = await this.api.purchaseQuote(organizationId, planId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }

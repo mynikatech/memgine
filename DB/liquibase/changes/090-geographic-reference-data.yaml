@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 090-geographic-reference-data
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/090-geographic-reference-data.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

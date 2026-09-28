@@ -101,6 +101,16 @@ fun Route.counterRoutes(service: CounterService) {
         post("/purchases") {
             throw BadRequestException("Counter purchase requires business OTP verification")
         }
+        get("/purchases/quote") {
+            val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
+            val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
+            val planId = call.request.queryParameters["planId"] ?: throw BadRequestException("Membership plan id is required")
+            call.respond(ApiResponse.success(
+                service.purchaseQuote(org, store, staff, planId, call.authenticatedPrincipal()),
+                call.callId
+            ))
+        }
         post("/purchases/otp/request") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             call.respond(ApiResponse.success(

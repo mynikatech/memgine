@@ -1,24 +1,35 @@
 import { Ionicons } from "@expo/vector-icons";
+
 import { useLocalSearchParams, useRouter } from "expo-router";
+
 import { useCallback, useEffect, useRef, useState } from "react";
+
 import { Modal, Platform, Pressable, View } from "react-native";
 
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
+
 import type {
   Benefit,
   Customer,
   MembershipProduct,
   Subscription,
 } from "@/src/core";
+
+import type { MembershipPurchaseQuote } from "@/src/data/api/counter-api";
+
 import { services } from "@/src/core";
+
 import { APP_ROUTES } from "@/src/constants/navigation";
+
 import { Screen } from "@/src/layout";
+
 import {
   useBusiness,
   useCustomerContext,
   useAuth,
   useTranslation,
 } from "@/src/providers";
+
 import {
   Badge,
   Button,
@@ -29,6 +40,7 @@ import {
   StateView,
   Text,
 } from "@/src/ui";
+
 import {
   benefitIconForType,
   BenefitItem,
@@ -39,29 +51,53 @@ import {
 import { counterCheckout } from "@/src/core/services/counter-checkout";
 
 /**
+
  * Customer acquisition & subscription purchase journey.
+
  *
+
  * Reused for:
+
  * - direct customer purchase
+
  * - staff-assisted counter purchase
+
  *
+
  * Subscription:
+
  *
+
  * Customer
+
  *   -> OrganizationUser
+
  *      -> Subscription
+
  *
+
  * Subscription
+
  *   -> SubscriptionPlan
+
  *
+
  * Payment:
+
  *
+
  * JoinFlow
+
  *   -> PaymentService
+
  *      -> LocalPaymentService (development)
+
  *      -> Real provider adapter (production)
+
  *
+
  * JoinFlow deliberately does NOT know which payment provider is being used.
+
  */
 
 type Step =
@@ -75,30 +111,43 @@ type Step =
   | "success";
 
 /*
+
  * --------------------------------------------------------------
+
  * Country / phone configuration
+
  * --------------------------------------------------------------
+
  */
 
 type CountryOption = {
   country: string;
+
   code: string;
 };
 
 const COUNTRY_OPTIONS: CountryOption[] = [
   { country: "Canada", code: "+1" },
+
   { country: "United States", code: "+1" },
+
   { country: "India", code: "+91" },
+
   { country: "United Kingdom", code: "+44" },
+
   { country: "Australia", code: "+61" },
+
   { country: "United Arab Emirates", code: "+971" },
+
   { country: "Singapore", code: "+65" },
 ];
 
 const DEFAULT_COUNTRY = COUNTRY_OPTIONS[0];
 
 const MAX_PHONE_DIGITS = 10;
+
 const OTP_LENGTH = 6;
+
 const MonerisFrame = "iframe" as any;
 
 const normalizePhone = (value: string): string =>
@@ -112,16 +161,24 @@ export default function JoinFlow() {
 
   const params = useLocalSearchParams<{
     organizationId?: string;
+
     productId?: string;
+
     customerId?: string;
+
     staffId?: string;
+
     storeId?: string;
+
     source?: string;
+
     paymentIntentId?: string;
+
     paymentCancelled?: string;
   }>();
 
   const { organization, configuration, theme } = useBusiness();
+
   const { session } = useAuth();
 
   const { setActiveContext } = useCustomerContext();
@@ -131,12 +188,20 @@ export default function JoinFlow() {
   const orgId = params.organizationId ?? organization.id;
 
   /*
+
    * Staff-assisted purchase is identified only by the navigation
+
    * source. It is not persisted on Subscription.
+
    */
+
   const isStaffSale = params.source === "STAFF_ASSISTED";
+
   const suppliedCustomerId = params.customerId ?? "";
-  const customerId = suppliedCustomerId || (!isStaffSale ? session?.userId ?? "" : "");
+
+  const customerId =
+    suppliedCustomerId || (!isStaffSale ? (session?.userId ?? "") : "");
+
   const returnedPaymentIntentId = params.paymentIntentId;
 
   const [loading, setLoading] = useState(true);
@@ -152,11 +217,13 @@ export default function JoinFlow() {
   const [organizationUserId, setOrganizationUserId] = useState<string | null>(
     null,
   );
+
   const [activeOrganization, setActiveOrganization] = useState(organization);
 
   const [step, setStep] = useState<Step>(
     isStaffSale || customerId ? "review" : "landing",
   );
+
   const [phoneVerified, setPhoneVerified] = useState(false);
 
   const [firstName, setFirstName] = useState("");
@@ -164,8 +231,11 @@ export default function JoinFlow() {
   const [lastName, setLastName] = useState("");
 
   /*
+
    * Canada / +1 is the default.
+
    */
+
   const [countryCode, setCountryCode] = useState(DEFAULT_COUNTRY.code);
 
   const [selectedCountry, setSelectedCountry] =
@@ -178,8 +248,11 @@ export default function JoinFlow() {
   const [email, setEmail] = useState("");
 
   /*
+
    * OTP state
+
    */
+
   const [requestId, setRequestId] = useState("");
 
   const [devCode, setDevCode] = useState("");
@@ -189,39 +262,59 @@ export default function JoinFlow() {
   const [otpError, setOtpError] = useState<string | undefined>();
 
   // Counter purchase verification is separate from normal customer login/registration OTP.
+
   // It is requested once for the exact selected membership and reused through payment.
+
   const [purchaseOtpChallengeId, setPurchaseOtpChallengeId] = useState("");
+
   const [purchaseOtpDevCode, setPurchaseOtpDevCode] = useState("");
+
   const [purchaseOtpCode, setPurchaseOtpCode] = useState("");
+
   const [purchaseOtpVerified, setPurchaseOtpVerified] = useState(false);
+
   const [purchaseOtpBusy, setPurchaseOtpBusy] = useState(false);
+
   const [purchaseOtpNotice, setPurchaseOtpNotice] = useState<
     string | undefined
   >();
 
   /*
+
    * Subscription / payment state
+
    */
+
   const [subscription, setSubscription] = useState<Subscription | null>(null);
 
   const [reference, setReference] = useState("");
 
   const [cashPayment, setCashPayment] = useState<{
     paymentIntentId: string;
+
     amount: number;
+
     currencyCode: string;
   } | null>(null);
+
+  const [purchaseQuote, setPurchaseQuote] =
+    useState<MembershipPurchaseQuote | null>(null);
+
   const [monerisPayment, setMonerisPayment] = useState<{
     paymentIntentId: string;
+
     hostedTokenizationProfileId: string;
+
     hostedTokenizationUrl: string;
   } | null>(null);
+
   const monerisFrameRef = useRef<any>(null);
 
   const redirectToStripeCheckout = useCallback((checkoutUrl: string) => {
     if (typeof window === "undefined") {
       throw new Error("Stripe Checkout is available in the Web Counter only.");
     }
+
     window.location.assign(checkoutUrl);
   }, []);
 
@@ -229,33 +322,57 @@ export default function JoinFlow() {
     monerisPayment && Platform.OS === "web"
       ? new URL(monerisPayment.hostedTokenizationUrl).origin
       : undefined;
+
   const monerisIframeUrl = monerisPayment
     ? `${monerisPayment.hostedTokenizationUrl}?id=${encodeURIComponent(monerisPayment.hostedTokenizationProfileId)}&pmmsg=true&enable_exp=1&enable_cvd=1&enable_exp_formatting=1&enable_cc_formatting=1&display_labels=1`
     : undefined;
 
   /*
+
    * --------------------------------------------------------------
+
    * Load product / customer / OrganizationUser
+
    * --------------------------------------------------------------
+
    *
+
    * IMPORTANT:
+
    *
+
    * Do NOT use:
+
    *
+
    *   services.membershipProduct.getProduct(pid)
+
    *
+
    * for this flow.
+
    *
+
    * The membership catalogue is loaded for the selected organization.
+
    *
+
    * Therefore we load the organization catalogue and resolve the
+
    * selected product from that catalogue.
+
    *
+
    * Benefits are handled the same way:
+
    *
+
    *   listByOrganization(orgId)
+
    *
+
    * and then filtered against product.benefitIds.
+
    */
 
   useEffect(() => {
@@ -264,6 +381,7 @@ export default function JoinFlow() {
     const load = async () => {
       try {
         setLoading(true);
+
         setLoadError(undefined);
 
         const resolvedOrganization =
@@ -276,19 +394,28 @@ export default function JoinFlow() {
         }
 
         /*
+
          * --------------------------------------------------------
+
          * 1. Load organization membership catalogue
+
          * --------------------------------------------------------
+
          */
+
         const membershipProducts =
           await services.customerData.membershipProducts(orgId);
 
         let pid = params.productId;
 
         /*
+
          * If no product was supplied, preserve the existing
+
          * behaviour of selecting the first available product.
+
          */
+
         if (!pid) {
           pid = membershipProducts[0]?.id;
         }
@@ -300,9 +427,13 @@ export default function JoinFlow() {
         }
 
         /*
+
          * Resolve the product from the organization-scoped
+
          * server-backed catalogue.
+
          */
+
         const prod = membershipProducts.find(
           (item) => item.id === pid && !item.isDeleted,
         );
@@ -312,18 +443,31 @@ export default function JoinFlow() {
         }
 
         /*
+
          * --------------------------------------------------------
+
          * 2. Load organization benefits
+
          * --------------------------------------------------------
+
          *
+
          * Do not use services.benefit.listByProduct(pid) here.
+
          *
+
          * The organization-scoped list contains the Benefits assigned
+
          * to the selected membership product.
+
          *
+
          * The organization-scoped method is the correct persisted
+
          * data path.
+
          */
+
         const organizationBenefits =
           await services.customerData.benefits(orgId);
 
@@ -333,80 +477,125 @@ export default function JoinFlow() {
         );
 
         /*
+
          * --------------------------------------------------------
+
          * 3. Resolve customer
+
          * --------------------------------------------------------
+
          */
+
         /*
+
          * --------------------------------------------------------
+
          * 3. Resolve canonical customer / OrganizationUser
+
          * --------------------------------------------------------
+
          *
+
          * Counter passes the canonical User ID as customerId.
+
          *
+
          * Do not use services.customer.getCustomer(customerId) here.
+
          * Resolve the User first, then create the lightweight Customer
+
          * view used by JoinFlow.
+
          */
+
         let cust: Customer | null = null;
+
         let resolvedOrganizationUserId: string | null = null;
+
         if (isStaffSale) {
           if (!params.staffId || !params.storeId)
             throw new Error("Counter staff and store are required.");
+
           if (customerId) {
             const rows = await services.counter.customers({
               organizationId: orgId,
+
               storeId: params.storeId,
+
               staffId: params.staffId,
             });
+
             const row = rows.find((item) => item.userId === customerId);
+
             if (!row)
               throw new Error(
                 "Counter customer is not available in this organization.",
               );
+
             cust = {
               id: row.userId,
+
               fullName:
                 row.displayName ||
                 [row.firstName, row.lastName].filter(Boolean).join(" "),
+
               email: row.primaryEmail ?? undefined,
+
               phone: row.primaryPhone,
+
               createdAt: row.joiningDate,
             };
+
             resolvedOrganizationUserId = row.organizationUserId;
           } else {
             const draft = counterCheckout.get();
+
             if (!draft)
               throw new Error(
                 "Verified Counter customer details have expired. Return to Counter.",
               );
+
             cust = {
               id: "",
+
               fullName: [draft.firstName, draft.lastName].join(" "),
+
               email: draft.primaryEmail,
+
               phone: draft.primaryPhone,
+
               createdAt: new Date().toISOString(),
             };
           }
         } else {
           if (customerId) {
             const profiles = await services.customerData.profiles(customerId);
+
             const profile = profiles.find(
               (item) =>
                 item.userId === customerId && item.organizationId === orgId,
             );
+
             if (!profile && suppliedCustomerId)
               throw new Error("Customer is not active in this organization.");
+
             if (profile) {
               cust = {
                 id: profile.userId,
+
                 fullName:
                   profile.displayName?.trim() ||
-                  [profile.firstName, profile.lastName].filter(Boolean).join(" "),
+                  [profile.firstName, profile.lastName]
+                    .filter(Boolean)
+                    .join(" "),
+
                 email: profile.primaryEmail ?? undefined,
+
                 phone: profile.primaryPhone,
+
                 createdAt: profile.joiningDate,
               };
+
               resolvedOrganizationUserId = profile.organizationUserId;
             }
           }
@@ -417,6 +606,7 @@ export default function JoinFlow() {
         }
 
         setActiveOrganization(resolvedOrganization);
+
         setProduct(prod);
 
         setBenefits(bens);
@@ -456,11 +646,17 @@ export default function JoinFlow() {
     };
   }, [
     params.productId,
+
     params.source,
+
     params.staffId,
+
     params.storeId,
+
     orgId,
+
     customerId,
+
     suppliedCustomerId,
   ]);
 
@@ -473,9 +669,13 @@ export default function JoinFlow() {
     : "";
 
   /*
+
    * --------------------------------------------------------------
+
    * Country selection
+
    * --------------------------------------------------------------
+
    */
 
   const selectCountry = (country: CountryOption) => {
@@ -487,9 +687,13 @@ export default function JoinFlow() {
   };
 
   /*
+
    * --------------------------------------------------------------
+
    * OTP - SEND
+
    * --------------------------------------------------------------
+
    */
 
   const sendOtp = useCallback(async () => {
@@ -529,20 +733,35 @@ export default function JoinFlow() {
   }, [countryCode, mobile]);
 
   /*
+
    * --------------------------------------------------------------
+
    * OTP - VERIFY
+
    * --------------------------------------------------------------
+
    *
+
    * IMPORTANT:
+
    *
+
    * services.auth.verifyOtp() returns:
+
    *
+
    *   { verified: true }
+
    *
+
    * It deliberately does NOT return customerId.
+
    *
+
    * Customer identity is resolved by the customer registration
+
    * service after OTP authentication.
+
    */
 
   const verifyOtp = useCallback(async () => {
@@ -567,12 +786,16 @@ export default function JoinFlow() {
 
       const res = await services.auth.verifyOtp({
         requestId,
+
         code: normalizedCode,
       });
 
       /*
+
        * Do NOT check res.customerId here.
+
        */
+
       if (!res.verified) {
         setOtpError("Incorrect code. Please enter the OTP shown above.");
 
@@ -584,13 +807,19 @@ export default function JoinFlow() {
       }${normalizePhone(mobile)}`;
 
       // Keep verified details in memory until the server purchase succeeds.
+
       setCustomer({
         id: "",
+
         fullName: `${firstName.trim()} ${lastName.trim()}`.trim(),
+
         phone: fullMobile,
+
         email: email.trim() || undefined,
+
         createdAt: new Date().toISOString(),
       });
+
       setPhoneVerified(true);
 
       setStep("review");
@@ -607,6 +836,7 @@ export default function JoinFlow() {
     }
 
     const draft = customerId ? null : counterCheckout.get();
+
     if (!customerId && !draft) {
       throw new Error(
         "Customer details have expired. Return to Counter and select the membership again.",
@@ -615,17 +845,22 @@ export default function JoinFlow() {
 
     const purchase = {
       planId: plan.id,
+
       ...(customerId
         ? { customerUserId: customerId }
         : {
             firstName: draft!.firstName,
+
             lastName: draft!.lastName,
+
             primaryEmail: draft!.primaryEmail,
+
             primaryPhone: draft!.primaryPhone,
           }),
     };
 
     const phone = customerId ? (customer?.phone ?? "") : draft!.primaryPhone;
+
     if (!phone) {
       throw new Error("Customer phone number is required for verification.");
     }
@@ -633,41 +868,125 @@ export default function JoinFlow() {
     return {
       context: {
         organizationId: orgId,
+
         storeId: params.storeId,
+
         staffId: params.staffId,
       },
+
       phone,
+
       purchase,
     };
   }, [
     isStaffSale,
+
     plan,
+
     params.staffId,
+
     params.storeId,
+
     customerId,
+
     customer,
+
     orgId,
+  ]);
+
+  useEffect(() => {
+    console.log("[TAX-QUOTE] effect", {
+      orgId,
+      isStaffSale,
+      planId: plan?.id,
+      organizationUserId,
+      source: params.source,
+    });
+
+    if (!plan) {
+      setPurchaseQuote(null);
+      return;
+    }
+
+    let active = true;
+
+    const loadQuote = async () => {
+      try {
+        console.log("[TAX-QUOTE] requesting", {
+          mode: isStaffSale ? "COUNTER" : "CUSTOMER",
+          orgId,
+          planId: plan.id,
+          organizationUserId,
+          source: params.source,
+        });
+
+        const quote = isStaffSale
+          ? await services.counter.purchaseQuote(
+              counterPurchasePayload().context,
+              plan.id,
+            )
+          : organizationUserId
+            ? await services.customerData.purchaseQuote(orgId, plan.id)
+            : null;
+
+        console.log("[TAX-QUOTE] response", quote);
+
+        if (active) {
+          setPurchaseQuote(quote);
+        }
+      } catch (error) {
+        console.error("[TAX-QUOTE] FAILED", error);
+
+        // Checkout start remains authoritative and will return any pricing error.
+        if (active) {
+          setPurchaseQuote(null);
+        }
+      }
+    };
+
+    void loadQuote();
+
+    return () => {
+      active = false;
+    };
+  }, [
+    counterPurchasePayload,
+    isStaffSale,
+    orgId,
+    organizationUserId,
+    plan,
+    params.source,
   ]);
 
   const requestCounterPurchaseOtp = useCallback(
     async (isResend = false) => {
       try {
         setOtpError(undefined);
+
         setPurchaseOtpNotice(undefined);
+
         setPurchaseOtpBusy(true);
 
         const { context, phone, purchase } = counterPurchasePayload();
+
         const result = await services.counter.requestPurchaseOtp(
           context,
+
           phone,
+
           purchase,
         );
 
         setPurchaseOtpChallengeId(result.challengeId);
+
         setPurchaseOtpDevCode(String(result.devCode ?? ""));
+
         setPurchaseOtpCode("");
+
         setPurchaseOtpVerified(false);
+
         setStep("purchaseOtp");
+
         if (isResend) {
           setPurchaseOtpNotice("A new verification code has been sent.");
         }
@@ -676,11 +995,13 @@ export default function JoinFlow() {
           error instanceof Error
             ? error.message
             : "Unable to send purchase verification code.";
+
         setOtpError(
           /cooldown/i.test(message)
             ? "Please wait before requesting another code."
             : message,
         );
+
         if (!isResend) {
           setStep("review");
         }
@@ -688,6 +1009,7 @@ export default function JoinFlow() {
         setPurchaseOtpBusy(false);
       }
     },
+
     [counterPurchasePayload],
   );
 
@@ -696,26 +1018,35 @@ export default function JoinFlow() {
       setOtpError(undefined);
 
       const normalizedCode = normalizeOtp(purchaseOtpCode);
+
       if (!purchaseOtpChallengeId) {
         throw new Error("Purchase verification session has expired.");
       }
+
       if (normalizedCode.length !== OTP_LENGTH) {
         throw new Error("Enter the complete 6-digit verification code.");
       }
 
       setPurchaseOtpBusy(true);
+
       const { context } = counterPurchasePayload();
+
       const verified = await services.counter.verifyPurchaseOtp(
         context,
+
         purchaseOtpChallengeId,
+
         normalizedCode,
       );
+
       if (!verified) {
         throw new Error("Purchase verification failed.");
       }
 
       setPurchaseOtpVerified(true);
+
       setPurchaseOtpCode("");
+
       setStep("review");
     } catch (error) {
       setOtpError(
@@ -732,79 +1063,121 @@ export default function JoinFlow() {
     (
       saved: {
         subscriptionId: string;
+
         subscriptionNumber: string;
+
         organizationUserId: string;
+
         subscriptionPlanId: string;
+
         subscriptionDate: string;
+
         startDate: string;
+
         endDate: string;
+
         subscriptionStatusId: string;
+
         totalAmount: number;
+
         currencyCode: string;
       },
+
       paymentReference: string,
     ) => {
       if (isStaffSale) {
         counterCheckout.clear();
+
         setPurchaseOtpChallengeId("");
+
         setPurchaseOtpDevCode("");
+
         setPurchaseOtpCode("");
+
         setPurchaseOtpVerified(false);
       }
+
       const sub = {
         id: saved.subscriptionId,
+
         subscriptionNumber: saved.subscriptionNumber,
+
         organizationUserId: saved.organizationUserId,
+
         subscriptionPlanId: saved.subscriptionPlanId,
+
         subscriptionDate: saved.subscriptionDate,
+
         startDate: saved.startDate,
+
         endDate: saved.endDate,
+
         subscriptionStatusId: saved.subscriptionStatusId,
+
         totalAmount: {
           amountMinor: Math.round(saved.totalAmount * 100),
+
           currency: saved.currencyCode,
         },
+
         isDeleted: false,
       } as Subscription;
+
       setSubscription(sub);
+
       setReference(paymentReference);
+
       setActiveContext(orgId, sub.id);
+
       setStep("success");
     },
+
     [isStaffSale, orgId, setActiveContext],
   );
 
   const confirmMonerisToken = useCallback(
     async (temporaryToken: string) => {
       if (!monerisPayment || !temporaryToken) return;
+
       setOtpError(undefined);
+
       setStep("processing");
+
       try {
         const confirmed = isStaffSale
           ? await services.counter.confirmMonerisPayment(
               orgId,
+
               monerisPayment.paymentIntentId,
+
               temporaryToken,
             )
           : await services.customerData.confirmMonerisPayment(
               orgId,
+
               monerisPayment.paymentIntentId,
+
               temporaryToken,
             );
+
         if (
           confirmed.payment.status !== "SUCCEEDED" ||
           !confirmed.subscription
         ) {
           throw new Error("Payment is pending or was not completed.");
         }
+
         setMonerisPayment(null);
+
         finishSubscription(
           confirmed.subscription,
+
           confirmed.payment.providerReferenceId ??
             confirmed.payment.paymentIntentId,
         );
       } catch (error) {
         setStep("monerisCard");
+
         setOtpError(
           error instanceof Error
             ? error.message
@@ -812,25 +1185,32 @@ export default function JoinFlow() {
         );
       }
     },
+
     [finishSubscription, isStaffSale, monerisPayment, orgId],
   );
 
   useEffect(() => {
     if (!monerisOrigin || Platform.OS !== "web") return;
+
     const receiveToken = (event: MessageEvent) => {
       if (event.origin !== monerisOrigin) return;
+
       try {
         const response =
           typeof event.data === "string" ? JSON.parse(event.data) : event.data;
 
         console.log("Moneris Hosted Tokenization response", {
           origin: event.origin,
+
           responseCode: response?.responseCode,
+
           hasDataKey: typeof response?.dataKey === "string",
+
           dataKeyPrefix:
             typeof response?.dataKey === "string"
               ? response.dataKey.substring(0, 6)
               : null,
+
           dataKeyLength:
             typeof response?.dataKey === "string"
               ? response.dataKey.length
@@ -840,6 +1220,7 @@ export default function JoinFlow() {
         const responseCodes = Array.isArray(response?.responseCode)
           ? response.responseCode.map(String)
           : [String(response?.responseCode ?? "")];
+
         if (
           responseCodes.includes("001") &&
           typeof response?.dataKey === "string"
@@ -854,88 +1235,121 @@ export default function JoinFlow() {
         setOtpError("Card details could not be verified. Please try again.");
       }
     };
+
     window.addEventListener("message", receiveToken);
+
     return () => window.removeEventListener("message", receiveToken);
   }, [confirmMonerisToken, monerisOrigin]);
 
   const requestMonerisToken = useCallback(() => {
     if (!monerisOrigin || !monerisFrameRef.current?.contentWindow) {
       setOtpError("Moneris card entry is unavailable.");
+
       return;
     }
+
     setOtpError(undefined);
+
     monerisFrameRef.current.contentWindow.postMessage(
       "tokenize",
+
       monerisOrigin,
     );
   }, [monerisOrigin]);
 
   useEffect(() => {
     if (!returnedPaymentIntentId || !product) return;
+
     if (params.paymentCancelled === "true") {
       setOtpError("Payment was canceled. No membership was created.");
+
       setStep("review");
+
       return;
     }
 
     let active = true;
+
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
     let attempts = 0;
 
     const poll = async () => {
       try {
         const result = await services.counter.payment(
           orgId,
+
           returnedPaymentIntentId,
         );
+
         if (!active) return;
+
         if (result.payment.status === "SUCCEEDED" && result.subscription) {
           finishSubscription(
             result.subscription,
+
             result.payment.providerReferenceId ??
               result.payment.paymentIntentId,
           );
+
           return;
         }
+
         if (
           result.payment.status === "FAILED" ||
           result.payment.status === "CANCELED"
         ) {
           setOtpError("Payment was not completed. No membership was created.");
+
           setStep("review");
+
           return;
         }
+
         attempts += 1;
+
         if (attempts >= 10) {
           setOtpError(
             "Payment confirmation is still processing. Please wait and try again.",
           );
+
           setStep("review");
+
           return;
         }
+
         setStep("processing");
+
         retryTimer = setTimeout(poll, 2_000);
       } catch (error) {
         if (!active) return;
+
         setOtpError(
           error instanceof Error
             ? error.message
             : "Unable to read payment status.",
         );
+
         setStep("review");
       }
     };
 
     void poll();
+
     return () => {
       active = false;
+
       if (retryTimer) clearTimeout(retryTimer);
     };
   }, [
     finishSubscription,
+
     orgId,
+
     params.paymentCancelled,
+
     product,
+
     returnedPaymentIntentId,
   ]);
 
@@ -949,8 +1363,10 @@ export default function JoinFlow() {
     }
 
     // Counter sale has exactly one Memgine OTP. Request it before payment.
+
     if (isStaffSale && !purchaseOtpVerified) {
       await requestCounterPurchaseOtp();
+
       return;
     }
 
@@ -963,16 +1379,23 @@ export default function JoinFlow() {
         }
 
         const { context } = counterPurchasePayload();
+
         const intent = await services.counter.startPurchasePayment(
           context,
+
           purchaseOtpChallengeId,
+
           `${purchaseOtpChallengeId}:provider`,
+
           product.id,
         );
+
         if (intent.providerCode === "STRIPE" && intent.checkoutUrl) {
           redirectToStripeCheckout(intent.checkoutUrl);
+
           return;
         }
+
         if (
           intent.providerCode === "MONERIS" &&
           intent.monerisHostedTokenizationProfileId &&
@@ -983,46 +1406,64 @@ export default function JoinFlow() {
               "Moneris card payments are available in the Web Counter only.",
             );
           }
+
           setMonerisPayment({
             paymentIntentId: intent.paymentIntentId,
+
             hostedTokenizationProfileId:
               intent.monerisHostedTokenizationProfileId,
+
             hostedTokenizationUrl: intent.monerisHostedTokenizationUrl,
           });
+
           setStep("monerisCard");
+
           return;
         }
+
         if (intent.providerCode !== "TEST") {
           throw new Error("Provider checkout is not configured yet.");
         }
+
         const confirmed = await services.counter.confirmTestPayment(
           orgId,
+
           intent.paymentIntentId,
         );
+
         if (
           confirmed.payment.status !== "SUCCEEDED" ||
           !confirmed.subscription
         ) {
           throw new Error("Payment is pending or was not completed.");
         }
+
         finishSubscription(
           confirmed.subscription,
+
           confirmed.payment.providerReferenceId ??
             confirmed.payment.paymentIntentId,
         );
+
         return;
       }
 
       const intent = await services.customerData.startAuthenticatedPayment(
         orgId,
+
         plan.id,
+
         `${orgId}:${plan.id}:provider`,
+
         product.id,
       );
+
       if (intent.providerCode === "STRIPE" && intent.checkoutUrl) {
         redirectToStripeCheckout(intent.checkoutUrl);
+
         return;
       }
+
       if (
         intent.providerCode === "MONERIS" &&
         intent.monerisHostedTokenizationProfileId &&
@@ -1033,32 +1474,44 @@ export default function JoinFlow() {
             "Moneris card payments are available in the Web Counter only.",
           );
         }
+
         setMonerisPayment({
           paymentIntentId: intent.paymentIntentId,
+
           hostedTokenizationProfileId:
             intent.monerisHostedTokenizationProfileId,
+
           hostedTokenizationUrl: intent.monerisHostedTokenizationUrl,
         });
+
         setStep("monerisCard");
+
         return;
       }
+
       if (intent.providerCode !== "TEST") {
         throw new Error("Provider checkout is not configured yet.");
       }
+
       const confirmed = await services.customerData.confirmTestPayment(
         orgId,
+
         intent.paymentIntentId,
       );
+
       if (confirmed.payment.status !== "SUCCEEDED" || !confirmed.subscription) {
         throw new Error("Payment is pending or was not completed.");
       }
+
       finishSubscription(
         confirmed.subscription,
+
         confirmed.payment.providerReferenceId ??
           confirmed.payment.paymentIntentId,
       );
     } catch (error) {
       setStep("review");
+
       setOtpError(
         error instanceof Error
           ? error.message
@@ -1067,33 +1520,51 @@ export default function JoinFlow() {
     }
   }, [
     product,
+
     plan,
+
     isStaffSale,
+
     purchaseOtpVerified,
+
     requestCounterPurchaseOtp,
+
     purchaseOtpChallengeId,
+
     counterPurchasePayload,
+
     orgId,
+
     finishSubscription,
+
     redirectToStripeCheckout,
   ]);
 
   const requestCashPayment = useCallback(async () => {
     if (!isStaffSale || !purchaseOtpVerified || !purchaseOtpChallengeId) {
       await requestCounterPurchaseOtp();
+
       return;
     }
+
     try {
       setOtpError(undefined);
+
       const { context } = counterPurchasePayload();
+
       const intent = await services.counter.startCashPayment(
         context,
+
         purchaseOtpChallengeId,
+
         `${purchaseOtpChallengeId}:cash`,
       );
+
       setCashPayment({
         paymentIntentId: intent.paymentIntentId,
+
         amount: intent.amount,
+
         currencyCode: intent.currencyCode,
       });
     } catch (error) {
@@ -1105,32 +1576,45 @@ export default function JoinFlow() {
     }
   }, [
     counterPurchasePayload,
+
     isStaffSale,
+
     purchaseOtpChallengeId,
+
     purchaseOtpVerified,
+
     requestCounterPurchaseOtp,
   ]);
 
   const confirmCashReceived = useCallback(async () => {
     if (!cashPayment) return;
+
     setCashPayment(null);
+
     setStep("processing");
+
     try {
       const { context } = counterPurchasePayload();
+
       const confirmed = await services.counter.confirmCashPayment(
         context,
+
         cashPayment.paymentIntentId,
       );
+
       if (confirmed.payment.status !== "SUCCEEDED" || !confirmed.subscription) {
         throw new Error("Cash payment is pending or was not completed.");
       }
+
       finishSubscription(
         confirmed.subscription,
+
         confirmed.payment.providerReferenceId ??
           confirmed.payment.paymentIntentId,
       );
     } catch (error) {
       setStep("review");
+
       setOtpError(
         error instanceof Error
           ? error.message
@@ -1140,9 +1624,13 @@ export default function JoinFlow() {
   }, [cashPayment, counterPurchasePayload, finishSubscription]);
 
   /*
+
    * --------------------------------------------------------------
+
    * Navigation
+
    * --------------------------------------------------------------
+
    */
 
   const close = () =>
@@ -1151,12 +1639,19 @@ export default function JoinFlow() {
       : router.replace(APP_ROUTES.customer.cards);
 
   /*
+
    * Temporary/demo customer experience.
+
    *
+
    * This is intentionally used for BOTH direct and staff-assisted
+
    * purchases so we can demonstrate the newly created customer's
+
    * actual subscription experience to the client.
+
    */
+
   const goToCustomerExperience = () => {
     if (!subscription) {
       return;
@@ -1168,17 +1663,26 @@ export default function JoinFlow() {
   };
 
   /*
+
    * Staff sale: Done returns to Counter.
+
    *
+
    * Direct customer purchase does not need this action.
+
    */
+
   const goToCounter = () => {
     router.replace({
       pathname: APP_ROUTES.counter.root,
+
       params: {
         organizationId: orgId,
+
         storeId: params.storeId ?? "",
+
         staffId: params.staffId ?? "",
+
         source: "STAFF_ASSISTED",
       },
     });
@@ -1194,9 +1698,13 @@ export default function JoinFlow() {
   );
 
   /*
+
    * --------------------------------------------------------------
+
    * Loading
+
    * --------------------------------------------------------------
+
    */
 
   if (loading) {
@@ -1216,9 +1724,13 @@ export default function JoinFlow() {
   }
 
   /*
+
    * --------------------------------------------------------------
+
    * Load error
+
    * --------------------------------------------------------------
+
    */
 
   if (loadError || !product || !plan) {
@@ -1251,9 +1763,13 @@ export default function JoinFlow() {
   }
 
   /*
+
    * --------------------------------------------------------------
+
    * MAIN
+
    * --------------------------------------------------------------
+
    */
 
   return (
@@ -1271,6 +1787,7 @@ export default function JoinFlow() {
       }
     >
       {/* LANDING */}
+
       {step === "landing" ? (
         <View
           style={{
@@ -1328,6 +1845,7 @@ export default function JoinFlow() {
       ) : null}
 
       {/* REGISTER */}
+
       {step === "register" ? (
         <View
           style={{
@@ -1354,6 +1872,7 @@ export default function JoinFlow() {
           <View
             style={{
               flexDirection: "row",
+
               gap: theme.spacing.sm,
             }}
           >
@@ -1381,7 +1900,9 @@ export default function JoinFlow() {
           <View
             style={{
               flexDirection: "row",
+
               gap: theme.spacing.sm,
+
               alignItems: "flex-end",
             }}
           >
@@ -1401,11 +1922,17 @@ export default function JoinFlow() {
                 onPress={() => setCountryPickerVisible(true)}
                 style={{
                   minHeight: 48,
+
                   borderWidth: 1,
+
                   borderColor: theme.colors.border,
+
                   borderRadius: theme.radius.md,
+
                   paddingHorizontal: 12,
+
                   justifyContent: "center",
+
                   backgroundColor: theme.colors.background,
                 }}
               >
@@ -1468,8 +1995,11 @@ export default function JoinFlow() {
             <Pressable
               style={{
                 flex: 1,
+
                 backgroundColor: "rgba(0,0,0,0.45)",
+
                 justifyContent: "center",
+
                 padding: 24,
               }}
               onPress={() => setCountryPickerVisible(false)}
@@ -1478,8 +2008,11 @@ export default function JoinFlow() {
                 onPress={(event) => event.stopPropagation()}
                 style={{
                   backgroundColor: theme.colors.background,
+
                   borderRadius: theme.radius.lg,
+
                   padding: theme.spacing.md,
+
                   maxHeight: "75%",
                 }}
               >
@@ -1490,6 +2023,7 @@ export default function JoinFlow() {
                 <View
                   style={{
                     marginTop: theme.spacing.md,
+
                     gap: 8,
                   }}
                 >
@@ -1497,14 +2031,20 @@ export default function JoinFlow() {
                     <Pressable
                       key={`${country.country}-${country.code}`}
                       testID={`join-country-${country.country
+
                         .toLowerCase()
+
                         .replace(/\s+/g, "-")}`}
                       onPress={() => selectCountry(country)}
                       style={{
                         paddingVertical: 14,
+
                         paddingHorizontal: 12,
+
                         borderRadius: theme.radius.md,
+
                         borderWidth: 1,
+
                         borderColor:
                           selectedCountry.country === country.country
                             ? theme.colors.primary
@@ -1528,6 +2068,7 @@ export default function JoinFlow() {
       ) : null}
 
       {/* OTP */}
+
       {step === "otp" ? (
         <View
           style={{
@@ -1576,6 +2117,7 @@ export default function JoinFlow() {
       ) : null}
 
       {/* COUNTER PURCHASE OTP — one Memgine OTP for the exact selected purchase */}
+
       {step === "purchaseOtp" ? (
         <View
           style={{
@@ -1638,6 +2180,7 @@ export default function JoinFlow() {
       ) : null}
 
       {/* REVIEW */}
+
       {step === "review" ? (
         <View
           style={{
@@ -1654,6 +2197,7 @@ export default function JoinFlow() {
             meta={[
               {
                 label: t("join.business"),
+
                 value:
                   activeOrganization.displayName ?? activeOrganization.name,
               },
@@ -1662,6 +2206,7 @@ export default function JoinFlow() {
                 ? [
                     {
                       label: t("join.customer"),
+
                       value: customer?.fullName ?? customerId,
                     },
                   ]
@@ -1669,6 +2214,7 @@ export default function JoinFlow() {
 
               {
                 label: t("join.plan"),
+
                 value: `${
                   product.displayName ?? product.membershipProductName
                 } · ${intervalLabel}`,
@@ -1677,10 +2223,28 @@ export default function JoinFlow() {
             lines={[
               {
                 label: product.membershipProductName,
-                amountMinor: plan.price.amountMinor,
+
+                amountMinor:
+                  purchaseQuote?.subtotalAmount != null
+                    ? Math.round(purchaseQuote.subtotalAmount * 100)
+                    : plan.price.amountMinor,
               },
+
+              ...(purchaseQuote && purchaseQuote.taxAmount > 0
+                ? [
+                    {
+                      label: `${purchaseQuote.taxName ?? purchaseQuote.taxCode ?? "Tax"} (${purchaseQuote.taxRate}%)`,
+
+                      amountMinor: Math.round(purchaseQuote.taxAmount * 100),
+                    },
+                  ]
+                : []),
             ]}
-            totalMinor={plan.price.amountMinor}
+            totalMinor={
+              purchaseQuote?.totalAmount != null
+                ? Math.round(purchaseQuote.totalAmount * 100)
+                : plan.price.amountMinor
+            }
           />
 
           <Section title={t("join.includedBenefits")}>
@@ -1725,6 +2289,7 @@ export default function JoinFlow() {
             onPress={payAndSubscribe}
             testID="join-pay"
           />
+
           {isStaffSale && purchaseOtpVerified ? (
             <Button
               label="Pay By Cash and Subscribe"
@@ -1737,12 +2302,14 @@ export default function JoinFlow() {
       ) : null}
 
       {/* PROCESSING */}
+
       {step === "monerisCard" && monerisPayment && monerisIframeUrl ? (
         <View style={{ gap: theme.spacing.lg }} testID="join-moneris-card">
           <View>
             <Text variant="h2" color="text">
               Pay securely by card
             </Text>
+
             <Text
               variant="body"
               color="textMuted"
@@ -1751,6 +2318,7 @@ export default function JoinFlow() {
               Enter card details in the secure Moneris form.
             </Text>
           </View>
+
           <Card padding="lg">
             <View style={{ gap: theme.spacing.md }}>
               <MonerisFrame
@@ -1759,27 +2327,34 @@ export default function JoinFlow() {
                 src={monerisIframeUrl}
                 style={{
                   width: "100%",
+
                   height: 180,
+
                   borderWidth: 0,
+
                   borderStyle: "none",
                 }}
               />
+
               {otpError ? (
                 <Text variant="bodySmall" color="textMuted">
                   {otpError}
                 </Text>
               ) : null}
+
               <Button
                 label="Pay & Subscribe"
                 fullWidth
                 onPress={requestMonerisToken}
                 testID="join-moneris-pay"
               />
+
               <Button
                 label={t("common.back")}
                 fullWidth
                 onPress={() => {
                   setOtpError(undefined);
+
                   setStep("review");
                 }}
                 testID="join-moneris-back"
@@ -1802,6 +2377,7 @@ export default function JoinFlow() {
       ) : null}
 
       {/* SUCCESS */}
+
       {step === "success" && subscription ? (
         <View
           style={{
@@ -1812,7 +2388,9 @@ export default function JoinFlow() {
           <View
             style={{
               alignItems: "center",
+
               gap: theme.spacing.sm,
+
               paddingVertical: theme.spacing.lg,
             }}
           >
@@ -1855,6 +2433,7 @@ export default function JoinFlow() {
                   {t("join.successBody", {
                     business:
                       activeOrganization.displayName ?? activeOrganization.name,
+
                     product:
                       product.displayName ?? product.membershipProductName,
                   })}
@@ -1871,17 +2450,20 @@ export default function JoinFlow() {
             meta={[
               {
                 label: t("join.business"),
+
                 value:
                   activeOrganization.displayName ?? activeOrganization.name,
               },
 
               {
                 label: t("join.customer"),
+
                 value: customer?.fullName ?? customerId,
               },
 
               {
                 label: t("join.plan"),
+
                 value: `${
                   product.displayName ?? product.membershipProductName
                 } · ${intervalLabel}`,
@@ -1889,22 +2471,26 @@ export default function JoinFlow() {
 
               {
                 label: t("join.date"),
+
                 value: formatDate(subscription.startDate),
               },
 
               {
                 label: t("join.reference"),
+
                 value: reference,
               },
 
               {
                 label: t("join.status"),
+
                 value: t("join.paid"),
               },
             ]}
             lines={[
               {
                 label: product.membershipProductName,
+
                 amountMinor: plan.price.amountMinor,
               },
             ]}
@@ -1912,6 +2498,7 @@ export default function JoinFlow() {
           />
 
           {/* The customer preview remains part of the separate customer journey. */}
+
           <Button
             label="View Customer Experience"
             fullWidth
@@ -1929,6 +2516,7 @@ export default function JoinFlow() {
           ) : null}
         </View>
       ) : null}
+
       <Modal
         transparent
         visible={cashPayment !== null}
@@ -1938,14 +2526,18 @@ export default function JoinFlow() {
         <View
           style={{
             flex: 1,
+
             justifyContent: "center",
+
             padding: theme.spacing.lg,
+
             backgroundColor: "rgba(0,0,0,0.35)",
           }}
         >
           <Card padding="lg">
             <View style={{ gap: theme.spacing.md }}>
               <Text variant="h2">Confirm cash received</Text>
+
               <Text>
                 Confirm{" "}
                 {cashPayment
@@ -1953,12 +2545,14 @@ export default function JoinFlow() {
                   : ""}{" "}
                 cash received.
               </Text>
+
               <Button
                 label="Confirm Cash Received"
                 fullWidth
                 onPress={confirmCashReceived}
                 testID="join-confirm-cash"
               />
+
               <Button
                 label={t("common.cancel")}
                 fullWidth

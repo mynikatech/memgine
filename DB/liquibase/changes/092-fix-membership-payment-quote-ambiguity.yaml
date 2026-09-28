@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 092-fix-membership-payment-quote-ambiguity
+      author: mynikatech
+      comments: Qualify membership_purchase_quote output columns in all membership payment-start functions to avoid PL/pgSQL RETURNS TABLE ambiguity.
+      changes:
+        - sqlFile:
+            path: ../sql/092-fix-membership-payment-quote-ambiguity.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

@@ -45,6 +45,7 @@ dump.rdb
 # System files
 .DS_Store
 *.pem
+*.jar
 
 # Python
 __pycache__/
@@ -152,3 +153,7 @@ frontend/dist-web/_expo/static/js/web/entry-5cdc3cc3aadc07db045c02765865dda8.js
 docs/~WRL0003.tmp
 frontend/dist-web/_expo/static/js/web/entry-5cdc3cc3aadc07db045c02765865dda8.js
 frontend/dist-web/_expo/static/js/web/entry-ee6af415d5b21cb97cf9ee6741c4e88b.js
+frontend/dist-web/_expo/static/js/web/entry-20a975626f8a21ad2e9b0bdf93f22226.js
+server/build/libs/memgine-server.jar
+server/build/libs/memgine-server.jar
+server/build/libs/memgine-server.jar

@@ -269,6 +269,11 @@ class CustomerService(
         )
     }
 
+    fun purchaseQuote(organizationId: String, customerUserId: String, planId: String) =
+        authorizeCustomer(organizationId, customerUserId).let {
+            payments.quoteMembership(organizationId, planId)
+        }
+
     fun hasActiveRelationship(organizationId: String, userId: String): Boolean = sql.hasActiveRelationship(organizationId, userId)
 
     fun preference(organizationId: String, userId: String, code: String): String? {

@@ -160,7 +160,7 @@ export const REGIONS: RegionReference[] = [
   },
   { id: "region-in-as", countryCode: "IN", code: "AS", name: "Assam" },
   { id: "region-in-br", countryCode: "IN", code: "BR", name: "Bihar" },
-  { id: "region-in-ct", countryCode: "IN", code: "CT", name: "Chhattisgarh" },
+  { id: "region-in-cg", countryCode: "IN", code: "CG", name: "Chhattisgarh" },
   { id: "region-in-ga", countryCode: "IN", code: "GA", name: "Goa" },
   { id: "region-in-gj", countryCode: "IN", code: "GJ", name: "Gujarat" },
   { id: "region-in-hr", countryCode: "IN", code: "HR", name: "Haryana" },

@@ -4,6 +4,7 @@ import {
   type CounterContext,
   type CounterPurchase,
 } from "@/src/data/api/counter-api";
+import type { MembershipPurchaseQuote } from "@/src/data/api/counter-api";
 
 export class CounterService {
   constructor(private readonly api: CounterApi) {}
@@ -50,6 +51,10 @@ export class CounterService {
     return this.api
       .purchase(ctx, request)
       .then((result) => this.unwrap(result));
+  }
+
+  purchaseQuote(ctx: CounterContext, planId: ID): Promise<MembershipPurchaseQuote> {
+    return this.api.purchaseQuote(ctx, planId).then((result) => this.unwrap(result));
   }
 
   subscriptionBenefits(ctx: CounterContext, subscriptionId: ID) {

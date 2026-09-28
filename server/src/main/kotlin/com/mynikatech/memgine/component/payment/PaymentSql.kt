@@ -1,12 +1,19 @@
 package com.mynikatech.memgine.component.payment
 
 import com.mynikatech.memgine.net.dto.PaymentIntentDto
+import com.mynikatech.memgine.net.dto.MembershipPurchaseQuoteDto
 import org.jdbi.v3.sqlobject.config.RegisterBeanMapper
 import org.jdbi.v3.sqlobject.customizer.Bind
 import org.jdbi.v3.sqlobject.statement.SqlQuery
 
 @RegisterBeanMapper(CounterPaymentFinalizationRow::class)
 interface PaymentSql {
+    @SqlQuery("SELECT * FROM membership_purchase_quote(:organizationId, :planId)")
+    fun quote(
+        @Bind("organizationId") organizationId: String,
+        @Bind("planId") planId: String
+    ): MembershipPurchaseQuoteDto?
+
     @SqlQuery("""SELECT * FROM payment_start_membership_intent(
         :intentId, :attemptId, :organizationId, :challengeId, :providerCode, :idempotencyKey, :actorUserId)""")
     fun start(

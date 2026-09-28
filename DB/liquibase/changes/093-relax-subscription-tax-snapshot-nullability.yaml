@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 093-relax-subscription-tax-snapshot-nullability
+      author: mynikatech
+      comments: Allow subscription creation before payment finalization writes the authoritative tax snapshot.
+      changes:
+        - sqlFile:
+            path: ../sql/093-relax-subscription-tax-snapshot-nullability.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

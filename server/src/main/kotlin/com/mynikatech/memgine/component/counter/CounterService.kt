@@ -110,6 +110,18 @@ class CounterService(
         return sql().staffName(org, staff)
     }
 
+    fun purchaseQuote(
+        org: String,
+        store: String,
+        staff: String,
+        planId: String,
+        principal: AuthenticatedPrincipal
+    ): MembershipPurchaseQuoteDto {
+        authorize(org, store, staff, principal)
+        id(planId, "membership plan id")
+        return payments.quoteMembership(org, planId)
+    }
+
     fun eligibility(org: String, store: String, staff: String,
                     subscriptionId: String, benefitIds: List<String>, principal: AuthenticatedPrincipal): List<CounterEligibilityDto> {
         authorize(org, store, staff, principal)
