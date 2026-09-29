@@ -99,6 +99,24 @@ export type CounterRedemptionTransactionValidation = {
   rejectionReason?: string | null;
 };
 
+export type CounterRedemptionSelectionItem = {
+  id: ID;
+  itemType: "BENEFIT" | "OFFER" | string;
+  displayName: string;
+  description?: string | null;
+  status: string;
+  displayReason?: string | null;
+  badgeText?: string | null;
+  discountPercentage?: number | null;
+  promotionImageUrl?: string | null;
+  disclaimerText?: string | null;
+};
+
+export type CounterRedemptionSelection = {
+  benefits: CounterRedemptionSelectionItem[];
+  offers: CounterRedemptionSelectionItem[];
+};
+
 export type CounterEligibility = {
   benefitId: ID;
   reason?: string | null;
@@ -194,6 +212,33 @@ export class CounterApi {
         ctx.staffId,
       )}`,
     );
+  }
+
+  redemptionSelection(
+    ctx: CounterContext,
+    subscriptionId: ID,
+    customerUserId: ID,
+  ): Promise<ApiResult<CounterRedemptionSelection>> {
+    return httpClient.get(
+      `${this.path(ctx, `subscriptions/${encodeURIComponent(subscriptionId)}/redemption-selection`)}?storeId=${encodeURIComponent(ctx.storeId)}&staffId=${encodeURIComponent(ctx.staffId)}&customerUserId=${encodeURIComponent(customerUserId)}`,
+    );
+  }
+
+  createRedemptionTransaction(
+    ctx: CounterContext,
+    subscriptionId: ID,
+    benefitIds: ID[],
+    offerIds: ID[],
+    redemptionMethod: string,
+  ): Promise<ApiResult<CounterRedemptionTransaction>> {
+    return httpClient.post(this.path(ctx, "redemption-transactions"), {
+      storeId: ctx.storeId,
+      staffId: ctx.staffId,
+      subscriptionId,
+      benefitIds,
+      offerIds,
+      redemptionMethod,
+    });
   }
 
   async redemptions(
@@ -383,6 +428,7 @@ export class CounterApi {
     phone: string,
     subscriptionId: ID,
     benefitIds: ID[],
+    offerIds: ID[],
     regionCode?: string,
   ): Promise<ApiResult<CounterOtpChallenge>> {
     return httpClient.post(this.path(ctx, "redemptions/otp/request"), {
@@ -393,6 +439,7 @@ export class CounterApi {
         staffId: ctx.staffId,
         subscriptionId,
         benefitIds,
+        offerIds,
       },
     });
   }
@@ -401,7 +448,7 @@ export class CounterApi {
     ctx: CounterContext,
     challengeId: string,
     otp: string,
-  ): Promise<ApiResult<CounterRedemption[]>> {
+  ): Promise<ApiResult<CounterRedemptionTransaction>> {
     return httpClient.post(this.path(ctx, "redemptions/otp/complete"), {
       challengeId,
       otp,

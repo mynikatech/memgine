@@ -44,6 +44,7 @@ import type {
   CounterRedemptionTransaction,
   CounterRedemptionTransactionValidation,
 } from "@/src/data/api/counter-api";
+import type { CounterRedemptionSelection } from "@/src/data/api/counter-api";
 
 type Mode = "qr" | "phone" | "assisted" | "new";
 
@@ -265,6 +266,11 @@ export default function StaffCounter() {
   const [selectedBenefitIds, setSelectedBenefitIds] = useState<Set<string>>(
     new Set(),
   );
+  const [selectedOfferIds, setSelectedOfferIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [redemptionSelection, setRedemptionSelection] =
+    useState<CounterRedemptionSelection | null>(null);
 
   /*
    * ------------------------------------------------------------
@@ -310,6 +316,8 @@ export default function StaffCounter() {
     setSelectedSubId("");
 
     setSelectedBenefitIds(new Set());
+    setSelectedOfferIds(new Set());
+    setRedemptionSelection(null);
 
     setResult(null);
 
@@ -566,6 +574,31 @@ export default function StaffCounter() {
           .map((benefit) => benefit.id),
       ),
     );
+    setSelectedOfferIds(new Set());
+  };
+
+  const loadRedemptionSelection = async (
+    subscriptionId: string,
+    customerUserId: string,
+  ) => {
+    setSelectedBenefitIds(new Set());
+    setSelectedOfferIds(new Set());
+    setRedemptionSelection(null);
+    try {
+      setRedemptionSelection(
+        await services.counter.redemptionSelection(
+          counterContext(),
+          subscriptionId,
+          customerUserId,
+        ),
+      );
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Unable to load redemption items.",
+      );
+    }
   };
 
   /*
@@ -688,10 +721,17 @@ export default function StaffCounter() {
       setCustomer(identified);
       setMemberships(opts);
       setAvailableForSale(availableProducts);
-      if (opts.length) selectMembership(opts[0].subscription.id, opts);
+      if (opts.length) {
+        selectMembership(opts[0].subscription.id, opts);
+        if (action === "redeem" && (mode === "assisted" || mode === "phone")) {
+          await loadRedemptionSelection(opts[0].subscription.id, row.userId);
+        }
+      }
       else {
         setSelectedSubId("");
         setSelectedBenefitIds(new Set());
+        setSelectedOfferIds(new Set());
+        setRedemptionSelection(null);
       }
     } catch (failure) {
       setError(
@@ -960,7 +1000,7 @@ export default function StaffCounter() {
     setOtpVerifying(true);
     setBusy(true);
     try {
-      const rows = await services.counter.completeRedemptionOtp(
+      const completed = await services.counter.completeRedemptionOtp(
         counterContext(),
         otpRequestId,
         normalizeOtp(otpCode),
@@ -968,15 +1008,15 @@ export default function StaffCounter() {
 
       setResult({
         kind: "SUCCESS",
-        message: "Redemption completed on the server.",
+        message: `Redemption ${completed.transactionNumber} completed on the server.`,
         customer: customer ?? undefined,
-        outcomes: rows.map((row) => ({
-          benefitId: row.benefitId,
-          title:
-            selectedOption?.benefits.find((item) => item.id === row.benefitId)
-              ?.benefitName ?? row.benefitId,
+        outcomes: [...(redemptionSelection?.benefits ?? []), ...(redemptionSelection?.offers ?? [])]
+          .filter((item) => selectedBenefitIds.has(item.id) || selectedOfferIds.has(item.id))
+          .map((item) => ({
+          benefitId: item.id,
+          title: item.displayName,
           status: "REDEEMED",
-          redemptionId: row.redemptionId,
+          redemptionId: completed.transactionId,
         })),
       });
 
@@ -989,16 +1029,7 @@ export default function StaffCounter() {
         const refreshed = await loadMembershipData(customer.id);
         setMemberships(refreshed.memberships);
         setAvailableForSale(refreshed.availableProducts);
-        const option = refreshed.memberships.find(
-          (item) => item.subscription.id === selectedSubId,
-        );
-        setSelectedBenefitIds(
-          new Set(
-            (option?.benefits ?? [])
-              .filter((item) => item.available)
-              .map((item) => item.id),
-          ),
-        );
+        await loadRedemptionSelection(selectedSubId, customer.id);
       }
     } catch (failure) {
       setError(
@@ -1065,11 +1096,12 @@ export default function StaffCounter() {
     setError("");
 
     try {
-      const ids = Array.from(selectedBenefitIds);
+      const benefitIds = Array.from(selectedBenefitIds);
+      const offerIds = Array.from(selectedOfferIds);
 
-      if (!customer || !selectedSubId || ids.length === 0) {
+      if (!customer || !selectedSubId || benefitIds.length + offerIds.length === 0) {
         throw new Error(
-          "Select a customer, membership and at least one benefit.",
+          "Select a customer, membership and at least one item.",
         );
       }
 
@@ -1083,7 +1115,8 @@ export default function StaffCounter() {
         counterContext(),
         customer.phone,
         selectedSubId,
-        ids,
+        benefitIds,
+        offerIds,
       );
 
       setOtpRequestId(challenge.challengeId);
@@ -1101,37 +1134,50 @@ export default function StaffCounter() {
     }
   };
 
-  const runManual = async (_method: RedemptionMethod) => {
+  const runManual = async () => {
     setBusy(true);
     setResult(null);
     setError("");
 
     try {
-      const ids = Array.from(selectedBenefitIds);
+      const benefitIds = Array.from(selectedBenefitIds);
+      const offerIds = Array.from(selectedOfferIds);
 
-      if (!customer || !selectedSubId || ids.length === 0) {
+      if (!customer || !selectedSubId || benefitIds.length + offerIds.length === 0) {
         throw new Error(
-          "Select a customer, membership and at least one benefit.",
+          "Select a customer, membership and at least one item.",
         );
       }
 
-      const rows = await services.counter.redeem(
+      const transaction = await services.counter.createRedemptionTransaction(
         counterContext(),
         selectedSubId,
-        ids,
+        benefitIds,
+        offerIds,
+        "STAFF_ASSISTED",
+      );
+      const validation = await services.counter.validateRedemptionTransaction(
+        counterContext(),
+        transaction.transactionId,
+      );
+      const rejected = validation.find((item) => !item.eligible);
+      if (rejected) {
+        throw new Error(rejected.rejectionReason ?? "A selected item is no longer available.");
+      }
+      const completed = await services.counter.executeRedemptionTransaction(
+        counterContext(),
+        transaction.transactionId,
       );
 
       setResult({
         kind: "SUCCESS",
-        message: "Redemption completed on the server.",
+        message: `Redemption ${completed.transactionNumber} completed on the server.`,
         customer,
-        outcomes: rows.map((row) => ({
-          benefitId: row.benefitId,
-          title:
-            selectedOption?.benefits.find((item) => item.id === row.benefitId)
-              ?.benefitName ?? row.benefitId,
+        outcomes: validation.map((item) => ({
+          benefitId: item.itemId,
+          title: item.displayName ?? item.itemId,
           status: "REDEEMED",
-          redemptionId: row.redemptionId,
+          redemptionId: completed.transactionId,
         })),
       });
 
@@ -1140,17 +1186,7 @@ export default function StaffCounter() {
       setMemberships(refreshed.memberships);
       setAvailableForSale(refreshed.availableProducts);
 
-      const option = refreshed.memberships.find(
-        (item) => item.subscription.id === selectedSubId,
-      );
-
-      setSelectedBenefitIds(
-        new Set(
-          (option?.benefits ?? [])
-            .filter((item) => item.available)
-            .map((item) => item.id),
-        ),
-      );
+      await loadRedemptionSelection(selectedSubId, customer.id);
     } catch (failure) {
       setError(
         failure instanceof Error
@@ -1175,6 +1211,14 @@ export default function StaffCounter() {
       return next;
     });
 
+  const toggleOffer = (id: string) =>
+    setSelectedOfferIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   const selectedOption = memberships.find(
     (option) => option.subscription.id === selectedSubId,
   );
@@ -1186,6 +1230,21 @@ export default function StaffCounter() {
       ).length,
     [selectedOption, selectedBenefitIds],
   );
+
+  const consolidatedRedemption = action === "redeem" && (mode === "assisted" || mode === "phone");
+  const redemptionBenefitItems = redemptionSelection?.benefits ?? [];
+  const redemptionOfferItems = redemptionSelection?.offers ?? [];
+  const redemptionBenefitCount = redemptionBenefitItems.filter(
+    (item) => item.status === "AVAILABLE" && selectedBenefitIds.has(item.id),
+  ).length;
+  const redemptionOfferCount = redemptionOfferItems.filter(
+    (item) => item.status === "AVAILABLE" && selectedOfferIds.has(item.id),
+  ).length;
+  const consolidatedSelectedCount = redemptionBenefitCount + redemptionOfferCount;
+  const consolidatedSummary = [
+    redemptionBenefitCount ? `${redemptionBenefitCount} Benefit${redemptionBenefitCount === 1 ? "" : "s"}` : "",
+    redemptionOfferCount ? `${redemptionOfferCount} Offer${redemptionOfferCount === 1 ? "" : "s"}` : "",
+  ].filter(Boolean).join(" + ");
 
   /*
    * ------------------------------------------------------------
@@ -1222,7 +1281,12 @@ export default function StaffCounter() {
                       key={option.subscription.id}
                       testID={`counter-membership-${option.subscription.id}`}
                       disabled={otpSent}
-                      onPress={() => selectMembership(option.subscription.id)}
+                      onPress={() => {
+                        selectMembership(option.subscription.id);
+                        if (consolidatedRedemption) {
+                          void loadRedemptionSelection(option.subscription.id, customer.id);
+                        }
+                      }}
                       style={[styles.chip, on && styles.chipOn]}
                     >
                       <Text style={[styles.chipText, on && styles.chipTextOn]}>
@@ -1234,7 +1298,36 @@ export default function StaffCounter() {
               </View>
             ) : null}
 
-            {selectedOption?.benefits.map((benefit) => {
+            {consolidatedRedemption ? (
+              <>
+                <Text style={styles.sectionTitle}>Benefits</Text>
+                {redemptionBenefitItems.map((benefit) => {
+                  const selectable = benefit.status === "AVAILABLE";
+                  const on = selectable && selectedBenefitIds.has(benefit.id);
+                  return (
+                    <Pressable key={benefit.id} testID={`counter-benefit-${benefit.id}`} disabled={!selectable || busy}
+                      onPress={() => toggleBenefit(benefit.id)} style={[styles.benefitRow, !selectable && { opacity: 0.5 }]}>
+                      <View style={[styles.check, on && styles.checkOn]}>{on ? <Text style={styles.checkMark}>✓</Text> : null}</View>
+                      <View style={{ flex: 1 }}><Text style={styles.benefitTitle}>{benefit.displayName}</Text>{benefit.description ? <Text style={styles.muted}>{benefit.description}</Text> : null}</View>
+                      {!selectable ? <Text style={styles.usedTag}>{benefit.displayReason ?? "UNAVAILABLE"}</Text> : null}
+                    </Pressable>
+                  );
+                })}
+                {redemptionOfferItems.length ? <Text style={styles.sectionTitle}>Offers</Text> : null}
+                {redemptionOfferItems.map((offer) => {
+                  const selectable = offer.status === "AVAILABLE";
+                  const on = selectable && selectedOfferIds.has(offer.id);
+                  return (
+                    <Pressable key={offer.id} testID={`counter-offer-${offer.id}`} disabled={!selectable || busy}
+                      onPress={() => toggleOffer(offer.id)} style={[styles.offerRow, !selectable && { opacity: 0.5 }]}>
+                      <View style={[styles.check, on && styles.checkOn]}>{on ? <Text style={styles.checkMark}>✓</Text> : null}</View>
+                      <View style={{ flex: 1 }}><Text style={styles.benefitTitle}>{offer.displayName}</Text>{offer.badgeText ? <Text style={styles.offerBadge}>{offer.badgeText}</Text> : null}{offer.description ? <Text style={styles.muted}>{offer.description}</Text> : null}</View>
+                      {!selectable ? <Text style={styles.usedTag}>{offer.displayReason ?? "UNAVAILABLE"}</Text> : null}
+                    </Pressable>
+                  );
+                })}
+              </>
+            ) : selectedOption?.benefits.map((benefit) => {
               const on =
                 benefit.available && selectedBenefitIds.has(benefit.id);
 
@@ -1277,16 +1370,16 @@ export default function StaffCounter() {
             })}
 
             <View style={styles.redeemBar}>
-              <Text style={styles.muted}>{selectedCount} selected</Text>
+              <Text style={styles.muted}>{consolidatedRedemption ? (consolidatedSummary ? `${consolidatedSummary} selected` : "No items selected") : `${selectedCount} selected`}</Text>
 
               {method === RedemptionMethod.STAFF_ASSISTED ? (
                 <Pressable
                   testID="counter-redeem-staff-assisted"
-                  disabled={selectedCount === 0 || busy}
-                  onPress={() => runManual(method)}
+                  disabled={consolidatedSelectedCount === 0 || busy}
+                  onPress={() => runManual()}
                   style={[
                     styles.primaryBtn,
-                    (selectedCount === 0 || busy) && styles.btnDisabled,
+                    (consolidatedSelectedCount === 0 || busy) && styles.btnDisabled,
                   ]}
                 >
                   <Text style={styles.primaryBtnText}>
@@ -1296,11 +1389,11 @@ export default function StaffCounter() {
               ) : !otpSent ? (
                 <Pressable
                   testID="counter-send-redemption-otp"
-                  disabled={selectedCount === 0 || busy}
+                  disabled={consolidatedSelectedCount === 0 || busy}
                   onPress={sendRedemptionOtp}
                   style={[
                     styles.primaryBtn,
-                    (selectedCount === 0 || busy) && styles.btnDisabled,
+                    (consolidatedSelectedCount === 0 || busy) && styles.btnDisabled,
                   ]}
                 >
                   <Text style={styles.primaryBtnText}>Send Redemption OTP</Text>
@@ -1310,7 +1403,7 @@ export default function StaffCounter() {
                   <Text style={styles.label}>Redemption Verification</Text>
 
                   <Text style={styles.muted}>
-                    OTP is bound to this membership and the selected benefits.
+                    OTP is bound to this membership and the selected items.
                   </Text>
 
                   {devCode ? (
@@ -2500,6 +2593,31 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     color: COLORS.text,
+  },
+
+  sectionTitle: {
+    marginTop: SPACING.xs,
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+
+  offerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    backgroundColor: "#ECFDF5",
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+  },
+
+  offerBadge: {
+    marginTop: 2,
+    color: COLORS.accent,
+    fontSize: 12,
+    fontWeight: "700",
   },
 
   usedTag: {

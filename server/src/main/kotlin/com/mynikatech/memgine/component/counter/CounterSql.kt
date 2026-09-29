@@ -2,7 +2,15 @@ package com.mynikatech.memgine.component.counter
 
 import com.mynikatech.memgine.net.dto.*
 import org.jdbi.v3.sqlobject.customizer.Bind
+import org.jdbi.v3.sqlobject.config.RegisterBeanMapper
 import org.jdbi.v3.sqlobject.statement.SqlQuery
+
+data class CounterRedemptionItemStatusRow(
+    var itemId: String = "",
+    var itemType: String = "",
+    var status: String = "",
+    var displayReason: String? = null
+)
 
 interface CounterSql {
     @SqlQuery("SELECT counter_can_operate(:organizationId, :storeId, :staffId, :actorUserId)")
@@ -126,5 +134,19 @@ interface CounterSql {
         @Bind("subscriptionId") subscriptionId: String,
         @Bind("actorUserId") actorUserId: String
     ): List<BenefitDto>
+
+    @SqlQuery("SELECT * FROM get_customer_redemption_item_status(:organizationId, :subscriptionId, :customerUserId)")
+    @RegisterBeanMapper(CounterRedemptionItemStatusRow::class)
+    fun redemptionItemStatuses(
+        @Bind("organizationId") organizationId: String,
+        @Bind("subscriptionId") subscriptionId: String,
+        @Bind("customerUserId") customerUserId: String
+    ): List<CounterRedemptionItemStatusRow>
+
+    @SqlQuery("SELECT * FROM get_customer_offers(:organizationId, :customerUserId)")
+    fun customerOffers(
+        @Bind("organizationId") organizationId: String,
+        @Bind("customerUserId") customerUserId: String
+    ): List<OfferDto>
 
 }

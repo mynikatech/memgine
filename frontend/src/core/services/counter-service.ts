@@ -4,6 +4,7 @@ import {
   type CounterContext,
   type CounterPurchase,
   type CounterRedemptionTransaction,
+  type CounterRedemptionSelection,
 } from "@/src/data/api/counter-api";
 import type { MembershipPurchaseQuote } from "@/src/data/api/counter-api";
 
@@ -61,6 +62,28 @@ export class CounterService {
   subscriptionBenefits(ctx: CounterContext, subscriptionId: ID) {
     return this.api
       .subscriptionBenefits(ctx, subscriptionId)
+      .then((result) => this.unwrap(result));
+  }
+
+  redemptionSelection(
+    ctx: CounterContext,
+    subscriptionId: ID,
+    customerUserId: ID,
+  ): Promise<CounterRedemptionSelection> {
+    return this.api
+      .redemptionSelection(ctx, subscriptionId, customerUserId)
+      .then((result) => this.unwrap(result));
+  }
+
+  createRedemptionTransaction(
+    ctx: CounterContext,
+    subscriptionId: ID,
+    benefitIds: ID[],
+    offerIds: ID[],
+    redemptionMethod: string,
+  ): Promise<CounterRedemptionTransaction> {
+    return this.api
+      .createRedemptionTransaction(ctx, subscriptionId, benefitIds, offerIds, redemptionMethod)
       .then((result) => this.unwrap(result));
   }
 
@@ -128,14 +151,15 @@ export class CounterService {
     phone: string,
     subscriptionId: ID,
     benefitIds: ID[],
+    offerIds: ID[],
     regionCode?: string,
   ) {
     return this.api
-      .requestRedemptionOtp(ctx, phone, subscriptionId, benefitIds, regionCode)
+      .requestRedemptionOtp(ctx, phone, subscriptionId, benefitIds, offerIds, regionCode)
       .then((result) => this.unwrap(result));
   }
 
-  completeRedemptionOtp(ctx: CounterContext, challengeId: string, otp: string) {
+  completeRedemptionOtp(ctx: CounterContext, challengeId: string, otp: string): Promise<CounterRedemptionTransaction> {
     return this.api
       .completeRedemptionOtp(ctx, challengeId, otp)
       .then((result) => this.unwrap(result));

@@ -9,6 +9,7 @@ import com.mynikatech.memgine.component.otp.BusinessOtpService
 import com.mynikatech.memgine.component.otp.OtpPurpose
 import com.mynikatech.memgine.component.otp.OtpRequestResult
 import com.mynikatech.memgine.component.payment.PaymentService
+import com.mynikatech.memgine.component.redemption.RedemptionService
 import com.mynikatech.memgine.net.dto.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
@@ -22,6 +23,7 @@ class CounterService(
     private val jdbi: Jdbi,
     private val businessOtp: BusinessOtpService,
     private val payments: PaymentService,
+    private val redemptions: RedemptionService,
     private val phoneNormalizer: PhoneNormalizer = PhoneNormalizer()
 ) {
     private fun sql(): CounterSql = jdbi.onDemand(CounterSql::class.java)
@@ -93,6 +95,60 @@ class CounterService(
             subscriptionId,
             principal.userId
         )
+    }
+
+    /**
+     * Reads the same customer-status function used by the customer basket after
+     * first proving the calling operator can work at this Counter store.
+     */
+    fun redemptionSelection(
+        org: String,
+        store: String,
+        staff: String,
+        subscriptionId: String,
+        customerUserId: String,
+        principal: AuthenticatedPrincipal
+    ): CounterRedemptionSelectionDto {
+        authorize(org, store, staff, principal)
+        id(subscriptionId, "subscription id")
+        id(customerUserId, "customer user id")
+        return translate {
+            val lookup = sql()
+            val statuses = lookup.redemptionItemStatuses(org, subscriptionId, customerUserId)
+                .associateBy { "${it.itemType}:${it.itemId}" }
+            val benefits = lookup.subscriptionBenefits(org, subscriptionId, principal.userId)
+                .mapNotNull { benefit ->
+                    val status = statuses["BENEFIT:${benefit.id}"] ?: return@mapNotNull null
+                    CounterRedemptionSelectionItemDto(
+                        id = benefit.id,
+                        itemType = "BENEFIT",
+                        displayName = benefit.displayName?.takeIf { it.isNotBlank() } ?: benefit.benefitName,
+                        description = benefit.description,
+                        status = status.status,
+                        displayReason = status.displayReason,
+                        disclaimerText = benefit.disclaimerText
+                    )
+                }
+            val offersById = lookup.customerOffers(org, customerUserId).associateBy { it.id }
+            val offers = statuses.values
+                .filter { it.itemType == "OFFER" }
+                .mapNotNull { status ->
+                    val offer = offersById[status.itemId] ?: return@mapNotNull null
+                    CounterRedemptionSelectionItemDto(
+                        id = offer.id,
+                        itemType = "OFFER",
+                        displayName = offer.offerName,
+                        description = offer.description,
+                        status = status.status,
+                        displayReason = status.displayReason,
+                        badgeText = offer.badgeText,
+                        discountPercentage = offer.discountPercentage,
+                        promotionImageUrl = offer.promotionImageUrl,
+                        disclaimerText = offer.disclaimerText
+                    )
+                }
+            CounterRedemptionSelectionDto(benefits, offers)
+        }
     }
 
     fun redemptions(org: String, store: String, staff: String, principal: AuthenticatedPrincipal): List<OrgAdminRedemptionDto> {
@@ -359,7 +415,7 @@ class CounterService(
     }
 
     fun completeRedemptionOtp(org: String, input: CounterBusinessOtpCompleteRequest,
-                              principal: AuthenticatedPrincipal): List<CounterRedemptionResult> {
+                              principal: AuthenticatedPrincipal): RedemptionTransactionDto {
         val context = businessOtp.verifyAndResolve(
             input.challengeId,
             input.otp,
@@ -397,7 +453,27 @@ class CounterService(
             throw BadRequestException("Business verification context is invalid")
         }
 
-        val result = redeem(org, request, principal)
+        val transaction = redemptions.createCounterTransaction(
+            org,
+            CreateRedemptionTransactionRequest(
+                storeId = request.storeId,
+                staffId = request.staffId,
+                subscriptionId = request.subscriptionId,
+                benefitIds = request.benefitIds,
+                offerIds = request.offerIds,
+                redemptionMethod = "OTP"
+            ),
+            principal.userId
+        )
+        val validation = redemptions.validateTransaction(
+            org, transaction.transactionId, request.storeId, request.staffId, principal.userId
+        )
+        validation.firstOrNull { !it.eligible }?.let {
+            throw BadRequestException(it.rejectionReason ?: "A selected item is no longer available")
+        }
+        val result = redemptions.executeTransaction(
+            org, transaction.transactionId, request.storeId, request.staffId, principal.userId
+        )
         businessOtp.consume(input.challengeId, OtpPurpose.COUNTER_REDEMPTION_VERIFY)
         return result
     }
@@ -413,9 +489,14 @@ class CounterService(
     private fun validateRedemption(org: String, request: CounterRedeemRequest, principal: AuthenticatedPrincipal) {
         authorize(org, request.storeId, request.staffId, principal)
         id(request.subscriptionId, "subscription id")
-        if (request.benefitIds.isEmpty() || request.benefitIds.size > 100 || request.benefitIds.distinct().size != request.benefitIds.size)
-            throw BadRequestException("Select distinct benefits")
+        val itemCount = request.benefitIds.size + request.offerIds.size
+        if (itemCount == 0 || itemCount > 100 ||
+            request.benefitIds.distinct().size != request.benefitIds.size ||
+            request.offerIds.distinct().size != request.offerIds.size) {
+            throw BadRequestException("Select distinct benefits or offers")
+        }
         request.benefitIds.forEach { id(it, "benefit id") }
+        request.offerIds.forEach { id(it, "offer id") }
     }
 
     fun redeemQr(org: String, request: CounterQrRedeemRequest, principal: AuthenticatedPrincipal): List<CounterRedemptionResult> {

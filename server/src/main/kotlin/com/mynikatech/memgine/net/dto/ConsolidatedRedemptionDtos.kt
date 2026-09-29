@@ -55,6 +55,27 @@ data class CustomerRedemptionItemStatusDto(
     val displayReason: String? = null
 )
 
+/** Counter-safe presentation of the existing server-derived redemption status. */
+@Serializable
+data class CounterRedemptionSelectionItemDto(
+    val id: String,
+    val itemType: String,
+    val displayName: String,
+    val description: String? = null,
+    val status: String,
+    val displayReason: String? = null,
+    val badgeText: String? = null,
+    val discountPercentage: Double? = null,
+    val promotionImageUrl: String? = null,
+    val disclaimerText: String? = null
+)
+
+@Serializable
+data class CounterRedemptionSelectionDto(
+    val benefits: List<CounterRedemptionSelectionItemDto>,
+    val offers: List<CounterRedemptionSelectionItemDto>
+)
+
 /** Internal JDBI result. The raw QR reference is never persisted. */
 data class RedemptionTransactionQrIssueRow(
     var qrId: String = "",

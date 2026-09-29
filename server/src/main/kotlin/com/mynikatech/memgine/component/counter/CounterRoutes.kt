@@ -72,6 +72,18 @@ fun Route.counterRoutes(service: CounterService) {
                 )
             )
         }
+        get("/subscriptions/{subscriptionId}/redemption-selection") {
+            val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            val subscriptionId = call.parameters["subscriptionId"] ?: throw BadRequestException("Subscription id is required")
+            val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
+            val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
+            val customerUserId = call.request.queryParameters["customerUserId"]
+                ?: throw BadRequestException("Customer user id is required")
+            call.respond(ApiResponse.success(
+                service.redemptionSelection(org, store, staff, subscriptionId, customerUserId, call.authenticatedPrincipal()),
+                call.callId
+            ))
+        }
         get("/redemptions") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")

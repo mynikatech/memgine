@@ -163,8 +163,81 @@ public final class MemgineApiClient {
                         row.optString("description")
                 ));
             }
-            return result;
+        return result;
+    }
+
+    public RedemptionSelection redemptionSelection(
+            TerminalContext terminal, String staffId, String sessionToken,
+            String subscriptionId, String customerUserId
+    ) throws Exception {
+        JSONObject data = call("GET",
+                "/api/v1/organizations/" + terminal.organizationId + "/counter/subscriptions/"
+                        + subscriptionId + "/redemption-selection?storeId=" + terminal.storeId
+                        + "&staffId=" + staffId + "&customerUserId=" + customerUserId,
+                null, sessionToken, null);
+        return new RedemptionSelection(selectionItems(data.optJSONArray("benefits")),
+                selectionItems(data.optJSONArray("offers")));
+    }
+
+    public String createRedemptionTransaction(
+            TerminalContext terminal, String staffId, String sessionToken, String subscriptionId,
+            Set<String> benefitIds, Set<String> offerIds
+    ) throws Exception {
+        JSONObject request = new JSONObject();
+        request.put("storeId", terminal.storeId);
+        request.put("staffId", staffId);
+        request.put("subscriptionId", subscriptionId);
+        JSONArray benefitValues = new JSONArray();
+        for (String benefitId : benefitIds) benefitValues.put(benefitId);
+        JSONArray offerValues = new JSONArray();
+        for (String offerId : offerIds) offerValues.put(offerId);
+        request.put("benefitIds", benefitValues);
+        request.put("offerIds", offerValues);
+        request.put("redemptionMethod", "STAFF_ASSISTED");
+        return call("POST", "/api/v1/organizations/" + terminal.organizationId
+                + "/counter/redemption-transactions", null, sessionToken, request)
+                .getString("transactionId");
+    }
+
+    public List<RedemptionSelection.Item> validateRedemptionTransaction(
+            TerminalContext terminal, String staffId, String sessionToken, String transactionId
+    ) throws Exception {
+        JSONArray values = callArray("GET", "/api/v1/organizations/" + terminal.organizationId
+                        + "/counter/redemption-transactions/" + transactionId + "/validation?storeId="
+                        + terminal.storeId + "&staffId=" + staffId,
+                null, sessionToken, null);
+        List<RedemptionSelection.Item> result = new ArrayList<>();
+        for (int i = 0; i < values.length(); i++) {
+            JSONObject row = values.getJSONObject(i);
+            result.add(new RedemptionSelection.Item(row.optString("itemId"), row.optString("displayName"),
+                    row.optString("description"), row.optBoolean("eligible") ? "AVAILABLE" : "UNAVAILABLE",
+                    row.optString("rejectionReason", null), null));
         }
+        return result;
+    }
+
+    public void executeRedemptionTransaction(
+            TerminalContext terminal, String staffId, String sessionToken, String transactionId
+    ) throws Exception {
+        JSONObject request = new JSONObject();
+        request.put("storeId", terminal.storeId);
+        request.put("staffId", staffId);
+        call("POST", "/api/v1/organizations/" + terminal.organizationId
+                + "/counter/redemption-transactions/" + transactionId + "/execute",
+                null, sessionToken, request);
+    }
+
+    private List<RedemptionSelection.Item> selectionItems(JSONArray values) throws Exception {
+        List<RedemptionSelection.Item> result = new ArrayList<>();
+        if (values == null) return result;
+        for (int i = 0; i < values.length(); i++) {
+            JSONObject row = values.getJSONObject(i);
+            result.add(new RedemptionSelection.Item(row.getString("id"), row.optString("displayName"),
+                    row.optString("description"), row.optString("status"),
+                    row.optString("displayReason", null), row.optString("badgeText", null)));
+        }
+        return result;
+    }
 
     public String eligibility(
                 TerminalContext terminal,

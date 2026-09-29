@@ -154,7 +154,7 @@ fun Application.configureRouting(
     val paymentService = PaymentService(database.jdbi, config.server.environment, config.payment)
     val customerService = CustomerService(database.jdbi.onDemand(CustomerSql::class.java),
         membershipProductService, benefitService, storeService, customerDevIdentityEnabled, businessOtpService, paymentService)
-    val counterService = CounterService(database.jdbi, businessOtpService, paymentService, phoneNormalizer)
+    val counterService = CounterService(database.jdbi, businessOtpService, paymentService, redemptionService, phoneNormalizer)
     val notificationConfigurationService = NotificationConfigurationService(database.jdbi)
     val integrationConfigurationService = IntegrationConfigurationService(database.jdbi)
     val customerExperienceReleaseService =

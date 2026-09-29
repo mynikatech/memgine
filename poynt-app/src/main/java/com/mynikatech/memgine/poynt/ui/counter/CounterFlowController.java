@@ -697,7 +697,7 @@ public final class CounterFlowController {
             if ("active".equalsIgnoreCase(subscription.statusName)) {
                 active = true;
                 button(subscription.membershipProductName + " · " + subscription.subscriptionPlanName,
-                        () -> loadBenefits(terminal, customer, subscriptions, subscription));
+                        () -> loadRedemptionSelection(terminal, customer, subscriptions, subscription));
             }
         }
         if (!active) {
@@ -707,78 +707,94 @@ public final class CounterFlowController {
         cancelButton();
     }
 
-    private void loadBenefits(
+    private void loadRedemptionSelection(
             TerminalContext terminal,
             Customer customer,
             List<Subscription> subscriptions,
             Subscription subscription
     ) {
         background(
-                    () -> api.benefits(terminal, staffSession.staffId(), staffSession.token(), subscription.id),
-                benefits -> showBenefits(terminal, customer, subscriptions, subscription, benefits)
+                () -> api.redemptionSelection(terminal, staffSession.staffId(), staffSession.token(),
+                        subscription.id, customer.userId),
+                selection -> showRedemptionSelection(terminal, customer, subscriptions, subscription,
+                        selection, new java.util.HashSet<>(), new java.util.HashSet<>())
         );
     }
 
-    private void showBenefits(
+    private void showRedemptionSelection(
             TerminalContext terminal,
             Customer customer,
             List<Subscription> subscriptions,
             Subscription subscription,
-            List<Benefit> benefits
+            RedemptionSelection selection,
+            Set<String> selectedBenefits,
+            Set<String> selectedOffers
     ) {
         render("Redeem · " + subscription.membershipProductName);
-        if (benefits.isEmpty()) {
-            text("No benefits are available.");
-        }
-        for (Benefit benefit : benefits) {
-            String title = benefit.displayName.isEmpty() ? benefit.name : benefit.displayName;
-            button(title,
-                    () -> checkEligibility(terminal, customer, subscriptions, subscription, benefit));
-            if (!benefit.description.isEmpty()) {
-                text(benefit.description);
+        text("Benefits");
+        for (RedemptionSelection.Item benefit : selection.benefits) {
+            boolean selected = selectedBenefits.contains(benefit.id);
+            String label = (selected ? "[x] " : "[ ] ") + benefit.displayName
+                    + (benefit.available() ? "" : " · " + safeReason(benefit));
+            if (benefit.available()) {
+                button(label, () -> {
+                        Set<String> next = new java.util.HashSet<>(selectedBenefits);
+                        if (!next.add(benefit.id)) next.remove(benefit.id);
+                        showRedemptionSelection(terminal, customer, subscriptions, subscription, selection, next, selectedOffers);
+                });
+            } else {
+                text(label);
             }
+            if (!benefit.description.isEmpty()) text(benefit.description);
         }
-        text("Payment-bound redemption finalization is deferred until the Poynt payment phase.");
+        if (!selection.offers.isEmpty()) text("Offers");
+        for (RedemptionSelection.Item offer : selection.offers) {
+            boolean selected = selectedOffers.contains(offer.id);
+            String label = (selected ? "[x] " : "[ ] ") + offer.displayName
+                    + (offer.available() ? "" : " · " + safeReason(offer));
+            if (offer.available()) {
+                button(label, () -> {
+                        Set<String> next = new java.util.HashSet<>(selectedOffers);
+                        if (!next.add(offer.id)) next.remove(offer.id);
+                        showRedemptionSelection(terminal, customer, subscriptions, subscription, selection, selectedBenefits, next);
+                });
+            } else {
+                text(label);
+            }
+            if (offer.badgeText != null && !offer.badgeText.isEmpty()) text(offer.badgeText);
+            if (!offer.description.isEmpty()) text(offer.description);
+        }
+        int total = selectedBenefits.size() + selectedOffers.size();
+        text(total == 0 ? "No items selected" : selectedBenefits.size() + " Benefit" + (selectedBenefits.size() == 1 ? "" : "s")
+                + (selectedBenefits.isEmpty() || selectedOffers.isEmpty() ? "" : " + ")
+                + (selectedOffers.isEmpty() ? "" : selectedOffers.size() + " Offer" + (selectedOffers.size() == 1 ? "" : "s")) + " selected");
+        if (total > 0) button("Redeem Selected", () -> background(() -> {
+            String transactionId = api.createRedemptionTransaction(terminal, staffSession.staffId(), staffSession.token(),
+                    subscription.id, selectedBenefits, selectedOffers);
+            List<RedemptionSelection.Item> validation = api.validateRedemptionTransaction(terminal,
+                    staffSession.staffId(), staffSession.token(), transactionId);
+            for (RedemptionSelection.Item item : validation) {
+                if (!item.available()) throw new ApiException(item.displayReason == null ? "A selected item is no longer available." : item.displayReason);
+            }
+            api.executeRedemptionTransaction(terminal, staffSession.staffId(), staffSession.token(), transactionId);
+            return transactionId;
+        }, transactionId -> showRedemptionSuccess(terminal, customer, transactionId)));
         button("Back", () -> {
             showSubscriptions(terminal, customer, subscriptions);
         });
         cancelButton();
     }
 
-    private void checkEligibility(
-            TerminalContext terminal,
-            Customer customer,
-            List<Subscription> subscriptions,
-            Subscription subscription,
-            Benefit benefit
-    ) {
-        background(
-                () -> api.eligibility(terminal, staffSession.staffId(), staffSession.token(),
-                        subscription.id, benefit.id),
-                rejection -> {
-                    if (rejection == null) {
-                        showRedemptionPending(terminal, customer, subscriptions, subscription, benefit);
-                    } else {
-                        setStatus(rejection);
-                    }
-                }
-        );
+    private static String safeReason(RedemptionSelection.Item item) {
+        return item.displayReason == null || item.displayReason.isEmpty() ? "Unavailable" : item.displayReason;
     }
 
-    private void showRedemptionPending(
-            TerminalContext terminal,
-            Customer customer,
-            List<Subscription> subscriptions,
-            Subscription subscription,
-            Benefit benefit
-    ) {
-        render("Benefit Eligible");
-        text(benefit.displayName.isEmpty() ? benefit.name : benefit.displayName);
-        if (!benefit.description.isEmpty()) {
-            text(benefit.description);
-        }
-        text("This benefit is eligible. Poynt payment binding, redemption reservation, and final redemption are deferred to the next phase.");
-        button("Back to Benefits", () -> loadBenefits(terminal, customer, subscriptions, subscription));
+    private void showRedemptionSuccess(TerminalContext terminal, Customer customer, String transactionId) {
+        render("Redemption successful");
+        text(customer.displayName);
+        text("Transaction: " + transactionId);
+        text("All selected benefits and offers were redeemed together.");
+        button("Back to Counter Home", () -> showCounterHome(terminal));
         cancelButton();
     }
 
