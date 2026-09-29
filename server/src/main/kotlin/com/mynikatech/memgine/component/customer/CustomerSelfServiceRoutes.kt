@@ -6,6 +6,8 @@ import com.mynikatech.memgine.net.dto.CustomerPurchaseRequestDto
 import com.mynikatech.memgine.net.dto.CustomerPreferenceValueDto
 import com.mynikatech.memgine.net.dto.AuthenticatedMembershipPaymentStartDto
 import com.mynikatech.memgine.net.dto.PaymentStartRequestDto
+import com.mynikatech.memgine.net.dto.CustomerCreateRedemptionTransactionRequest
+import com.mynikatech.memgine.component.redemption.RedemptionService
 import com.mynikatech.memgine.security.AuthenticatedPrincipalKey
 import com.mynikatech.memgine.security.authenticatedPrincipal
 import io.ktor.http.HttpStatusCode
@@ -26,7 +28,7 @@ private fun ApplicationCall.organizationId(): String = parameters["organizationI
 private fun ApplicationCall.userId(): String = authenticatedPrincipal().userId
 
 /** Customer use cases are separate from organization administration. */
-fun Route.customerSelfServiceRoutes(service: CustomerService) {
+fun Route.customerSelfServiceRoutes(service: CustomerService, redemptionService: RedemptionService) {
     route("/customer") {
         route("/discover") {
             get("/organizations") {
@@ -43,6 +45,17 @@ fun Route.customerSelfServiceRoutes(service: CustomerService) {
             call.respond(ApiResponse.success(service.relationships(call.userId()), call.callId))
         }
         route("/organizations/{organizationId}") {
+            post("/redemption-transactions") {
+                val organizationId = call.organizationId()
+                call.respond(ApiResponse.success(
+                    redemptionService.createCustomerTransaction(
+                        organizationId,
+                        call.receive<CustomerCreateRedemptionTransactionRequest>(),
+                        call.userId()
+                    ),
+                    call.callId
+                ))
+            }
             get("/profile") {
                 val org = call.organizationId()
                 val customer = call.userId()

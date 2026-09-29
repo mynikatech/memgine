@@ -193,7 +193,7 @@ fun Application.configureRouting(
             subscriptionRoutes(subscriptionService)
             redemptionRoutes(redemptionService)
             customerRoutes(customerService)
-            customerSelfServiceRoutes(customerService)
+            customerSelfServiceRoutes(customerService, redemptionService)
             counterRoutes(counterService)
             paymentRoutes(paymentService)
             notificationConfigurationRoutes(notificationConfigurationService)
