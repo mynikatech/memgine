@@ -115,7 +115,7 @@ export const en = {
     availableMemberships: "Available Memberships",
     join: "Join",
     yourBenefits: "Your Benefits",
-    redeemBenefits: "Redeem Benefits",
+    redeemBenefits: "Redeem",
     redeemSelected: "Redeem Selected",
     selectedCount: "{{count}} selected",
     benefitUsed: "Used",

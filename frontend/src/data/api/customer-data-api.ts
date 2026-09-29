@@ -70,7 +70,78 @@ export type CustomerDiscoveryDetail = {
   stores: Store[];
 };
 
+export type CustomerRedemptionTransactionRequest = {
+  subscriptionId: ID;
+  benefitIds: ID[];
+  offerIds: ID[];
+  redemptionMethod: "CUSTOMER_QR";
+};
+
+export type PendingRedemptionTransaction = {
+  transactionId: ID;
+  transactionNumber: string;
+  status: "PENDING" | "SUCCESS" | "FAILED" | "EXPIRED" | "CANCELLED";
+  expiresAt?: string | null;
+};
+
+export type RedemptionTransactionQr = {
+  qrReference: string;
+  transactionNumber: string;
+  expiresAt: string;
+};
+
+export type CustomerRedemptionTransactionStatus = {
+  transactionId: ID;
+  status: "PENDING" | "SUCCESS" | "FAILED" | "EXPIRED" | "CANCELLED";
+  expiresAt?: string | null;
+  completedAt?: string | null;
+};
+
+export type CustomerRedemptionItemStatus = {
+  itemId: ID;
+  itemType: "BENEFIT" | "OFFER";
+  status:
+    | "AVAILABLE"
+    | "LIMIT_REACHED"
+    | "UNAVAILABLE_TODAY"
+    | "UNAVAILABLE"
+    | "NOT_APPLICABLE"
+    | "INACTIVE";
+  displayReason?: string | null;
+};
+
 export class CustomerDataApi {
+  createRedemptionTransaction(
+    organizationId: ID,
+    request: CustomerRedemptionTransactionRequest,
+  ): Promise<ApiResult<PendingRedemptionTransaction>> {
+    return httpClient.post(`${base(organizationId)}/redemption-transactions`, request);
+  }
+  issueRedemptionTransactionQr(
+    organizationId: ID,
+    transactionId: ID,
+  ): Promise<ApiResult<RedemptionTransactionQr>> {
+    return httpClient.post(
+      `${base(organizationId)}/redemption-transactions/${encodeURIComponent(transactionId)}/qr`,
+      {},
+    );
+  }
+  redemptionTransactionStatus(
+    organizationId: ID,
+    transactionId: ID,
+  ): Promise<ApiResult<CustomerRedemptionTransactionStatus>> {
+    return httpClient.get(
+      `${base(organizationId)}/redemption-transactions/${encodeURIComponent(transactionId)}`,
+    );
+  }
+  redemptionItemStatuses(
+    organizationId: ID,
+    subscriptionId: ID,
+  ): Promise<ApiResult<CustomerRedemptionItemStatus[]>> {
+    return httpClient.get(
+      `${base(organizationId)}/subscriptions/${encodeURIComponent(subscriptionId)}/redemption-item-status`,
+    );
+  }
   discoverOrganizations(): Promise<ApiResult<CustomerDiscoverableOrganization[]>> {
     return httpClient.get("/api/v1/customer/discover/organizations");
   }

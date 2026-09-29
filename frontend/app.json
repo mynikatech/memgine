@@ -37,6 +37,12 @@
       ],
       "expo-font",
       "expo-image",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Memgine Counter to scan customer redemption QR codes."
+        }
+      ],
       "expo-secure-store",
       "expo-web-browser"
     ],

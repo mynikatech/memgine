@@ -11,6 +11,7 @@ import { BusinessExperience } from "@/src/experience";
 import { BusinessPreviewScope, useBusiness, useCustomerContext,
   useTheme, useTranslation } from "@/src/providers";
 import { StateView } from "@/src/ui";
+import type { CustomerRedemptionItemStatus } from "@/src/data/api/customer-data-api";
 
 type MembershipBundle = {
   subscription: Subscription;
@@ -32,6 +33,7 @@ type BusinessData = {
   benefitUsageRules: BenefitUsageRule[];
   offers: Offer[];
   stores: Store[];
+  redemptionItemStatusesBySubscription: Record<string, CustomerRedemptionItemStatus[]>;
 };
 
 /** Live customer subscription detail. The former local release snapshot is not read. */
@@ -66,7 +68,7 @@ export default function BusinessExperienceRoute() {
       if (!foundOrg) throw new Error("Membership not found for the selected customer.");
       const orgId = foundOrg;
       const [organization, details, branding, catalog, joinCatalog, allBenefits, offers, stores,
-        allRedemptions] = await Promise.all([
+        allRedemptions, statusLists] = await Promise.all([
         services.organization.getOrganization(orgId),
         services.organization.getOrganizationDetails(orgId),
         services.organization.getOrganizationBranding(orgId),
@@ -76,6 +78,8 @@ export default function BusinessExperienceRoute() {
         services.customerData.offers(orgId, customerId),
         services.customerData.stores(orgId, customerId),
         services.customerData.redemptions(orgId, customerId),
+        Promise.all(foundSubscriptions.map((row) =>
+          services.customerData.redemptionItemStatuses(orgId, row.id))),
       ]);
       if (!organization) throw new Error("Business not found.");
       const benefitUsageRules = (await Promise.all(allBenefits.map((benefit) =>
@@ -114,11 +118,14 @@ export default function BusinessExperienceRoute() {
         });
       }
       const owned = new Set(bundles.map((item) => item.product.id));
+      const redemptionItemStatusesBySubscription = Object.fromEntries(
+        foundSubscriptions.map((row, index) => [row.id, statusLists[index]]),
+      );
       setData({ organization, details, logoUrl: branding?.logoUrl,
         tagline: branding?.tagline, heroImageUrl: branding?.heroImageUrl,
         content: templateItem.content, template: templateItem.template,
         memberships: bundles, availableMemberships: joinCatalog.filter((item) => !owned.has(item.id)),
-        offers, stores, benefitUsageRules });
+        offers, stores, benefitUsageRules, redemptionItemStatusesBySubscription });
       setSelectedSubId(subscriptionId);
       setActiveBusiness(orgId);
       setActiveContext(orgId, subscriptionId);
@@ -141,6 +148,7 @@ export default function BusinessExperienceRoute() {
           subscriptionStatus={current.subscriptionStatus} product={current.product}
           benefits={current.benefits} offers={data.offers} stores={data.stores}
           benefitUsageRules={data.benefitUsageRules}
+          redemptionItemStatuses={data.redemptionItemStatusesBySubscription[current.subscription.id] ?? []}
           redemptions={current.redemptions} memberships={data.memberships.map((item) => ({
             subscription: item.subscription, product: item.product,
           }))} selectedSubscriptionId={current.subscription.id}
@@ -149,6 +157,7 @@ export default function BusinessExperienceRoute() {
           onJoin={(productId) => router.push(
             `${APP_ROUTES.join.membership(orgId, productId)}&customerId=${encodeURIComponent(customerId)}` as never)}
           onExit={() => router.replace(APP_ROUTES.customer.cards)}
+          onRefreshRedemptionState={load}
           organizationOverride={data.organization} detailsOverride={data.details}
           membershipLogoUrl={data.logoUrl} tagline={data.tagline}
           heroImageUrl={data.heroImageUrl} customerUserId={customerId}

@@ -6,7 +6,7 @@ import type { Benefit, MembershipProduct, Redemption, Subscription } from "@/src
 import { RedemptionMethod, services } from "@/src/core";
 import type { TemplateDefinition } from "@/src/core/template/template-definition";
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
-import type { CustomerDiscoveryDetail } from "@/src/data/api/customer-data-api";
+import type { CustomerDiscoveryDetail, CustomerRedemptionItemStatus } from "@/src/data/api/customer-data-api";
 import type { CounterSubscription } from "@/src/data/api/counter-api";
 import type { OrgAdminRedemption } from "@/src/data/api/org-admin-transaction-api";
 import { APP_ROUTES } from "@/src/constants/navigation";
@@ -15,7 +15,13 @@ import { useCustomerContext, useTheme, useTranslation } from "@/src/providers";
 import { Badge, Button, Modal, StateView, Text } from "@/src/ui";
 
 type LoadStatus = "loading" | "error" | "ready";
-type MembershipBundle = { subscription: Subscription; product: MembershipProduct; benefits: Benefit[]; redemptions: Redemption[] };
+type MembershipBundle = {
+  subscription: Subscription;
+  product: MembershipProduct;
+  benefits: Benefit[];
+  redemptions: Redemption[];
+  redemptionItemStatuses: CustomerRedemptionItemStatus[];
+};
 
 function subscriptionFromProtectedRow(row: CounterSubscription): Subscription {
   return {
@@ -64,6 +70,12 @@ export default function DiscoverGateway() {
       const subscriptions = protectedReads[0].status === "fulfilled" ? protectedReads[0].value : [];
       const redemptions = protectedReads[1].status === "fulfilled"
         ? protectedReads[1].value.map(redemptionFromProtectedRow) : [];
+      const statusLists = await Promise.all(subscriptions.map((subscription) =>
+        services.customerData.redemptionItemStatuses(organizationId, subscription.id),
+      ));
+      const statusesBySubscription = new Map(
+        subscriptions.map((subscription, index) => [subscription.id, statusLists[index]]),
+      );
       const bundles = subscriptions.flatMap((row) => {
         const product = published.membershipProducts.find((candidate) =>
           candidate.plans.some((plan) => plan.id === row.subscriptionPlanId));
@@ -72,6 +84,7 @@ export default function DiscoverGateway() {
           subscription: subscriptionFromProtectedRow(row), product,
           benefits: published.benefits.filter((benefit) => product.benefitIds.includes(benefit.id)),
           redemptions: redemptions.filter((redemption) => redemption.subscriptionId === row.id),
+          redemptionItemStatuses: statusesBySubscription.get(row.id) ?? [],
         }];
       });
       setDetail(published);
@@ -123,6 +136,7 @@ export default function DiscoverGateway() {
       product={focused?.product}
       benefits={focused?.benefits ?? []}
       benefitUsageRules={detail.benefitUsageRules as never}
+      redemptionItemStatuses={focused?.redemptionItemStatuses ?? []}
       offers={detail.offers}
       offerUsageRules={detail.offerUsageRules as never}
       stores={detail.stores}
@@ -133,6 +147,7 @@ export default function DiscoverGateway() {
       availableMemberships={available}
       onJoin={joinMembership}
       onExit={exit}
+      onRefreshRedemptionState={load}
       customerUserId={customerId}
     />
     <Modal visible={!!detailProduct} onClose={() => setDetailProduct(null)} title={detailProduct?.membershipProductName ?? ""} testID="discover-product-detail">

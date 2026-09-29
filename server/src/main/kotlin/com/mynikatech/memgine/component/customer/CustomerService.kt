@@ -16,6 +16,8 @@ import com.mynikatech.memgine.net.dto.CustomerDiscoveryDetailDto
 import com.mynikatech.memgine.net.dto.CustomerRelationshipDto
 import com.mynikatech.memgine.net.dto.OrgAdminRedemptionDto
 import com.mynikatech.memgine.net.dto.OfferDto
+import com.mynikatech.memgine.net.dto.CustomerRedemptionItemStatusDto
+import com.mynikatech.memgine.net.dto.CustomerRedemptionTransactionStatusDto
 import com.mynikatech.memgine.net.dto.MembershipProductDto
 import com.mynikatech.memgine.net.dto.BenefitDto
 import com.mynikatech.memgine.net.dto.BenefitUsageRuleDto
@@ -95,6 +97,44 @@ class CustomerService(
     fun redemptions(organizationId: String, userId: String): List<OrgAdminRedemptionDto> {
         authorizeCustomer(organizationId, userId)
         return sql.redemptions(organizationId, userId)
+    }
+
+    fun redemptionItemStatuses(
+        organizationId: String,
+        subscriptionId: String,
+        userId: String,
+    ): List<CustomerRedemptionItemStatusDto> {
+        authorizeCustomer(organizationId, userId)
+        if (subscriptionId.isBlank() || subscriptionId.length > 64) {
+            throw BadRequestException("Invalid subscription id")
+        }
+        return sql.redemptionItemStatuses(organizationId, subscriptionId, userId).map {
+            CustomerRedemptionItemStatusDto(
+                itemId = it.itemId,
+                itemType = it.itemType,
+                status = it.status,
+                displayReason = it.displayReason,
+            )
+        }
+    }
+
+    fun redemptionTransactionStatus(
+        organizationId: String,
+        transactionId: String,
+        userId: String,
+    ): CustomerRedemptionTransactionStatusDto {
+        authorizeCustomer(organizationId, userId)
+        if (transactionId.isBlank() || transactionId.length > 64) {
+            throw BadRequestException("Invalid redemption transaction id")
+        }
+        val row = sql.redemptionTransactionStatus(organizationId, transactionId, userId)
+            ?: throw NotFoundException("Redemption transaction was not found")
+        return CustomerRedemptionTransactionStatusDto(
+            transactionId = row.transactionId,
+            status = row.status,
+            expiresAt = row.expiresAt,
+            completedAt = row.completedAt,
+        )
     }
 
     fun offers(organizationId: String, userId: String): List<OfferDto> {

@@ -44,4 +44,18 @@ fun Route.redemptionRoutes(service: RedemptionService) {
             call.respond(ApiResponse.success(service.executeTransaction(organizationId, transactionId, request.storeId, request.staffId, call.authenticatedPrincipal().userId), call.callId))
         }
     }
+    route("/organizations/{organizationId}/counter/redemption-qr/{qrReference}") {
+        post {
+            val organizationId = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            val qrReference = call.parameters["qrReference"] ?: throw BadRequestException("Redemption QR reference is required")
+            val storeId = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
+            val staffId = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
+            call.respond(ApiResponse.success(
+                service.resolveCounterTransactionQr(
+                    organizationId, storeId, staffId, qrReference, call.authenticatedPrincipal().userId
+                ),
+                call.callId
+            ))
+        }
+    }
 }

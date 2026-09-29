@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 099-secure-redemption-qr
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/099-secure-redemption-qr.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

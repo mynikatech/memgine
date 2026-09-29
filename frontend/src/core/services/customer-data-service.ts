@@ -3,6 +3,11 @@ import { CustomerDataApi } from "@/src/data/api/customer-data-api";
 import type {
   CustomerDiscoverableOrganization,
   CustomerDiscoveryDetail,
+  CustomerRedemptionItemStatus,
+  CustomerRedemptionTransactionStatus,
+  CustomerRedemptionTransactionRequest,
+  PendingRedemptionTransaction,
+  RedemptionTransactionQr,
 } from "@/src/data/api/customer-data-api";
 import type { CounterPurchaseResult, CounterSubscription } from "@/src/data/api/counter-api";
 import type { MembershipPurchaseQuote, PaymentConfirmation, PaymentIntent } from "@/src/data/api/counter-api";
@@ -40,6 +45,42 @@ export class CustomerDataService {
     organizationId: ID,
   ): Promise<CustomerDiscoveryDetail> {
     const result = await this.api.discoverOrganizationDetail(organizationId);
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
+  }
+
+  async redemptionItemStatuses(
+    organizationId: ID,
+    subscriptionId: ID,
+  ): Promise<CustomerRedemptionItemStatus[]> {
+    const result = await this.api.redemptionItemStatuses(organizationId, subscriptionId);
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
+  }
+
+  async createRedemptionTransaction(
+    organizationId: ID,
+    request: CustomerRedemptionTransactionRequest,
+  ): Promise<PendingRedemptionTransaction> {
+    const result = await this.api.createRedemptionTransaction(organizationId, request);
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
+  }
+
+  async issueRedemptionTransactionQr(
+    organizationId: ID,
+    transactionId: ID,
+  ): Promise<RedemptionTransactionQr> {
+    const result = await this.api.issueRedemptionTransactionQr(organizationId, transactionId);
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
+  }
+
+  async redemptionTransactionStatus(
+    organizationId: ID,
+    transactionId: ID,
+  ): Promise<CustomerRedemptionTransactionStatus> {
+    const result = await this.api.redemptionTransactionStatus(organizationId, transactionId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }

@@ -1,6 +1,13 @@
 import { Redirect, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
 
 import { services, type CountryReference } from "@/src/core";
 import { landingFor } from "@/src/core/auth/auth-navigation";
@@ -13,34 +20,47 @@ type LoginMode = "password" | "otp";
 export default function LoginScreen() {
   const router = useRouter();
   const auth = useAuth();
+
   const [mode, setMode] = useState<LoginMode>("password");
+
   const [countries, setCountries] = useState<CountryReference[]>([]);
+
   const [phone, setPhone] = useState<PhoneValue>({
     countryId: "",
     callingCode: "+1",
     number: "",
   });
+
   const [password, setPassword] = useState("");
+
   const [challengeId, setChallengeId] = useState<string | null>(null);
+
   const [otp, setOtp] = useState("");
+
   const [devCode, setDevCode] = useState<string | null>(null);
+
   const [busy, setBusy] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     void services.referenceData.listCountries().then((items) => {
       const active = items.filter((country) => country.active);
+
       setCountries(active);
+
       const defaultCountry =
         active.find((country) => country.countryCode === "CA") ??
         active.find((country) => country.countryCode === "IN") ??
         active[0];
-      if (defaultCountry)
+
+      if (defaultCountry) {
         setPhone((current) => ({
           ...current,
           countryId: defaultCountry.id,
           callingCode: defaultCountry.callingCode,
         }));
+      }
     });
   }, []);
 
@@ -51,27 +71,55 @@ export default function LoginScreen() {
 
   if (!auth.loading && auth.session) {
     if (Platform.OS !== "web" && auth.mobileSessionMode === "customer") {
-      return <View style={styles.page}><View style={styles.card}>
-        <Text variant="title">Continue as Business / Staff?</Text>
-        <Text color="textMuted">You are currently signed in as a customer. Continuing signs out that session before business sign in.</Text>
-        <Button label="Continue as Business / Staff" fullWidth onPress={() => void auth.logout()} />
-        <Button label="Cancel" variant="ghost" onPress={() => router.replace(APP_ROUTES.customer.cards as never)} />
-      </View></View>;
+      return (
+        <View style={styles.page}>
+          <View style={styles.card}>
+            <Text variant="title">Continue as Business / Staff?</Text>
+
+            <Text color="textMuted">
+              You are currently signed in as a customer. Continuing signs out
+              that session before business sign in.
+            </Text>
+
+            <Button
+              label="Continue as Business / Staff"
+              fullWidth
+              onPress={() => void auth.logout()}
+            />
+
+            <Button
+              label="Cancel"
+              variant="ghost"
+              onPress={() => router.replace(APP_ROUTES.customer.cards as never)}
+            />
+          </View>
+        </View>
+      );
     }
+
     return <Redirect href={landingFor(auth.session) as never} />;
   }
 
   const regionCode = selectedCountry?.countryCode ?? "CA";
-  const complete = async (session: Awaited<ReturnType<typeof auth.passwordLogin>>) => {
-    if (Platform.OS !== "web") await auth.setMobileSessionMode("business");
+
+  const complete = async (
+    session: Awaited<ReturnType<typeof auth.passwordLogin>>,
+  ) => {
+    if (Platform.OS !== "web") {
+      await auth.setMobileSessionMode("business");
+    }
+
     router.replace(landingFor(session) as never);
   };
 
   const submitPassword = async () => {
     setBusy(true);
     setError(null);
+
     try {
-      await complete(await auth.passwordLogin(phone.number, regionCode, password));
+      await complete(
+        await auth.passwordLogin(phone.number, regionCode, password),
+      );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Login failed.");
     } finally {
@@ -82,9 +130,12 @@ export default function LoginScreen() {
   const requestOtp = async () => {
     setBusy(true);
     setError(null);
+
     try {
       const challenge = await auth.requestOtp(phone.number, regionCode);
+
       setChallengeId(challenge.challengeId);
+
       setDevCode(challenge.devCode ?? null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "OTP request failed.");
@@ -94,9 +145,13 @@ export default function LoginScreen() {
   };
 
   const verifyOtp = async () => {
-    if (!challengeId) return;
+    if (!challengeId) {
+      return;
+    }
+
     setBusy(true);
     setError(null);
+
     try {
       await complete(await auth.verifyOtp(challengeId, otp));
     } catch (cause) {
@@ -109,100 +164,138 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.page}>
-      <View style={styles.card}>
-        <Text variant="title">Sign in to Memgine</Text>
-        <Text color="textMuted">
-          Use your mobile number and password or a one-time code.
-        </Text>
-        <View style={styles.tabs}>
-          {(["password", "otp"] as const).map((item) => (
-            <Pressable
-              key={item}
-              onPress={() => {
-                setMode(item);
-                setChallengeId(null);
-                setError(null);
-              }}
-              style={[styles.tab, mode === item && styles.tabActive]}
-            >
-              <Text color={mode === item ? "primary" : "textMuted"}>
-                {item === "password" ? "Password" : "One-time code"}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <PhoneField
-          label="Mobile number"
-          required
-          value={phone}
-          countries={countries}
-          onChange={setPhone}
-          maxDigits={10}
-          testID="login-phone"
-        />
-        {mode === "password" ? (
-          <>
-            <Input
-              label="Password"
-              required
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-              testID="login-password"
-            />
-            <Button
-              label={busy ? "Signing in…" : "Sign in"}
-              onPress={() => void submitPassword()}
-              disabled={busy || !phone.number || !password}
-              fullWidth
-            />
-          </>
-        ) : challengeId ? (
-          <>
-            <Input
-              label="One-time code"
-              required
-              keyboardType="number-pad"
-              value={otp}
-              onChangeText={setOtp}
-              maxLength={6}
-              testID="login-otp"
-            />
-            {devCode ? (
-              <Text color="textMuted">Development code: {devCode}</Text>
-            ) : null}
-            <Button
-              label={busy ? "Verifying…" : "Verify code"}
-              onPress={() => void verifyOtp()}
-              disabled={busy || otp.length !== 6}
-              fullWidth
-            />
-            <Button
-              label="Use another number"
-              variant="ghost"
-              onPress={() => {
-                setChallengeId(null);
-                setOtp("");
-                setDevCode(null);
-              }}
-            />
-          </>
-        ) : (
-          <Button
-            label={busy ? "Sending…" : "Send code"}
-            onPress={() => void requestOtp()}
-            disabled={busy || !phone.number}
-            fullWidth
+    <KeyboardAvoidingView
+      style={styles.keyboardAvoidingView}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.card}>
+          <Text variant="title">Sign in to Memgine</Text>
+
+          <Text color="textMuted">
+            Use your mobile number and password or a one-time code.
+          </Text>
+
+          <View style={styles.tabs}>
+            {(["password", "otp"] as const).map((item) => (
+              <Pressable
+                key={item}
+                onPress={() => {
+                  setMode(item);
+                  setChallengeId(null);
+                  setError(null);
+                }}
+                style={[styles.tab, mode === item && styles.tabActive]}
+              >
+                <Text color={mode === item ? "primary" : "textMuted"}>
+                  {item === "password" ? "Password" : "One-time code"}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <PhoneField
+            label="Mobile number"
+            required
+            value={phone}
+            countries={countries}
+            onChange={setPhone}
+            maxDigits={10}
+            testID="login-phone"
           />
-        )}
-        {error ? <Text color="danger">{error}</Text> : null}
-      </View>
-    </View>
+
+          {mode === "password" ? (
+            <>
+              <Input
+                label="Password"
+                required
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+                testID="login-password"
+              />
+
+              <Button
+                label={busy ? "Signing in…" : "Sign in"}
+                onPress={() => void submitPassword()}
+                disabled={busy || !phone.number || !password}
+                fullWidth
+              />
+            </>
+          ) : challengeId ? (
+            <>
+              <Input
+                label="One-time code"
+                required
+                keyboardType="number-pad"
+                value={otp}
+                onChangeText={setOtp}
+                maxLength={6}
+                testID="login-otp"
+              />
+
+              {devCode ? (
+                <Text color="textMuted">Development code: {devCode}</Text>
+              ) : null}
+
+              <Button
+                label={busy ? "Verifying…" : "Verify code"}
+                onPress={() => void verifyOtp()}
+                disabled={busy || otp.length !== 6}
+                fullWidth
+              />
+
+              <Button
+                label="Use another number"
+                variant="ghost"
+                onPress={() => {
+                  setChallengeId(null);
+                  setOtp("");
+                  setDevCode(null);
+                }}
+              />
+            </>
+          ) : (
+            <Button
+              label={busy ? "Sending…" : "Send code"}
+              onPress={() => void requestOtp()}
+              disabled={busy || !phone.number}
+              fullWidth
+            />
+          )}
+
+          {error ? <Text color="danger">{error}</Text> : null}
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoidingView: {
+    flex: 1,
+    backgroundColor: "#F5F6F8",
+  },
+
+  scroll: {
+    flex: 1,
+  },
+
+  scrollContent: {
+    flexGrow: 1,
+    alignItems: "center",
+    justifyContent: "flex-start",
+    paddingHorizontal: 24,
+    paddingTop: 40,
+    paddingBottom: 64,
+  },
+
   page: {
     flex: 1,
     backgroundColor: "#F5F6F8",
@@ -210,6 +303,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 24,
   },
+
   card: {
     width: "100%",
     maxWidth: 480,
@@ -220,7 +314,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E4E7EB",
   },
-  tabs: { flexDirection: "row", gap: 8 },
+
+  tabs: {
+    flexDirection: "row",
+    gap: 8,
+  },
+
   tab: {
     flex: 1,
     alignItems: "center",
@@ -228,5 +327,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: "transparent",
   },
-  tabActive: { borderBottomColor: "#0F766E" },
+
+  tabActive: {
+    borderBottomColor: "#0F766E",
+  },
 });

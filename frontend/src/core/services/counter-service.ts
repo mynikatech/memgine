@@ -3,6 +3,7 @@ import {
   CounterApi,
   type CounterContext,
   type CounterPurchase,
+  type CounterRedemptionTransaction,
 } from "@/src/data/api/counter-api";
 import type { MembershipPurchaseQuote } from "@/src/data/api/counter-api";
 
@@ -142,5 +143,29 @@ export class CounterService {
 
   redeemQr(ctx: CounterContext, token: string) {
     return this.api.redeemQr(ctx, token).then((result) => this.unwrap(result));
+  }
+
+  resolveRedemptionTransactionQr(ctx: CounterContext, qrReference: string) {
+    return this.api
+      .resolveRedemptionTransactionQr(ctx, qrReference)
+      .then((result) => this.unwrap(result));
+  }
+
+  validateRedemptionTransaction(
+    ctx: CounterContext,
+    transactionId: string,
+  ) {
+    return this.api
+      .validateRedemptionTransaction(ctx, transactionId)
+      .then((result) => this.unwrap(result));
+  }
+
+  executeRedemptionTransaction(
+    ctx: CounterContext,
+    transactionId: string,
+  ): Promise<CounterRedemptionTransaction> {
+    return this.api
+      .executeRedemptionTransaction(ctx, transactionId)
+      .then((result) => this.unwrap(result));
   }
 }

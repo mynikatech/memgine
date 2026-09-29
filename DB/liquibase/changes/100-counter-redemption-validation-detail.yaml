@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 100-counter-redemption-validation-detail
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/100-counter-redemption-validation-detail.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

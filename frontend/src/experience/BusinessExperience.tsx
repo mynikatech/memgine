@@ -30,6 +30,7 @@ import type {
 
 import { services } from "@/src/core";
 import { resolveAssetUrl } from "@/src/data/api/asset-url";
+import type { CustomerRedemptionItemStatus } from "@/src/data/api/customer-data-api";
 import {
   BusinessThemeScope,
   useBusiness,
@@ -54,6 +55,25 @@ function formatPhoneNumber(
 ): string {
   if (!phone) return "";
   return [phone.callingCode, phone.number].filter(Boolean).join(" ").trim();
+}
+
+function parseCanonicalUtcTimestamp(value: string): Date {
+  const normalized = value.trim().replace(" ", "T");
+  return new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized) ? normalized : `${normalized}Z`);
+}
+
+function formatBusinessExpiry(value: string, timeZone: string, locale: string): string {
+  const instant = parseCanonicalUtcTimestamp(value);
+  if (Number.isNaN(instant.getTime())) return "—";
+  try {
+    return new Intl.DateTimeFormat(locale, {
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone,
+    }).format(instant);
+  } catch {
+    return "—";
+  }
 }
 
 /**
@@ -88,6 +108,7 @@ type Props = {
   redemptions: Redemption[];
   benefitUsageRules?: BenefitUsageRule[];
   offerUsageRules?: OfferUsageRule[];
+  redemptionItemStatuses?: CustomerRedemptionItemStatus[];
 
   memberships: {
     subscription: Subscription;
@@ -184,6 +205,7 @@ type Props = {
   /** Published public inputs used by customer discovery without changing workspace context. */
   configurationOverride?: import("@/src/core").BusinessConfiguration;
   templateOverride?: TemplateDefinition;
+  onRefreshRedemptionState?: () => Promise<void> | void;
 };
 
 export function BusinessExperience({
@@ -197,6 +219,7 @@ export function BusinessExperience({
   redemptions,
   benefitUsageRules,
   offerUsageRules,
+  redemptionItemStatuses = [],
   memberships,
   selectedSubscriptionId,
   onSelectSubscription,
@@ -221,6 +244,7 @@ export function BusinessExperience({
   customerUserId,
   configurationOverride,
   templateOverride,
+  onRefreshRedemptionState,
 }: Props) {
   const isPreviewMode = renderMode !== "customer";
 
@@ -706,194 +730,142 @@ export function BusinessExperience({
   /* Redemption                                                         */
   /* ------------------------------------------------------------------ */
 
-  type RedemptionToken = {
-    token: string;
-    qrCodeId: string;
-    qrPath: string;
-    userId: string;
-    organizationId: string;
-    subscriptionId: string;
+  type PendingRedemption = {
+    transactionId: string;
+    transactionNumber: string;
+    status: "PENDING" | "SUCCESS" | "FAILED" | "EXPIRED" | "CANCELLED";
+    expiresAt?: string | null;
+    qrReference: string;
     benefitIds: string[];
-    createdAt: string;
+    offerIds: string[];
   };
-
-  type OfferRedemptionToken = {
-    token: string;
-    qrCodeId: string;
-    qrPath: string;
-    userId: string;
-    organizationId: string;
-    offerId: string;
-    createdAt: string;
-  };
-
-  const [selectedBenefitIds, setSelectedBenefitIds] = useState<Set<string>>(
-    new Set(),
+  const [selectedBenefitIds, setSelectedBenefitIds] = useState<Set<string>>(new Set());
+  const [selectedOfferIds, setSelectedOfferIds] = useState<Set<string>>(new Set());
+  const [pendingRedemption, setPendingRedemption] = useState<PendingRedemption | null>(null);
+  const [redemptionLoading, setRedemptionLoading] = useState(false);
+  useEffect(() => { setSelectedBenefitIds(new Set()); setSelectedOfferIds(new Set()); setPendingRedemption(null); }, [selectedSubscriptionId]);
+  const toggleBenefit = (id: string) => setSelectedBenefitIds((previous) => { const next = new Set(previous); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const toggleOffer = (id: string) => setSelectedOfferIds((previous) => { const next = new Set(previous); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const redemptionStatusByItem = useMemo(
+    () => new Map(redemptionItemStatuses.map((item) => [`${item.itemType}:${item.itemId}`, item])),
+    [redemptionItemStatuses],
   );
-
-  const [redeemToken, setRedeemToken] = useState<RedemptionToken | null>(null);
-  const [offerRedeemToken, setOfferRedeemToken] =
-    useState<OfferRedemptionToken | null>(null);
-  const [offerRedeemLoading, setOfferRedeemLoading] = useState(false);
+  const statusFor = (itemType: "BENEFIT" | "OFFER", itemId: string, previewAvailable = true): CustomerRedemptionItemStatus =>
+    redemptionStatusByItem.get(`${itemType}:${itemId}`) ?? {
+      itemId,
+      itemType,
+      status: isPreviewMode && previewAvailable ? "AVAILABLE" : "INACTIVE",
+      displayReason: isPreviewMode && previewAvailable ? null : "Unavailable",
+    };
+  const benefitItems = exp.redeemableBenefits.map((benefit) => ({
+    benefit,
+    itemStatus: statusFor("BENEFIT", benefit.id, benefit.available),
+  }));
+  const redeemableOffers = exp.offers.filter((offer) => {
+    if (!offer.membershipProductId) return true;
+    return offer.membershipProductId === product?.id;
+  });
+  const offerItems = redeemableOffers.map((offer) => ({
+    offer,
+    itemStatus: statusFor("OFFER", offer.id),
+  }));
+  const selectableBenefits = benefitItems.filter(({ itemStatus }) => itemStatus.status === "AVAILABLE");
+  const selectableOffers = offerItems.filter(({ itemStatus }) => itemStatus.status === "AVAILABLE");
+  const redeemSectionBenefits = benefitItems.filter(({ itemStatus }) =>
+    itemStatus.status === "AVAILABLE" || itemStatus.status === "LIMIT_REACHED",
+  );
+  const redeemSectionOffers = offerItems.filter(({ itemStatus }) =>
+    itemStatus.status === "AVAILABLE" || itemStatus.status === "LIMIT_REACHED",
+  );
+  const offersTabItems = offerItems.filter(({ itemStatus }) =>
+    itemStatus.status !== "NOT_APPLICABLE" && itemStatus.status !== "INACTIVE",
+  );
+  const selectableBenefitKey = selectableBenefits.map(({ benefit }) => benefit.id).sort().join("|");
+  const selectableOfferKey = selectableOffers.map(({ offer }) => offer.id).sort().join("|");
+  useEffect(() => {
+    const allowedBenefitIds = new Set(selectableBenefits.map(({ benefit }) => benefit.id));
+    const allowedOfferIds = new Set(selectableOffers.map(({ offer }) => offer.id));
+    setSelectedBenefitIds((previous) => new Set([...previous].filter((id) => allowedBenefitIds.has(id))));
+    setSelectedOfferIds((previous) => new Set([...previous].filter((id) => allowedOfferIds.has(id))));
+  }, [selectableBenefitKey, selectableOfferKey]);
+  const createRedemptionTransaction = async () => {
+    if (!subscription || isPreviewMode || redemptionLoading) return;
+    const benefitIds = selectableBenefits.filter(({ benefit }) => selectedBenefitIds.has(benefit.id)).map(({ benefit }) => benefit.id);
+    const offerIds = selectableOffers.filter(({ offer }) => selectedOfferIds.has(offer.id)).map(({ offer }) => offer.id);
+    if (!benefitIds.length && !offerIds.length) return;
+    setRedemptionLoading(true); setCustomerActionError(null);
+    try {
+      const pending = await services.customerData.createRedemptionTransaction(organization.id, {
+        subscriptionId: subscription.id, benefitIds, offerIds, redemptionMethod: "CUSTOMER_QR",
+      });
+      const qr = await services.customerData.issueRedemptionTransactionQr(organization.id, pending.transactionId);
+      setPendingRedemption({
+        ...pending,
+        status: "PENDING",
+        transactionNumber: qr.transactionNumber,
+        expiresAt: qr.expiresAt,
+        qrReference: qr.qrReference,
+        benefitIds,
+        offerIds,
+      });
+    }
+    catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      const knownSafe = ["no longer eligible", "not available today", "usage limit", "subscription is not active", "subscription is not available"]
+        .some((fragment) => message.toLowerCase().includes(fragment));
+      setCustomerActionError(knownSafe ? message : "Unable to create redemption. Please try again.");
+    }
+    finally { setRedemptionLoading(false); }
+  };
 
   useEffect(() => {
-    setSelectedBenefitIds(
-      new Set(
-        exp.redeemableBenefits.filter((b) => b.available).map((b) => b.id),
-      ),
-    );
-
-    setRedeemToken(null);
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSubscriptionId]);
-
-  const toggleBenefit = (id: string) =>
-    setSelectedBenefitIds((prev) => {
-      const next = new Set(prev);
-
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-
-      return next;
-    });
-
-  const redeemSelected = async () => {
-    if (!subscription || isPreviewMode) return;
-    if (customerUserId) {
-      setCustomerActionError(
-        "Benefit QR redemption is not yet available in Customer. Ask the counter to redeem your benefit.",
-      );
+    if (
+      isPreviewMode ||
+      !subscription ||
+      !pendingRedemption ||
+      pendingRedemption.status !== "PENDING"
+    ) {
       return;
     }
 
-    const ids = exp.redeemableBenefits
-      .filter((b) => b.available && selectedBenefitIds.has(b.id))
-      .map((b) => b.id);
-
-    if (!ids.length) return;
-
-    const organizationUser = await services.organization.getOrganizationUser(
-      subscription.organizationUserId,
-    );
-
-    if (!organizationUser) {
-      return;
-    }
-
-    try {
-      const result = await services.benefitRedemptionQR.createQR({
-        organizationId: organizationUser.organizationId,
-
-        /*
-         * User is the canonical identity.
-         * Do NOT call this customerId.
-         */
-        userId: organizationUser.userId,
-
-        subscriptionId: subscription.id,
-
-        benefitIds: ids,
-
-        createdBy: organizationUser.userId,
-      });
-
-      setRedeemToken({
-        token: result.qrCode.qrCodeToken,
-
-        qrCodeId: result.qrCode.id,
-
-        qrPath: result.qrPath,
-
-        userId: result.context.userId,
-
-        organizationId: result.context.organizationId,
-
-        subscriptionId: result.context.subscriptionId,
-
-        benefitIds: result.context.benefitIds,
-
-        createdAt: result.context.createdAt,
-      });
-    } catch (error) {
-      console.warn("BENEFIT REDEMPTION QR CREATION FAILED", error);
-    }
-  };
-
-  const redeemOffer = async (offer: Offer) => {
-    if (isPreviewMode || offerRedeemLoading) return;
-    if (customerUserId) {
-      setCustomerActionError(
-        "Offer QR redemption is not yet available in Customer. Ask the counter for assistance.",
-      );
-      return;
-    }
-
-    setOfferRedeemLoading(true);
-
-    try {
-      let userId = profileUserId;
-
-      /*
-       * The canonical identity is User. For the current customer experience,
-       * profileUserId is resolved from OrganizationUser. If it has not loaded
-       * yet, resolve it directly from the selected subscription.
-       *
-       * An Offer QR does not require a subscription because an Offer may be
-       * standalone. The QR service itself verifies that the User belongs to
-       * the organization.
-       */
-      if (!userId && subscription) {
-        const organizationUser =
-          await services.organization.getOrganizationUser(
-            subscription.organizationUserId,
-          );
-
-        if (organizationUser) {
-          userId = organizationUser.userId;
-        } else {
-          const organizationUsers =
-            await services.organization.listOrganizationUsers(organization.id);
-
-          userId =
-            organizationUsers.find(
-              (item) => item.id === subscription.organizationUserId,
-            )?.userId ?? null;
-        }
-      }
-
-      if (!userId) {
-        console.warn(
-          "OFFER REDEMPTION QR CREATION FAILED: CUSTOMER USER COULD NOT BE RESOLVED",
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const current = await services.customerData.redemptionTransactionStatus(
+          organization.id,
+          pendingRedemption.transactionId,
         );
-        return;
+        if (cancelled || current.status === "PENDING") return;
+
+        setPendingRedemption((previous) =>
+          previous?.transactionId === current.transactionId
+            ? {
+                ...previous,
+                status: current.status,
+                expiresAt: current.expiresAt ?? previous.expiresAt,
+              }
+            : previous,
+        );
+        await onRefreshRedemptionState?.();
+      } catch {
+        // A transient status-read failure must not discard a still-valid QR.
       }
+    };
 
-      const result = await services.offerRedemptionQR.createQR({
-        organizationId: organization.id,
-        userId,
-        offerId: offer.id,
-        createdBy: userId,
-      });
-
-      setOfferRedeemToken({
-        token: result.qrCode.qrCodeToken,
-        qrCodeId: result.qrCode.id,
-        qrPath: result.qrPath,
-        userId: result.context.userId,
-        organizationId: result.context.organizationId,
-        offerId: result.context.offerId,
-        createdAt: result.context.createdAt,
-      });
-    } catch (error) {
-      console.warn("OFFER REDEMPTION QR CREATION FAILED", error);
-    } finally {
-      setOfferRedeemLoading(false);
-    }
-  };
+    void poll();
+    const timer = setInterval(() => { void poll(); }, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [
+    isPreviewMode,
+    onRefreshRedemptionState,
+    organization.id,
+    pendingRedemption?.status,
+    pendingRedemption?.transactionId,
+    subscription,
+  ]);
 
   const benefitTitleById = useMemo(
     () =>
@@ -901,11 +873,15 @@ export function BusinessExperience({
     [exp.benefits],
   );
 
-  const selectedCount = exp.redeemableBenefits.filter(
-    (b) => b.available && selectedBenefitIds.has(b.id),
-  ).length;
+  const selectedBenefitCount = selectableBenefits.filter(({ benefit }) => selectedBenefitIds.has(benefit.id)).length;
+  const selectedOfferCount = selectableOffers.filter(({ offer }) => selectedOfferIds.has(offer.id)).length;
+  const selectedCount = selectedBenefitCount + selectedOfferCount;
+  const selectedSummary = [
+    selectedBenefitCount ? `${selectedBenefitCount} Benefit${selectedBenefitCount === 1 ? "" : "s"}` : null,
+    selectedOfferCount ? `${selectedOfferCount} Offer${selectedOfferCount === 1 ? "" : "s"}` : null,
+  ].filter(Boolean).join(" + ");
 
-  const hasRedeemable = exp.redeemableBenefits.some((b) => b.available);
+  const hasRedeemable = selectableBenefits.length > 0 || selectableOffers.length > 0;
 
   /* ------------------------------------------------------------------ */
   /* Sub-renderers                                                      */
@@ -1120,24 +1096,27 @@ export function BusinessExperience({
         </Section>
       ) : null}
 
-      {exp.membership?.active && exp.redeemableBenefits.length ? (
+      {exp.membership?.active && (redeemSectionBenefits.length || redeemSectionOffers.length) ? (
         <Section title={t("experience.redeemBenefits")}>
           <Card padding="lg" testID="experience-redeem-benefits">
             <View style={{ gap: 14 }}>
-              {exp.redeemableBenefits.map((b) => {
-                const selected = b.available && selectedBenefitIds.has(b.id);
+              {redeemSectionBenefits.length ? <>
+                <Text variant="bodyStrong" color="text">Benefits</Text>
+              {redeemSectionBenefits.map(({ benefit: b, itemStatus }) => {
+                const selectable = itemStatus.status === "AVAILABLE";
+                const selected = selectable && selectedBenefitIds.has(b.id);
 
                 return (
                   <Pressable
                     key={b.id}
                     testID={`experience-redeem-benefit-${b.id}`}
-                    disabled={!b.available || isPreviewMode}
+                    disabled={!selectable || isPreviewMode}
                     onPress={() => toggleBenefit(b.id)}
                     style={({ pressed }) => ({
                       flexDirection: "row",
                       alignItems: "center",
                       gap: theme.spacing.md,
-                      opacity: !b.available
+                      opacity: !selectable
                         ? 0.5
                         : pressed
                           ? theme.states.pressedOpacity
@@ -1146,7 +1125,7 @@ export function BusinessExperience({
                   >
                     <Ionicons
                       name={
-                        !b.available
+                        !selectable
                           ? "ban-outline"
                           : selected
                             ? "checkbox"
@@ -1154,7 +1133,7 @@ export function BusinessExperience({
                       }
                       size={22}
                       color={
-                        !b.available || !selected
+                        !selectable || !selected
                           ? theme.colors.textMuted
                           : theme.colors.primary
                       }
@@ -1163,7 +1142,7 @@ export function BusinessExperience({
                     <View style={{ flex: 1 }}>
                       <Text
                         variant="bodyStrong"
-                        color={b.available ? "text" : "textMuted"}
+                        color={selectable ? "text" : "textMuted"}
                       >
                         {b.displayName ?? b.benefitName}
                       </Text>
@@ -1175,15 +1154,38 @@ export function BusinessExperience({
                       ) : null}
                     </View>
 
-                    {!b.available ? (
+                    {!selectable ? (
                       <Badge
-                        label={t("experience.benefitUsed")}
+                        label={itemStatus.displayReason ?? t("experience.benefitUsed")}
                         tone="neutral"
                       />
                     ) : null}
                   </Pressable>
                 );
-              })}
+              })}</> : null}
+
+              {redeemSectionOffers.length ? (
+                <View style={{ gap: theme.spacing.sm }}>
+                  <Text variant="bodyStrong" color="text">Special Offers</Text>
+                  {redeemSectionOffers.map(({ offer, itemStatus }) => (
+                    <OfferCard
+                      key={offer.id}
+                      offerId={offer.id}
+                      testID={`experience-redeem-offer-${offer.id}`}
+                      title={offer.offerName}
+                      description={offer.description}
+                      imageUrl={offer.promotionImageUrl}
+                      badge={offer.badgeText}
+                      availabilityText={offer.availabilityText}
+                      disclaimerText={offer.disclaimerText}
+                      discountPercentage={offer.discountPercentage}
+                      ctaLabel={isPreviewMode ? offer.ctaLabel : itemStatus.status === "AVAILABLE" ? selectedOfferIds.has(offer.id) ? "Remove from redemption" : "Add to redemption" : itemStatus.displayReason ?? "Unavailable"}
+                      usageRules={offerUsageRules?.filter((rule) => rule.offerId === offer.id)}
+                      onPress={isPreviewMode || itemStatus.status !== "AVAILABLE" ? undefined : () => toggleOffer(offer.id)}
+                    />
+                  ))}
+                </View>
+              ) : null}
 
               {!hasRedeemable ? (
                 <Text variant="bodySmall" color="textMuted">
@@ -1201,17 +1203,13 @@ export function BusinessExperience({
                   }}
                 >
                   <Text variant="caption" color="textMuted">
-                    {t("experience.selectedCount", {
-                      count: selectedCount,
-                    })}
+                    {selectedSummary || "No items selected"}
                   </Text>
 
                   <Button
-                    label={t("experience.redeemSelected")}
-                    disabled={selectedCount === 0}
-                    onPress={() => {
-                      void redeemSelected();
-                    }}
+                    label={redemptionLoading ? "Creating redemption…" : `Redeem Selected${selectedCount ? ` (${selectedCount})` : ""}`}
+                    disabled={selectedCount === 0 || redemptionLoading}
+                    onPress={() => { void createRedemptionTransaction(); }}
                     testID="experience-redeem-selected"
                   />
                 </View>
@@ -1294,23 +1292,13 @@ export function BusinessExperience({
      * there is no separate featured/hero offer. Every applicable offer is
      * presented once as its own offer card.
      */
-    const selectedMembershipProductId = product?.id;
-
-    const visibleOffers = exp.offers.filter((offer) => {
-      if (!offer.membershipProductId) {
-        return true;
-      }
-
-      return offer.membershipProductId === selectedMembershipProductId;
-    });
-
     return (
       <View style={{ gap: theme.spacing.lg }} testID="experience-tab-offers">
         {renderTabPreviewLink("offers")}
 
         <Section title={t("experience.todaysPerks")}>
           <View style={{ gap: theme.spacing.md }}>
-            {visibleOffers.map((offer) => (
+            {offersTabItems.map(({ offer, itemStatus }) => (
               <OfferCard
                 key={offer.id}
                 offerId={offer.id}
@@ -1322,21 +1310,15 @@ export function BusinessExperience({
                 availabilityText={offer.availabilityText}
                 disclaimerText={offer.disclaimerText}
                 discountPercentage={offer.discountPercentage}
-                ctaLabel={offer.ctaLabel}
+                ctaLabel={isPreviewMode ? offer.ctaLabel : itemStatus.status === "AVAILABLE" ? selectedOfferIds.has(offer.id) ? "Remove from redemption" : "Add to redemption" : itemStatus.displayReason ?? "Unavailable"}
                 usageRules={offerUsageRules?.filter(
                   (rule) => rule.offerId === offer.id,
                 )}
-                onPress={
-                  isPreviewMode
-                    ? undefined
-                    : () => {
-                        void redeemOffer(offer);
-                      }
-                }
+                onPress={isPreviewMode || itemStatus.status !== "AVAILABLE" ? undefined : () => toggleOffer(offer.id)}
               />
             ))}
 
-            {!visibleOffers.length ? (
+            {!offersTabItems.length ? (
               <Card
                 padding="lg"
                 style={{
@@ -1378,6 +1360,34 @@ export function BusinessExperience({
                   back later for something new.
                 </Text>
               </Card>
+            ) : null}
+
+            {!isPreviewMode && offersTabItems.length ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: theme.spacing.md,
+                }}
+              >
+                <Text variant="caption" color="textMuted">
+                  {selectedSummary ? `Basket: ${selectedSummary}` : "Basket: No items selected"}
+                </Text>
+
+                <Button
+                  label={
+                    redemptionLoading
+                      ? "Creating redemption…"
+                      : `Redeem Selected${selectedCount ? ` (${selectedCount})` : ""}`
+                  }
+                  disabled={selectedCount === 0 || redemptionLoading}
+                  onPress={() => {
+                    void createRedemptionTransaction();
+                  }}
+                  testID="experience-offers-redeem-selected"
+                />
+              </View>
             ) : null}
           </View>
         </Section>
@@ -2751,120 +2761,47 @@ export function BusinessExperience({
         </Modal>
 
         {!isPreviewMode ? (
-          <>
-            <Modal
-              visible={!!redeemToken}
-              onClose={() => setRedeemToken(null)}
-              title={t("experience.redeemBenefits")}
-              testID="experience-redeem-token-modal"
-            >
-              {redeemToken ? (
-                <View
-                  style={{
-                    alignItems: "center",
-                    gap: theme.spacing.md,
-                  }}
-                >
-                  <QrPlaceholder size={200} testID="experience-redemption-qr" />
-
-                  <View style={{ alignItems: "center" }}>
-                    <Text variant="caption" color="textMuted">
-                      {t("experience.redemptionCode")}
-                    </Text>
-
+          <Modal
+            visible={!!pendingRedemption}
+            onClose={() => setPendingRedemption(null)}
+            title={pendingRedemption?.status === "SUCCESS" ? "Redemption complete" : pendingRedemption?.status === "EXPIRED" ? "Redemption expired" : pendingRedemption?.status === "PENDING" ? "Redemption ready" : "Redemption unavailable"}
+            testID="experience-pending-redemption-modal"
+          >
+            {pendingRedemption ? (
+              <View style={{ gap: theme.spacing.md }}>
+                {pendingRedemption.status === "PENDING" ? (
+                  <>
                     <Text variant="title" color="text">
-                      {redeemToken.token}
+                      Redeem {pendingRedemption.benefitIds.length + pendingRedemption.offerIds.length} item{pendingRedemption.benefitIds.length + pendingRedemption.offerIds.length === 1 ? "" : "s"}
                     </Text>
-                  </View>
-
-                  <View
-                    style={{
-                      alignSelf: "stretch",
-                      gap: 6,
-                    }}
-                  >
-                    {redeemToken.benefitIds.map((id) => (
-                      <View
-                        key={id}
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: theme.spacing.sm,
-                        }}
-                      >
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={16}
-                          color={theme.colors.primary}
-                        />
-
-                        <Text variant="bodySmall" color="text">
-                          {benefitTitleById.get(id) ?? id}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  <Text variant="caption" color="textMuted">
-                    {t("experience.benefitsCount", {
-                      count: redeemToken.benefitIds.length,
-                    })}
-                  </Text>
-
-                  <Text
-                    variant="bodySmall"
-                    color="textMuted"
-                    style={{
-                      textAlign: "center",
-                    }}
-                  >
-                    {t("experience.redeemTokenHint")}
-                  </Text>
-                </View>
-              ) : null}
-            </Modal>
-
-            <Modal
-              visible={!!offerRedeemToken}
-              onClose={() => setOfferRedeemToken(null)}
-              title="Redeem Offer"
-              testID="experience-offer-redeem-token-modal"
-            >
-              {offerRedeemToken ? (
-                <View
-                  style={{
-                    alignItems: "center",
-                    gap: theme.spacing.md,
-                  }}
-                >
-                  <QrPlaceholder
-                    size={200}
-                    testID="experience-offer-redemption-qr"
-                  />
-
-                  <View style={{ alignItems: "center" }}>
-                    <Text variant="caption" color="textMuted">
-                      Redemption Code
-                    </Text>
-
+                    {pendingRedemption.benefitIds.length ? <View style={{ gap: 4 }}><Text variant="bodyStrong" color="text">Benefits</Text>{pendingRedemption.benefitIds.map((id) => <Text key={id} variant="bodySmall" color="text">• {benefitTitleById.get(id) ?? "Benefit"}</Text>)}</View> : null}
+                    {pendingRedemption.offerIds.length ? <View style={{ gap: 4 }}><Text variant="bodyStrong" color="text">Offers</Text>{pendingRedemption.offerIds.map((id) => <Text key={id} variant="bodySmall" color="text">• {exp.offers.find((offer) => offer.id === id)?.offerName ?? "Offer"}</Text>)}</View> : null}
+                    <QrPlaceholder
+                      value={pendingRedemption.qrReference}
+                      size={208}
+                      caption="Present this code to the Counter."
+                      testID="experience-pending-redemption-qr"
+                    />
+                    {pendingRedemption.expiresAt ? <Text variant="bodySmall" color="textMuted">Expires at: {formatBusinessExpiry(pendingRedemption.expiresAt, configuration.localization.timezone, configuration.localization.defaultLanguage)}</Text> : null}
+                  </>
+                ) : (
+                  <>
                     <Text variant="title" color="text">
-                      {offerRedeemToken.token}
+                      {pendingRedemption.status === "SUCCESS" ? "Redemption successful" : pendingRedemption.status === "EXPIRED" ? "Redemption expired" : "Redemption unavailable"}
                     </Text>
-                  </View>
-
-                  <Text
-                    variant="bodySmall"
-                    color="textMuted"
-                    style={{
-                      textAlign: "center",
-                    }}
-                  >
-                    Show this QR code at the counter to redeem this offer.
-                  </Text>
-                </View>
-              ) : null}
-            </Modal>
-          </>
+                    <Text variant="body" color="textMuted">
+                      {pendingRedemption.status === "SUCCESS"
+                        ? "Your redemption has been completed."
+                        : pendingRedemption.status === "EXPIRED"
+                          ? "This redemption code has expired. Select items again to create a new code."
+                          : "This redemption could not be completed. Select items again to try later."}
+                    </Text>
+                    <Button label="Close" onPress={() => setPendingRedemption(null)} />
+                  </>
+                )}
+              </View>
+            ) : null}
+          </Modal>
         ) : null}
       </View>
     </BusinessThemeScope>

@@ -3,7 +3,9 @@ package com.mynikatech.memgine.component.redemption
 import com.mynikatech.memgine.net.dto.OrgAdminRedemptionDto
 import com.mynikatech.memgine.net.dto.RedemptionTransactionDto
 import com.mynikatech.memgine.net.dto.RedemptionTransactionValidationDto
+import com.mynikatech.memgine.net.dto.RedemptionTransactionQrIssueRow
 import org.jdbi.v3.sqlobject.customizer.Bind
+import org.jdbi.v3.sqlobject.config.RegisterBeanMapper
 import org.jdbi.v3.sqlobject.statement.SqlQuery
 
 interface RedemptionSql {
@@ -37,7 +39,25 @@ interface RedemptionSql {
         @Bind("actorUserId") actorUserId: String
     ): RedemptionTransactionDto?
 
-    @SqlQuery("SELECT * FROM validate_redemption_transaction(:transactionId, :organizationId, :storeId, :staffId, :actorUserId)")
+    @SqlQuery("SELECT * FROM issue_customer_redemption_transaction_qr(:organizationId, :transactionId, :tokenHash, :actorUserId)")
+    @RegisterBeanMapper(RedemptionTransactionQrIssueRow::class)
+    fun issueCustomerTransactionQr(
+        @Bind("organizationId") organizationId: String,
+        @Bind("transactionId") transactionId: String,
+        @Bind("tokenHash") tokenHash: String,
+        @Bind("actorUserId") actorUserId: String
+    ): RedemptionTransactionQrIssueRow?
+
+    @SqlQuery("SELECT * FROM resolve_counter_redemption_transaction_qr(:organizationId, :storeId, :staffId, :tokenHash, :actorUserId)")
+    fun resolveCounterTransactionQr(
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String,
+        @Bind("staffId") staffId: String,
+        @Bind("tokenHash") tokenHash: String,
+        @Bind("actorUserId") actorUserId: String
+    ): RedemptionTransactionDto?
+
+    @SqlQuery("SELECT * FROM get_counter_redemption_transaction_validation_detail(:transactionId, :organizationId, :storeId, :staffId, :actorUserId)")
     fun validateTransaction(
         @Bind("transactionId") transactionId: String,
         @Bind("organizationId") organizationId: String,

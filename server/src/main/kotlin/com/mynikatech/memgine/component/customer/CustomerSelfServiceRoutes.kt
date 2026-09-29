@@ -56,6 +56,24 @@ fun Route.customerSelfServiceRoutes(service: CustomerService, redemptionService:
                     call.callId
                 ))
             }
+            post("/redemption-transactions/{transactionId}/qr") {
+                val transactionId = call.parameters["transactionId"]
+                    ?: throw BadRequestException("Redemption transaction id is required")
+                call.respond(ApiResponse.success(
+                    redemptionService.issueCustomerTransactionQr(
+                        call.organizationId(), transactionId, call.userId()
+                    ),
+                    call.callId
+                ))
+            }
+            get("/redemption-transactions/{transactionId}") {
+                val transactionId = call.parameters["transactionId"]
+                    ?: throw BadRequestException("Redemption transaction id is required")
+                call.respond(ApiResponse.success(
+                    service.redemptionTransactionStatus(call.organizationId(), transactionId, call.userId()),
+                    call.callId
+                ))
+            }
             get("/profile") {
                 val org = call.organizationId()
                 val customer = call.userId()
@@ -72,6 +90,14 @@ fun Route.customerSelfServiceRoutes(service: CustomerService, redemptionService:
             }
             get("/history/redemptions") {
                 call.respond(ApiResponse.success(service.redemptions(call.organizationId(), call.userId()), call.callId))
+            }
+            get("/subscriptions/{subscriptionId}/redemption-item-status") {
+                val subscriptionId = call.parameters["subscriptionId"]
+                    ?: throw BadRequestException("Subscription id is required")
+                call.respond(ApiResponse.success(
+                    service.redemptionItemStatuses(call.organizationId(), subscriptionId, call.userId()),
+                    call.callId
+                ))
             }
             get("/offers") {
                 call.respond(ApiResponse.success(service.offers(call.organizationId(), call.userId()), call.callId))

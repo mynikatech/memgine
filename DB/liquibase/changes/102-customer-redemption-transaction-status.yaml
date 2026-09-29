@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 102-customer-redemption-transaction-status
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/102-customer-redemption-transaction-status.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

@@ -17,6 +17,20 @@ data class CustomerDiscoveryDetailRow(
     var detailJson: String = "{}",
 )
 
+data class CustomerRedemptionItemStatusRow(
+    var itemId: String = "",
+    var itemType: String = "",
+    var status: String = "",
+    var displayReason: String? = null,
+)
+
+data class CustomerRedemptionTransactionStatusRow(
+    var transactionId: String = "",
+    var status: String = "",
+    var expiresAt: String? = null,
+    var completedAt: String? = null,
+)
+
 interface CustomerSql {
     @SqlQuery("SELECT * FROM get_customer_discoverable_organizations()")
     fun discoverableOrganizations(): List<CustomerDiscoverableOrganizationDto>
@@ -54,6 +68,22 @@ interface CustomerSql {
     @SqlQuery("SELECT * FROM get_customer_redemptions(:organizationId, :userId)")
     fun redemptions(@Bind("organizationId") organizationId: String,
                     @Bind("userId") userId: String): List<OrgAdminRedemptionDto>
+
+    @SqlQuery("SELECT * FROM get_customer_redemption_item_status(:organizationId, :subscriptionId, :userId)")
+    @RegisterBeanMapper(CustomerRedemptionItemStatusRow::class)
+    fun redemptionItemStatuses(
+        @Bind("organizationId") organizationId: String,
+        @Bind("subscriptionId") subscriptionId: String,
+        @Bind("userId") userId: String,
+    ): List<CustomerRedemptionItemStatusRow>
+
+    @SqlQuery("SELECT * FROM get_customer_redemption_transaction_status(:organizationId, :transactionId, :userId)")
+    @RegisterBeanMapper(CustomerRedemptionTransactionStatusRow::class)
+    fun redemptionTransactionStatus(
+        @Bind("organizationId") organizationId: String,
+        @Bind("transactionId") transactionId: String,
+        @Bind("userId") userId: String,
+    ): CustomerRedemptionTransactionStatusRow?
 
     @SqlQuery("SELECT * FROM get_customer_offers(:organizationId, :userId)")
     fun offers(@Bind("organizationId") organizationId: String,

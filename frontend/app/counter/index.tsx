@@ -1,7 +1,9 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -38,6 +40,10 @@ import {
   CustomerForm,
   type CustomerFormSubmitResult,
 } from "@/src/ui/admin/CustomerForm";
+import type {
+  CounterRedemptionTransaction,
+  CounterRedemptionTransactionValidation,
+} from "@/src/data/api/counter-api";
 
 type Mode = "qr" | "phone" | "assisted" | "new";
 
@@ -52,6 +58,8 @@ const normalizeOtp = (value: string): string =>
   value.replace(/\D/g, "").slice(0, OTP_LENGTH);
 
 type CounterResult = RedemptionResult | OfferRedemptionResult;
+
+type DynamicRedemptionStage = "scan" | "review" | "success";
 
 const RESULT_STYLE: Record<CounterResult["kind"], { fg: string; bg: string }> =
   {
@@ -205,8 +213,19 @@ export default function StaffCounter() {
    * QR
    */
   const [tokenText, setTokenText] = useState("");
-
-  const [samples, setSamples] = useState<{ label: string; raw: string }[]>([]);
+  const [scannerActive, setScannerActive] = useState(false);
+  const [dynamicRedemptionStage, setDynamicRedemptionStage] =
+    useState<DynamicRedemptionStage>("scan");
+  const [resolvedTransaction, setResolvedTransaction] =
+    useState<CounterRedemptionTransaction | null>(null);
+  const [transactionValidation, setTransactionValidation] = useState<
+    CounterRedemptionTransactionValidation[]
+  >([]);
+  const [executedTransaction, setExecutedTransaction] =
+    useState<CounterRedemptionTransaction | null>(null);
+  const qrScanInFlight = useRef(false);
+  const qrExecutionInFlight = useRef(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   /*
    * Existing customer phone lookup; action-bound OTP happens later
@@ -256,6 +275,13 @@ export default function StaffCounter() {
   const resetIdentity = useCallback(() => {
     counterCheckout.clear();
     setTokenText("");
+    setScannerActive(false);
+    setDynamicRedemptionStage("scan");
+    setResolvedTransaction(null);
+    setTransactionValidation([]);
+    setExecutedTransaction(null);
+    qrScanInFlight.current = false;
+    qrExecutionInFlight.current = false;
 
     setPhone("");
 
@@ -328,7 +354,6 @@ export default function StaffCounter() {
     setCounterStaff(null);
     setCounterStaffName("");
     setStore(null);
-    setSamples([]);
     setAvailableForSale([]);
     resetIdentity();
 
@@ -447,7 +472,6 @@ export default function StaffCounter() {
     setCounterStaff(null);
     setCounterStaffName("");
     setStore(null);
-    setSamples([]);
     setError(
       activeStaffMembers.length === 0
         ? "No active staff available for this organization."
@@ -478,10 +502,7 @@ export default function StaffCounter() {
     };
     (async () => {
       try {
-        const [qr, personName] = await Promise.all([
-          services.counter.qrSamples(context),
-          services.counter.staffName(context),
-        ]);
+        const personName = await services.counter.staffName(context);
         if (!active) return;
         setCounterStaff(selectedStaff);
         setCounterStaffName(
@@ -492,12 +513,6 @@ export default function StaffCounter() {
         );
         setStore(resolvedStore);
         setCounterSessionContext(context);
-        setSamples(
-          qr.map((item) => ({
-            label: `Test QR · ${item.customerName}`,
-            raw: item.token,
-          })),
-        );
       } catch (failure) {
         if (active)
           setError(
@@ -783,32 +798,116 @@ export default function StaffCounter() {
     });
   };
 
-  const runQr = async () => {
+  const redemptionQrError = (failure: unknown) => {
+    const message = failure instanceof Error ? failure.message.toLowerCase() : "";
+    if (message.includes("expired")) return "This redemption QR has expired.";
+    if (
+      message.includes("not pending") ||
+      message.includes("no longer") ||
+      message.includes("already used")
+    ) {
+      return "This redemption QR is no longer valid.";
+    }
+    if (message.includes("invalid") || message.includes("unavailable")) {
+      return "This redemption QR is invalid.";
+    }
+    if (message.includes("cannot be completed") || message.includes("not executable")) {
+      return "This redemption cannot be completed. Recheck the basket or scan again.";
+    }
+    if (message.includes("not permitted") || message.includes("not authorized")) {
+      return "This Counter is not authorized to process this redemption.";
+    }
+    return "Unable to resolve this redemption QR. Please try again.";
+  };
+
+  const resetDynamicRedemption = () => {
+    setTokenText("");
+    setScannerActive(false);
+    setDynamicRedemptionStage("scan");
+    setResolvedTransaction(null);
+    setTransactionValidation([]);
+    setExecutedTransaction(null);
+    setError("");
+    setBusy(false);
+    qrScanInFlight.current = false;
+    qrExecutionInFlight.current = false;
+  };
+
+  const resolveRedemptionQr = async (rawReference: string) => {
+    const qrReference = rawReference.trim();
+    if (!qrReference) {
+      setError("Enter or scan a redemption QR.");
+      return;
+    }
+    if (qrScanInFlight.current) return;
+
+    qrScanInFlight.current = true;
     setBusy(true);
     setResult(null);
     setError("");
+    setScannerActive(false);
     try {
-      if (!tokenText.trim()) throw new Error("Enter a redemption QR token.");
-      const rows = await services.counter.redeemQr(
-        counterContext(),
-        tokenText.trim(),
+      const context = counterContext();
+      const transaction = await services.counter.resolveRedemptionTransactionQr(
+        context,
+        qrReference,
       );
-      setResult({
-        kind: "SUCCESS",
-        message: "Redemption completed on the server.",
-        outcomes: rows.map((row) => ({
-          benefitId: row.benefitId,
-          title: row.benefitId,
-          status: "REDEEMED",
-          redemptionId: row.redemptionId,
-        })),
-      });
+      const validation = await services.counter.validateRedemptionTransaction(
+        context,
+        transaction.transactionId,
+      );
+      setTokenText("");
+      setResolvedTransaction(transaction);
+      setTransactionValidation(validation);
+      setDynamicRedemptionStage("review");
     } catch (failure) {
-      setError(
-        failure instanceof Error ? failure.message : "Unable to redeem QR.",
-      );
+      setError(redemptionQrError(failure));
+      qrScanInFlight.current = false;
     } finally {
       setBusy(false);
+    }
+  };
+
+  const startCameraScan = async () => {
+    setError("");
+    if (Platform.OS === "web") {
+      setError("Camera scanning is available in the Memgine mobile app. Enter the QR reference instead.");
+      return;
+    }
+    const permission = cameraPermission?.granted
+      ? cameraPermission
+      : await requestCameraPermission();
+    if (!permission.granted) {
+      setError("Camera permission is required to scan a redemption QR. Enable it in device settings and try again.");
+      return;
+    }
+    setScannerActive(true);
+  };
+
+  const executeDynamicRedemption = async () => {
+    if (
+      !resolvedTransaction ||
+      transactionValidation.length === 0 ||
+      transactionValidation.some((item) => !item.eligible) ||
+      qrExecutionInFlight.current
+    ) {
+      return;
+    }
+    qrExecutionInFlight.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const completed = await services.counter.executeRedemptionTransaction(
+        counterContext(),
+        resolvedTransaction.transactionId,
+      );
+      setExecutedTransaction(completed);
+      setDynamicRedemptionStage("success");
+    } catch (failure) {
+      setError(redemptionQrError(failure));
+    } finally {
+      setBusy(false);
+      qrExecutionInFlight.current = false;
     }
   };
 
@@ -1629,52 +1728,128 @@ export default function StaffCounter() {
       {/* QR */}
       {action === "redeem" && mode === "qr" ? (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Scan Redemption QR</Text>
-
-          <Text style={styles.muted}>
-            Paste the customer&apos;s redemption token (mocked scanner).
-          </Text>
-
-          <TextInput
-            testID="counter-qr-input"
-            value={tokenText}
-            onChangeText={setTokenText}
-            placeholder="Redemption token payload…"
-            placeholderTextColor={COLORS.textMuted}
-            multiline
-            style={[styles.input, styles.inputMultiline]}
-          />
-
-          {samples.length ? (
+          {dynamicRedemptionStage === "success" && executedTransaction ? (
             <>
-              <Text style={styles.label}>Simulate a customer QR</Text>
-
-              <View style={styles.rowWrap}>
-                {samples.map((sample, index) => (
-                  <Pressable
-                    key={index}
-                    testID={`counter-sample-${index}`}
-                    onPress={() => setTokenText(sample.raw)}
-                    style={styles.chip}
-                  >
-                    <Text style={styles.chipText}>{sample.label}</Text>
-                  </Pressable>
-                ))}
-              </View>
+              <Text style={styles.cardTitle}>Redemption successful</Text>
+              <Text style={styles.resultMsg}>
+                {transactionValidation.filter((item) => item.itemType === "BENEFIT").length} benefit{transactionValidation.filter((item) => item.itemType === "BENEFIT").length === 1 ? "" : "s"} and {transactionValidation.filter((item) => item.itemType === "OFFER").length} offer{transactionValidation.filter((item) => item.itemType === "OFFER").length === 1 ? "" : "s"} redeemed.
+              </Text>
+              <Text style={styles.muted}>
+                Transaction: {executedTransaction.transactionNumber}
+              </Text>
+              <Pressable
+                testID="counter-redemption-scan-next"
+                onPress={resetDynamicRedemption}
+                style={styles.primaryBtn}
+              >
+                <Text style={styles.primaryBtnText}>Done / Scan Next</Text>
+              </Pressable>
             </>
-          ) : null}
-
-          <Pressable
-            testID="counter-redeem-qr"
-            disabled={!tokenText.trim() || busy}
-            onPress={runQr}
-            style={[
-              styles.primaryBtn,
-              (!tokenText.trim() || busy) && styles.btnDisabled,
-            ]}
-          >
-            <Text style={styles.primaryBtnText}>Redeem from QR</Text>
-          </Pressable>
+          ) : dynamicRedemptionStage === "review" && resolvedTransaction ? (
+            <>
+              <Text style={styles.cardTitle}>Redeem {transactionValidation.length} item{transactionValidation.length === 1 ? "" : "s"}</Text>
+              <Text style={styles.muted}>
+                Transaction {resolvedTransaction.transactionNumber}. All items must be eligible before redemption can be confirmed.
+              </Text>
+              {(["BENEFIT", "OFFER"] as const).map((itemType) => {
+                const items = transactionValidation.filter((item) => item.itemType === itemType);
+                if (!items.length) return null;
+                return (
+                  <View key={itemType} style={styles.redemptionSection}>
+                    <Text style={styles.label}>{itemType === "BENEFIT" ? "Benefits" : "Offers"}</Text>
+                    {items.map((item) => (
+                      <View key={item.itemId} style={styles.redemptionItem}>
+                        <View style={[styles.redemptionIndicator, item.eligible ? styles.redemptionEligible : styles.redemptionIneligible]}>
+                          <Text style={styles.redemptionIndicatorText}>{item.eligible ? "✓" : "×"}</Text>
+                        </View>
+                        <View style={styles.redemptionItemContent}>
+                          <Text style={styles.benefitTitle}>
+                            {item.displayName?.trim() || (itemType === "BENEFIT" ? "Benefit" : "Offer")}
+                          </Text>
+                          {item.description ? <Text style={styles.muted}>{item.description}</Text> : null}
+                          {!item.eligible && item.rejectionReason ? (
+                            <Text style={styles.redemptionRejection}>{item.rejectionReason}</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                );
+              })}
+              <Pressable
+                testID="counter-confirm-consolidated-redemption"
+                disabled={busy || transactionValidation.length === 0 || transactionValidation.some((item) => !item.eligible)}
+                onPress={executeDynamicRedemption}
+                style={[styles.primaryBtn, (busy || transactionValidation.length === 0 || transactionValidation.some((item) => !item.eligible)) && styles.btnDisabled]}
+              >
+                <Text style={styles.primaryBtnText}>{busy ? "Redeeming..." : "Confirm Redemption"}</Text>
+              </Pressable>
+              <Pressable
+                testID="counter-scan-another-redemption-qr"
+                disabled={busy}
+                onPress={resetDynamicRedemption}
+                style={styles.secondaryBtn}
+              >
+                <Text style={styles.secondaryBtnText}>Scan Another QR</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={styles.cardTitle}>Scan Redemption QR</Text>
+              <Text style={styles.muted}>
+                Scan the customer&apos;s secure redemption QR. Its contents are verified by Memgine before any redemption is shown.
+              </Text>
+              {scannerActive && Platform.OS !== "web" ? (
+                <View style={styles.cameraFrame}>
+                  <CameraView
+                    style={styles.camera}
+                    facing="back"
+                    barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                    onBarcodeScanned={({ data }) => void resolveRedemptionQr(data)}
+                    onMountError={() => {
+                      setScannerActive(false);
+                      setError("The camera is unavailable on this device. Enter the QR reference instead.");
+                    }}
+                  />
+                  <Pressable onPress={() => setScannerActive(false)} style={styles.cameraCancel}>
+                    <Text style={styles.secondaryBtnText}>Cancel camera</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+              <Pressable
+                testID="counter-scan-redemption-qr"
+                disabled={busy}
+                onPress={() => void startCameraScan()}
+                style={[styles.primaryBtn, busy && styles.btnDisabled]}
+              >
+                <Text style={styles.primaryBtnText}>{busy ? "Resolving..." : "Scan Redemption QR"}</Text>
+              </Pressable>
+              <Text style={styles.label}>Enter QR reference</Text>
+              <TextInput
+                testID="counter-qr-input"
+                value={tokenText}
+                onChangeText={setTokenText}
+                placeholder="Redemption QR reference"
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={styles.input}
+              />
+              <Pressable
+                testID="counter-redeem-qr"
+                disabled={!tokenText.trim() || busy}
+                onPress={() => void resolveRedemptionQr(tokenText)}
+                style={[styles.secondaryBtn, (!tokenText.trim() || busy) && styles.btnDisabled]}
+              >
+                <Text style={styles.secondaryBtnText}>Use QR Reference</Text>
+              </Pressable>
+              {error ? (
+                <Pressable testID="counter-redemption-scan-again" onPress={resetDynamicRedemption} style={styles.secondaryBtn}>
+                  <Text style={styles.secondaryBtnText}>Scan Again</Text>
+                </Pressable>
+              ) : null}
+            </>
+          )}
         </View>
       ) : null}
 
@@ -2055,6 +2230,79 @@ const styles = StyleSheet.create({
   inputMultiline: {
     minHeight: 70,
     textAlignVertical: "top",
+  },
+
+  cameraFrame: {
+    height: 280,
+    overflow: "hidden",
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "#111827",
+    position: "relative",
+  },
+
+  camera: {
+    flex: 1,
+  },
+
+  cameraCancel: {
+    position: "absolute",
+    left: SPACING.sm,
+    right: SPACING.sm,
+    bottom: SPACING.sm,
+    paddingVertical: 10,
+    alignItems: "center",
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.background,
+  },
+
+  redemptionSection: {
+    gap: SPACING.xs,
+    marginTop: SPACING.xs,
+  },
+
+  redemptionItem: {
+    flexDirection: "row",
+    gap: SPACING.sm,
+    alignItems: "flex-start",
+    padding: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.background,
+  },
+
+  redemptionItemContent: {
+    flex: 1,
+    gap: 2,
+  },
+
+  redemptionIndicator: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  redemptionEligible: {
+    backgroundColor: "#DCFCE7",
+  },
+
+  redemptionIneligible: {
+    backgroundColor: "#FEE2E2",
+  },
+
+  redemptionIndicatorText: {
+    fontWeight: "800",
+    color: COLORS.text,
+  },
+
+  redemptionRejection: {
+    color: "#B91C1C",
+    fontSize: 13,
+    fontWeight: "600",
   },
 
   nameRow: {

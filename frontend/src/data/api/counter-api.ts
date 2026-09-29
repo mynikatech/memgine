@@ -80,6 +80,25 @@ export type CounterRedemption = {
   redemptionNumber: string;
 };
 
+export type CounterRedemptionTransaction = {
+  transactionId: ID;
+  transactionNumber: string;
+  status: string;
+  expiresAt?: string | null;
+  completedAt?: string | null;
+};
+
+export type CounterRedemptionTransactionValidation = {
+  itemId: ID;
+  itemType: "BENEFIT" | "OFFER" | string;
+  benefitId?: ID | null;
+  offerId?: ID | null;
+  displayName?: string | null;
+  description?: string | null;
+  eligible: boolean;
+  rejectionReason?: string | null;
+};
+
 export type CounterEligibility = {
   benefitId: ID;
   reason?: string | null;
@@ -398,5 +417,43 @@ export class CounterApi {
       staffId: ctx.staffId,
       token,
     });
+  }
+
+  resolveRedemptionTransactionQr(
+    ctx: CounterContext,
+    qrReference: string,
+  ): Promise<ApiResult<CounterRedemptionTransaction>> {
+    return httpClient.post(
+      this.query(
+        ctx,
+        `redemption-qr/${encodeURIComponent(qrReference)}`,
+      ),
+      {},
+    );
+  }
+
+  validateRedemptionTransaction(
+    ctx: CounterContext,
+    transactionId: ID,
+  ): Promise<ApiResult<CounterRedemptionTransactionValidation[]>> {
+    return httpClient.get(
+      this.query(
+        ctx,
+        `redemption-transactions/${encodeURIComponent(transactionId)}/validation`,
+      ),
+    );
+  }
+
+  executeRedemptionTransaction(
+    ctx: CounterContext,
+    transactionId: ID,
+  ): Promise<ApiResult<CounterRedemptionTransaction>> {
+    return httpClient.post(
+      this.path(
+        ctx,
+        `redemption-transactions/${encodeURIComponent(transactionId)}/execute`,
+      ),
+      { storeId: ctx.storeId, staffId: ctx.staffId },
+    );
   }
 }
