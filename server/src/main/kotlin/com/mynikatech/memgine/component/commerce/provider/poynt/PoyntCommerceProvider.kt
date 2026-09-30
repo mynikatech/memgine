@@ -15,11 +15,16 @@ class PoyntCommerceProvider(
     private val sql: PoyntCommerceSql,
     private val client: PoyntAuthenticatedCatalogClient,
     private val orderClient: PoyntOrderClient? = null,
-    private val checkoutConfigurationResolver: PoyntCheckoutConfigurationResolver? = null
-) : CommerceCatalogProvider, CommerceCheckoutProvider {
+    private val checkoutConfigurationResolver: PoyntCheckoutConfigurationResolver? = null,
+    private val paymentBridgeClient: PoyntPaymentBridgeClient? = null
+) : CommerceCatalogProvider, CommerceCheckoutProvider, CommerceRemoteTerminalPaymentProvider {
     override val providerCode = "POYNT"
-    override val capabilities = setOf(CommerceCapability.CATALOG, CommerceCapability.PRODUCT_LOOKUP, CommerceCapability.ORDER, CommerceCapability.DISCOUNT, CommerceCapability.TERMINAL_PAYMENT)
+    override val capabilities get() = buildSet { addAll(setOf(CommerceCapability.CATALOG, CommerceCapability.PRODUCT_LOOKUP, CommerceCapability.ORDER, CommerceCapability.DISCOUNT, CommerceCapability.TERMINAL_PAYMENT)); if (paymentBridgeClient != null) add(CommerceCapability.REMOTE_PAYMENT) }
 
+    override fun dispatchRemoteTerminalPayment(request: CommerceRemoteTerminalPaymentRequest) {
+        val configuration = config(request.organizationId, request.integrationConfigurationId, request.actorUserId)
+        (paymentBridgeClient ?: throw BadRequestException("Poynt Payment Bridge client is unavailable")).dispatch(configuration, request)
+    }
     override fun getProduct(request: CommerceCatalogProductRequest): CommerceProductSnapshotWriteDto? = product(request)
     override fun syncProduct(request: CommerceCatalogProductRequest): CommerceProductSnapshotWriteDto? = product(request)
     override fun syncCatalog(request: CommerceCatalogSyncRequest): List<CommerceProductSnapshotWriteDto> {

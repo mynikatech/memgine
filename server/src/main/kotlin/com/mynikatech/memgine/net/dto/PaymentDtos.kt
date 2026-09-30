@@ -60,7 +60,8 @@ data class PaymentIntentDto(
     val createdAt: String,
     val checkoutUrl: String? = null,
     val monerisHostedTokenizationProfileId: String? = null,
-    val monerisHostedTokenizationUrl: String? = null
+    val monerisHostedTokenizationUrl: String? = null,
+    val commerceTransactionId: String? = null
 )
 
 @Serializable

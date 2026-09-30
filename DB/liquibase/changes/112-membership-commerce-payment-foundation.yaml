@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 112-membership-commerce-payment-foundation
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/112-membership-commerce-payment-foundation.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

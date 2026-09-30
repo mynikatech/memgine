@@ -16,6 +16,7 @@ interface PoyntHttpTransport {
     fun productsUri(businessId: String, offset: Int): URI
     fun orderUri(businessId: String, orderId: String): URI
     fun ordersUri(businessId: String): URI
+    fun cloudMessagesUri(): URI = URI.create("https://services.poynt.net/cloudMessages")
 }
 
 interface PoyntOrderClient {
@@ -66,6 +67,7 @@ class PoyntCloudHttpTransport(private val baseUrl: String, private val apiVersio
     override fun productsUri(businessId: String, offset: Int) = URI.create("$baseUrl/businesses/$businessId/products?limit=100&startOffset=$offset")
     override fun orderUri(businessId: String, orderId: String) = URI.create("$baseUrl/businesses/$businessId/orders/$orderId")
     override fun ordersUri(businessId: String) = URI.create("$baseUrl/businesses/$businessId/orders")
+    override fun cloudMessagesUri() = URI.create("$baseUrl/cloudMessages")
 }
 
 /** Adds a cached Poynt bearer token to each safe catalog GET and retries exactly once after 401. */

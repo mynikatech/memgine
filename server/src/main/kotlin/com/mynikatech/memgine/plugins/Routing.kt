@@ -35,7 +35,9 @@ import com.mynikatech.memgine.component.integrationconfiguration.integrationConf
 import com.mynikatech.memgine.component.commerce.CommerceService
 import com.mynikatech.memgine.component.commerce.CommerceSql
 import com.mynikatech.memgine.component.commerce.commerceRoutes
+import com.mynikatech.memgine.component.commerce.poyntPaymentBridgeCallbackRoutes
 import com.mynikatech.memgine.component.commerce.CommerceProviderRegistry
+import com.mynikatech.memgine.component.commerce.CommerceRemotePaymentConfiguration
 import com.mynikatech.memgine.component.commerce.provider.poynt.*
 import com.mynikatech.memgine.component.asset.brandingAssetRoutes
 import com.mynikatech.memgine.component.customerexperience.customerExperienceReleaseRoutes
@@ -175,7 +177,7 @@ fun Application.configureRouting(
         PoyntAuthenticatedOrderClient(poyntHttpTransport, poyntTokens),
         PoyntSqlCheckoutConfigurationResolver(poyntCommerceSql)
     )
-    val commerceService = CommerceService(database.jdbi.onDemand(CommerceSql::class.java), CommerceProviderRegistry(listOf(poyntCommerceProvider)))
+    val commerceService = CommerceService(database.jdbi.onDemand(CommerceSql::class.java), CommerceProviderRegistry(listOf(poyntCommerceProvider)), CommerceRemotePaymentConfiguration(config.poynt.paymentBridgeCallbackUrl, config.poynt.paymentBridgeCallbackHeaderName, config.poynt.paymentBridgeCallbackHeaderValue, config.poynt.paymentBridgeTtlSeconds))
     val customerExperienceReleaseService =
     CustomerExperienceReleaseService(database.jdbi.onDemand(CustomerExperienceReleaseSql::class.java)
     )
@@ -219,6 +221,7 @@ fun Application.configureRouting(
             notificationRoutes(notificationService)
             integrationConfigurationRoutes(integrationConfigurationService)
             commerceRoutes(commerceService)
+            poyntPaymentBridgeCallbackRoutes(commerceService, config.poynt.paymentBridgeCallbackHeaderName, config.poynt.paymentBridgeCallbackHeaderValue)
             customerExperienceReleaseRoutes(
                 customerExperienceReleaseService
             )

@@ -20,7 +20,8 @@ import org.postgresql.util.PSQLException
 class PaymentService(
     private val jdbi: Jdbi,
     environment: String,
-    paymentConfig: PaymentConfig
+    paymentConfig: PaymentConfig,
+    private val paymentSqlOverride: PaymentSql? = null
 ) {
     private val testProvider = TestPaymentProvider(environment in setOf("local", "dev", "development"))
     private val stripeProvider = StripePaymentProvider(paymentConfig)
@@ -31,7 +32,7 @@ class PaymentService(
         "MONERIS" -> monerisProvider
         else -> throw IllegalArgumentException("Unsupported payment provider configuration")
     }
-    private fun sql() = jdbi.onDemand(PaymentSql::class.java)
+    private fun sql() = paymentSqlOverride ?: jdbi.onDemand(PaymentSql::class.java)
 
     /** Pricing comes from the database so every checkout uses the same tax rule. */
     fun quoteMembership(org: String, planId: String): MembershipPurchaseQuoteDto {
@@ -46,6 +47,47 @@ class PaymentService(
     fun startMembershipPayment(org: String, request: PaymentStartRequestDto, actorUserId: String?): PaymentIntentDto {
         requirePaymentProvider()
         return startMembershipPayment(org, request, actorUserId, configuredProvider)
+    }
+
+    /**
+     * Counter membership checkout starts with the Memgine-owned Commerce order.
+     * The database function prepares/reuses that order and creates/reuses the
+     * correlated payment intent atomically before any provider interaction.
+     */
+    fun startCounterMembershipPayment(
+        org: String,
+        request: PaymentStartRequestDto,
+        storeId: String,
+        staffId: String,
+        customerUserId: String,
+        planId: String,
+        actorUserId: String
+    ): PaymentIntentDto {
+        requirePaymentProvider()
+        validateId(org, "organization id")
+        validateId(request.challengeId, "challenge id")
+        validateId(storeId, "store id")
+        validateId(staffId, "staff id")
+        validateId(customerUserId, "customer user id")
+        validateId(planId, "membership plan id")
+        validateIdempotencyKey(request.idempotencyKey)
+
+        val intent = translate {
+            sql().startCounterMembership(
+                UUID.randomUUID().toString(),
+                UUID.randomUUID().toString(),
+                org,
+                request.challengeId,
+                storeId,
+                staffId,
+                customerUserId,
+                planId,
+                configuredProvider.code,
+                request.idempotencyKey.trim(),
+                actorUserId
+            ) ?: throw ConflictException("Payment was not started")
+        }
+        return checkoutForProvider(intent, org, request.returnContext, actorUserId)
     }
 
     fun startCounterCashPayment(
@@ -116,6 +158,7 @@ class PaymentService(
 
     fun cancel(org: String, intentId: String, actorUserId: String): PaymentIntentDto {
         if (!translate { sql().cancel(org, intentId, actorUserId) }) throw ConflictException("Payment cannot be canceled")
+        syncCommercePaymentResult(org, intentId, actorUserId)
         return get(org, intentId, actorUserId)
     }
 
@@ -147,6 +190,7 @@ class PaymentService(
                 result.failureCode?.take(80), result.failureMessage?.take(500), actorUserId)
             }
         }
+        syncCommercePaymentResult(org, intentId, actorUserId)
         val updated = get(org, intentId, actorUserId)
         return updated to subscription
     }
@@ -168,6 +212,7 @@ class PaymentService(
                 actorUserId
             )
         } ?: throw ConflictException("Cash payment finalization was unavailable")
+        syncCommercePaymentResult(org, intentId, actorUserId)
         val subscription = CounterPurchaseResult(row.subscriptionId, row.organizationUserId, row.userId,
             row.subscriptionNumber, row.subscriptionPlanId, row.subscriptionDate, row.startDate,
             row.endDate, row.subscriptionStatusId, row.totalAmount, row.currencyCode)
@@ -221,8 +266,10 @@ class PaymentService(
                     outcome.failureCode ?: "MONERIS_DECLINED"
                 )
             }
+            syncCommercePaymentResult(org, intentId, actorUserId)
             throw BadRequestException("Moneris payment was not approved")
         }
+        syncCommercePaymentResult(org, intentId, actorUserId)
         return getConfirmation(org, intentId, actorUserId)
     }
 
@@ -252,6 +299,7 @@ class PaymentService(
                         currency.uppercase()
                     )
                 } ?: throw ConflictException("Stripe payment finalization was unavailable")
+                syncCommercePaymentResult(organizationId, intentId, null)
                 true
             }
             "checkout.session.async_payment_failed" ->
@@ -265,6 +313,7 @@ class PaymentService(
                         "STRIPE_ASYNC_PAYMENT_FAILED"
                     )
                 }
+                    .also { syncCommercePaymentResult(organizationId, intentId, null) }
             "checkout.session.expired" ->
                 translate {
                     sql().recordProviderFailure(
@@ -276,6 +325,7 @@ class PaymentService(
                         "STRIPE_CHECKOUT_EXPIRED"
                     )
                 }
+                    .also { syncCommercePaymentResult(organizationId, intentId, null) }
             else -> true
         }
     }
@@ -306,6 +356,14 @@ class PaymentService(
             providerReferenceId = sessionId,
             checkoutUrl = stripeProvider.checkoutUrl(sessionId)
         )
+    }
+
+    private fun syncCommercePaymentResult(org: String, intentId: String, actorUserId: String?) {
+        translate {
+            if (!sql().syncCommerceMembershipPaymentResult(org, intentId, actorUserId)) {
+                throw ConflictException("Commerce payment synchronization was unavailable")
+            }
+        }
     }
 
     private fun validateId(value: String, name: String) {

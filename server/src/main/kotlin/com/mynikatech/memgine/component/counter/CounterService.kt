@@ -305,8 +305,10 @@ class CounterService(
         principal: AuthenticatedPrincipal
     ): PaymentIntentDto {
         val context = businessOtp.resolveVerified(request.challengeId, OtpPurpose.COUNTER_PURCHASE_VERIFY)
-        validatePurchaseContext(org, context, principal)
-        return payments.startMembershipPayment(
+        val purchase = validatePurchaseContext(org, context, principal)
+        val customerUserId = purchase.customerUserId
+            ?: throw BadRequestException("Customer is required for Counter membership payment")
+        return payments.startCounterMembershipPayment(
             org,
             request.copy(
                 returnContext = PaymentReturnContextDto(
@@ -316,6 +318,10 @@ class CounterService(
                     source = "STAFF_ASSISTED"
                 )
             ),
+            purchase.storeId,
+            purchase.staffId,
+            customerUserId,
+            purchase.planId,
             principal.userId
         )
     }

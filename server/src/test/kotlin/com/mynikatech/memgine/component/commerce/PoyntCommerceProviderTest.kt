@@ -239,12 +239,16 @@ class PoyntCommerceProviderTest {
         val provider = PoyntCommerceProvider(sql, PoyntAuthenticatedCatalogClient(http, tokens()))
         provider.syncCatalog(CommerceCatalogSyncRequest("org", "integration", incremental = true, actorUserId = "admin"))
         assertEquals("2026-01-01T00:00:00Z", http.modifiedSince)
-        assertTrue(provider.capabilities == setOf(
-            CommerceCapability.CATALOG,
-            CommerceCapability.PRODUCT_LOOKUP,
-            CommerceCapability.ORDER,
-            CommerceCapability.DISCOUNT
-        ))
+        assertEquals(
+            setOf(
+                CommerceCapability.CATALOG,
+                CommerceCapability.PRODUCT_LOOKUP,
+                CommerceCapability.ORDER,
+                CommerceCapability.DISCOUNT,
+                CommerceCapability.TERMINAL_PAYMENT
+            ),
+            provider.capabilities
+        )
     }
 
     @Test fun `create order posts documented URI headers request id and representative JSON`() {

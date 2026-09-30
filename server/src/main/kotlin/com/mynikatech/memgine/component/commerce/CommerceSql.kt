@@ -53,6 +53,20 @@ data class CommerceApplicabilityRow(
 )
 
 interface CommerceSql {
+    @SqlQuery("""SELECT * FROM commerce_prepare_internal_membership_order(
+        :organizationId, :storeId, :staffId, :customerUserId, :subscriptionPlanId,
+        :idempotencyKey, :actorUserId)""")
+    @RegisterBeanMapper(InternalMembershipOrderRow::class)
+    fun prepareInternalMembershipOrder(
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String,
+        @Bind("staffId") staffId: String,
+        @Bind("customerUserId") customerUserId: String,
+        @Bind("subscriptionPlanId") subscriptionPlanId: String,
+        @Bind("idempotencyKey") idempotencyKey: String,
+        @Bind("actorUserId") actorUserId: String
+    ): InternalMembershipOrderRow
+
     @SqlQuery("SELECT * FROM get_organization_commerce_integrations(:organizationId, :actorUserId)")
     @RegisterBeanMapper(CommerceIntegrationRow::class)
     fun integrations(
@@ -240,7 +254,13 @@ interface CommerceSql {
         @Bind("failureMessage") failureMessage: String?,
         @Bind("actorUserId") actorUserId: String
     ): Boolean
-    @SqlQuery("SELECT * FROM commerce_get_transaction(:organizationId, :transactionId, :actorUserId)") @RegisterBeanMapper(CommerceTransactionRow::class)
+    @SqlQuery("SELECT * FROM commerce_begin_remote_terminal_payment(:organizationId,:transactionId,:posDeviceId,:referenceId,:actorUserId)")
+    @RegisterBeanMapper(CommerceRemotePaymentStartRow::class)
+    fun beginRemoteTerminalPayment(@Bind("organizationId") organizationId:String,@Bind("transactionId") transactionId:String,@Bind("posDeviceId") posDeviceId:String,@Bind("referenceId") referenceId:String,@Bind("actorUserId") actorUserId:String): CommerceRemotePaymentStartRow
+    @SqlQuery("SELECT commerce_mark_remote_payment_dispatched(:referenceId)")
+    fun markRemotePaymentDispatched(@Bind("referenceId") referenceId:String): Boolean
+    @SqlQuery("SELECT commerce_record_remote_payment_callback(:referenceId,:callbackStatus,:providerTransactionId,:transactionStatus,:amountMinor,:currencyCode,:providerBusinessId,:providerStoreId)")
+    fun recordRemotePaymentCallback(@Bind("referenceId") referenceId:String,@Bind("callbackStatus") callbackStatus:String,@Bind("providerTransactionId") providerTransactionId:String?,@Bind("transactionStatus") transactionStatus:String?,@Bind("amountMinor") amountMinor:Long?,@Bind("currencyCode") currencyCode:String?,@Bind("providerBusinessId") providerBusinessId:String?,@Bind("providerStoreId") providerStoreId:String?): Boolean    @SqlQuery("SELECT * FROM commerce_get_transaction(:organizationId, :transactionId, :actorUserId)") @RegisterBeanMapper(CommerceTransactionRow::class)
     fun transaction(@Bind("organizationId") organizationId: String, @Bind("transactionId") transactionId: String, @Bind("actorUserId") actorUserId: String): CommerceTransactionRow?
     @SqlQuery("SELECT * FROM commerce_get_transaction_lines(:organizationId, :transactionId, :actorUserId)") @RegisterBeanMapper(CommerceTransactionLineRow::class)
     fun transactionLines(@Bind("organizationId") organizationId: String, @Bind("transactionId") transactionId: String, @Bind("actorUserId") actorUserId: String): List<CommerceTransactionLineRow>
@@ -276,3 +296,18 @@ data class CommerceTransactionAdjustmentRow(
     var percentage: Double? = null, var requestedAmountMinor: Long? = null, var appliedAmountMinor: Long? = null, var currencyCode: String? = null, var status: String = "", var versionNo: Int = 1
 )
 data class CommerceTransactionRedemptionRow(var associationId: String = "", var transactionId: String = "", var redemptionTransactionId: String = "", var redemptionStatus: String = "", var versionNo: Int = 1)
+
+// Phase 3D-A remote terminal bridge rows.
+data class CommerceRemotePaymentStartRow(
+    var alreadyDispatched: Boolean = false, var integrationConfigurationId: String = "",
+    var providerOrderId: String = "", var amountMinor: Long = 0, var currencyCode: String = "",
+    var providerBusinessId: String = "", var providerStoreId: String = "", var providerDeviceId: String = "", var providerReferenceId: String = ""
+)
+
+data class InternalMembershipOrderRow(
+    var commerceTransactionId: String = "",
+    var providerOrderId: String = "",
+    var amountMinor: Long = 0,
+    var currencyCode: String = "",
+    var status: String = ""
+)

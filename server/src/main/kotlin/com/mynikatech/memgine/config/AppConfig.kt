@@ -281,7 +281,11 @@ data class AppConfig(
                     cloudBaseUrl = value("memgine.poynt.cloudBaseUrl", "MEMGINE_POYNT_CLOUD_BASE_URL", DEFAULT_POYNT_CLOUD_BASE_URL).trim().trimEnd('/'),
                     secretsRegion = optionalValue("memgine.poynt.secretsRegion", "MEMGINE_POYNT_SECRETS_REGION") ?: assetAwsRegion,
                     apiVersion = value("memgine.poynt.apiVersion", "MEMGINE_POYNT_API_VERSION", "1.2").trim(),
-                    jwtAudience = value("memgine.poynt.jwtAudience", "MEMGINE_POYNT_JWT_AUDIENCE", DEFAULT_POYNT_JWT_AUDIENCE).trim()
+                    jwtAudience = value("memgine.poynt.jwtAudience", "MEMGINE_POYNT_JWT_AUDIENCE", DEFAULT_POYNT_JWT_AUDIENCE).trim(),
+                    paymentBridgeCallbackUrl = optionalValue("memgine.poynt.paymentBridgeCallbackUrl", "MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_URL").orEmpty(),
+                    paymentBridgeCallbackHeaderName = value("memgine.poynt.paymentBridgeCallbackHeaderName", "MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_NAME", "X-Memgine-Poynt-Callback").trim(),
+                    paymentBridgeCallbackHeaderValue = optionalValue("memgine.poynt.paymentBridgeCallbackHeaderValue", "MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_VALUE").orEmpty(),
+                    paymentBridgeTtlSeconds = value("memgine.poynt.paymentBridgeTtlSeconds", "MEMGINE_POYNT_PAYMENT_BRIDGE_TTL_SECONDS", "45").toLong()
                 ),
 
                 assets = AssetStorageConfig(
@@ -335,7 +339,11 @@ data class PoyntCommerceConfig(
     val cloudBaseUrl: String,
     val secretsRegion: String,
     val apiVersion: String,
-    val jwtAudience: String
+    val jwtAudience: String,
+    val paymentBridgeCallbackUrl: String,
+    val paymentBridgeCallbackHeaderName: String,
+    val paymentBridgeCallbackHeaderValue: String,
+    val paymentBridgeTtlSeconds: Long
 )
 
 data class PaymentConfig(

@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 113-counter-membership-commerce-payment-start
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/113-counter-membership-commerce-payment-start.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

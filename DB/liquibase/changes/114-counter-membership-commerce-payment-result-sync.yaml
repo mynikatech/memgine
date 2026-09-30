@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 114-counter-membership-commerce-payment-result-sync
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/114-counter-membership-commerce-payment-result-sync.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

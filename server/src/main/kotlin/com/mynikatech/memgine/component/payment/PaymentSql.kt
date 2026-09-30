@@ -26,6 +26,23 @@ interface PaymentSql {
         @Bind("actorUserId") actorUserId: String?
     ): PaymentIntentDto?
 
+    @SqlQuery("""SELECT * FROM payment_start_counter_membership_intent(
+        :intentId, :attemptId, :organizationId, :challengeId, :storeId, :staffId,
+        :customerUserId, :planId, :providerCode, :idempotencyKey, :actorUserId)""")
+    fun startCounterMembership(
+        @Bind("intentId") intentId: String,
+        @Bind("attemptId") attemptId: String,
+        @Bind("organizationId") organizationId: String,
+        @Bind("challengeId") challengeId: String,
+        @Bind("storeId") storeId: String,
+        @Bind("staffId") staffId: String,
+        @Bind("customerUserId") customerUserId: String,
+        @Bind("planId") planId: String,
+        @Bind("providerCode") providerCode: String,
+        @Bind("idempotencyKey") idempotencyKey: String,
+        @Bind("actorUserId") actorUserId: String
+    ): PaymentIntentDto?
+
     @SqlQuery("""SELECT * FROM payment_start_authenticated_membership_intent(
         :intentId, :attemptId, :organizationId, :planId, :customerUserId, :providerCode, :idempotencyKey)""")
     fun startAuthenticated(
@@ -72,6 +89,13 @@ interface PaymentSql {
         @Bind("organizationId") organizationId: String,
         @Bind("intentId") intentId: String,
         @Bind("actorUserId") actorUserId: String
+    ): Boolean
+
+    @SqlQuery("SELECT commerce_sync_membership_payment_result(:organizationId, :intentId, :actorUserId)")
+    fun syncCommerceMembershipPaymentResult(
+        @Bind("organizationId") organizationId: String,
+        @Bind("intentId") intentId: String,
+        @Bind("actorUserId") actorUserId: String?
     ): Boolean
 
     @SqlQuery("SELECT * FROM payment_finalize_membership(:intentId, :actorUserId)")

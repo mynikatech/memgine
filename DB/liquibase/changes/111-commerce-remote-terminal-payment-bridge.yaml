@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 111-commerce-remote-terminal-payment-bridge
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/111-commerce-remote-terminal-payment-bridge.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

@@ -234,7 +234,8 @@ class CommerceServiceProviderOrderTest {
                 }
                 "startTerminalPayment" -> { transaction.status = "PROVIDER_IN_PROGRESS"; true }
                 "recordTerminalPaymentResult" -> {
-                    if (args!![2] == "SUCCEEDED") transaction.status = "PROVIDER_SUCCEEDED" else transaction.status = "ORDER_CREATED"
+                    if (args!![3] == "SUCCEEDED") transaction.status = "PROVIDER_SUCCEEDED"
+                    else transaction.status = "ORDER_CREATED"
                     true
                 }
                 else -> throw UnsupportedOperationException("Unexpected CommerceSql call: ${method.name}")

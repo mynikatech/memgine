@@ -77,6 +77,12 @@ fun Route.commerceRoutes(service: CommerceService) {
                     call.callId
                 ))
             }
+            post("/{transactionId}/remote-terminal-payment/start") {
+                call.respond(ApiResponse.success(service.startRemoteTerminalPayment(
+                    orgId(call), required(call.parameters["transactionId"]), call.receive<CommerceRemoteTerminalPaymentStartRequest>(),
+                    call.authenticatedPrincipal().userId
+                ), call.callId))
+            }
             post("/{transactionId}/terminal-payment/start") {
                 call.respond(ApiResponse.success(service.startTerminalPayment(
                     orgId(call), required(call.parameters["transactionId"]), call.authenticatedPrincipal().userId
