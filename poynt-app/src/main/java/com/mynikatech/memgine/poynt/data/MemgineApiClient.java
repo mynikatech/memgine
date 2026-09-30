@@ -476,6 +476,56 @@ public final class MemgineApiClient {
         return true;
     }
 
+    public CommerceTerminalPaymentInstruction startTerminalPayment(
+            TerminalContext terminal,
+            String sessionToken,
+            String commerceTransactionId
+    ) throws Exception {
+        JSONObject data = call(
+                "POST",
+                "/api/v1/organizations/" + terminal.organizationId + "/commerce/transactions/"
+                        + commerceTransactionId + "/terminal-payment/start",
+                null,
+                sessionToken,
+                null
+        );
+        return new CommerceTerminalPaymentInstruction(
+                data.getString("commerceTransactionId"),
+                data.getString("providerCode"),
+                data.getString("providerOrderId"),
+                data.getLong("amountMinor"),
+                data.getString("currencyCode"),
+                data.getString("referenceId")
+        );
+    }
+
+    public void recordTerminalPaymentResult(
+            TerminalContext terminal,
+            String sessionToken,
+            CommerceTerminalPaymentInstruction instruction,
+            CommerceTerminalPaymentResult result
+    ) throws Exception {
+        JSONObject request = new JSONObject();
+        if (result.providerTransactionId == null) {
+            request.put("providerTransactionId", JSONObject.NULL);
+        } else {
+            request.put("providerTransactionId", result.providerTransactionId);
+        }
+        request.put("providerStatus", result.providerStatus);
+        request.put("amountMinor", result.amountMinor);
+        request.put("currencyCode", result.currencyCode);
+        if (result.failureCode != null) request.put("failureCode", result.failureCode);
+        if (result.failureMessage != null) request.put("failureMessage", result.failureMessage);
+        call(
+                "POST",
+                "/api/v1/organizations/" + terminal.organizationId + "/commerce/transactions/"
+                        + instruction.commerceTransactionId + "/terminal-payment/result",
+                null,
+                sessionToken,
+                request
+        );
+    }
+
     private PaymentIntent paymentIntent(JSONObject data) throws Exception {
         return new PaymentIntent(
                 data.getString("paymentIntentId"),

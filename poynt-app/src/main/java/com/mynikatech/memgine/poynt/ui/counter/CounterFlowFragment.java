@@ -1,6 +1,7 @@
 package com.mynikatech.memgine.poynt.ui.counter;
 
 import android.app.Fragment;
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -25,6 +26,11 @@ public final class CounterFlowFragment extends Fragment {
     }
 
     public boolean navigateBack() { return controller != null && controller.navigateBack(); }
+
+    @Override public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (controller != null) controller.onActivityResult(requestCode, resultCode, data);
+    }
 
     @Override public void onDestroyView() {
         if (controller != null) controller.close();

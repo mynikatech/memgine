@@ -1,6 +1,7 @@
 package com.mynikatech.memgine.poynt.ui.counter;
 
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
@@ -32,6 +33,8 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Locale;
 import co.poynt.os.model.Intents;
+import co.poynt.os.model.Payment;
+import co.poynt.api.model.Transaction;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -40,6 +43,7 @@ import java.util.concurrent.Executors;
 /** Coordinates classic native Counter screens; the Poynt Activity only hosts this workflow. */
 public final class CounterFlowController {
     private static final long OTP_RESEND_COOLDOWN_MS = 30_000L;
+    private static final int COLLECT_PAYMENT_REQUEST = 6031;
     private final MemgineApiClient api = new MemgineApiClient();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -52,6 +56,10 @@ public final class CounterFlowController {
     private final QrScanner qrScanner = new NoOpQrScanner();
     private final Activity host;
     private final ViewGroup root;
+    private CommerceTerminalPaymentInstruction activeTerminalPayment;
+    private CommerceTerminalPaymentResult pendingTerminalPaymentResult;
+    private boolean terminalPaymentStarting;
+    private boolean terminalPaymentReporting;
 
     private enum CounterAction {
         REDEEM,
@@ -76,6 +84,10 @@ public final class CounterFlowController {
     public void start() { refresh(); }
 
     public boolean navigateBack() {
+        if (activeTerminalPayment != null) {
+            setStatus("Complete or cancel the terminal payment before leaving this screen.");
+            return true;
+        }
         if (activeTerminal == null) return false;
         if (activeStaff == null) showStaffSelection(activeTerminal); else showCounterHome(activeTerminal);
         return true;
@@ -223,12 +235,273 @@ public final class CounterFlowController {
         content.addView(context);
         button("Redeem", () -> showCustomerEntry(terminal, CounterAction.REDEEM), true);
         button("Sell Membership", () -> showCustomerEntry(terminal, CounterAction.SELL), true);
+        button("Start Terminal Payment", () -> showCommerceTerminalPayment(terminal), false);
         button("Customers", () -> showCustomers(terminal), false);
         button("Lock Counter", () -> {
             staffSession.clear();
             activeStaff = null;
             showStaffSelection(terminal);
         }, false);
+        cancelButton();
+    }
+
+    /**
+     * Phase 3C-B accepts an already-created Commerce transaction. Creating lines,
+     * provider orders, fulfillment, and membership activation remain server flows.
+     */
+    private void showCommerceTerminalPayment(TerminalContext terminal) {
+    render("Terminal Payment");
+    text("Enter the Memgine Commerce transaction ID after its Poynt order is ready.");
+
+    EditText transactionId = input("Commerce transaction ID");
+
+    final Button[] start = new Button[1];
+
+    start[0] = button("Start terminal payment", () -> {
+        String id = transactionId.getText().toString().trim();
+
+        if (id.isEmpty()) {
+            setStatus("Commerce transaction ID is required.");
+            return;
+        }
+
+        if (terminalPaymentStarting || activeTerminalPayment != null) {
+            setStatus("A terminal payment is already in progress.");
+            return;
+        }
+
+        String token = staffSession.token();
+
+        if (token == null) {
+            refresh();
+            return;
+        }
+
+        terminalPaymentStarting = true;
+        start[0].setEnabled(false);
+        setStatus("Starting payment");
+
+        background(
+                () -> api.startTerminalPayment(terminal, token, id),
+                instruction -> {
+                    terminalPaymentStarting = false;
+
+                    if (!"POYNT".equalsIgnoreCase(instruction.providerCode)) {
+                        activeTerminalPayment = instruction;
+                        reportTerminalPaymentResult(
+                                terminal,
+                                new CommerceTerminalPaymentResult(
+                                        null,
+                                        "FAILED",
+                                        instruction.amountMinor,
+                                        instruction.currencyCode,
+                                        "UNSUPPORTED_PROVIDER",
+                                        "This terminal cannot process the configured provider."
+                                )
+                        );
+                        return;
+                    }
+
+                    if (instruction.amountMinor <= 0) {
+                        activeTerminalPayment = instruction;
+                        reportTerminalPaymentResult(
+                                terminal,
+                                new CommerceTerminalPaymentResult(
+                                        null,
+                                        "FAILED",
+                                        instruction.amountMinor,
+                                        instruction.currencyCode,
+                                        "ZERO_AMOUNT",
+                                        "This transaction does not require terminal payment."
+                                )
+                        );
+                        return;
+                    }
+
+                    launchPoyntPayment(terminal, instruction);
+                },
+                exception -> {
+                    terminalPaymentStarting = false;
+                    start[0].setEnabled(true);
+                    setStatus(apiErrorMessage(exception));
+                }
+        );
+    }, true);
+
+    button("Back", () -> showCounterHome(terminal));
+    cancelButton();
+}
+
+    private void launchPoyntPayment(TerminalContext terminal, CommerceTerminalPaymentInstruction instruction) {
+        activeTerminalPayment = instruction;
+        pendingTerminalPaymentResult = null;
+        render("Waiting for terminal");
+        text("The Poynt terminal will collect the server-authoritative payment amount.");
+        setStatus("Waiting for terminal");
+
+        Payment payment = new Payment();
+        payment.setAmount(instruction.amountMinor);
+        payment.setCurrency(instruction.currencyCode);
+        payment.setOrderId(instruction.providerOrderId);
+        payment.setReferenceId(instruction.referenceId);
+        payment.setMultiTender(false);
+        payment.setAuthzOnly(false);
+
+        Intent collectPayment = new Intent(Intents.ACTION_COLLECT_PAYMENT);
+        collectPayment.putExtra(Intents.INTENT_EXTRAS_PAYMENT, payment);
+        try {
+            host.startActivityForResult(collectPayment, COLLECT_PAYMENT_REQUEST);
+        } catch (ActivityNotFoundException unavailable) {
+            reportTerminalPaymentResult(terminal, failedTerminalResult(
+                    instruction,
+                    "PAYMENT_ACTIVITY_UNAVAILABLE",
+                    "Poynt payment activity is unavailable."
+            ));
+        }
+    }
+
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode != COLLECT_PAYMENT_REQUEST || activeTerminalPayment == null || activeTerminal == null) {
+            return;
+        }
+        CommerceTerminalPaymentInstruction instruction = activeTerminalPayment;
+        if (resultCode == Activity.RESULT_CANCELED) {
+            reportTerminalPaymentResult(activeTerminal, new CommerceTerminalPaymentResult(
+                    null, "CANCELLED", instruction.amountMinor, instruction.currencyCode,
+                    "PAYMENT_CANCELLED", "Payment was cancelled."
+            ));
+            return;
+        }
+        if (resultCode != Activity.RESULT_OK || data == null) {
+            reportTerminalPaymentResult(activeTerminal, failedTerminalResult(
+                    instruction, "PAYMENT_RESULT_UNAVAILABLE", "Terminal payment result is unavailable."
+            ));
+            return;
+        }
+
+        Payment payment = data.getParcelableExtra(Intents.INTENT_EXTRAS_PAYMENT);
+        if (payment == null || !instruction.referenceId.equals(payment.getReferenceId())) {
+            reportTerminalPaymentResult(activeTerminal, failedTerminalResult(
+                    instruction, "PAYMENT_CORRELATION_FAILED", "Terminal payment could not be correlated."
+            ));
+            return;
+        }
+
+        String paymentStatus = payment.getStatus() == null ? "" : payment.getStatus().name();
+        if ("COMPLETED".equals(paymentStatus)) {
+            String providerTransactionId = completedTransactionId(payment);
+            if (providerTransactionId == null) {
+                reportTerminalPaymentResult(activeTerminal, failedTerminalResult(
+                        instruction,
+                        "PAYMENT_TRANSACTION_INVALID",
+                        "Terminal payment did not return one completed transaction."
+                ));
+            } else {
+                reportTerminalPaymentResult(activeTerminal, new CommerceTerminalPaymentResult(
+                        providerTransactionId,
+                        "SUCCEEDED",
+                        instruction.amountMinor,
+                        instruction.currencyCode,
+                        null,
+                        null
+                ));
+            }
+        } else if ("CANCELED".equals(paymentStatus)) {
+            reportTerminalPaymentResult(activeTerminal, new CommerceTerminalPaymentResult(
+                    null, "CANCELLED", instruction.amountMinor, instruction.currencyCode,
+                    "PAYMENT_CANCELLED", "Payment was cancelled."
+            ));
+        } else if ("FAILED".equals(paymentStatus)) {
+            reportTerminalPaymentResult(activeTerminal, failedTerminalResult(
+                    instruction, "PAYMENT_FAILED", "Terminal payment failed."
+            ));
+        } else {
+            reportTerminalPaymentResult(activeTerminal, failedTerminalResult(
+                    instruction, "UNSUPPORTED_PAYMENT_STATUS", "Terminal payment was not completed."
+            ));
+        }
+    }
+
+    /** Only a single, non-empty Poynt transaction can represent this no-split-tender phase. */
+    private static String completedTransactionId(Payment payment) {
+        List<Transaction> transactions = payment.getTransactions();
+        if (transactions == null || transactions.size() != 1 || transactions.get(0) == null) {
+            return null;
+        }
+        Object rawId = transactions.get(0).getId();
+        if (rawId == null) return null;
+        String id = rawId.toString().trim();
+        return id.isEmpty() ? null : id;
+    }
+
+    private static CommerceTerminalPaymentResult failedTerminalResult(
+            CommerceTerminalPaymentInstruction instruction,
+            String failureCode,
+            String failureMessage
+    ) {
+        return new CommerceTerminalPaymentResult(
+                null,
+                "FAILED",
+                instruction.amountMinor,
+                instruction.currencyCode,
+                failureCode,
+                failureMessage
+        );
+    }
+
+    private void reportTerminalPaymentResult(
+            TerminalContext terminal,
+            CommerceTerminalPaymentResult result
+    ) {
+        if (activeTerminalPayment == null || terminalPaymentReporting) {
+            return;
+        }
+        CommerceTerminalPaymentInstruction instruction = activeTerminalPayment;
+        pendingTerminalPaymentResult = result;
+        terminalPaymentReporting = true;
+        render("Recording terminal payment");
+        setStatus("Recording payment result");
+        background(
+                () -> {
+                    String token = staffSession.token();
+                    if (token == null) throw new ApiException("Counter session is unavailable", true);
+                    api.recordTerminalPaymentResult(terminal, token, instruction, result);
+                    return true;
+                },
+                ignored -> {
+                    terminalPaymentReporting = false;
+                    activeTerminalPayment = null;
+                    pendingTerminalPaymentResult = null;
+                    showTerminalPaymentRecorded(terminal, result);
+                },
+                exception -> {
+                    terminalPaymentReporting = false;
+                    showTerminalPaymentReportRetry(terminal, exception);
+                }
+        );
+    }
+
+    private void showTerminalPaymentReportRetry(TerminalContext terminal, Exception exception) {
+        render("Payment result needs reporting");
+        text("The terminal result has not yet been recorded by Memgine.");
+        setStatus(apiErrorMessage(exception));
+        button("Retry result report", () -> {
+            if (pendingTerminalPaymentResult != null) {
+                reportTerminalPaymentResult(terminal, pendingTerminalPaymentResult);
+            }
+        }, true);
+    }
+
+    private void showTerminalPaymentRecorded(TerminalContext terminal, CommerceTerminalPaymentResult result) {
+        render("Terminal Payment");
+        if ("SUCCEEDED".equals(result.providerStatus)) {
+            text("Payment successful. Fulfillment is pending.");
+        } else if ("CANCELLED".equals(result.providerStatus)) {
+            text("Payment cancelled. The Commerce transaction remains ready to retry.");
+        } else {
+            text("Payment failed. The Commerce transaction remains ready to retry.");
+        }
+        button("Back to Counter Home", () -> showCounterHome(terminal));
         cancelButton();
     }
 

@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 106-poynt-commerce-catalog
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/106-poynt-commerce-catalog.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

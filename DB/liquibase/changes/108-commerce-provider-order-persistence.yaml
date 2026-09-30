@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 108-commerce-provider-order-persistence
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/108-commerce-provider-order-persistence.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

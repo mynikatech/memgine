@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 109-commerce-materialized-provider-order
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/109-commerce-materialized-provider-order.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

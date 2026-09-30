@@ -58,6 +58,7 @@ dependencies {
     implementation(libs.aws.sqs)
     implementation(libs.aws.ses)
     implementation(libs.aws.s3)
+    implementation(libs.aws.secretsmanager)
     implementation(libs.aws.sso)
     implementation(libs.aws.ssooidc)
     implementation(libs.aws.pinpoint.sms.voice.v2)
@@ -66,6 +67,8 @@ dependencies {
     implementation(libs.libphonenumber)
     implementation(libs.argon2.jvm)
     implementation(libs.stripe.java)
+    implementation(libs.java.jwt)
+    implementation(libs.bcpkix)
 
     // -------------------------
     // Tests

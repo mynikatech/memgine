@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 107-commerce-order-created-status
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/107-commerce-order-created-status.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 110-commerce-terminal-payment-lifecycle
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/110-commerce-terminal-payment-lifecycle.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

@@ -3,12 +3,16 @@ package com.mynikatech.memgine.config
 import io.ktor.server.config.ApplicationConfig
 import java.util.Properties
 
+const val DEFAULT_POYNT_CLOUD_BASE_URL = "https://services.poynt.net"
+const val DEFAULT_POYNT_JWT_AUDIENCE = "https://services.poynt.net"
+
 data class AppConfig(
     val server: ServerConfig,
     val database: DatabaseConfig,
     val authentication: AuthenticationConfig,
     val otp: OtpConfig,
     val payment: PaymentConfig,
+    val poynt: PoyntCommerceConfig,
     val assets: AssetStorageConfig
 ) {
     companion object {
@@ -273,6 +277,13 @@ data class AppConfig(
                     monerisHostedTokenizationUrl = value("memgine.payment.monerisHostedTokenizationUrl", "MONERIS_HOSTED_TOKENIZATION_URL", "https://esqa.moneris.com/HPPtoken/index.php").trim()
                 ),
 
+                poynt = PoyntCommerceConfig(
+                    cloudBaseUrl = value("memgine.poynt.cloudBaseUrl", "MEMGINE_POYNT_CLOUD_BASE_URL", DEFAULT_POYNT_CLOUD_BASE_URL).trim().trimEnd('/'),
+                    secretsRegion = optionalValue("memgine.poynt.secretsRegion", "MEMGINE_POYNT_SECRETS_REGION") ?: assetAwsRegion,
+                    apiVersion = value("memgine.poynt.apiVersion", "MEMGINE_POYNT_API_VERSION", "1.2").trim(),
+                    jwtAudience = value("memgine.poynt.jwtAudience", "MEMGINE_POYNT_JWT_AUDIENCE", DEFAULT_POYNT_JWT_AUDIENCE).trim()
+                ),
+
                 assets = AssetStorageConfig(
                     provider = assetStorageProvider,
                     appDataBucket = appDataBucket,
@@ -318,6 +329,13 @@ data class OtpConfig(
     val notificationEventsTopicArn: String,
     val whatsappTemplateName: String,
     val whatsappTemplateLanguage: String
+)
+
+data class PoyntCommerceConfig(
+    val cloudBaseUrl: String,
+    val secretsRegion: String,
+    val apiVersion: String,
+    val jwtAudience: String
 )
 
 data class PaymentConfig(

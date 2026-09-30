@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 105-commerce-checkout-foundation
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/105-commerce-checkout-foundation.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

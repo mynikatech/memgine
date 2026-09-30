@@ -32,6 +32,11 @@ import com.mynikatech.memgine.component.notification.SnsExternalNotificationPubl
 import com.mynikatech.memgine.component.notification.UnavailableExternalNotificationPublisher
 import com.mynikatech.memgine.component.integrationconfiguration.IntegrationConfigurationService
 import com.mynikatech.memgine.component.integrationconfiguration.integrationConfigurationRoutes
+import com.mynikatech.memgine.component.commerce.CommerceService
+import com.mynikatech.memgine.component.commerce.CommerceSql
+import com.mynikatech.memgine.component.commerce.commerceRoutes
+import com.mynikatech.memgine.component.commerce.CommerceProviderRegistry
+import com.mynikatech.memgine.component.commerce.provider.poynt.*
 import com.mynikatech.memgine.component.asset.brandingAssetRoutes
 import com.mynikatech.memgine.component.customerexperience.customerExperienceReleaseRoutes
 import com.mynikatech.memgine.component.customerexperience.CustomerExperienceReleaseService
@@ -157,6 +162,20 @@ fun Application.configureRouting(
     val counterService = CounterService(database.jdbi, businessOtpService, paymentService, redemptionService, phoneNormalizer)
     val notificationConfigurationService = NotificationConfigurationService(database.jdbi)
     val integrationConfigurationService = IntegrationConfigurationService(database.jdbi)
+    val poyntTokens = PoyntTokenService(
+        AwsSecretsManagerPoyntCredentialResolver(config.poynt.secretsRegion),
+        PoyntCloudTokenTransport(config.poynt.cloudBaseUrl, config.poynt.apiVersion),
+        config.poynt.jwtAudience
+    )
+    val poyntCommerceSql = database.jdbi.onDemand(PoyntCommerceSql::class.java)
+    val poyntHttpTransport = PoyntCloudHttpTransport(config.poynt.cloudBaseUrl, config.poynt.apiVersion)
+    val poyntCommerceProvider = PoyntCommerceProvider(
+        poyntCommerceSql,
+        PoyntAuthenticatedCatalogClient(poyntHttpTransport, poyntTokens),
+        PoyntAuthenticatedOrderClient(poyntHttpTransport, poyntTokens),
+        PoyntSqlCheckoutConfigurationResolver(poyntCommerceSql)
+    )
+    val commerceService = CommerceService(database.jdbi.onDemand(CommerceSql::class.java), CommerceProviderRegistry(listOf(poyntCommerceProvider)))
     val customerExperienceReleaseService =
     CustomerExperienceReleaseService(database.jdbi.onDemand(CustomerExperienceReleaseSql::class.java)
     )
@@ -199,6 +218,7 @@ fun Application.configureRouting(
             notificationConfigurationRoutes(notificationConfigurationService)
             notificationRoutes(notificationService)
             integrationConfigurationRoutes(integrationConfigurationService)
+            commerceRoutes(commerceService)
             customerExperienceReleaseRoutes(
                 customerExperienceReleaseService
             )

@@ -17,6 +17,8 @@ aws-sdk = "2.25.47"
 libphonenumber = "8.13.47"
 argon2 = "2.11"
 stripe = "29.5.0"
+java-jwt = "4.5.0"
+bouncycastle = "1.80"
 
 [libraries]
 
@@ -88,12 +90,15 @@ aws-sns = { module = "software.amazon.awssdk:sns", version.ref = "aws-sdk" }
 aws-sqs = { module = "software.amazon.awssdk:sqs", version.ref = "aws-sdk" }
 aws-ses = { module = "software.amazon.awssdk:ses", version.ref = "aws-sdk" }
 aws-s3 = { module = "software.amazon.awssdk:s3", version.ref = "aws-sdk" }
+aws-secretsmanager = { module = "software.amazon.awssdk:secretsmanager", version.ref = "aws-sdk" }
 aws-sso = { module = "software.amazon.awssdk:sso", version.ref = "aws-sdk" }
 aws-ssooidc = { module = "software.amazon.awssdk:ssooidc", version.ref = "aws-sdk" }
 aws-pinpoint-sms-voice-v2 = { module = "software.amazon.awssdk:pinpointsmsvoicev2", version.ref = "aws-sdk" }
 libphonenumber = { module = "com.googlecode.libphonenumber:libphonenumber", version.ref = "libphonenumber" }
 argon2-jvm = { module = "de.mkammerer:argon2-jvm", version.ref = "argon2" }
 stripe-java = { module = "com.stripe:stripe-java", version.ref = "stripe" }
+java-jwt = { module = "com.auth0:java-jwt", version.ref = "java-jwt" }
+bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
 
 [plugins]
 
