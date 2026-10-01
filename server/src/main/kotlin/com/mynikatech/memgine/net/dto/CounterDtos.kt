@@ -77,8 +77,19 @@ data class CounterQrRedeemRequest(
 data class CounterBusinessOtpRequest(
     val phone: String? = null,
     val regionCode: String? = null,
+    val counterPurchaseId: String? = null,
     val purchase: CounterPurchaseRequest? = null,
     val redemption: CounterRedeemRequest? = null
+)
+
+@Serializable
+data class CounterPurchaseOtpResult(
+    val challengeId: String,
+    val expiresAt: String,
+    val resendAt: String,
+    val destination: String,
+    val devCode: String? = null,
+    val counterPurchaseId: String
 )
 
 /** Verify the OTP only. This does not execute a Counter purchase. */

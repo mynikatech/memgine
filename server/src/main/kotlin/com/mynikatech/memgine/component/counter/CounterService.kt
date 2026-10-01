@@ -79,7 +79,7 @@ class CounterService(
         return subscriptions(org, store, staff, principal)
             .filter { it.userId == customerUserId }
     }
-    
+
     fun subscriptionBenefits(
         org: String,
         store: String,
@@ -204,24 +204,42 @@ class CounterService(
         }
     }
 
-    fun requestPurchaseOtp(org: String, input: CounterBusinessOtpRequest,
-                           principal: AuthenticatedPrincipal): OtpRequestResult {
+    fun requestPurchaseOtp(
+        org: String,
+        input: CounterBusinessOtpRequest,
+        principal: AuthenticatedPrincipal
+    ): CounterPurchaseOtpResult {
         val requestedPurchase = input.purchase ?: throw BadRequestException("Purchase details are required")
         if (input.redemption != null) throw BadRequestException("Only one Counter action may be verified")
         validatePurchase(org, requestedPurchase, principal)
+
         val request = if (requestedPurchase.customerUserId == null) {
             resolveProspectiveCustomer(org, requestedPurchase, input.regionCode, principal)
         } else {
             requestedPurchase
         }
+
         val customerUserId = request.customerUserId
             ?: throw BadRequestException("Prospective customer could not be resolved")
+
         val verificationPhone = sql().customers(org, principal.userId)
             .firstOrNull { it.userId == customerUserId }
             ?.primaryPhone
             ?: throw BadRequestException("Customer is not active in this organization")
 
-        return businessOtp.request(
+        val counterPurchaseId = translate {
+            sql().preparePurchaseIdentity(
+                input.counterPurchaseId,
+                org,
+                request.storeId,
+                request.staffId,
+                customerUserId,
+                request.planId,
+                principal.userId
+            )
+        }
+
+        val challenge = businessOtp.request(
             verificationPhone,
             input.regionCode,
             OtpPurpose.COUNTER_PURCHASE_VERIFY,
@@ -233,6 +251,29 @@ class CounterService(
             request.staffId,
             null,
             Json.encodeToString(request)
+        )
+
+        translate {
+            if (!sql().bindPurchaseOtpContext(
+                    counterPurchaseId,
+                    challenge.challengeId,
+                    org,
+                    request.storeId,
+                    request.staffId,
+                    customerUserId,
+                    request.planId
+                )) {
+                throw ConflictException("Counter purchase verification could not be bound")
+            }
+        }
+
+        return CounterPurchaseOtpResult(
+            challengeId = challenge.challengeId,
+            expiresAt = challenge.expiresAt,
+            resendAt = challenge.resendAt,
+            destination = challenge.destination,
+            devCode = challenge.devCode,
+            counterPurchaseId = counterPurchaseId
         )
     }
 
@@ -257,14 +298,14 @@ class CounterService(
 
         translate {
             sql().createProspectiveCustomer(
-            org,
-            request.storeId,
-            request.staffId,
-            firstName,
-            lastName,
-            email,
-            canonicalPhone,
-            principal.userId
+                org,
+                request.storeId,
+                request.staffId,
+                firstName,
+                lastName,
+                email,
+                canonicalPhone,
+                principal.userId
             )
         }
 
@@ -308,6 +349,7 @@ class CounterService(
         val purchase = validatePurchaseContext(org, context, principal)
         val customerUserId = purchase.customerUserId
             ?: throw BadRequestException("Customer is required for Counter membership payment")
+
         return payments.startCounterMembershipPayment(
             org,
             request.copy(
@@ -332,8 +374,19 @@ class CounterService(
         principal: AuthenticatedPrincipal
     ): PaymentIntentDto {
         val context = businessOtp.resolveVerified(request.challengeId, OtpPurpose.COUNTER_PURCHASE_VERIFY)
-        validatePurchaseContext(org, context, principal)
-        return payments.startCounterCashPayment(org, request, principal.userId)
+        val purchase = validatePurchaseContext(org, context, principal)
+        val customerUserId = purchase.customerUserId
+            ?: throw BadRequestException("Customer is required for Counter membership payment")
+
+        return payments.startCounterCashMembershipPayment(
+            org,
+            request,
+            purchase.storeId,
+            purchase.staffId,
+            customerUserId,
+            purchase.planId,
+            principal.userId
+        )
     }
 
     fun confirmCashPayment(

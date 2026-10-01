@@ -64,6 +64,47 @@ class PaymentService(
         actorUserId: String
     ): PaymentIntentDto {
         requirePaymentProvider()
+        return startCounterMembershipPayment(
+            org = org,
+            request = request,
+            storeId = storeId,
+            staffId = staffId,
+            customerUserId = customerUserId,
+            planId = planId,
+            actorUserId = actorUserId,
+            provider = configuredProvider
+        )
+    }
+
+    fun startCounterCashMembershipPayment(
+        org: String,
+        request: PaymentStartRequestDto,
+        storeId: String,
+        staffId: String,
+        customerUserId: String,
+        planId: String,
+        actorUserId: String
+    ): PaymentIntentDto = startCounterMembershipPayment(
+        org = org,
+        request = request,
+        storeId = storeId,
+        staffId = staffId,
+        customerUserId = customerUserId,
+        planId = planId,
+        actorUserId = actorUserId,
+        provider = CashPaymentProvider
+    )
+
+    private fun startCounterMembershipPayment(
+        org: String,
+        request: PaymentStartRequestDto,
+        storeId: String,
+        staffId: String,
+        customerUserId: String,
+        planId: String,
+        actorUserId: String,
+        provider: PaymentProvider
+    ): PaymentIntentDto {
         validateId(org, "organization id")
         validateId(request.challengeId, "challenge id")
         validateId(storeId, "store id")
@@ -82,7 +123,7 @@ class PaymentService(
                 staffId,
                 customerUserId,
                 planId,
-                configuredProvider.code,
+                provider.code,
                 request.idempotencyKey.trim(),
                 actorUserId
             ) ?: throw ConflictException("Payment was not started")

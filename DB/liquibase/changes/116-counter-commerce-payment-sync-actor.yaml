@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 116-counter-commerce-payment-sync-actor
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/116-counter-commerce-payment-sync-actor.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

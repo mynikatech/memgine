@@ -263,7 +263,9 @@ export default function JoinFlow() {
 
   // Counter purchase verification is separate from normal customer login/registration OTP.
 
-  // It is requested once for the exact selected membership and reused through payment.
+  // counterPurchaseId is the stable logical checkout; the OTP challenge may change on resend.
+
+  const [counterPurchaseId, setCounterPurchaseId] = useState("");
 
   const [purchaseOtpChallengeId, setPurchaseOtpChallengeId] = useState("");
 
@@ -471,10 +473,21 @@ export default function JoinFlow() {
         const organizationBenefits =
           await services.customerData.benefits(orgId);
 
+        console.log("[JOIN-BENEFITS] product", {
+          productId: prod.id,
+          benefitIds: prod.benefitIds,
+        });
+
+        console.log(
+          "[JOIN-BENEFITS] organizationBenefits",
+          organizationBenefits,
+        );
+
         const bens = organizationBenefits.filter(
           (benefit) =>
             !benefit.isDeleted && prod.benefitIds.includes(benefit.id),
         );
+        console.log("[JOIN-BENEFITS] matched", bens);
 
         /*
 
@@ -975,7 +988,13 @@ export default function JoinFlow() {
           phone,
 
           purchase,
+
+          undefined,
+
+          counterPurchaseId || undefined,
         );
+
+        setCounterPurchaseId(result.counterPurchaseId);
 
         setPurchaseOtpChallengeId(result.challengeId);
 
@@ -1010,7 +1029,7 @@ export default function JoinFlow() {
       }
     },
 
-    [counterPurchasePayload],
+    [counterPurchasePayload, counterPurchaseId],
   );
 
   const verifyCounterPurchaseOtp = useCallback(async () => {
@@ -1087,6 +1106,8 @@ export default function JoinFlow() {
     ) => {
       if (isStaffSale) {
         counterCheckout.clear();
+
+        setCounterPurchaseId("");
 
         setPurchaseOtpChallengeId("");
 
@@ -1633,10 +1654,17 @@ export default function JoinFlow() {
 
    */
 
-  const close = () =>
-    router.canGoBack()
-      ? router.back()
-      : router.replace(APP_ROUTES.customer.cards);
+  const close = () => {
+    if (isStaffSale) {
+      setCounterPurchaseId("");
+    }
+
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace(APP_ROUTES.customer.cards);
+    }
+  };
 
   /*
 

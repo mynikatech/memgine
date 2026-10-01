@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 115-counter-stable-purchase-identity
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/115-counter-stable-purchase-identity.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

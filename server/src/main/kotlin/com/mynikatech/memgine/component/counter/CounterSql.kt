@@ -13,6 +13,32 @@ data class CounterRedemptionItemStatusRow(
 )
 
 interface CounterSql {
+    @SqlQuery("""SELECT counter_prepare_purchase_identity(
+        :counterPurchaseId, :organizationId, :storeId, :staffId,
+        :customerUserId, :planId, :actorUserId)""")
+    fun preparePurchaseIdentity(
+        @Bind("counterPurchaseId") counterPurchaseId: String?,
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String,
+        @Bind("staffId") staffId: String,
+        @Bind("customerUserId") customerUserId: String,
+        @Bind("planId") planId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): String
+
+    @SqlQuery("""SELECT counter_bind_purchase_otp_context(
+        :counterPurchaseId, :challengeId, :organizationId, :storeId,
+        :staffId, :customerUserId, :planId)""")
+    fun bindPurchaseOtpContext(
+        @Bind("counterPurchaseId") counterPurchaseId: String,
+        @Bind("challengeId") challengeId: String,
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String,
+        @Bind("staffId") staffId: String,
+        @Bind("customerUserId") customerUserId: String,
+        @Bind("planId") planId: String
+    ): Boolean
+
     @SqlQuery("SELECT counter_can_operate(:organizationId, :storeId, :staffId, :actorUserId)")
     fun canOperate(@Bind("organizationId") organizationId: String,
                    @Bind("storeId") storeId: String, @Bind("staffId") staffId: String,
@@ -120,8 +146,8 @@ interface CounterSql {
         ORDER BY q.qr_code_id""")
     fun qrCodes(@Bind("organizationId") organizationId: String,
                 @Bind("token") token: String?): List<CounterQrDto>
-                
-        @SqlQuery("""
+
+    @SqlQuery("""
         SELECT *
         FROM get_counter_subscription_benefits(
             :organizationId,

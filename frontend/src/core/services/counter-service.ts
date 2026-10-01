@@ -92,9 +92,10 @@ export class CounterService {
     phone: string,
     purchase: Omit<CounterPurchase, "storeId" | "staffId">,
     regionCode?: string,
+    counterPurchaseId?: ID,
   ) {
     return this.api
-      .requestPurchaseOtp(ctx, phone, purchase, regionCode)
+      .requestPurchaseOtp(ctx, phone, purchase, regionCode, counterPurchaseId)
       .then((result) => this.unwrap(result));
   }
 

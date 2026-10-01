@@ -138,6 +138,10 @@ export type CounterOtpChallenge = {
   devCode?: string | null;
 };
 
+export type CounterPurchaseOtpChallenge = CounterOtpChallenge & {
+  counterPurchaseId: ID;
+};
+
 export class CounterApi {
   private path(ctx: CounterContext, suffix: string) {
     return `/api/v1/organizations/${encodeURIComponent(ctx.organizationId)}/counter/${suffix}`;
@@ -314,10 +318,12 @@ export class CounterApi {
     phone: string,
     purchase: Omit<CounterPurchase, "storeId" | "staffId">,
     regionCode?: string,
-  ): Promise<ApiResult<CounterOtpChallenge>> {
+    counterPurchaseId?: ID,
+  ): Promise<ApiResult<CounterPurchaseOtpChallenge>> {
     return httpClient.post(this.path(ctx, "purchases/otp/request"), {
       phone,
       regionCode,
+      counterPurchaseId,
       purchase: {
         ...purchase,
         storeId: ctx.storeId,
