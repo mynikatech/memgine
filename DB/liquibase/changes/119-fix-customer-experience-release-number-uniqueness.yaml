@@ -1,0 +1,8 @@
+databaseChangeLog:
+  - changeSet:
+      id: 119-fix-customer-experience-release-number-uniqueness
+      author: mynicatech
+      changes:
+        - sqlFile:
+            path: ../sql/119-fix-customer-experience-release-number-uniqueness.sql
+            relativeToChangelogFile: true
