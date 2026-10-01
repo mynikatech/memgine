@@ -389,6 +389,7 @@ export function StaffForm({
 
         <Input
           label="First Name"
+          required
           value={person.firstName}
           editable={!readOnly}
           onChangeText={(value) => updatePerson("firstName", value)}
@@ -405,6 +406,7 @@ export function StaffForm({
 
         <Input
           label="Last Name"
+          required
           value={person.lastName}
           editable={!readOnly}
           onChangeText={(value) => updatePerson("lastName", value)}
@@ -431,6 +433,7 @@ export function StaffForm({
 
         <PhoneField
           label="Primary Phone"
+          required
           value={person.primaryPhone}
           countries={countries}
           onChange={(value) => updatePerson("primaryPhone", value)}
@@ -444,6 +447,7 @@ export function StaffForm({
 
         <Input
           label="Staff Code"
+          required
           value={form.staffCode}
           editable={!readOnly && !isNew}
           onChangeText={(value) => updateStaff("staffCode", value)}
@@ -460,13 +464,16 @@ export function StaffForm({
 
         <ReferenceSelect
           label="Role"
+          required
           value={form.role}
           items={roleItems}
+          disabled={readOnly}
           onChange={(value) => updateStaff("role", value as StaffRole)}
         />
 
         <ReferenceSelect
           label="Primary Store"
+          required
           value={form.storeId ?? ""}
           items={storeItems}
           onChange={handlePrimaryStoreChange}
@@ -474,6 +481,7 @@ export function StaffForm({
 
         <DateInput
           label="Joining Date"
+          required
           value={form.joiningDate}
           onChange={(value) => {
             if (value) {
@@ -486,6 +494,7 @@ export function StaffForm({
           <DateInput
             label="Relieving Date"
             value={form.relievingDate ?? ""}
+            disabled={readOnly}
             onChange={(value) =>
               updateStaff("relievingDate", value || undefined)
             }
@@ -538,6 +547,7 @@ export function StaffForm({
               displayOrder: status.displayOrder,
               active: status.isActive,
             }))}
+            disabled={readOnly}
             onChange={(value) => updateStaff("staffStatusId", value)}
           />
         </View>

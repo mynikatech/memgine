@@ -12,7 +12,13 @@ import type {
 import { OfferCtaType, services } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
-import { DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
+import {
+  DataTable,
+  DataTableColumn,
+  Modal,
+  Text,
+  DraftSaveMessage,
+} from "@/src/ui";
 
 import { OfferForm } from "@/src/ui/admin/OfferForm";
 import { useRouter } from "expo-router";
@@ -30,7 +36,9 @@ export default function OrgAdminOffers() {
     OfferUsageRule[]
   >([]);
   const [usageRules, setUsageRules] = useState<OfferUsageRule[]>([]);
-  const [pendingImages, setPendingImages] = useState<Record<string, PickedBrandingAsset>>({});
+  const [pendingImages, setPendingImages] = useState<
+    Record<string, PickedBrandingAsset>
+  >({});
 
   const [products, setProducts] = useState<MembershipProduct[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
@@ -40,6 +48,7 @@ export default function OrgAdminOffers() {
   const [saving, setSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [saveMessageVisible, setSaveMessageVisible] = useState(false);
+  const [draftSaved, setDraftSaved] = useState(false);
 
   const [formVisible, setFormVisible] = useState(false);
   const [editingOffer, setEditingOffer] = useState<Offer | null>(null);
@@ -93,6 +102,7 @@ export default function OrgAdminOffers() {
 
         setIsEditing(false);
         setSaveMessageVisible(false);
+        setDraftSaved(false);
         setFormVisible(false);
         setEditingOffer(null);
         setViewingOffer(false);
@@ -372,6 +382,7 @@ export default function OrgAdminOffers() {
     setFormVisible(false);
     setEditingOffer(null);
     setViewingOffer(false);
+    setDraftSaved(true);
   };
 
   const handleDelete = (offer: Offer) => {
@@ -427,19 +438,31 @@ export default function OrgAdminOffers() {
 
       for (const offer of offers) {
         const existing = committedById.get(offer.id);
-        const currentRules = usageRules.filter((rule) => rule.offerId === offer.id);
-        const previousRules = committedUsageRules.filter((rule) => rule.offerId === offer.id);
-        if (!existing || JSON.stringify(existing) !== JSON.stringify(offer) ||
-            JSON.stringify(currentRules) !== JSON.stringify(previousRules)) {
+        const currentRules = usageRules.filter(
+          (rule) => rule.offerId === offer.id,
+        );
+        const previousRules = committedUsageRules.filter(
+          (rule) => rule.offerId === offer.id,
+        );
+        if (
+          !existing ||
+          JSON.stringify(existing) !== JSON.stringify(offer) ||
+          JSON.stringify(currentRules) !== JSON.stringify(previousRules)
+        ) {
           let offerToSave = offer;
           const pendingImage = pendingImages[offer.id];
           if (pendingImage) {
             const uploaded = await brandingAssetApi.upload(
-              organization.id, "offerPromotion", pendingImage,
+              organization.id,
+              "offerPromotion",
+              pendingImage,
             );
             offerToSave = { ...offer, promotionImageUrl: uploaded.path };
-            setOffers((current) => current.map((item) =>
-              item.id === offer.id ? offerToSave : item));
+            setOffers((current) =>
+              current.map((item) =>
+                item.id === offer.id ? offerToSave : item,
+              ),
+            );
             setPendingImages((current) => {
               const next = { ...current };
               delete next[offer.id];
@@ -447,19 +470,30 @@ export default function OrgAdminOffers() {
             });
           }
           const savedOffer = await services.offer.saveOfferWithRules(
-            organization.id, offerToSave, currentRules, !existing,
+            organization.id,
+            offerToSave,
+            currentRules,
+            !existing,
           );
           setCommittedOffers((current) => [
-            ...current.filter((item) => item.id !== savedOffer.id), savedOffer,
+            ...current.filter((item) => item.id !== savedOffer.id),
+            savedOffer,
           ]);
-          setOffers((current) => current.map((item) =>
-            item.id === savedOffer.id ? savedOffer : item));
-          const savedRules = await services.offerUsageRule.listByOffer(savedOffer.id);
+          setOffers((current) =>
+            current.map((item) =>
+              item.id === savedOffer.id ? savedOffer : item,
+            ),
+          );
+          const savedRules = await services.offerUsageRule.listByOffer(
+            savedOffer.id,
+          );
           setCommittedUsageRules((current) => [
-            ...current.filter((rule) => rule.offerId !== savedOffer.id), ...savedRules,
+            ...current.filter((rule) => rule.offerId !== savedOffer.id),
+            ...savedRules,
           ]);
           setUsageRules((current) => [
-            ...current.filter((rule) => rule.offerId !== savedOffer.id), ...savedRules,
+            ...current.filter((rule) => rule.offerId !== savedOffer.id),
+            ...savedRules,
           ]);
         }
       }
@@ -467,8 +501,12 @@ export default function OrgAdminOffers() {
       for (const committed of committedOffers) {
         if (!workingById.has(committed.id)) {
           await services.offer.deleteOffer(organization.id, committed.id);
-          setCommittedOffers((current) => current.filter((item) => item.id !== committed.id));
-          setCommittedUsageRules((current) => current.filter((rule) => rule.offerId !== committed.id));
+          setCommittedOffers((current) =>
+            current.filter((item) => item.id !== committed.id),
+          );
+          setCommittedUsageRules((current) =>
+            current.filter((rule) => rule.offerId !== committed.id),
+          );
         }
       }
 
@@ -504,6 +542,7 @@ export default function OrgAdminOffers() {
       setEditingOffer(null);
       setViewingOffer(false);
       setSaveMessageVisible(true);
+      setDraftSaved(false);
 
       setTimeout(() => {
         setSaveMessageVisible(false);
@@ -534,6 +573,7 @@ export default function OrgAdminOffers() {
     setFormVisible(false);
     setEditingOffer(null);
     setViewingOffer(false);
+    setDraftSaved(false);
   };
 
   const handleStartEditing = () => {
@@ -542,6 +582,7 @@ export default function OrgAdminOffers() {
     }
 
     setSaveMessageVisible(false);
+    setDraftSaved(false);
     setIsEditing(true);
   };
 
@@ -660,6 +701,7 @@ export default function OrgAdminOffers() {
           </Text>
         </View>
       ) : null}
+      <DraftSaveMessage visible={isEditing && draftSaved && hasChanges} />
 
       {loading ? (
         <View style={styles.center}>

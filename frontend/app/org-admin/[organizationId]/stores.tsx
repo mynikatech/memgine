@@ -20,7 +20,7 @@ import { useBusiness } from "@/src/providers";
 
 import { Screen } from "@/src/layout";
 
-import { DataTable, Modal, StateView, Text } from "@/src/ui";
+import { DataTable, Modal, StateView, Text, DraftSaveMessage } from "@/src/ui";
 
 import { StoreForm } from "@/src/ui/admin/StoreForm";
 
@@ -105,6 +105,7 @@ export default function OrgAdminStores() {
 
   const [formVisible, setFormVisible] = useState(false);
   const [editingStore, setEditingStore] = useState<Store | null>(null);
+  const [draftSaved, setDraftSaved] = useState(false);
 
   /* ---------------------------------------------------------------------- */
   /* LOAD                                                                   */
@@ -364,6 +365,7 @@ export default function OrgAdminStores() {
   /* ---------------------------------------------------------------------- */
 
   const handleStartEditing = () => {
+    setDraftSaved(false);
     setIsEditing(true);
   };
 
@@ -478,12 +480,7 @@ export default function OrgAdminStores() {
     setRegions([]);
     setCities([]);
 
-    Alert.alert(
-      existing ? "Store updated" : "Store added",
-      existing
-        ? "The Store has been updated in the working changes. Click Save Changes when you are ready to commit."
-        : "The Store has been added to the working changes. Click Save Changes when you are ready to commit.",
-    );
+    setDraftSaved(true);
   };
 
   /* ---------------------------------------------------------------------- */
@@ -577,6 +574,7 @@ export default function OrgAdminStores() {
        * Successful Save Changes returns the page to View mode.
        */
       setIsEditing(false);
+      setDraftSaved(false);
 
       Alert.alert(
         "Changes saved",
@@ -613,7 +611,7 @@ export default function OrgAdminStores() {
     }
 
     handleCloseForm();
-
+    setDraftSaved(false);
     setIsEditing(false);
   };
 
@@ -807,18 +805,9 @@ export default function OrgAdminStores() {
         {/* EDIT MODE INDICATOR                                               */}
         {/* ================================================================ */}
 
-        {isEditing && hasPendingChanges ? (
-          <View style={styles.pendingChangesBanner}>
-            <Text variant="bodySmall" color="text">
-              You have unsaved Store changes.
-            </Text>
-
-            <Text variant="caption" color="textMuted">
-              Save individual stores as you work, then use Save Changes when you
-              are ready to commit the complete session.
-            </Text>
-          </View>
-        ) : null}
+        <DraftSaveMessage
+          visible={isEditing && draftSaved && hasPendingChanges}
+        />
 
         {/* ================================================================ */}
         {/* STORE LOCATIONS                                                   */}

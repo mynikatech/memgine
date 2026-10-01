@@ -14,7 +14,14 @@ import { services } from "@/src/core";
 
 import { useBusiness } from "@/src/providers";
 
-import { Button, DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
+import {
+  Button,
+  DataTable,
+  DataTableColumn,
+  Modal,
+  Text,
+  DraftSaveMessage,
+} from "@/src/ui";
 
 import { BenefitForm } from "@/src/ui/admin/BenefitForm";
 
@@ -200,6 +207,7 @@ export default function OrgAdminBenefits() {
 
   const [saving, setSaving] = useState(false);
 
+  const [draftSaved, setDraftSaved] = useState(false);
   const [formVisible, setFormVisible] = useState(false);
 
   const [editingBenefit, setEditingBenefit] = useState<Benefit | null>(null);
@@ -262,6 +270,7 @@ export default function OrgAdminBenefits() {
          * Every fresh organization load starts in View mode.
          */
         setIsEditing(false);
+        setDraftSaved(false);
       } catch (error) {
         if (!mounted) {
           return;
@@ -484,6 +493,7 @@ export default function OrgAdminBenefits() {
     setFormVisible(false);
 
     setEditingBenefit(null);
+    setDraftSaved(true);
   };
 
   /* ---------------------------------------------------------------------- */
@@ -644,6 +654,7 @@ export default function OrgAdminBenefits() {
       setFormVisible(false);
 
       setEditingBenefit(null);
+      setDraftSaved(false);
 
       Alert.alert(
         "Changes saved successfully",
@@ -680,6 +691,7 @@ export default function OrgAdminBenefits() {
     setRules(cloneRules(committedRules));
 
     benefitDraftStore.clear(organization.id);
+    setDraftSaved(false);
   };
 
   /* ---------------------------------------------------------------------- */
@@ -692,6 +704,7 @@ export default function OrgAdminBenefits() {
     }
 
     setIsEditing(true);
+    setDraftSaved(false);
   };
 
   /* ---------------------------------------------------------------------- */
@@ -721,7 +734,7 @@ export default function OrgAdminBenefits() {
     setFormVisible(false);
 
     setEditingBenefit(null);
-
+    setDraftSaved(false);
     setIsEditing(false);
   };
 
@@ -985,6 +998,8 @@ export default function OrgAdminBenefits() {
           )}
         </View>
       </View>
+
+      <DraftSaveMessage visible={isEditing && draftSaved && hasChanges} />
 
       {/* ================================================================ */}
       {/* TABLE                                                            */}
