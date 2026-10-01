@@ -2,6 +2,7 @@ package com.mynikatech.memgine.component.commerce
 
 import com.mynikatech.memgine.exception.ApiException
 import com.mynikatech.memgine.exception.BadRequestException
+import com.mynikatech.memgine.exception.ConflictException
 import com.mynikatech.memgine.exception.ForbiddenException
 import com.mynikatech.memgine.exception.NotFoundException
 import com.mynikatech.memgine.net.dto.*
@@ -14,8 +15,93 @@ import org.postgresql.util.PSQLException
 class CommerceService(
     private val sql: CommerceSql,
     private val providers: CommerceProviderRegistry = CommerceProviderRegistry(),
-    private val remotePaymentConfiguration: CommerceRemotePaymentConfiguration = CommerceRemotePaymentConfiguration()
+    private val remotePaymentConfiguration: CommerceRemotePaymentConfiguration = CommerceRemotePaymentConfiguration(),
+    private val paymentProviderPolicy: CommercePaymentProviderPolicy = CommercePaymentProviderPolicy("local")
 ) {
+    /** Internal foundation for future Counter and Customer Commerce flows. */
+    internal fun resolvePaymentProviderRoute(
+        organizationId: String,
+        storeId: String?,
+        sourceChannel: String,
+        actorUserId: String
+    ): CommercePaymentProviderRouteRow = translate {
+        val route = sql.resolvePaymentProviderRoute(
+            validId(organizationId),
+            storeId?.let(::validId),
+            sourceChannel.trim().uppercase(),
+            actorUserId
+        ) ?: throw BadRequestException("No Commerce payment provider is configured")
+        paymentProviderPolicy.requireUsable(route)
+        route
+    }
+
+    fun paymentProviderRoutes(
+        organizationId: String,
+        storeId: String?,
+        actorUserId: String
+    ): List<CommercePaymentProviderRouteDto> = translate {
+        sql.paymentProviderRoutes(
+            validId(organizationId),
+            storeId?.let(::validId),
+            actorUserId
+        ).map(::paymentProviderRouteDto)
+    }
+
+    fun createPaymentProviderRoute(
+        organizationId: String,
+        request: CommercePaymentProviderRouteWriteDto,
+        actorUserId: String
+    ): CommercePaymentProviderRouteDto = savePaymentProviderRoute(
+        organizationId, null, request, actorUserId, true
+    )
+
+    fun updatePaymentProviderRoute(
+        organizationId: String,
+        routeId: String,
+        request: CommercePaymentProviderRouteWriteDto,
+        actorUserId: String
+    ): CommercePaymentProviderRouteDto = savePaymentProviderRoute(
+        organizationId, validId(routeId), request, actorUserId, false
+    )
+
+    fun deletePaymentProviderRoute(
+        organizationId: String,
+        routeId: String,
+        versionNo: Int,
+        actorUserId: String
+    ): Boolean = translate {
+        if (versionNo < 1) throw BadRequestException("Invalid Commerce payment-provider route")
+        sql.deletePaymentProviderRoute(
+            validId(organizationId), validId(routeId), versionNo, actorUserId
+        )
+    }
+
+    private fun savePaymentProviderRoute(
+        organizationId: String,
+        routeId: String?,
+        request: CommercePaymentProviderRouteWriteDto,
+        actorUserId: String,
+        create: Boolean
+    ): CommercePaymentProviderRouteDto = translate {
+        val sourceChannel = request.sourceChannel.trim().uppercase()
+        val providerCode = request.providerCode.trim().uppercase()
+        val integrationId = request.integrationConfigurationId?.trim()?.takeIf { it.isNotEmpty() }
+        if (sourceChannel !in setOf("COUNTER", "CUSTOMER") ||
+            !providerCode.matches(Regex("^[A-Z][A-Z0-9_]{1,63}$")) ||
+            request.versionNo < 1
+        ) throw BadRequestException("Invalid Commerce payment-provider route")
+        paymentProviderPolicy.requireConfigurable(providerCode, integrationId)
+        val org = validId(organizationId)
+        val savedId = sql.savePaymentProviderRoute(
+            routeId, org, request.storeId?.let(::validId), sourceChannel, providerCode,
+            integrationId?.let(::validId), request.enabled, request.versionNo, actorUserId, create
+        )
+        sql.paymentProviderRoutes(org, null, actorUserId)
+            .firstOrNull { it.routeId == savedId }
+            ?.let(::paymentProviderRouteDto)
+            ?: throw NotFoundException("Commerce payment-provider route was not saved")
+    }
+
     fun integrations(organizationId: String, actorUserId: String): List<CommerceIntegrationDto> =
         translate {
             sql.integrations(validId(organizationId), actorUserId).map {
@@ -443,6 +529,11 @@ class CommerceService(
     }
 
     private fun transactionDto(row: CommerceTransactionRow) = CommerceTransactionDto(row.transactionId,row.organizationId,row.storeId,row.customerUserId,row.subscriptionId,row.integrationConfigurationId,row.sourceChannel,row.status,row.currencyCode,row.subtotalMinor,row.adjustmentTotalMinor,row.taxTotalMinor,row.totalMinor,row.providerOrderId,row.providerTransactionId,row.idempotencyKey,row.failureCode,row.failureMessage,row.createdAt,row.updatedAt,row.completedAt,row.versionNo)
+    private fun paymentProviderRouteDto(row: CommercePaymentProviderRouteRow) = CommercePaymentProviderRouteDto(
+        row.routeId, row.organizationId, row.storeId, row.sourceChannel, row.providerCode,
+        row.integrationConfigurationId, row.enabled, row.createdAt, row.createdBy,
+        row.updatedAt, row.updatedBy, row.isDeleted, row.versionNo
+    )
     private fun transactionDetail(organizationId: String, transactionId: String, actorUserId: String, transaction: CommerceTransactionRow) =
         CommerceTransactionDetailDto(transactionDto(transaction), sql.transactionLines(organizationId, transactionId, actorUserId).map(::lineDto), sql.transactionAdjustments(organizationId, transactionId, actorUserId).map(::adjustmentDto), sql.transactionRedemptions(organizationId, transactionId, actorUserId).map(::redemptionDto))
     private fun lineDto(row: CommerceTransactionLineRow) = CommerceTransactionLineDto(row.lineId,row.transactionId,row.lineType,row.sourceEntityType,row.sourceEntityId,row.productMappingId,row.subscriptionPlanId,row.externalProductId,row.externalVariantId,row.description,row.quantity,row.unitPriceMinorSnapshot,row.unitPriceMinorAuthoritative,row.lineSubtotalMinor,row.currencyCode,row.priceSource,row.metadataJson,row.versionNo)
@@ -690,6 +781,7 @@ class CommerceService(
             .filterIsInstance<PSQLException>().firstOrNull()
         when (postgres?.sqlState) {
             "42501" -> throw ForbiddenException("Organization administration is not permitted")
+            "40001" -> throw ConflictException("Commerce payment-provider route was changed")
             "23503", "23505", "22023", "22001", "23514", "22P02" -> throw BadRequestException("Invalid commerce configuration")
             else -> throw error
         }

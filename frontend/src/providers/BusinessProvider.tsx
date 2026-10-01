@@ -9,8 +9,7 @@ import {
 
 import {
   BusinessConfiguration,
-  BUSINESS_CONTEXTS,
-  DEFAULT_ACTIVE_ORG_ID,
+  BusinessContext,
   Capability,
   hasCapability,
   ID,
@@ -26,6 +25,7 @@ import {
 } from "@/src/core";
 
 import { activeOrganizationStore } from "@/src/data/persistence/session/active-organization-store";
+import { useAuth } from "@/src/providers/AuthProvider";
 
 import { resolveOrganizationContext } from "@/src/core/organization/organization-context-resolver";
 
@@ -37,9 +37,7 @@ type Entitlements = {
 };
 
 type BusinessContextValue = {
-  organization: ReturnType<
-    typeof getBusinessContextFromRegistry
-  >["organization"];
+  organization: BusinessContext["organization"];
   account: OrganizationAccount;
   configuration: BusinessConfiguration;
   template: TemplateDefinition;
@@ -61,18 +59,6 @@ export type BusinessProviderOverrides = {
   configuration?: BusinessConfiguration;
   template?: TemplateDefinition;
 };
-
-function getBusinessContextFromRegistry(organizationId: ID) {
-  const context = BUSINESS_CONTEXTS[organizationId];
-
-  if (!context) {
-    throw new Error(
-      `Legacy business context '${organizationId}' could not be resolved.`,
-    );
-  }
-
-  return context;
-}
 
 export function BusinessThemeScope({
   theme,
@@ -96,31 +82,41 @@ export function BusinessProvider({
 }: {
   children: ReactNode;
 } & BusinessProviderOverrides) {
-  const [activeOrgId, setActiveOrgId] = useState<ID>(
-    organizationId ?? DEFAULT_ACTIVE_ORG_ID,
+  const { session, loading: sessionLoading } = useAuth();
+
+  const sessionOrganizationIds = useMemo(
+    () =>
+      new Set(
+        session?.access
+          .map((context) => context.organizationId)
+          .filter((id): id is ID => Boolean(id)) ?? [],
+      ),
+    [session],
   );
 
-  const [resolvedContext, setResolvedContext] = useState<ReturnType<
-    typeof getBusinessContextFromRegistry
-  > | null>(() => {
-    const initialId = organizationId ?? DEFAULT_ACTIVE_ORG_ID;
+  const sessionOrganizationId =
+    session?.posContext?.organizationId ??
+    session?.access.find((context) => context.organizationId)?.organizationId ??
+    null;
 
-    return BUSINESS_CONTEXTS[initialId] ?? null;
-  });
-
-  const [resolving, setResolving] = useState(
-    !BUSINESS_CONTEXTS[organizationId ?? DEFAULT_ACTIVE_ORG_ID],
+  const [activeOrgId, setActiveOrgId] = useState<ID | null>(
+    organizationId ?? null,
   );
+
+  const [resolvedContext, setResolvedContext] =
+    useState<BusinessContext | null>(null);
+
+  const [resolving, setResolving] = useState(true);
 
   /*
-   * Restore the last active organization from
-   * session persistence.
+   * Restore the last active organization from session persistence.
    *
-   * Explicit preview providers never participate
-   * in application active-organization state.
+   * If the persisted organization no longer belongs to the
+   * authenticated session, use the organization's session access
+   * context instead.
    */
   useEffect(() => {
-    if (organizationId) {
+    if (organizationId || sessionLoading) {
       return;
     }
 
@@ -129,11 +125,18 @@ export function BusinessProvider({
     void activeOrganizationStore
       .get()
       .then((storedId) => {
-        if (cancelled || !storedId || storedId === activeOrgId) {
+        if (cancelled) {
           return;
         }
 
-        setActiveOrgId(storedId);
+        const nextOrganizationId =
+          storedId && sessionOrganizationIds.has(storedId)
+            ? storedId
+            : sessionOrganizationId;
+
+        if (nextOrganizationId && nextOrganizationId !== activeOrgId) {
+          setActiveOrgId(nextOrganizationId);
+        }
       })
       .catch((error) => {
         console.error(
@@ -145,42 +148,42 @@ export function BusinessProvider({
     return () => {
       cancelled = true;
     };
-  }, [organizationId]);
+  }, [
+    activeOrgId,
+    organizationId,
+    sessionLoading,
+    sessionOrganizationId,
+    sessionOrganizationIds,
+  ]);
 
   /*
    * Resolve the current organization.
    *
-   * Persisted organization/API data is the source of truth.
-   * This is important for customer-facing screens because
-   * organization branding/logo changes made in Org Admin are
-   * stored in persisted organization configuration.
-   *
-   * BUSINESS_CONTEXTS remains a fallback for legacy/demo
-   * organizations that do not have a persisted organization
-   * context.
-   *
-   * IMPORTANT:
-   * Explicit BusinessPreviewScope providers also resolve their
-   * supplied organizationId here. Previously this effect returned
-   * immediately whenever organizationId was supplied, leaving
-   * resolvedContext null for persisted organizations and causing
-   * the preview/customer renderer to remain blank.
+   * Explicit organizationId is used for preview providers.
+   * Normal application providers use the active organization,
+   * falling back to the authenticated session organization.
    */
   useEffect(() => {
     let cancelled = false;
 
-    const targetOrganizationId = organizationId ?? activeOrgId;
+    const targetOrganizationId =
+      organizationId ?? activeOrgId ?? sessionOrganizationId;
+
+    if (sessionLoading) {
+      setResolving(true);
+      return;
+    }
+
+    if (!targetOrganizationId) {
+      setResolvedContext(null);
+      setResolving(false);
+      return;
+    }
 
     const resolve = async () => {
       setResolving(true);
 
       try {
-        /*
-         * Resolve persisted organization data FIRST.
-         *
-         * This applies both to the normal provider and to an
-         * explicit preview provider with organizationId.
-         */
         const context = await resolveOrganizationContext(targetOrganizationId);
 
         if (cancelled) {
@@ -190,42 +193,6 @@ export function BusinessProvider({
         if (context) {
           setResolvedContext(context);
           setResolving(false);
-          return;
-        }
-
-        /*
-         * Legacy fallback.
-         */
-        const legacy = BUSINESS_CONTEXTS[targetOrganizationId];
-
-        if (legacy) {
-          setResolvedContext(legacy);
-          setResolving(false);
-          return;
-        }
-
-        /*
-         * Only the normal provider may change the active organization
-         * as a recovery mechanism. An explicit preview provider must
-         * never change application-wide active-organization state.
-         */
-        if (!organizationId && targetOrganizationId !== DEFAULT_ACTIVE_ORG_ID) {
-          console.warn(
-            `[BusinessProvider] active organization '${targetOrganizationId}' could not be resolved. ` +
-              `Falling back to '${DEFAULT_ACTIVE_ORG_ID}'.`,
-          );
-
-          setActiveOrgId(DEFAULT_ACTIVE_ORG_ID);
-
-          void activeOrganizationStore
-            .set(DEFAULT_ACTIVE_ORG_ID)
-            .catch((error) => {
-              console.error(
-                "[BusinessProvider] fallback organization persistence failed:",
-                error,
-              );
-            });
-
           return;
         }
 
@@ -242,42 +209,6 @@ export function BusinessProvider({
           error,
         );
 
-        /*
-         * Only the normal provider may recover by changing the
-         * application active organization. Preview providers must
-         * remain isolated from session state.
-         */
-        if (!organizationId && targetOrganizationId !== DEFAULT_ACTIVE_ORG_ID) {
-          console.warn(
-            `[BusinessProvider] recovering from invalid active organization '${targetOrganizationId}'. ` +
-              `Using '${DEFAULT_ACTIVE_ORG_ID}'.`,
-          );
-
-          setActiveOrgId(DEFAULT_ACTIVE_ORG_ID);
-
-          void activeOrganizationStore
-            .set(DEFAULT_ACTIVE_ORG_ID)
-            .catch((persistError) => {
-              console.error(
-                "[BusinessProvider] fallback organization persistence failed:",
-                persistError,
-              );
-            });
-
-          return;
-        }
-
-        /*
-         * Final legacy fallback for the default/explicit organization.
-         */
-        const legacy = BUSINESS_CONTEXTS[targetOrganizationId];
-
-        if (legacy) {
-          setResolvedContext(legacy);
-          setResolving(false);
-          return;
-        }
-
         setResolvedContext(null);
         setResolving(false);
       }
@@ -288,14 +219,11 @@ export function BusinessProvider({
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, organizationId]);
-
-  const resolvedOrgId = organizationId ?? activeOrgId;
+  }, [activeOrgId, organizationId, sessionLoading, sessionOrganizationId]);
 
   /*
-   * Preview providers continue to use their explicitly
-   * supplied context. Normal providers use the resolved
-   * persisted/legacy context.
+   * Preview providers continue to use their explicitly supplied
+   * context. Normal providers use the resolved persisted context.
    */
   const value = useMemo<BusinessContextValue | null>(() => {
     if (!resolvedContext) {
@@ -381,17 +309,13 @@ export function BusinessProvider({
   ]);
 
   /*
-   * We deliberately don't throw just because a newly-created
-   * organization isn't present in the legacy registry.
+   * Do not crash the application while the authenticated
+   * organization context is unavailable.
+   *
+   * There is deliberately no mock/default organization fallback.
    */
   if (!value) {
-    if (resolving) {
-      return null;
-    }
-
-    throw new Error(
-      `Active organization '${resolvedOrgId}' could not be resolved.`,
-    );
+    return <>{children}</>;
   }
 
   return <BusinessCtx.Provider value={value}>{children}</BusinessCtx.Provider>;
@@ -429,12 +353,24 @@ export function useBusiness(): BusinessContextValue {
   return ctx;
 }
 
+export function useOptionalBusiness(): BusinessContextValue | null {
+  return useContext(BusinessCtx);
+}
+
 export function useTheme(): Theme {
   const override = useContext(ThemeOverrideCtx);
 
-  const business = useBusiness();
+  if (override) {
+    return override;
+  }
 
-  return override ?? business.theme;
+  const business = useContext(BusinessCtx);
+
+  if (business) {
+    return business.theme;
+  }
+
+  return buildTheme(undefined);
 }
 
 export function useCan(capability: Capability): boolean {

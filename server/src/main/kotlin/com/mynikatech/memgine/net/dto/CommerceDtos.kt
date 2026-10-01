@@ -25,6 +25,33 @@ data class CommerceIntegrationDto(
 )
 
 @Serializable
+data class CommercePaymentProviderRouteDto(
+    val routeId: String,
+    val organizationId: String,
+    val storeId: String? = null,
+    val sourceChannel: String,
+    val providerCode: String,
+    val integrationConfigurationId: String? = null,
+    val enabled: Boolean,
+    val createdAt: String,
+    val createdBy: String,
+    val updatedAt: String? = null,
+    val updatedBy: String? = null,
+    val isDeleted: Boolean,
+    val versionNo: Int
+)
+
+@Serializable
+data class CommercePaymentProviderRouteWriteDto(
+    val storeId: String? = null,
+    val sourceChannel: String,
+    val providerCode: String,
+    val integrationConfigurationId: String? = null,
+    val enabled: Boolean = true,
+    val versionNo: Int = 1
+)
+
+@Serializable
 data class CommerceProductSnapshotDto(
     val snapshotId: String,
     val organizationId: String,

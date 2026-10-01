@@ -280,6 +280,33 @@ export interface IntegrationConfiguration {
   versionNo: number;
 }
 
+/** Organization/store payment-provider routing for Commerce. */
+export interface CommercePaymentProviderRoute {
+  routeId: ID;
+  organizationId: ID;
+  storeId?: ID | null;
+  sourceChannel: "COUNTER" | "CUSTOMER";
+  providerCode: string;
+  integrationConfigurationId?: ID | null;
+  enabled: boolean;
+  createdAt: ISODateString;
+  createdBy: ID;
+  updatedAt?: ISODateString | null;
+  updatedBy?: ID | null;
+  isDeleted: boolean;
+  versionNo: number;
+}
+
+export type CommercePaymentProviderRouteWrite = Pick<
+  CommercePaymentProviderRoute,
+  | "storeId"
+  | "sourceChannel"
+  | "providerCode"
+  | "integrationConfigurationId"
+  | "enabled"
+  | "versionNo"
+>;
+
 /** The business integration configuration type. */
 export interface IntegrationType {
   id: string;

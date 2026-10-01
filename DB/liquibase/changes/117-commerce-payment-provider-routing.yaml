@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 117-commerce-payment-provider-routing
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/117-commerce-payment-provider-routing.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

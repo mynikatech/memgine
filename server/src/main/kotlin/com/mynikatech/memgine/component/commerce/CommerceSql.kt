@@ -11,6 +11,22 @@ data class CommerceIntegrationRow(
     var integrationTypeCode: String = ""
 )
 
+data class CommercePaymentProviderRouteRow(
+    var routeId: String = "",
+    var organizationId: String = "",
+    var storeId: String? = null,
+    var sourceChannel: String = "",
+    var providerCode: String = "",
+    var integrationConfigurationId: String? = null,
+    var enabled: Boolean = true,
+    var createdAt: String = "",
+    var createdBy: String = "",
+    var updatedAt: String? = null,
+    var updatedBy: String? = null,
+    var isDeleted: Boolean = false,
+    var versionNo: Int = 1
+)
+
 data class CommerceProductSnapshotRow(
     var snapshotId: String = "",
     var organizationId: String = "",
@@ -73,6 +89,45 @@ interface CommerceSql {
         @Bind("organizationId") organizationId: String,
         @Bind("actorUserId") actorUserId: String
     ): List<CommerceIntegrationRow>
+
+    @SqlQuery("SELECT * FROM commerce_resolve_payment_provider_route(:organizationId, :storeId, :sourceChannel, :actorUserId)")
+    @RegisterBeanMapper(CommercePaymentProviderRouteRow::class)
+    fun resolvePaymentProviderRoute(
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String?,
+        @Bind("sourceChannel") sourceChannel: String,
+        @Bind("actorUserId") actorUserId: String
+    ): CommercePaymentProviderRouteRow?
+
+    @SqlQuery("SELECT * FROM commerce_list_payment_provider_routes(:organizationId, :storeId, :actorUserId)")
+    @RegisterBeanMapper(CommercePaymentProviderRouteRow::class)
+    fun paymentProviderRoutes(
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String?,
+        @Bind("actorUserId") actorUserId: String
+    ): List<CommercePaymentProviderRouteRow>
+
+    @SqlQuery("SELECT commerce_save_payment_provider_route(:routeId, :organizationId, :storeId, :sourceChannel, :providerCode, :integrationConfigurationId, :enabled, :versionNo, :actorUserId, :create)")
+    fun savePaymentProviderRoute(
+        @Bind("routeId") routeId: String?,
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String?,
+        @Bind("sourceChannel") sourceChannel: String,
+        @Bind("providerCode") providerCode: String,
+        @Bind("integrationConfigurationId") integrationConfigurationId: String?,
+        @Bind("enabled") enabled: Boolean,
+        @Bind("versionNo") versionNo: Int,
+        @Bind("actorUserId") actorUserId: String,
+        @Bind("create") create: Boolean
+    ): String
+
+    @SqlQuery("SELECT commerce_delete_payment_provider_route(:organizationId, :routeId, :versionNo, :actorUserId)")
+    fun deletePaymentProviderRoute(
+        @Bind("organizationId") organizationId: String,
+        @Bind("routeId") routeId: String,
+        @Bind("versionNo") versionNo: Int,
+        @Bind("actorUserId") actorUserId: String
+    ): Boolean
 
     @SqlQuery("SELECT * FROM get_commerce_product_snapshots(:organizationId, :actorUserId)")
     @RegisterBeanMapper(CommerceProductSnapshotRow::class)

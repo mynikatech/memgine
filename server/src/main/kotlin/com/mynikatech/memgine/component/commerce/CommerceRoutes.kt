@@ -10,6 +10,7 @@ import io.ktor.server.plugins.callid.callId
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
@@ -18,6 +19,43 @@ import io.ktor.server.routing.route
 fun Route.commerceRoutes(service: CommerceService) {
     route("/organizations/{organizationId}") {
         route("/commerce") {
+            route("/payment-provider-routes") {
+                get {
+                    call.respond(ApiResponse.success(service.paymentProviderRoutes(
+                        orgId(call), call.request.queryParameters["storeId"],
+                        call.authenticatedPrincipal().userId
+                    ), call.callId))
+                }
+                get("/resolve") {
+                    call.respond(ApiResponse.success(service.resolvePaymentProviderRoute(
+                        orgId(call), call.request.queryParameters["storeId"],
+                        required(call.request.queryParameters["sourceChannel"]),
+                        call.authenticatedPrincipal().userId
+                    ), call.callId))
+                }
+                post {
+                    call.respond(HttpStatusCode.Created, ApiResponse.success(
+                        service.createPaymentProviderRoute(
+                            orgId(call), call.receive<CommercePaymentProviderRouteWriteDto>(),
+                            call.authenticatedPrincipal().userId
+                        ), call.callId))
+                }
+                put("/{routeId}") {
+                    call.respond(ApiResponse.success(service.updatePaymentProviderRoute(
+                        orgId(call), required(call.parameters["routeId"]),
+                        call.receive<CommercePaymentProviderRouteWriteDto>(),
+                        call.authenticatedPrincipal().userId
+                    ), call.callId))
+                }
+                delete("/{routeId}") {
+                    val versionNo = call.request.queryParameters["versionNo"]?.toIntOrNull()
+                        ?: throw BadRequestException("Valid version number is required")
+                    call.respond(ApiResponse.success(service.deletePaymentProviderRoute(
+                        orgId(call), required(call.parameters["routeId"]), versionNo,
+                        call.authenticatedPrincipal().userId
+                    ), call.callId))
+                }
+            }
             get("/integrations") {
                 call.respond(ApiResponse.success(service.integrations(orgId(call), call.authenticatedPrincipal().userId), call.callId))
             }

@@ -10,14 +10,19 @@ import {
 } from "react-native";
 
 import type {
+  CommercePaymentProviderRoute,
+  CommercePaymentProviderRouteWrite,
   IntegrationConfiguration,
   ReferenceDataItem,
   Status,
+  Store,
 } from "@/src/core";
 
 import { createEmptyIntegrationConfiguration, services } from "@/src/core";
+import { CommercePaymentProviderRouteApi } from "@/src/data/api/commerce-payment-provider-route-api";
 import { useBusiness } from "@/src/providers";
 import { DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
+import { CommercePaymentProviderRouteForm } from "@/src/ui/admin/CommercePaymentProviderRouteForm";
 import { IntegrationConfigurationForm } from "@/src/ui/admin/IntegrationConfigurationForm";
 
 export default function Integrations() {
@@ -36,6 +41,12 @@ export default function Integrations() {
   );
 
   const [statuses, setStatuses] = useState<Status[]>([]);
+  const [paymentRoutes, setPaymentRoutes] = useState<CommercePaymentProviderRoute[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
+  const [paymentRouteVisible, setPaymentRouteVisible] = useState(false);
+  const [editingPaymentRoute, setEditingPaymentRoute] = useState<CommercePaymentProviderRoute | null>(null);
+  const [viewingPaymentRoute, setViewingPaymentRoute] = useState(false);
+  const [savingPaymentRoute, setSavingPaymentRoute] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +66,8 @@ export default function Integrations() {
 
   const { width } = useWindowDimensions();
   const isMobile = width < 700;
+  const paymentRouteApi = useMemo(() => new CommercePaymentProviderRouteApi(), []);
+  const allowTestPaymentProvider = process.env.EXPO_PUBLIC_APP_ENV !== "prod";
 
   const activeIntegrationStatusId = useMemo(
     () =>
@@ -72,11 +85,15 @@ export default function Integrations() {
       setError(null);
 
       try {
-        const [integrationList, typeList, statusList] = await Promise.all([
+        const [integrationList, typeList, statusList, routeResult, storeList] = await Promise.all([
           services.organization.listIntegrationConfigurations(organization.id),
           services.referenceData.listIntegrationTypes(),
           services.status.listIntegrationConfigurationStatuses(),
+          paymentRouteApi.list(organization.id),
+          services.organization.listStores(organization.id),
         ]);
+
+        if (!routeResult.success) throw new Error(routeResult.error.message);
 
         if (!mounted) {
           return;
@@ -90,6 +107,8 @@ export default function Integrations() {
         setCommittedIntegrations(visibleIntegrations);
         setIntegrationTypes(typeList);
         setStatuses(statusList);
+        setPaymentRoutes(routeResult.data.filter((route) => !route.isDeleted));
+        setStores(storeList.filter((store) => !store.isDeleted));
       } catch (loadError) {
         if (!mounted) {
           return;
@@ -112,7 +131,7 @@ export default function Integrations() {
     return () => {
       mounted = false;
     };
-  }, [organization.id]);
+  }, [organization.id, paymentRouteApi]);
 
   const getTypeName = (id: string) =>
     integrationTypes.find((item) => item.id === id)?.name ?? "Unknown";
@@ -154,6 +173,21 @@ export default function Integrations() {
       },
     ],
     [integrationTypes, statuses],
+  );
+
+  const paymentRouteColumns = useMemo<DataTableColumn<CommercePaymentProviderRoute>[]>(
+    () => [
+      { key: "sourceChannel", title: "Channel", width: 130,
+        render: (item) => <Text variant="body" color="text">{item.sourceChannel === "COUNTER" ? "Counter" : "Customer"}</Text> },
+      { key: "storeId", title: "Scope", width: 200,
+        render: (item) => <Text variant="body" color="text">{item.storeId ? stores.find((store) => store.id === item.storeId)?.name ?? "Store" : "Organization default"}</Text> },
+      { key: "providerCode", title: "Provider", width: 150 },
+      { key: "integrationConfigurationId", title: "Integration", width: 220,
+        render: (item) => <Text variant="body" color="text">{item.integrationConfigurationId ? integrations.find((integration) => integration.id === item.integrationConfigurationId)?.integrationName ?? "Unavailable" : "—"}</Text> },
+      { key: "enabled", title: "Status", width: 120,
+        render: (item) => <Text variant="body" color="text">{item.enabled ? "Enabled" : "Disabled"}</Text> },
+    ],
+    [integrations, stores],
   );
 
   const handleStartEditing = () => {
@@ -245,6 +279,41 @@ export default function Integrations() {
     }
 
     setSaveMessage(null);
+  };
+
+  const reloadPaymentRoutes = async () => {
+    const result = await paymentRouteApi.list(organization.id);
+    if (!result.success) throw new Error(result.error.message);
+    setPaymentRoutes(result.data.filter((route) => !route.isDeleted));
+  };
+
+  const savePaymentRoute = async (route: CommercePaymentProviderRouteWrite) => {
+    setSavingPaymentRoute(true);
+    try {
+      const result = editingPaymentRoute
+        ? await paymentRouteApi.update(organization.id, editingPaymentRoute.routeId, route)
+        : await paymentRouteApi.create(organization.id, route);
+      if (!result.success) throw new Error(result.error.message);
+      await reloadPaymentRoutes();
+      setPaymentRouteVisible(false);
+      setEditingPaymentRoute(null);
+      setViewingPaymentRoute(false);
+    } catch (saveError) {
+      Alert.alert("Unable to save payment route", saveError instanceof Error ? saveError.message : "Unable to save the payment provider route.");
+    } finally {
+      setSavingPaymentRoute(false);
+    }
+  };
+
+  const deletePaymentRoute = (route: CommercePaymentProviderRoute) => {
+    Alert.alert("Delete payment route", "This route will no longer be used for payment resolution.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: () => void (async () => {
+        const result = await paymentRouteApi.remove(organization.id, route.routeId, route.versionNo);
+        if (!result.success) throw new Error(result.error.message);
+        await reloadPaymentRoutes();
+      })().catch((error: unknown) => Alert.alert("Unable to delete payment route", error instanceof Error ? error.message : "Unable to delete the payment provider route.")) },
+    ]);
   };
 
   const handleSaveChanges = async () => {
@@ -449,6 +518,28 @@ export default function Integrations() {
         }
       />
 
+      <View style={styles.routeHeader}>
+        <View style={styles.headerText}>
+          <Text variant="h2" color="text">Payment Provider Routes</Text>
+          <Text variant="bodySmall" color="textMuted">Configure the provider used for Counter and Customer Commerce orders.</Text>
+        </View>
+        <Pressable onPress={() => { setEditingPaymentRoute(null); setViewingPaymentRoute(false); setPaymentRouteVisible(true); }} style={styles.addButton}>
+          <Text variant="body" color="background">+ Add Payment Route</Text>
+        </Pressable>
+      </View>
+
+      <DataTable
+        columns={paymentRouteColumns}
+        data={paymentRoutes}
+        keyExtractor={(item) => item.routeId}
+        emptyMessage="No payment provider routes configured."
+        actions={[
+          { label: "View", onPress: (route) => { setEditingPaymentRoute(route); setViewingPaymentRoute(true); setPaymentRouteVisible(true); } },
+          { label: "Edit", onPress: (route) => { setEditingPaymentRoute(route); setViewingPaymentRoute(false); setPaymentRouteVisible(true); } },
+          { label: "Delete", onPress: deletePaymentRoute },
+        ]}
+      />
+
       <Modal
         visible={formVisible}
         onClose={handleCloseForm}
@@ -483,6 +574,23 @@ export default function Integrations() {
             onCancel={handleCloseForm}
           />
         ) : null}
+      </Modal>
+
+      <Modal
+        visible={paymentRouteVisible}
+        onClose={() => { if (!savingPaymentRoute) { setPaymentRouteVisible(false); setEditingPaymentRoute(null); setViewingPaymentRoute(false); } }}
+        title={viewingPaymentRoute ? "View Payment Provider Route" : editingPaymentRoute ? "Edit Payment Provider Route" : "Add Payment Provider Route"}
+        scrollable
+      >
+        <CommercePaymentProviderRouteForm
+          route={editingPaymentRoute}
+          stores={stores}
+          integrations={integrations}
+          mode={viewingPaymentRoute ? "view" : editingPaymentRoute ? "edit" : "add"}
+          allowTest={allowTestPaymentProvider}
+          onSave={(route) => void savePaymentRoute(route)}
+          onCancel={() => { setPaymentRouteVisible(false); setEditingPaymentRoute(null); setViewingPaymentRoute(false); }}
+        />
       </Modal>
     </ScrollView>
   );
@@ -524,6 +632,14 @@ const styles = StyleSheet.create({
   headerActionsMobile: {
     width: "100%",
     flexWrap: "wrap",
+  },
+
+  routeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 16,
+    paddingTop: 8,
   },
 
   primaryButton: {
