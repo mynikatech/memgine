@@ -34,6 +34,7 @@ type StaffFormProps = {
   existingStaff: Staff[];
   stores: Store[];
   staffStatuses: Status[];
+  existingUsers: User[];
   countries: CountryReference[];
 
   /*
@@ -131,11 +132,22 @@ function createPersonFromUser(
     preferredLanguageId: undefined,
   };
 }
+function normalizePhone(phone?: PhoneNumber): string {
+  if (!phone) {
+    return "";
+  }
+
+  const callingCode = (phone.callingCode ?? "").replace(/\D/g, "");
+  const number = (phone.number ?? "").replace(/\D/g, "");
+
+  return `${callingCode}${number}`;
+}
 
 export function StaffForm({
   staff,
   readOnly = false,
   existingStaff,
+  existingUsers,
   stores,
   staffStatuses,
   countries,
@@ -169,6 +181,7 @@ export function StaffForm({
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [phoneError, setPhoneError] = useState("");
 
   useEffect(() => {
     setForm({
@@ -184,6 +197,7 @@ export function StaffForm({
     );
 
     setSaveError("");
+    setPhoneError("");
   }, [staff, user, countries, associatedStoreIds, isNew, activeStaffStatusId]);
 
   const updateStaff = <K extends keyof Staff>(field: K, value: Staff[K]) => {
@@ -293,6 +307,7 @@ export function StaffForm({
 
   const handleSave = async () => {
     setSaveError("");
+    setPhoneError("");
 
     const firstName = person.firstName.trim();
 
@@ -311,7 +326,31 @@ export function StaffForm({
     }
 
     if (!person.primaryPhone || !phone) {
-      setSaveError("Primary Phone Number is required.");
+      setPhoneError("Primary Phone Number is required.");
+      return;
+    }
+
+    if (phone.length !== 10) {
+      setPhoneError("Primary Phone Number must contain exactly 10 digits.");
+      return;
+    }
+
+    const normalizedPhone = normalizePhone(person.primaryPhone);
+
+    const duplicatePhone = existingUsers.some((existingUser) => {
+      /*
+       * When editing an existing Staff member, their own phone
+       * must not be treated as a duplicate.
+       */
+      if (user && existingUser.id === user.id) {
+        return false;
+      }
+
+      return normalizePhone(existingUser.primaryPhone) === normalizedPhone;
+    });
+
+    if (duplicatePhone) {
+      setPhoneError("A user with this phone number already exists.");
       return;
     }
 
@@ -436,7 +475,11 @@ export function StaffForm({
           required
           value={person.primaryPhone}
           countries={countries}
-          onChange={(value) => updatePerson("primaryPhone", value)}
+          error={phoneError}
+          onChange={(value) => {
+            setPhoneError("");
+            updatePerson("primaryPhone", value);
+          }}
         />
       </View>
 

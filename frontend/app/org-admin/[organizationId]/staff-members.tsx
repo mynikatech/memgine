@@ -919,6 +919,7 @@ export default function OrgAdminStaff() {
             staff={editingStaff}
             readOnly={formReadOnly}
             existingStaff={staff}
+            existingUsers={users}
             stores={stores}
             staffStatuses={staffStatuses}
             countries={countries}
