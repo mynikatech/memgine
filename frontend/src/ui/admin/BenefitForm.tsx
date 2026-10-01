@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-
+import { DateInput } from "../DateInput";
 import { BenefitFrequencyType } from "@/src/core";
 import type {
   Benefit,
@@ -1020,15 +1020,14 @@ export function BenefitForm({
                   </View>
                 </View>
                 <View style={styles.field}>
-                  <Input
+                  <DateInput
                     label="Effective Date"
                     value={rule.effectiveDate}
-                    placeholder="YYYY-MM-DD"
-                    onChangeText={(value) =>
+                    onChange={(value) =>
                       setRules((current) =>
                         current.map((item) =>
                           item.id === rule.id
-                            ? { ...item, effectiveDate: value }
+                            ? { ...item, effectiveDate: value ?? "" }
                             : item,
                         ),
                       )
@@ -1036,15 +1035,15 @@ export function BenefitForm({
                   />
                 </View>
                 <View style={styles.field}>
-                  <Input
+                  <DateInput
                     label="Expiry Date"
-                    value={rule.expiryDate ?? ""}
-                    placeholder="YYYY-MM-DD (optional)"
-                    onChangeText={(value) =>
+                    value={rule.expiryDate}
+                    minimumDate={rule.effectiveDate}
+                    onChange={(value) =>
                       setRules((current) =>
                         current.map((item) =>
                           item.id === rule.id
-                            ? { ...item, expiryDate: value || undefined }
+                            ? { ...item, expiryDate: value }
                             : item,
                         ),
                       )
@@ -1068,23 +1067,24 @@ export function BenefitForm({
 
         <View style={styles.grid}>
           <View style={styles.field}>
-            <Input
+            <DateInput
               label="Effective Date"
               value={form.effectiveDate}
-              placeholder="YYYY-MM-DD"
               required
               error={errors.effectiveDate}
-              onChangeText={(value) => update("effectiveDate", value)}
-              onBlur={() => markTouched("effectiveDate")}
+              onChange={(value) => {
+                update("effectiveDate", value ?? "");
+                markTouched("effectiveDate");
+              }}
             />
           </View>
 
           <View style={styles.field}>
-            <Input
+            <DateInput
               label="Expiry Date"
-              value={form.expiryDate ?? ""}
-              placeholder="YYYY-MM-DD (optional)"
-              onChangeText={(value) => update("expiryDate", value || undefined)}
+              value={form.expiryDate}
+              minimumDate={form.effectiveDate}
+              onChange={(value) => update("expiryDate", value)}
             />
           </View>
         </View>

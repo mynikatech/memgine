@@ -20,6 +20,7 @@ export { Checkbox } from "./Checkbox";
 export { BrandLogo } from "./BrandLogo";
 export { DateInput } from "./DateInput";
 export type { DateInputProps } from "./DateInput";
+export * from "./DraftSaveMessage";
 
 export { Image } from "./Image";
 export type { ImageProps } from "./Image";

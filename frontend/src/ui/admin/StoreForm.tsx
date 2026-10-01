@@ -16,6 +16,7 @@ import { useTheme } from "@/src/providers";
 
 import {
   AddressForm,
+  DateInput,
   Card,
   Input,
   ReferenceSelect,
@@ -517,28 +518,26 @@ export function StoreForm({
             </View>
 
             <View style={styles.field}>
-              <Input
+              <DateInput
                 label="Opening Date"
-                value={form.openingDate ?? ""}
-                placeholder="YYYY-MM-DD"
-                editable={!readOnly}
-                onChangeText={(value) =>
-                  update("openingDate", value || undefined)
-                }
+                value={form.openingDate}
+                disabled={readOnly}
+                onChange={(value) => update("openingDate", value)}
               />
             </View>
 
             <View style={styles.field}>
-              <Input
+              <DateInput
                 label="Closing Date"
-                value={form.closingDate ?? ""}
+                value={form.closingDate}
                 placeholder={
-                  isNew ? "Available after store creation" : "YYYY-MM-DD"
+                  isNew ? "Available after store creation" : "Select date"
                 }
-                editable={!isNew}
-                onChangeText={(value) => {
+                disabled={isNew || readOnly}
+                minimumDate={form.openingDate}
+                onChange={(value) => {
                   if (!isNew && !readOnly) {
-                    update("closingDate", value || undefined);
+                    update("closingDate", value);
                   }
                 }}
               />

@@ -24,6 +24,8 @@ import {
   toFormattingContext,
 } from "@/src/core";
 
+import { ActivityIndicator, StyleSheet, View } from "react-native";
+
 import { activeOrganizationStore } from "@/src/data/persistence/session/active-organization-store";
 import { useAuth } from "@/src/providers/AuthProvider";
 
@@ -308,16 +310,27 @@ export function BusinessProvider({
     organizationId,
   ]);
 
+  const styles = StyleSheet.create({
+    loading: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+  });
+
   /*
    * Do not crash the application while the authenticated
    * organization context is unavailable.
    *
    * There is deliberately no mock/default organization fallback.
    */
-  if (!value) {
-    return <>{children}</>;
+  if (resolving || !value) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator />
+      </View>
+    );
   }
-
   return <BusinessCtx.Provider value={value}>{children}</BusinessCtx.Provider>;
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
-
+import { DateInput } from "../DateInput";
 import type {
   Benefit,
   MembershipProduct,
@@ -122,8 +122,9 @@ export function MembershipForm({
   const createPlan = (): PlanDraft => {
     const now = new Date().toISOString();
     const activePlanStatus = subscriptionPlanStatuses.find(isActiveStatus);
-    const defaultCurrency =
-      currencies.find((item) => item.code?.toUpperCase() === preferredCurrencyCode);
+    const defaultCurrency = currencies.find(
+      (item) => item.code?.toUpperCase() === preferredCurrencyCode,
+    );
 
     return {
       id: `plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -412,23 +413,20 @@ export function MembershipForm({
           disabled={isNewProduct || readOnly}
         />
 
-        <Input
+        <DateInput
           label="Effective Date"
           required
           value={draft.effectiveDate}
-          onChangeText={(value) => update("effectiveDate", value)}
-          placeholder="YYYY-MM-DD"
-          editable={!readOnly}
+          disabled={readOnly}
+          onChange={(value) => update("effectiveDate", value ?? "")}
         />
 
-        <Input
+        <DateInput
           label="Expiry Date"
-          value={draft.expiryDate ?? ""}
-          onChangeText={(value) =>
-            update("expiryDate", value.trim() ? value : undefined)
-          }
-          placeholder="YYYY-MM-DD"
-          editable={!readOnly}
+          value={draft.expiryDate}
+          disabled={readOnly}
+          minimumDate={draft.effectiveDate}
+          onChange={(value) => update("expiryDate", value)}
         />
       </View>
 
@@ -712,29 +710,22 @@ export function MembershipForm({
                 readOnly || isNewProduct || !existingPlanIds.has(plan.id)
               }
             />
-            <Input
+            <DateInput
               label="Effective Date"
               required
               value={plan.effectiveDate}
-              onChangeText={(value) =>
-                updatePlan(plan.id, "effectiveDate", value)
+              disabled={readOnly}
+              onChange={(value) =>
+                updatePlan(plan.id, "effectiveDate", value ?? "")
               }
-              placeholder="YYYY-MM-DD"
-              editable={!readOnly}
             />
 
-            <Input
+            <DateInput
               label="Expiry Date"
-              value={plan.expiryDate ?? ""}
-              onChangeText={(value) =>
-                updatePlan(
-                  plan.id,
-                  "expiryDate",
-                  value.trim() ? value : undefined,
-                )
-              }
-              placeholder="YYYY-MM-DD"
-              editable={!readOnly}
+              value={plan.expiryDate}
+              disabled={readOnly}
+              minimumDate={plan.effectiveDate}
+              onChange={(value) => updatePlan(plan.id, "expiryDate", value)}
             />
           </View>
         ))}

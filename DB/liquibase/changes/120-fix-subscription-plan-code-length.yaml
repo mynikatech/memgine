@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 120-fix-subscription-plan-code-length
+      author: mynikatech
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/120-fix-subscription-plan-code-length.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

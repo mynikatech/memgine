@@ -17,7 +17,14 @@ import { membershipDraftStore } from "@/src/core/services/membership-draft-store
 import { ServerReferenceDataService } from "@/src/core/services/reference-data-service.server";
 import { API_BASE_URL } from "@/src/data/api/http-client";
 import { useBusiness } from "@/src/providers";
-import { Button, DataTable, type DataTableColumn, Modal, Text } from "@/src/ui";
+import {
+  Button,
+  DataTable,
+  type DataTableColumn,
+  Modal,
+  Text,
+  DraftSaveMessage,
+} from "@/src/ui";
 
 import { MembershipForm } from "@/src/ui/admin/MembershipForm";
 
@@ -68,6 +75,7 @@ export default function OrgAdminMemberships() {
   const [saving, setSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [saveMessageVisible, setSaveMessageVisible] = useState(false);
+  const [draftSaved, setDraftSaved] = useState(false);
   const [isViewing, setIsViewing] = useState(false);
 
   const [formVisible, setFormVisible] = useState(false);
@@ -120,6 +128,7 @@ export default function OrgAdminMemberships() {
         setIsEditing(false);
         setIsViewing(false);
         setSaveMessageVisible(false);
+        setDraftSaved(false);
 
         setBenefits(benefitList);
         setBenefitStatuses(benefitStatusList);
@@ -129,8 +138,15 @@ export default function OrgAdminMemberships() {
         setSubscriptionPlanStatuses(planStatusList);
         setCurrencies(currencyList);
         const currencyByCountry: Record<string, string> = {
-          CA: "CAD", US: "USD", GB: "GBP", UK: "GBP", IN: "INR",
-          AU: "AUD", SG: "SGD", AE: "AED", NZ: "NZD",
+          CA: "CAD",
+          US: "USD",
+          GB: "GBP",
+          UK: "GBP",
+          IN: "INR",
+          AU: "AUD",
+          SG: "SGD",
+          AE: "AED",
+          NZ: "NZD",
         };
         setPreferredCurrencyCode(
           currencyByCountry[
@@ -270,11 +286,10 @@ export default function OrgAdminMemberships() {
         status.statusName?.trim().toLowerCase() === "active",
     );
 
-    const defaultCurrency =
-      currencies.find(
-        (currency) =>
-          currency.code?.trim().toUpperCase() === preferredCurrencyCode,
-      );
+    const defaultCurrency = currencies.find(
+      (currency) =>
+        currency.code?.trim().toUpperCase() === preferredCurrencyCode,
+    );
 
     return {
       id: `membership-plan-${Date.now()}`,
@@ -284,8 +299,7 @@ export default function OrgAdminMemberships() {
         [],
       ),
       subscriptionPlanName: "Monthly",
-      subscriptionPlanStatusId:
-        activeStatus?.id ?? "",
+      subscriptionPlanStatusId: activeStatus?.id ?? "",
       currencyId: defaultCurrency?.id ?? "",
       subscriptionPeriod: 1,
       subscriptionPeriodUnit: "MONTH",
@@ -435,6 +449,7 @@ export default function OrgAdminMemberships() {
 
     setFormVisible(false);
     setEditingProduct(null);
+    setDraftSaved(true);
   };
 
   /* ---------------------------------------------------------------------- */
@@ -537,6 +552,7 @@ export default function OrgAdminMemberships() {
       membershipDraftStore.clear(organization.id);
 
       setIsEditing(false);
+      setDraftSaved(false);
       setSaveMessageVisible(true);
 
       setTimeout(() => {
@@ -572,10 +588,12 @@ export default function OrgAdminMemberships() {
     setEditingProduct(null);
     setIsViewing(false);
     setIsEditing(false);
+    setDraftSaved(false);
   };
 
   const handleStartEditing = () => {
     setSaveMessageVisible(false);
+    setDraftSaved(false);
     setIsViewing(false);
     setIsEditing(true);
   };
@@ -592,6 +610,7 @@ export default function OrgAdminMemberships() {
     setFormVisible(false);
     setEditingProduct(null);
     setIsEditing(false);
+    setDraftSaved(false);
   };
 
   /* ---------------------------------------------------------------------- */
@@ -807,7 +826,7 @@ export default function OrgAdminMemberships() {
           </Text>
         </View>
       ) : null}
-
+      <DraftSaveMessage visible={draftSaved} />
       {loading ? (
         <View style={styles.center}>
           <Text variant="body" color="textMuted">

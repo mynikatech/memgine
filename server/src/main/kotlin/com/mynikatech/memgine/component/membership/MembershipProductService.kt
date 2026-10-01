@@ -19,7 +19,7 @@ class MembershipProductService(private val jdbi: Jdbi) {
 
     fun get(organizationId: String, productId: String): MembershipProductDto {
         validateId(organizationId, 64)
-        validateId(productId, 40)
+        validateId(productId, 64)
         val sql = jdbi.onDemand(MembershipProductSql::class.java)
         return assemble(sql, sql.get(organizationId, productId)
             ?: throw NotFoundException("Membership product not found"))
@@ -28,8 +28,8 @@ class MembershipProductService(private val jdbi: Jdbi) {
     fun save(organizationId: String, request: MembershipProductWriteDto,
              create: Boolean, actorUserId: String): MembershipProductDto {
         validateId(organizationId, 64)
-        validateId(request.id, 40)
-        if (request.membershipProductCode.isBlank() || request.membershipProductCode.length > 30 ||
+        validateId(request.id, 64)
+        if (request.membershipProductCode.isBlank() || request.membershipProductCode.length > 64 ||
             request.membershipProductName.isBlank() || request.membershipProductName.length > 100 ||
             (request.displayName?.length ?: 0) > 100 ||
             (request.description?.length ?: 0) > 1000 ||
@@ -56,14 +56,14 @@ class MembershipProductService(private val jdbi: Jdbi) {
             throw ConflictException("Membership product code already exists")
         }
         request.benefitIds.forEach { benefitId ->
-            validateId(benefitId, 40)
+            validateId(benefitId, 64)
             if (!lookup.activeBenefitExists(organizationId, benefitId)) {
                 throw BadRequestException("Benefit does not belong to this organization or is inactive")
             }
         }
         request.plans.forEach { plan ->
-            validateId(plan.id, 40)
-            if (plan.subscriptionPlanCode.isBlank() || plan.subscriptionPlanCode.length > 30 ||
+            validateId(plan.id, 64)
+            if (plan.subscriptionPlanCode.isBlank() || plan.subscriptionPlanCode.length > 64 ||
                 plan.subscriptionPlanName.isBlank() || plan.subscriptionPlanName.length > 100 ||
                 (plan.description?.length ?: 0) > 1000 ||
                 plan.subscriptionPeriod < 1 || plan.subscriptionPeriodUnit.isBlank() ||
@@ -126,7 +126,7 @@ class MembershipProductService(private val jdbi: Jdbi) {
 
     fun delete(organizationId: String, productId: String, actorUserId: String): DeleteMembershipProductDto {
         validateId(organizationId, 64)
-        validateId(productId, 40)
+        validateId(productId, 64)
         try {
             jdbi.onDemand(MembershipProductSql::class.java)
                 .delete(organizationId, productId, actorUserId)
