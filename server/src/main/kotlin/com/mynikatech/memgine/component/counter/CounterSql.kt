@@ -45,15 +45,26 @@ interface CounterSql {
                    @Bind("actorUserId") actorUserId: String): Boolean
 
     @SqlQuery("""SELECT * FROM counter_membership_purchase_offer_quote(
-        :organizationId, :storeId, :staffId, :customerUserId, :planId, :actorUserId)""")
+        :organizationId, :storeId, :staffId, :customerUserId, :planId, :actorUserId, :explicitOfferId)""")
     fun purchaseQuote(
         @Bind("organizationId") organizationId: String,
         @Bind("storeId") storeId: String,
         @Bind("staffId") staffId: String,
         @Bind("customerUserId") customerUserId: String?,
         @Bind("planId") planId: String,
-        @Bind("actorUserId") actorUserId: String
+        @Bind("actorUserId") actorUserId: String,
+        @Bind("explicitOfferId") explicitOfferId: String?
     ): CounterMembershipPurchaseQuoteDto?
+
+    @SqlQuery("""SELECT * FROM resolve_counter_membership_purchase_offer_qr(
+        :organizationId, :storeId, :staffId, :token, :actorUserId)""")
+    fun resolveMembershipPurchaseOfferQr(
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String,
+        @Bind("staffId") staffId: String,
+        @Bind("token") token: String,
+        @Bind("actorUserId") actorUserId: String
+    ): CounterMembershipOfferQrDto?
 
     @SqlQuery("SELECT get_counter_staff_name(:organizationId, :staffId)")
     fun staffName(@Bind("organizationId") organizationId: String,

@@ -28,7 +28,7 @@ interface PaymentSql {
 
     @SqlQuery("""SELECT * FROM payment_start_counter_membership_intent(
         :intentId, :attemptId, :organizationId, :challengeId, :storeId, :staffId,
-        :customerUserId, :planId, :providerCode, :idempotencyKey, :actorUserId)""")
+        :customerUserId, :planId, :providerCode, :idempotencyKey, :actorUserId, :explicitOfferId)""")
     fun startCounterMembership(
         @Bind("intentId") intentId: String,
         @Bind("attemptId") attemptId: String,
@@ -40,7 +40,8 @@ interface PaymentSql {
         @Bind("planId") planId: String,
         @Bind("providerCode") providerCode: String,
         @Bind("idempotencyKey") idempotencyKey: String,
-        @Bind("actorUserId") actorUserId: String
+        @Bind("actorUserId") actorUserId: String,
+        @Bind("explicitOfferId") explicitOfferId: String?
     ): PaymentIntentDto?
 
     @SqlQuery("""SELECT * FROM payment_start_authenticated_membership_intent(

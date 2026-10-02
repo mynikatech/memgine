@@ -80,6 +80,11 @@ export type MembershipPurchaseQuote = {
   taxName?: string | null;
 };
 
+export type CounterMembershipOfferQr = {
+  offerId: ID;
+  displayName: string;
+};
+
 export type CounterRedemption = {
   redemptionId: ID;
   benefitId: ID;
@@ -314,10 +319,20 @@ export class CounterApi {
     ctx: CounterContext,
     planId: ID,
     customerUserId?: ID,
+    explicitOfferId?: ID,
   ): Promise<ApiResult<MembershipPurchaseQuote>> {
     return httpClient.get(
-      `${this.query(ctx, "purchases/quote")}&planId=${encodeURIComponent(planId)}${customerUserId ? `&customerUserId=${encodeURIComponent(customerUserId)}` : ""}`,
+      `${this.query(ctx, "purchases/quote")}&planId=${encodeURIComponent(planId)}${customerUserId ? `&customerUserId=${encodeURIComponent(customerUserId)}` : ""}${explicitOfferId ? `&explicitOfferId=${encodeURIComponent(explicitOfferId)}` : ""}`,
     );
+  }
+
+  resolveMembershipPurchaseOfferQr(
+    ctx: CounterContext,
+    token: string,
+  ): Promise<ApiResult<CounterMembershipOfferQr>> {
+    return httpClient.post(this.query(ctx, "purchases/offers/qr/resolve"), {
+      token,
+    });
   }
 
   requestPurchaseOtp(
@@ -364,10 +379,12 @@ export class CounterApi {
     challengeId: string,
     idempotencyKey: string,
     productId?: ID,
+    explicitOfferId?: ID,
   ): Promise<ApiResult<PaymentIntent>> {
     return httpClient.post(this.path(ctx, "purchases/payment/start"), {
       challengeId,
       idempotencyKey,
+      explicitOfferId,
       returnContext: productId ? { productId } : undefined,
     });
   }
@@ -375,10 +392,19 @@ export class CounterApi {
   startRemoteTerminalPayment(
     ctx: CounterContext,
     commerceTransactionId: ID,
-  ): Promise<ApiResult<{ commerceTransactionId: ID; referenceId: string; status: string }>> {
-    return httpClient.post(this.path(ctx, "purchases/payment/remote-terminal/start"), {
-      commerceTransactionId,
-    });
+  ): Promise<
+    ApiResult<{
+      commerceTransactionId: ID;
+      referenceId: string;
+      status: string;
+    }>
+  > {
+    return httpClient.post(
+      this.path(ctx, "purchases/payment/remote-terminal/start"),
+      {
+        commerceTransactionId,
+      },
+    );
   }
 
   payment(
@@ -394,10 +420,12 @@ export class CounterApi {
     ctx: CounterContext,
     challengeId: string,
     idempotencyKey: string,
+    explicitOfferId?: ID,
   ): Promise<ApiResult<PaymentIntent>> {
     return httpClient.post(this.path(ctx, "purchases/payment/cash/start"), {
       challengeId,
       idempotencyKey,
+      explicitOfferId,
     });
   }
 
@@ -493,10 +521,7 @@ export class CounterApi {
     qrReference: string,
   ): Promise<ApiResult<CounterRedemptionTransaction>> {
     return httpClient.post(
-      this.query(
-        ctx,
-        `redemption-qr/${encodeURIComponent(qrReference)}`,
-      ),
+      this.query(ctx, `redemption-qr/${encodeURIComponent(qrReference)}`),
       {},
     );
   }

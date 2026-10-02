@@ -28,6 +28,17 @@ data class CounterMembershipPurchaseQuoteDto(
 )
 
 @Serializable
+data class CounterMembershipOfferQrResolveRequest(
+    val token: String
+)
+
+@Serializable
+data class CounterMembershipOfferQrDto(
+    val offerId: String,
+    val displayName: String
+)
+
+@Serializable
 data class CounterSubscriptionDto(
     val id: String, val subscriptionNumber: String, val organizationUserId: String,
     val customerName: String, val customerEmail: String? = null,

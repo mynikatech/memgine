@@ -55,8 +55,21 @@ export class CounterService {
       .then((result) => this.unwrap(result));
   }
 
-  purchaseQuote(ctx: CounterContext, planId: ID, customerUserId?: ID): Promise<MembershipPurchaseQuote> {
-    return this.api.purchaseQuote(ctx, planId, customerUserId).then((result) => this.unwrap(result));
+  purchaseQuote(
+    ctx: CounterContext,
+    planId: ID,
+    customerUserId?: ID,
+    explicitOfferId?: ID,
+  ): Promise<MembershipPurchaseQuote> {
+    return this.api
+      .purchaseQuote(ctx, planId, customerUserId, explicitOfferId)
+      .then((result) => this.unwrap(result));
+  }
+
+  resolveMembershipPurchaseOfferQr(ctx: CounterContext, token: string) {
+    return this.api
+      .resolveMembershipPurchaseOfferQr(ctx, token)
+      .then((result) => this.unwrap(result));
   }
 
   subscriptionBenefits(ctx: CounterContext, subscriptionId: ID) {
@@ -83,7 +96,13 @@ export class CounterService {
     redemptionMethod: string,
   ): Promise<CounterRedemptionTransaction> {
     return this.api
-      .createRedemptionTransaction(ctx, subscriptionId, benefitIds, offerIds, redemptionMethod)
+      .createRedemptionTransaction(
+        ctx,
+        subscriptionId,
+        benefitIds,
+        offerIds,
+        redemptionMethod,
+      )
       .then((result) => this.unwrap(result));
   }
 
@@ -111,38 +130,66 @@ export class CounterService {
       .then((result) => this.unwrap(result));
   }
 
-  startPurchasePayment(ctx: CounterContext, challengeId: string, idempotencyKey: string, productId?: ID) {
-    return this.api.startPurchasePayment(ctx, challengeId, idempotencyKey, productId)
+  startPurchasePayment(
+    ctx: CounterContext,
+    challengeId: string,
+    idempotencyKey: string,
+    productId?: ID,
+    explicitOfferId?: ID,
+  ) {
+    return this.api
+      .startPurchasePayment(
+        ctx,
+        challengeId,
+        idempotencyKey,
+        productId,
+        explicitOfferId,
+      )
       .then((result) => this.unwrap(result));
   }
 
   startRemoteTerminalPayment(ctx: CounterContext, commerceTransactionId: ID) {
-    return this.api.startRemoteTerminalPayment(ctx, commerceTransactionId)
+    return this.api
+      .startRemoteTerminalPayment(ctx, commerceTransactionId)
       .then((result) => this.unwrap(result));
   }
 
   payment(organizationId: ID, paymentIntentId: ID) {
-    return this.api.payment(organizationId, paymentIntentId)
+    return this.api
+      .payment(organizationId, paymentIntentId)
       .then((result) => this.unwrap(result));
   }
 
-  startCashPayment(ctx: CounterContext, challengeId: string, idempotencyKey: string) {
-    return this.api.startCashPayment(ctx, challengeId, idempotencyKey)
+  startCashPayment(
+    ctx: CounterContext,
+    challengeId: string,
+    idempotencyKey: string,
+    explicitOfferId?: ID,
+  ) {
+    return this.api
+      .startCashPayment(ctx, challengeId, idempotencyKey, explicitOfferId)
       .then((result) => this.unwrap(result));
   }
 
   confirmCashPayment(ctx: CounterContext, paymentIntentId: ID) {
-    return this.api.confirmCashPayment(ctx, paymentIntentId)
+    return this.api
+      .confirmCashPayment(ctx, paymentIntentId)
       .then((result) => this.unwrap(result));
   }
 
   confirmTestPayment(organizationId: ID, paymentIntentId: ID) {
-    return this.api.confirmTestPayment(organizationId, paymentIntentId)
+    return this.api
+      .confirmTestPayment(organizationId, paymentIntentId)
       .then((result) => this.unwrap(result));
   }
 
-  confirmMonerisPayment(organizationId: ID, paymentIntentId: ID, temporaryToken: string) {
-    return this.api.confirmMonerisPayment(organizationId, paymentIntentId, temporaryToken)
+  confirmMonerisPayment(
+    organizationId: ID,
+    paymentIntentId: ID,
+    temporaryToken: string,
+  ) {
+    return this.api
+      .confirmMonerisPayment(organizationId, paymentIntentId, temporaryToken)
       .then((result) => this.unwrap(result));
   }
 
@@ -161,11 +208,22 @@ export class CounterService {
     regionCode?: string,
   ) {
     return this.api
-      .requestRedemptionOtp(ctx, phone, subscriptionId, benefitIds, offerIds, regionCode)
+      .requestRedemptionOtp(
+        ctx,
+        phone,
+        subscriptionId,
+        benefitIds,
+        offerIds,
+        regionCode,
+      )
       .then((result) => this.unwrap(result));
   }
 
-  completeRedemptionOtp(ctx: CounterContext, challengeId: string, otp: string): Promise<CounterRedemptionTransaction> {
+  completeRedemptionOtp(
+    ctx: CounterContext,
+    challengeId: string,
+    otp: string,
+  ): Promise<CounterRedemptionTransaction> {
     return this.api
       .completeRedemptionOtp(ctx, challengeId, otp)
       .then((result) => this.unwrap(result));
@@ -181,10 +239,7 @@ export class CounterService {
       .then((result) => this.unwrap(result));
   }
 
-  validateRedemptionTransaction(
-    ctx: CounterContext,
-    transactionId: string,
-  ) {
+  validateRedemptionTransaction(ctx: CounterContext, transactionId: string) {
     return this.api
       .validateRedemptionTransaction(ctx, transactionId)
       .then((result) => this.unwrap(result));

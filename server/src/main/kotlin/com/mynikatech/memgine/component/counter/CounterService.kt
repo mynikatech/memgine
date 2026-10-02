@@ -168,17 +168,41 @@ class CounterService(
         return sql().staffName(org, staff)
     }
 
+    fun resolveMembershipPurchaseOfferQr(
+        org: String,
+        store: String,
+        staff: String,
+        token: String,
+        principal: AuthenticatedPrincipal
+    ): CounterMembershipOfferQrDto {
+        authorize(org, store, staff, principal)
+        if (token.isBlank() || token.length > 200) {
+            throw BadRequestException("Membership Offer QR is invalid")
+        }
+        return translate {
+            sql().resolveMembershipPurchaseOfferQr(
+                org,
+                store,
+                staff,
+                token.trim(),
+                principal.userId
+            ) ?: throw NotFoundException("Membership Offer QR is unavailable")
+        }
+    }
+
     fun purchaseQuote(
         org: String,
         store: String,
         staff: String,
         planId: String,
         customerUserId: String?,
-        principal: AuthenticatedPrincipal
+        principal: AuthenticatedPrincipal,
+        explicitOfferId: String? = null
     ): CounterMembershipPurchaseQuoteDto {
         authorize(org, store, staff, principal)
         id(planId, "membership plan id")
         customerUserId?.let { id(it, "customer user id") }
+        explicitOfferId?.let { id(it, "membership offer id") }
         return translate {
             sql().purchaseQuote(
                 org,
@@ -186,7 +210,8 @@ class CounterService(
                 staff,
                 customerUserId,
                 planId,
-                principal.userId
+                principal.userId,
+                explicitOfferId
             ) ?: throw NotFoundException("Membership plan was not found")
         }
     }
@@ -650,7 +675,11 @@ class CounterService(
                         "Membership plan is unavailable for this organization",
                         "Membership plan has an invalid subscription period",
                         "Customer is not active in this organization",
-                        "Customer account is not active"
+                        "Customer account is not active",
+                        "Membership Offer is unavailable",
+                        "Membership Offer is not eligible for this purchase",
+                        "Membership Offer QR is invalid",
+                        "Membership Offer QR is unavailable"
                     ) } ?: "Invalid membership or customer details")
                 "23505" -> throw ConflictException(
                     databaseMessage?.takeIf {

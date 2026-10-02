@@ -14,7 +14,8 @@ data class PaymentReturnContextDto(
 data class PaymentStartRequestDto(
     val challengeId: String,
     val idempotencyKey: String,
-    val returnContext: PaymentReturnContextDto? = null
+    val returnContext: PaymentReturnContextDto? = null,
+    val explicitOfferId: String? = null
 )
 
 @Serializable

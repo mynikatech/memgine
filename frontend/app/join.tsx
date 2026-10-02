@@ -175,6 +175,9 @@ export default function JoinFlow() {
     paymentIntentId?: string;
 
     paymentCancelled?: string;
+    explicitOfferId?: string;
+
+    explicitOfferName?: string;
   }>();
 
   const { organization, configuration, theme } = useBusiness();
@@ -301,6 +304,18 @@ export default function JoinFlow() {
 
   const [purchaseQuote, setPurchaseQuote] =
     useState<MembershipPurchaseQuote | null>(null);
+
+  const [explicitOfferId, setExplicitOfferId] = useState(
+    params.explicitOfferId?.trim() ?? "",
+  );
+
+  const [explicitOfferName, setExplicitOfferName] = useState(
+    params.explicitOfferName?.trim() ?? "",
+  );
+
+  const [purchaseQuoteError, setPurchaseQuoteError] = useState<
+    string | undefined
+  >();
 
   const [monerisPayment, setMonerisPayment] = useState<{
     paymentIntentId: string;
@@ -918,10 +933,14 @@ export default function JoinFlow() {
 
     if (!plan) {
       setPurchaseQuote(null);
+      setPurchaseQuoteError(undefined);
       return;
     }
 
     let active = true;
+
+    setPurchaseQuote(null);
+    setPurchaseQuoteError(undefined);
 
     const loadQuote = async () => {
       try {
@@ -938,6 +957,7 @@ export default function JoinFlow() {
               counterPurchasePayload().context,
               plan.id,
               customerId || undefined,
+              explicitOfferId || undefined,
             )
           : organizationUserId
             ? await services.customerData.purchaseQuote(orgId, plan.id)
@@ -947,6 +967,7 @@ export default function JoinFlow() {
 
         if (active) {
           setPurchaseQuote(quote);
+          setPurchaseQuoteError(undefined);
         }
       } catch (error) {
         console.error("[TAX-QUOTE] FAILED", error);
@@ -954,6 +975,14 @@ export default function JoinFlow() {
         // Checkout start remains authoritative and will return any pricing error.
         if (active) {
           setPurchaseQuote(null);
+
+          setPurchaseQuoteError(
+            explicitOfferId
+              ? error instanceof Error
+                ? error.message
+                : "Membership Offer is unavailable for this purchase."
+              : undefined,
+          );
         }
       }
     };
@@ -970,6 +999,7 @@ export default function JoinFlow() {
     organizationUserId,
     plan,
     params.source,
+    explicitOfferId,
   ]);
 
   const requestCounterPurchaseOtp = useCallback(
@@ -1410,6 +1440,8 @@ export default function JoinFlow() {
           `${purchaseOtpChallengeId}:provider`,
 
           product.id,
+
+          explicitOfferId || undefined,
         );
 
         if (intent.providerCode === "STRIPE" && intent.checkoutUrl) {
@@ -1445,7 +1477,9 @@ export default function JoinFlow() {
 
         if (intent.providerCode === "POYNT") {
           if (!intent.commerceTransactionId) {
-            throw new Error("Terminal payment is missing its Commerce transaction.");
+            throw new Error(
+              "Terminal payment is missing its Commerce transaction.",
+            );
           }
 
           await services.counter.startRemoteTerminalPayment(
@@ -1477,7 +1511,9 @@ export default function JoinFlow() {
               confirmed.payment.status === "CANCELED" ||
               confirmed.payment.status === "CANCELLED"
             ) {
-              throw new Error("Payment was not completed. No membership was created.");
+              throw new Error(
+                "Payment was not completed. No membership was created.",
+              );
             }
 
             await new Promise<void>((resolve) => {
@@ -1607,6 +1643,8 @@ export default function JoinFlow() {
     finishSubscription,
 
     redirectToStripeCheckout,
+
+    explicitOfferId,
   ]);
 
   const requestCashPayment = useCallback(async () => {
@@ -1627,6 +1665,8 @@ export default function JoinFlow() {
         purchaseOtpChallengeId,
 
         `${purchaseOtpChallengeId}:cash`,
+
+        explicitOfferId || undefined,
       );
 
       setCashPayment({
@@ -1653,6 +1693,8 @@ export default function JoinFlow() {
     purchaseOtpVerified,
 
     requestCounterPurchaseOtp,
+
+    explicitOfferId,
   ]);
 
   const confirmCashReceived = useCallback(async () => {
@@ -2299,11 +2341,35 @@ export default function JoinFlow() {
             lines={[
               ...(purchaseQuote?.appliedOfferId
                 ? [
-                    { label: "Regular price", amountMinor: Math.round(purchaseQuote.subtotalAmount * 100) },
-                    { label: "Offer discount", amountMinor: -Math.round((purchaseQuote.discountAmount ?? 0) * 100) },
-                    { label: "Subtotal", amountMinor: Math.round((purchaseQuote.netSubtotalAmount ?? purchaseQuote.subtotalAmount) * 100) },
+                    {
+                      label: "Regular price",
+                      amountMinor: Math.round(
+                        purchaseQuote.subtotalAmount * 100,
+                      ),
+                    },
+                    {
+                      label: "Offer discount",
+                      amountMinor: -Math.round(
+                        (purchaseQuote.discountAmount ?? 0) * 100,
+                      ),
+                    },
+                    {
+                      label: "Subtotal",
+                      amountMinor: Math.round(
+                        (purchaseQuote.netSubtotalAmount ??
+                          purchaseQuote.subtotalAmount) * 100,
+                      ),
+                    },
                   ]
-                : [{ label: product.membershipProductName, amountMinor: purchaseQuote?.subtotalAmount != null ? Math.round(purchaseQuote.subtotalAmount * 100) : plan.price.amountMinor }]),
+                : [
+                    {
+                      label: product.membershipProductName,
+                      amountMinor:
+                        purchaseQuote?.subtotalAmount != null
+                          ? Math.round(purchaseQuote.subtotalAmount * 100)
+                          : plan.price.amountMinor,
+                    },
+                  ]),
 
               ...(purchaseQuote && purchaseQuote.taxAmount > 0
                 ? [
@@ -2321,6 +2387,34 @@ export default function JoinFlow() {
                 : plan.price.amountMinor
             }
           />
+          {/* ADD THIS BLOCK HERE */}
+          {isStaffSale && explicitOfferId ? (
+            <Card padding="md">
+              <View style={{ gap: theme.spacing.sm }}>
+                <Text variant="bodyStrong" color="text">
+                  Offer applied: {explicitOfferName || "Membership Offer"}
+                </Text>
+
+                <Button
+                  label="Remove Offer"
+                  fullWidth
+                  onPress={() => {
+                    setExplicitOfferId("");
+                    setExplicitOfferName("");
+                    setPurchaseQuote(null);
+                    setPurchaseQuoteError(undefined);
+                  }}
+                  testID="join-remove-membership-offer"
+                />
+              </View>
+            </Card>
+          ) : null}
+
+          {purchaseQuoteError ? (
+            <Text variant="bodySmall" color="textMuted">
+              {purchaseQuoteError}
+            </Text>
+          ) : null}
 
           <Section title={t("join.includedBenefits")}>
             <Card padding="lg">

@@ -228,6 +228,13 @@ export default function StaffCounter() {
   const qrExecutionInFlight = useRef(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
+  const [membershipOfferQrText, setMembershipOfferQrText] = useState("");
+  const [membershipOfferScannerActive, setMembershipOfferScannerActive] =
+    useState(false);
+  const [resolvedMembershipPurchaseOffer, setResolvedMembershipPurchaseOffer] =
+    useState<{ offerId: string; displayName: string } | null>(null);
+  const membershipOfferQrScanInFlight = useRef(false);
+
   /*
    * Existing customer phone lookup; action-bound OTP happens later
    */
@@ -288,7 +295,10 @@ export default function StaffCounter() {
     setExecutedTransaction(null);
     qrScanInFlight.current = false;
     qrExecutionInFlight.current = false;
-
+    setMembershipOfferQrText("");
+    setMembershipOfferScannerActive(false);
+    setResolvedMembershipPurchaseOffer(null);
+    membershipOfferQrScanInFlight.current = false;
     setPhone("");
 
     setOtpRequestId("");
@@ -726,8 +736,7 @@ export default function StaffCounter() {
         if (action === "redeem" && (mode === "assisted" || mode === "phone")) {
           await loadRedemptionSelection(opts[0].subscription.id, row.userId);
         }
-      }
-      else {
+      } else {
         setSelectedSubId("");
         setSelectedBenefitIds(new Set());
         setSelectedOfferIds(new Set());
@@ -834,12 +843,118 @@ export default function StaffCounter() {
         staffId,
         storeId,
         source: "STAFF_ASSISTED",
+        explicitOfferId: resolvedMembershipPurchaseOffer?.offerId,
+        explicitOfferName: resolvedMembershipPurchaseOffer?.displayName,
       },
     });
   };
+  const normalizeMembershipOfferQrToken = (rawValue: string) => {
+    const value = rawValue.trim();
+
+    if (!value) return "";
+
+    try {
+      const url = new URL(value);
+      const match = url.pathname.match(/^\/qr\/([^/]+)\/?$/);
+
+      if (match?.[1]) {
+        return decodeURIComponent(match[1]).trim();
+      }
+    } catch {
+      // Raw opaque token is also allowed.
+    }
+
+    return value;
+  };
+  const membershipOfferQrError = (failure: unknown) => {
+    const message =
+      failure instanceof Error ? failure.message.toLowerCase() : "";
+
+    if (
+      message.includes("not permitted") ||
+      message.includes("not authorized")
+    ) {
+      return "This Counter is not authorized to use this Membership Offer QR.";
+    }
+
+    if (message.includes("unavailable")) {
+      return "This Membership Offer QR is unavailable.";
+    }
+
+    if (message.includes("invalid")) {
+      return "This Membership Offer QR is invalid.";
+    }
+
+    return "Unable to resolve this Membership Offer QR. Please try again.";
+  };
+
+  const resolveMembershipOfferQr = async (rawValue: string) => {
+    const token = normalizeMembershipOfferQrToken(rawValue);
+
+    if (!token) {
+      setError("Enter or scan a Membership Offer QR.");
+      return;
+    }
+
+    if (membershipOfferQrScanInFlight.current) return;
+
+    membershipOfferQrScanInFlight.current = true;
+    setBusy(true);
+    setError("");
+    setMembershipOfferScannerActive(false);
+
+    try {
+      const resolved = await services.counter.resolveMembershipPurchaseOfferQr(
+        counterContext(),
+        token,
+      );
+
+      setResolvedMembershipPurchaseOffer(resolved);
+      setMembershipOfferQrText("");
+    } catch (failure) {
+      setResolvedMembershipPurchaseOffer(null);
+      setError(membershipOfferQrError(failure));
+    } finally {
+      membershipOfferQrScanInFlight.current = false;
+      setBusy(false);
+    }
+  };
+
+  const startMembershipOfferCameraScan = async () => {
+    setError("");
+
+    if (Platform.OS === "web") {
+      setError(
+        "Camera scanning is available in the Memgine mobile app. Enter the Membership Offer QR reference instead.",
+      );
+      return;
+    }
+
+    const permission = cameraPermission?.granted
+      ? cameraPermission
+      : await requestCameraPermission();
+
+    if (!permission.granted) {
+      setError(
+        "Camera permission is required to scan a Membership Offer QR. Enable it in device settings and try again.",
+      );
+      return;
+    }
+
+    setMembershipOfferScannerActive(true);
+  };
+
+  const clearMembershipOfferQr = () => {
+    setMembershipOfferQrText("");
+    setMembershipOfferScannerActive(false);
+    setResolvedMembershipPurchaseOffer(null);
+    membershipOfferQrScanInFlight.current = false;
+    setError("");
+  };
 
   const redemptionQrError = (failure: unknown) => {
-    const message = failure instanceof Error ? failure.message.toLowerCase() : "";
+    const message =
+      failure instanceof Error ? failure.message.toLowerCase() : "";
     if (message.includes("expired")) return "This redemption QR has expired.";
     if (
       message.includes("not pending") ||
@@ -851,10 +966,16 @@ export default function StaffCounter() {
     if (message.includes("invalid") || message.includes("unavailable")) {
       return "This redemption QR is invalid.";
     }
-    if (message.includes("cannot be completed") || message.includes("not executable")) {
+    if (
+      message.includes("cannot be completed") ||
+      message.includes("not executable")
+    ) {
       return "This redemption cannot be completed. Recheck the basket or scan again.";
     }
-    if (message.includes("not permitted") || message.includes("not authorized")) {
+    if (
+      message.includes("not permitted") ||
+      message.includes("not authorized")
+    ) {
       return "This Counter is not authorized to process this redemption.";
     }
     return "Unable to resolve this redemption QR. Please try again.";
@@ -911,14 +1032,18 @@ export default function StaffCounter() {
   const startCameraScan = async () => {
     setError("");
     if (Platform.OS === "web") {
-      setError("Camera scanning is available in the Memgine mobile app. Enter the QR reference instead.");
+      setError(
+        "Camera scanning is available in the Memgine mobile app. Enter the QR reference instead.",
+      );
       return;
     }
     const permission = cameraPermission?.granted
       ? cameraPermission
       : await requestCameraPermission();
     if (!permission.granted) {
-      setError("Camera permission is required to scan a redemption QR. Enable it in device settings and try again.");
+      setError(
+        "Camera permission is required to scan a redemption QR. Enable it in device settings and try again.",
+      );
       return;
     }
     setScannerActive(true);
@@ -1010,14 +1135,20 @@ export default function StaffCounter() {
         kind: "SUCCESS",
         message: `Redemption ${completed.transactionNumber} completed on the server.`,
         customer: customer ?? undefined,
-        outcomes: [...(redemptionSelection?.benefits ?? []), ...(redemptionSelection?.offers ?? [])]
-          .filter((item) => selectedBenefitIds.has(item.id) || selectedOfferIds.has(item.id))
+        outcomes: [
+          ...(redemptionSelection?.benefits ?? []),
+          ...(redemptionSelection?.offers ?? []),
+        ]
+          .filter(
+            (item) =>
+              selectedBenefitIds.has(item.id) || selectedOfferIds.has(item.id),
+          )
           .map((item) => ({
-          benefitId: item.id,
-          title: item.displayName,
-          status: "REDEEMED",
-          redemptionId: completed.transactionId,
-        })),
+            benefitId: item.id,
+            title: item.displayName,
+            status: "REDEEMED",
+            redemptionId: completed.transactionId,
+          })),
       });
 
       setOtpRequestId("");
@@ -1099,10 +1230,12 @@ export default function StaffCounter() {
       const benefitIds = Array.from(selectedBenefitIds);
       const offerIds = Array.from(selectedOfferIds);
 
-      if (!customer || !selectedSubId || benefitIds.length + offerIds.length === 0) {
-        throw new Error(
-          "Select a customer, membership and at least one item.",
-        );
+      if (
+        !customer ||
+        !selectedSubId ||
+        benefitIds.length + offerIds.length === 0
+      ) {
+        throw new Error("Select a customer, membership and at least one item.");
       }
 
       if (!customer.phone) {
@@ -1143,10 +1276,12 @@ export default function StaffCounter() {
       const benefitIds = Array.from(selectedBenefitIds);
       const offerIds = Array.from(selectedOfferIds);
 
-      if (!customer || !selectedSubId || benefitIds.length + offerIds.length === 0) {
-        throw new Error(
-          "Select a customer, membership and at least one item.",
-        );
+      if (
+        !customer ||
+        !selectedSubId ||
+        benefitIds.length + offerIds.length === 0
+      ) {
+        throw new Error("Select a customer, membership and at least one item.");
       }
 
       const transaction = await services.counter.createRedemptionTransaction(
@@ -1162,7 +1297,9 @@ export default function StaffCounter() {
       );
       const rejected = validation.find((item) => !item.eligible);
       if (rejected) {
-        throw new Error(rejected.rejectionReason ?? "A selected item is no longer available.");
+        throw new Error(
+          rejected.rejectionReason ?? "A selected item is no longer available.",
+        );
       }
       const completed = await services.counter.executeRedemptionTransaction(
         counterContext(),
@@ -1231,7 +1368,8 @@ export default function StaffCounter() {
     [selectedOption, selectedBenefitIds],
   );
 
-  const consolidatedRedemption = action === "redeem" && (mode === "assisted" || mode === "phone");
+  const consolidatedRedemption =
+    action === "redeem" && (mode === "assisted" || mode === "phone");
   const redemptionBenefitItems = redemptionSelection?.benefits ?? [];
   const redemptionOfferItems = redemptionSelection?.offers ?? [];
   const redemptionBenefitCount = redemptionBenefitItems.filter(
@@ -1240,11 +1378,18 @@ export default function StaffCounter() {
   const redemptionOfferCount = redemptionOfferItems.filter(
     (item) => item.status === "AVAILABLE" && selectedOfferIds.has(item.id),
   ).length;
-  const consolidatedSelectedCount = redemptionBenefitCount + redemptionOfferCount;
+  const consolidatedSelectedCount =
+    redemptionBenefitCount + redemptionOfferCount;
   const consolidatedSummary = [
-    redemptionBenefitCount ? `${redemptionBenefitCount} Benefit${redemptionBenefitCount === 1 ? "" : "s"}` : "",
-    redemptionOfferCount ? `${redemptionOfferCount} Offer${redemptionOfferCount === 1 ? "" : "s"}` : "",
-  ].filter(Boolean).join(" + ");
+    redemptionBenefitCount
+      ? `${redemptionBenefitCount} Benefit${redemptionBenefitCount === 1 ? "" : "s"}`
+      : "",
+    redemptionOfferCount
+      ? `${redemptionOfferCount} Offer${redemptionOfferCount === 1 ? "" : "s"}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" + ");
 
   /*
    * ------------------------------------------------------------
@@ -1284,7 +1429,10 @@ export default function StaffCounter() {
                       onPress={() => {
                         selectMembership(option.subscription.id);
                         if (consolidatedRedemption) {
-                          void loadRedemptionSelection(option.subscription.id, customer.id);
+                          void loadRedemptionSelection(
+                            option.subscription.id,
+                            customer.id,
+                          );
                         }
                       }}
                       style={[styles.chip, on && styles.chipOn]}
@@ -1305,72 +1453,128 @@ export default function StaffCounter() {
                   const selectable = benefit.status === "AVAILABLE";
                   const on = selectable && selectedBenefitIds.has(benefit.id);
                   return (
-                    <Pressable key={benefit.id} testID={`counter-benefit-${benefit.id}`} disabled={!selectable || busy}
-                      onPress={() => toggleBenefit(benefit.id)} style={[styles.benefitRow, !selectable && { opacity: 0.5 }]}>
-                      <View style={[styles.check, on && styles.checkOn]}>{on ? <Text style={styles.checkMark}>✓</Text> : null}</View>
-                      <View style={{ flex: 1 }}><Text style={styles.benefitTitle}>{benefit.displayName}</Text>{benefit.description ? <Text style={styles.muted}>{benefit.description}</Text> : null}</View>
-                      {!selectable ? <Text style={styles.usedTag}>{benefit.displayReason ?? "UNAVAILABLE"}</Text> : null}
+                    <Pressable
+                      key={benefit.id}
+                      testID={`counter-benefit-${benefit.id}`}
+                      disabled={!selectable || busy}
+                      onPress={() => toggleBenefit(benefit.id)}
+                      style={[
+                        styles.benefitRow,
+                        !selectable && { opacity: 0.5 },
+                      ]}
+                    >
+                      <View style={[styles.check, on && styles.checkOn]}>
+                        {on ? <Text style={styles.checkMark}>✓</Text> : null}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.benefitTitle}>
+                          {benefit.displayName}
+                        </Text>
+                        {benefit.description ? (
+                          <Text style={styles.muted}>
+                            {benefit.description}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {!selectable ? (
+                        <Text style={styles.usedTag}>
+                          {benefit.displayReason ?? "UNAVAILABLE"}
+                        </Text>
+                      ) : null}
                     </Pressable>
                   );
                 })}
-                {redemptionOfferItems.length ? <Text style={styles.sectionTitle}>Offers</Text> : null}
+                {redemptionOfferItems.length ? (
+                  <Text style={styles.sectionTitle}>Offers</Text>
+                ) : null}
                 {redemptionOfferItems.map((offer) => {
                   const selectable = offer.status === "AVAILABLE";
                   const on = selectable && selectedOfferIds.has(offer.id);
                   return (
-                    <Pressable key={offer.id} testID={`counter-offer-${offer.id}`} disabled={!selectable || busy}
-                      onPress={() => toggleOffer(offer.id)} style={[styles.offerRow, !selectable && { opacity: 0.5 }]}>
-                      <View style={[styles.check, on && styles.checkOn]}>{on ? <Text style={styles.checkMark}>✓</Text> : null}</View>
-                      <View style={{ flex: 1 }}><Text style={styles.benefitTitle}>{offer.displayName}</Text>{offer.badgeText ? <Text style={styles.offerBadge}>{offer.badgeText}</Text> : null}{offer.description ? <Text style={styles.muted}>{offer.description}</Text> : null}</View>
-                      {!selectable ? <Text style={styles.usedTag}>{offer.displayReason ?? "UNAVAILABLE"}</Text> : null}
+                    <Pressable
+                      key={offer.id}
+                      testID={`counter-offer-${offer.id}`}
+                      disabled={!selectable || busy}
+                      onPress={() => toggleOffer(offer.id)}
+                      style={[styles.offerRow, !selectable && { opacity: 0.5 }]}
+                    >
+                      <View style={[styles.check, on && styles.checkOn]}>
+                        {on ? <Text style={styles.checkMark}>✓</Text> : null}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.benefitTitle}>
+                          {offer.displayName}
+                        </Text>
+                        {offer.badgeText ? (
+                          <Text style={styles.offerBadge}>
+                            {offer.badgeText}
+                          </Text>
+                        ) : null}
+                        {offer.description ? (
+                          <Text style={styles.muted}>{offer.description}</Text>
+                        ) : null}
+                      </View>
+                      {!selectable ? (
+                        <Text style={styles.usedTag}>
+                          {offer.displayReason ?? "UNAVAILABLE"}
+                        </Text>
+                      ) : null}
                     </Pressable>
                   );
                 })}
               </>
-            ) : selectedOption?.benefits.map((benefit) => {
-              const on =
-                benefit.available && selectedBenefitIds.has(benefit.id);
+            ) : (
+              selectedOption?.benefits.map((benefit) => {
+                const on =
+                  benefit.available && selectedBenefitIds.has(benefit.id);
 
-              return (
-                <Pressable
-                  key={benefit.id}
-                  testID={`counter-benefit-${benefit.id}`}
-                  disabled={!benefit.available || otpSent}
-                  onPress={() => toggleBenefit(benefit.id)}
-                  style={[
-                    styles.benefitRow,
-                    !benefit.available && {
-                      opacity: 0.5,
-                    },
-                  ]}
-                >
-                  <View style={[styles.check, on && styles.checkOn]}>
-                    {on ? <Text style={styles.checkMark}>✓</Text> : null}
-                  </View>
-
-                  <View
-                    style={{
-                      flex: 1,
-                    }}
+                return (
+                  <Pressable
+                    key={benefit.id}
+                    testID={`counter-benefit-${benefit.id}`}
+                    disabled={!benefit.available || otpSent}
+                    onPress={() => toggleBenefit(benefit.id)}
+                    style={[
+                      styles.benefitRow,
+                      !benefit.available && {
+                        opacity: 0.5,
+                      },
+                    ]}
                   >
-                    <Text style={styles.benefitTitle}>
-                      {benefit.displayName ?? benefit.benefitName}
-                    </Text>
+                    <View style={[styles.check, on && styles.checkOn]}>
+                      {on ? <Text style={styles.checkMark}>✓</Text> : null}
+                    </View>
 
-                    {benefit.description ? (
-                      <Text style={styles.muted}>{benefit.description}</Text>
+                    <View
+                      style={{
+                        flex: 1,
+                      }}
+                    >
+                      <Text style={styles.benefitTitle}>
+                        {benefit.displayName ?? benefit.benefitName}
+                      </Text>
+
+                      {benefit.description ? (
+                        <Text style={styles.muted}>{benefit.description}</Text>
+                      ) : null}
+                    </View>
+
+                    {!benefit.available ? (
+                      <Text style={styles.usedTag}>USED</Text>
                     ) : null}
-                  </View>
-
-                  {!benefit.available ? (
-                    <Text style={styles.usedTag}>USED</Text>
-                  ) : null}
-                </Pressable>
-              );
-            })}
+                  </Pressable>
+                );
+              })
+            )}
 
             <View style={styles.redeemBar}>
-              <Text style={styles.muted}>{consolidatedRedemption ? (consolidatedSummary ? `${consolidatedSummary} selected` : "No items selected") : `${selectedCount} selected`}</Text>
+              <Text style={styles.muted}>
+                {consolidatedRedemption
+                  ? consolidatedSummary
+                    ? `${consolidatedSummary} selected`
+                    : "No items selected"
+                  : `${selectedCount} selected`}
+              </Text>
 
               {method === RedemptionMethod.STAFF_ASSISTED ? (
                 <Pressable
@@ -1379,7 +1583,8 @@ export default function StaffCounter() {
                   onPress={() => runManual()}
                   style={[
                     styles.primaryBtn,
-                    (consolidatedSelectedCount === 0 || busy) && styles.btnDisabled,
+                    (consolidatedSelectedCount === 0 || busy) &&
+                      styles.btnDisabled,
                   ]}
                 >
                   <Text style={styles.primaryBtnText}>
@@ -1393,7 +1598,8 @@ export default function StaffCounter() {
                   onPress={sendRedemptionOtp}
                   style={[
                     styles.primaryBtn,
-                    (consolidatedSelectedCount === 0 || busy) && styles.btnDisabled,
+                    (consolidatedSelectedCount === 0 || busy) &&
+                      styles.btnDisabled,
                   ]}
                 >
                   <Text style={styles.primaryBtnText}>Send Redemption OTP</Text>
@@ -1481,6 +1687,91 @@ export default function StaffCounter() {
         }}
       >
         <Text style={styles.identified}>Customer: {customer.fullName}</Text>
+
+        <View style={{ gap: SPACING.xs }}>
+          <Text style={styles.label}>Membership Offer QR (optional)</Text>
+
+          {resolvedMembershipPurchaseOffer ? (
+            <>
+              <Text style={styles.identified}>
+                Offer applied: {resolvedMembershipPurchaseOffer.displayName}
+              </Text>
+
+              <Pressable
+                testID="counter-clear-membership-offer-qr"
+                onPress={clearMembershipOfferQr}
+                style={styles.secondaryBtn}
+              >
+                <Text style={styles.secondaryBtnText}>Remove Offer</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              {membershipOfferScannerActive && Platform.OS !== "web" ? (
+                <View style={styles.cameraFrame}>
+                  <CameraView
+                    style={styles.camera}
+                    facing="back"
+                    barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                    onBarcodeScanned={({ data }) =>
+                      void resolveMembershipOfferQr(data)
+                    }
+                    onMountError={() => {
+                      setMembershipOfferScannerActive(false);
+
+                      setError(
+                        "The camera is unavailable on this device. Enter the Membership Offer QR reference instead.",
+                      );
+                    }}
+                  />
+
+                  <Pressable
+                    onPress={() => setMembershipOfferScannerActive(false)}
+                    style={styles.cameraCancel}
+                  >
+                    <Text style={styles.secondaryBtnText}>Cancel camera</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+
+              <Pressable
+                testID="counter-scan-membership-offer-qr"
+                disabled={busy}
+                onPress={() => void startMembershipOfferCameraScan()}
+                style={[styles.primaryBtn, busy && styles.btnDisabled]}
+              >
+                <Text style={styles.primaryBtnText}>
+                  {busy ? "Resolving..." : "Scan Membership Offer QR"}
+                </Text>
+              </Pressable>
+
+              <TextInput
+                testID="counter-membership-offer-qr-input"
+                value={membershipOfferQrText}
+                onChangeText={setMembershipOfferQrText}
+                placeholder="Membership Offer QR reference"
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={styles.input}
+              />
+
+              <Pressable
+                testID="counter-use-membership-offer-qr"
+                disabled={!membershipOfferQrText.trim() || busy}
+                onPress={() =>
+                  void resolveMembershipOfferQr(membershipOfferQrText)
+                }
+                style={[
+                  styles.secondaryBtn,
+                  (!membershipOfferQrText.trim() || busy) && styles.btnDisabled,
+                ]}
+              >
+                <Text style={styles.secondaryBtnText}>Use Offer QR</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
 
         {memberships.length ? (
           <>
@@ -1825,7 +2116,30 @@ export default function StaffCounter() {
             <>
               <Text style={styles.cardTitle}>Redemption successful</Text>
               <Text style={styles.resultMsg}>
-                {transactionValidation.filter((item) => item.itemType === "BENEFIT").length} benefit{transactionValidation.filter((item) => item.itemType === "BENEFIT").length === 1 ? "" : "s"} and {transactionValidation.filter((item) => item.itemType === "OFFER").length} offer{transactionValidation.filter((item) => item.itemType === "OFFER").length === 1 ? "" : "s"} redeemed.
+                {
+                  transactionValidation.filter(
+                    (item) => item.itemType === "BENEFIT",
+                  ).length
+                }{" "}
+                benefit
+                {transactionValidation.filter(
+                  (item) => item.itemType === "BENEFIT",
+                ).length === 1
+                  ? ""
+                  : "s"}{" "}
+                and{" "}
+                {
+                  transactionValidation.filter(
+                    (item) => item.itemType === "OFFER",
+                  ).length
+                }{" "}
+                offer
+                {transactionValidation.filter(
+                  (item) => item.itemType === "OFFER",
+                ).length === 1
+                  ? ""
+                  : "s"}{" "}
+                redeemed.
               </Text>
               <Text style={styles.muted}>
                 Transaction: {executedTransaction.transactionNumber}
@@ -1840,28 +2154,50 @@ export default function StaffCounter() {
             </>
           ) : dynamicRedemptionStage === "review" && resolvedTransaction ? (
             <>
-              <Text style={styles.cardTitle}>Redeem {transactionValidation.length} item{transactionValidation.length === 1 ? "" : "s"}</Text>
+              <Text style={styles.cardTitle}>
+                Redeem {transactionValidation.length} item
+                {transactionValidation.length === 1 ? "" : "s"}
+              </Text>
               <Text style={styles.muted}>
-                Transaction {resolvedTransaction.transactionNumber}. All items must be eligible before redemption can be confirmed.
+                Transaction {resolvedTransaction.transactionNumber}. All items
+                must be eligible before redemption can be confirmed.
               </Text>
               {(["BENEFIT", "OFFER"] as const).map((itemType) => {
-                const items = transactionValidation.filter((item) => item.itemType === itemType);
+                const items = transactionValidation.filter(
+                  (item) => item.itemType === itemType,
+                );
                 if (!items.length) return null;
                 return (
                   <View key={itemType} style={styles.redemptionSection}>
-                    <Text style={styles.label}>{itemType === "BENEFIT" ? "Benefits" : "Offers"}</Text>
+                    <Text style={styles.label}>
+                      {itemType === "BENEFIT" ? "Benefits" : "Offers"}
+                    </Text>
                     {items.map((item) => (
                       <View key={item.itemId} style={styles.redemptionItem}>
-                        <View style={[styles.redemptionIndicator, item.eligible ? styles.redemptionEligible : styles.redemptionIneligible]}>
-                          <Text style={styles.redemptionIndicatorText}>{item.eligible ? "✓" : "×"}</Text>
+                        <View
+                          style={[
+                            styles.redemptionIndicator,
+                            item.eligible
+                              ? styles.redemptionEligible
+                              : styles.redemptionIneligible,
+                          ]}
+                        >
+                          <Text style={styles.redemptionIndicatorText}>
+                            {item.eligible ? "✓" : "×"}
+                          </Text>
                         </View>
                         <View style={styles.redemptionItemContent}>
                           <Text style={styles.benefitTitle}>
-                            {item.displayName?.trim() || (itemType === "BENEFIT" ? "Benefit" : "Offer")}
+                            {item.displayName?.trim() ||
+                              (itemType === "BENEFIT" ? "Benefit" : "Offer")}
                           </Text>
-                          {item.description ? <Text style={styles.muted}>{item.description}</Text> : null}
+                          {item.description ? (
+                            <Text style={styles.muted}>{item.description}</Text>
+                          ) : null}
                           {!item.eligible && item.rejectionReason ? (
-                            <Text style={styles.redemptionRejection}>{item.rejectionReason}</Text>
+                            <Text style={styles.redemptionRejection}>
+                              {item.rejectionReason}
+                            </Text>
                           ) : null}
                         </View>
                       </View>
@@ -1871,11 +2207,23 @@ export default function StaffCounter() {
               })}
               <Pressable
                 testID="counter-confirm-consolidated-redemption"
-                disabled={busy || transactionValidation.length === 0 || transactionValidation.some((item) => !item.eligible)}
+                disabled={
+                  busy ||
+                  transactionValidation.length === 0 ||
+                  transactionValidation.some((item) => !item.eligible)
+                }
                 onPress={executeDynamicRedemption}
-                style={[styles.primaryBtn, (busy || transactionValidation.length === 0 || transactionValidation.some((item) => !item.eligible)) && styles.btnDisabled]}
+                style={[
+                  styles.primaryBtn,
+                  (busy ||
+                    transactionValidation.length === 0 ||
+                    transactionValidation.some((item) => !item.eligible)) &&
+                    styles.btnDisabled,
+                ]}
               >
-                <Text style={styles.primaryBtnText}>{busy ? "Redeeming..." : "Confirm Redemption"}</Text>
+                <Text style={styles.primaryBtnText}>
+                  {busy ? "Redeeming..." : "Confirm Redemption"}
+                </Text>
               </Pressable>
               <Pressable
                 testID="counter-scan-another-redemption-qr"
@@ -1890,7 +2238,8 @@ export default function StaffCounter() {
             <>
               <Text style={styles.cardTitle}>Scan Redemption QR</Text>
               <Text style={styles.muted}>
-                Scan the customer&apos;s secure redemption QR. Its contents are verified by Memgine before any redemption is shown.
+                Scan the customer&apos;s secure redemption QR. Its contents are
+                verified by Memgine before any redemption is shown.
               </Text>
               {scannerActive && Platform.OS !== "web" ? (
                 <View style={styles.cameraFrame}>
@@ -1898,13 +2247,20 @@ export default function StaffCounter() {
                     style={styles.camera}
                     facing="back"
                     barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-                    onBarcodeScanned={({ data }) => void resolveRedemptionQr(data)}
+                    onBarcodeScanned={({ data }) =>
+                      void resolveRedemptionQr(data)
+                    }
                     onMountError={() => {
                       setScannerActive(false);
-                      setError("The camera is unavailable on this device. Enter the QR reference instead.");
+                      setError(
+                        "The camera is unavailable on this device. Enter the QR reference instead.",
+                      );
                     }}
                   />
-                  <Pressable onPress={() => setScannerActive(false)} style={styles.cameraCancel}>
+                  <Pressable
+                    onPress={() => setScannerActive(false)}
+                    style={styles.cameraCancel}
+                  >
                     <Text style={styles.secondaryBtnText}>Cancel camera</Text>
                   </Pressable>
                 </View>
@@ -1915,7 +2271,9 @@ export default function StaffCounter() {
                 onPress={() => void startCameraScan()}
                 style={[styles.primaryBtn, busy && styles.btnDisabled]}
               >
-                <Text style={styles.primaryBtnText}>{busy ? "Resolving..." : "Scan Redemption QR"}</Text>
+                <Text style={styles.primaryBtnText}>
+                  {busy ? "Resolving..." : "Scan Redemption QR"}
+                </Text>
               </Pressable>
               <Text style={styles.label}>Enter QR reference</Text>
               <TextInput
@@ -1932,12 +2290,19 @@ export default function StaffCounter() {
                 testID="counter-redeem-qr"
                 disabled={!tokenText.trim() || busy}
                 onPress={() => void resolveRedemptionQr(tokenText)}
-                style={[styles.secondaryBtn, (!tokenText.trim() || busy) && styles.btnDisabled]}
+                style={[
+                  styles.secondaryBtn,
+                  (!tokenText.trim() || busy) && styles.btnDisabled,
+                ]}
               >
                 <Text style={styles.secondaryBtnText}>Use QR Reference</Text>
               </Pressable>
               {error ? (
-                <Pressable testID="counter-redemption-scan-again" onPress={resetDynamicRedemption} style={styles.secondaryBtn}>
+                <Pressable
+                  testID="counter-redemption-scan-again"
+                  onPress={resetDynamicRedemption}
+                  style={styles.secondaryBtn}
+                >
                   <Text style={styles.secondaryBtnText}>Scan Again</Text>
                 </Pressable>
               ) : null}

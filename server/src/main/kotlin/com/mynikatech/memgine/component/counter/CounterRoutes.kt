@@ -119,8 +119,21 @@ fun Route.counterRoutes(service: CounterService) {
             val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
             val planId = call.request.queryParameters["planId"] ?: throw BadRequestException("Membership plan id is required")
             val customerUserId = call.request.queryParameters["customerUserId"]
+            val explicitOfferId = call.request.queryParameters["explicitOfferId"]
             call.respond(ApiResponse.success(
-                service.purchaseQuote(org, store, staff, planId, customerUserId, call.authenticatedPrincipal()),
+                service.purchaseQuote(org, store, staff, planId, customerUserId, call.authenticatedPrincipal(), explicitOfferId),
+                call.callId
+            ))
+        }
+        post("/purchases/offers/qr/resolve") {
+            val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
+            val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
+            val request = call.receive<CounterMembershipOfferQrResolveRequest>()
+            call.respond(ApiResponse.success(
+                service.resolveMembershipPurchaseOfferQr(
+                    org, store, staff, request.token, call.authenticatedPrincipal()
+                ),
                 call.callId
             ))
         }

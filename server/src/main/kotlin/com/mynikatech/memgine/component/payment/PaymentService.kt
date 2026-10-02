@@ -108,6 +108,7 @@ class PaymentService(
         validateId(staffId, "staff id")
         validateId(customerUserId, "customer user id")
         validateId(planId, "membership plan id")
+        request.explicitOfferId?.let { validateId(it, "membership offer id") }
         validateIdempotencyKey(request.idempotencyKey)
 
         val intent = translate {
@@ -122,7 +123,8 @@ class PaymentService(
                 planId,
                 providerCode,
                 request.idempotencyKey.trim(),
-                actorUserId
+                actorUserId,
+                request.explicitOfferId
             ) ?: throw ConflictException("Payment was not started")
         }
         return checkoutForProvider(intent, org, request.returnContext, actorUserId)
@@ -439,8 +441,18 @@ class PaymentService(
             when (postgres?.sqlState) {
                 "42501" -> throw ForbiddenException("Payment operation is not permitted")
                 "23505", "40001" -> throw ConflictException("Payment state changed; retry the request")
-                "22001", "22003", "22023", "23502", "23503", "23514", "P0002" ->
-                    throw BadRequestException("Payment or membership details are unavailable")
+                "22001", "22003", "22023", "23502", "23503", "23514", "P0002" -> {
+                    val databaseMessage: String? = postgres?.serverErrorMessage?.message
+                    val safeMessage: String? = when (databaseMessage) {
+                        "Membership Offer is unavailable",
+                        "Membership Offer is not eligible for this purchase" -> databaseMessage
+                        else -> null
+                    }
+                    throw BadRequestException(
+                        safeMessage ?: "Payment or membership details are unavailable"
+                    )
+                
+                }
                 else -> throw error
             }
         }
