@@ -55,8 +55,8 @@ export class CounterService {
       .then((result) => this.unwrap(result));
   }
 
-  purchaseQuote(ctx: CounterContext, planId: ID): Promise<MembershipPurchaseQuote> {
-    return this.api.purchaseQuote(ctx, planId).then((result) => this.unwrap(result));
+  purchaseQuote(ctx: CounterContext, planId: ID, customerUserId?: ID): Promise<MembershipPurchaseQuote> {
+    return this.api.purchaseQuote(ctx, planId, customerUserId).then((result) => this.unwrap(result));
   }
 
   subscriptionBenefits(ctx: CounterContext, subscriptionId: ID) {

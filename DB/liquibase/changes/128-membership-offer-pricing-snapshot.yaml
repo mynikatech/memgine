@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 128-membership-offer-pricing-snapshot
+      author: mynikatech
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/128-membership-offer-pricing-snapshot.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

@@ -99,7 +99,7 @@ DB/env/local/liquibase.local.properties
 # Microsoft Office temporary files
 ~$*
 **/~$*
-DB/hs_err_pid5188.log
+DB/hs_err_pid5188.loC
 DB/hs_err_pid19520.log
 DB/hs_err_pid53656.log
 batch3-after-correction.diff
@@ -189,3 +189,4 @@ frontend/dist-web/_expo/static/js/web/entry-451a91bfb358634be725eba39e3a1515.js
 frontend/dist-web/_expo/static/js/web/index-087edd0bd1470385751599ebbaafa278.js
 docs/~WRL2171.tmp
 frontend/dist-web/_expo/static/js/web/entry-7c71e0c8a4af3fd11dafecd07f8e51da.js
+DB/hs_err_pid5188.log

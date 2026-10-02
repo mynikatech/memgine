@@ -44,6 +44,17 @@ interface CounterSql {
                    @Bind("storeId") storeId: String, @Bind("staffId") staffId: String,
                    @Bind("actorUserId") actorUserId: String): Boolean
 
+    @SqlQuery("""SELECT * FROM counter_membership_purchase_offer_quote(
+        :organizationId, :storeId, :staffId, :customerUserId, :planId, :actorUserId)""")
+    fun purchaseQuote(
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String,
+        @Bind("staffId") staffId: String,
+        @Bind("customerUserId") customerUserId: String?,
+        @Bind("planId") planId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): CounterMembershipPurchaseQuoteDto?
+
     @SqlQuery("SELECT get_counter_staff_name(:organizationId, :staffId)")
     fun staffName(@Bind("organizationId") organizationId: String,
                   @Bind("staffId") staffId: String): String?

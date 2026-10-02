@@ -173,11 +173,22 @@ class CounterService(
         store: String,
         staff: String,
         planId: String,
+        customerUserId: String?,
         principal: AuthenticatedPrincipal
-    ): MembershipPurchaseQuoteDto {
+    ): CounterMembershipPurchaseQuoteDto {
         authorize(org, store, staff, principal)
         id(planId, "membership plan id")
-        return payments.quoteMembership(org, planId)
+        customerUserId?.let { id(it, "customer user id") }
+        return translate {
+            sql().purchaseQuote(
+                org,
+                store,
+                staff,
+                customerUserId,
+                planId,
+                principal.userId
+            ) ?: throw NotFoundException("Membership plan was not found")
+        }
     }
 
     fun eligibility(org: String, store: String, staff: String,

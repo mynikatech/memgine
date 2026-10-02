@@ -11,6 +11,23 @@ data class CounterPurchaseRequest(
 )
 
 @Serializable
+data class CounterMembershipPurchaseQuoteDto(
+    val planId: String,
+    val membershipProductId: String,
+    val subtotalAmount: Double,
+    val appliedOfferId: String? = null,
+    val adjustmentType: String? = null,
+    val discountAmount: Double,
+    val netSubtotalAmount: Double,
+    val taxRate: Double,
+    val taxAmount: Double,
+    val totalAmount: Double,
+    val currencyCode: String,
+    val taxCode: String? = null,
+    val taxName: String? = null
+)
+
+@Serializable
 data class CounterSubscriptionDto(
     val id: String, val subscriptionNumber: String, val organizationUserId: String,
     val customerName: String, val customerEmail: String? = null,

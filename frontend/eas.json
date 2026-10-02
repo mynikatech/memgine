@@ -10,11 +10,19 @@
     },
     "preview": {
       "distribution": "internal",
+      "environment": "preview",
       "android": {
         "buildType": "apk"
       }
     },
+    "testflight-dev": {
+      "distribution": "store",
+      "environment": "preview",
+      "autoIncrement": true
+    },
     "production": {
+      "distribution": "store",
+      "environment": "production",
       "autoIncrement": true
     }
   },

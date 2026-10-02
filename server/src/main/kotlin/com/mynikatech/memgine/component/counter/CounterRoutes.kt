@@ -118,8 +118,9 @@ fun Route.counterRoutes(service: CounterService) {
             val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
             val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
             val planId = call.request.queryParameters["planId"] ?: throw BadRequestException("Membership plan id is required")
+            val customerUserId = call.request.queryParameters["customerUserId"]
             call.respond(ApiResponse.success(
-                service.purchaseQuote(org, store, staff, planId, call.authenticatedPrincipal()),
+                service.purchaseQuote(org, store, staff, planId, customerUserId, call.authenticatedPrincipal()),
                 call.callId
             ))
         }

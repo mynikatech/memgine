@@ -937,6 +937,7 @@ export default function JoinFlow() {
           ? await services.counter.purchaseQuote(
               counterPurchasePayload().context,
               plan.id,
+              customerId || undefined,
             )
           : organizationUserId
             ? await services.customerData.purchaseQuote(orgId, plan.id)
@@ -2296,14 +2297,13 @@ export default function JoinFlow() {
               },
             ]}
             lines={[
-              {
-                label: product.membershipProductName,
-
-                amountMinor:
-                  purchaseQuote?.subtotalAmount != null
-                    ? Math.round(purchaseQuote.subtotalAmount * 100)
-                    : plan.price.amountMinor,
-              },
+              ...(purchaseQuote?.appliedOfferId
+                ? [
+                    { label: "Regular price", amountMinor: Math.round(purchaseQuote.subtotalAmount * 100) },
+                    { label: "Offer discount", amountMinor: -Math.round((purchaseQuote.discountAmount ?? 0) * 100) },
+                    { label: "Subtotal", amountMinor: Math.round((purchaseQuote.netSubtotalAmount ?? purchaseQuote.subtotalAmount) * 100) },
+                  ]
+                : [{ label: product.membershipProductName, amountMinor: purchaseQuote?.subtotalAmount != null ? Math.round(purchaseQuote.subtotalAmount * 100) : plan.price.amountMinor }]),
 
               ...(purchaseQuote && purchaseQuote.taxAmount > 0
                 ? [

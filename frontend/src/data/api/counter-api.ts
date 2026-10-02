@@ -66,7 +66,12 @@ export type PaymentConfirmation = {
 
 export type MembershipPurchaseQuote = {
   planId: ID;
+  membershipProductId?: ID;
   subtotalAmount: number;
+  appliedOfferId?: ID | null;
+  adjustmentType?: string | null;
+  discountAmount?: number;
+  netSubtotalAmount?: number;
   taxRate: number;
   taxAmount: number;
   totalAmount: number;
@@ -308,9 +313,10 @@ export class CounterApi {
   purchaseQuote(
     ctx: CounterContext,
     planId: ID,
+    customerUserId?: ID,
   ): Promise<ApiResult<MembershipPurchaseQuote>> {
     return httpClient.get(
-      `${this.query(ctx, "purchases/quote")}&planId=${encodeURIComponent(planId)}`,
+      `${this.query(ctx, "purchases/quote")}&planId=${encodeURIComponent(planId)}${customerUserId ? `&customerUserId=${encodeURIComponent(customerUserId)}` : ""}`,
     );
   }
 
