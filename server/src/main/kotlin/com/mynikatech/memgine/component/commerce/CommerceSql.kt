@@ -48,6 +48,7 @@ data class CommerceProductSnapshotRow(
 data class CommerceProductMappingRow(
     var mappingId: String = "",
     var organizationId: String = "",
+    var productId: String? = null,
     var integrationConfigurationId: String = "",
     var storeId: String? = null,
     var externalProductId: String = "",
@@ -57,6 +58,15 @@ data class CommerceProductMappingRow(
     var versionNo: Int = 1
 )
 
+data class MembershipOfferApplicabilityRow(
+    var applicabilityId: String = "", var offerId: String = "", var behavior: String = "",
+    var targetMembershipProductId: String? = null, var targetSubscriptionPlanId: String? = null,
+    var sourceMembershipProductId: String? = null, var sourceSubscriptionPlanId: String? = null,
+    var adjustmentType: String = "", var percentage: Double? = null, var amountMinor: Long? = null,
+    var currencyCode: String? = null, var active: Boolean = true, var versionNo: Int = 1,
+    var customerApplicability: String = "ALL", var membershipTargetMode: String = "ALL_MEMBERSHIP_PRODUCTS",
+    var selectedMembershipProductIds: List<String> = emptyList()
+)
 data class CommerceApplicabilityRow(
     var adjustmentId: String = "",
     var organizationId: String = "",
@@ -167,6 +177,34 @@ interface CommerceSql {
         @Bind("actorUserId") actorUserId: String
     ): CommerceApplicabilityRow?
 
+    @SqlQuery("SELECT * FROM get_membership_offer_applicability(:organizationId, :offerId, :actorUserId)")
+    @RegisterBeanMapper(MembershipOfferApplicabilityRow::class)
+    fun membershipOfferApplicability(@Bind("organizationId") organizationId: String, @Bind("offerId") offerId: String, @Bind("actorUserId") actorUserId: String): MembershipOfferApplicabilityRow?
+
+    @SqlQuery("""SELECT save_membership_offer_applicability(:organizationId, :offerId, :behavior, :targetMembershipProductId, :targetSubscriptionPlanId, :sourceMembershipProductId, :sourceSubscriptionPlanId, :adjustmentType, CAST(:percentage AS numeric), :amountMinor, :currencyCode, :active, :customerApplicability, :membershipTargetMode, :selectedMembershipProductIds, :actorUserId)""")
+    fun saveMembershipOfferApplicability(
+        @Bind("organizationId") organizationId: String, @Bind("offerId") offerId: String,
+        @Bind("behavior") behavior: String, @Bind("targetMembershipProductId") targetMembershipProductId: String?,
+        @Bind("targetSubscriptionPlanId") targetSubscriptionPlanId: String?, @Bind("sourceMembershipProductId") sourceMembershipProductId: String?,
+        @Bind("sourceSubscriptionPlanId") sourceSubscriptionPlanId: String?, @Bind("adjustmentType") adjustmentType: String,
+        @Bind("percentage") percentage: Double?, @Bind("amountMinor") amountMinor: Long?, @Bind("currencyCode") currencyCode: String?,
+        @Bind("active") active: Boolean, @Bind("customerApplicability") customerApplicability: String,
+        @Bind("membershipTargetMode") membershipTargetMode: String, @Bind("selectedMembershipProductIds") selectedMembershipProductIds: Array<String>, @Bind("actorUserId") actorUserId: String
+    ): String
+
+    @SqlQuery("SELECT deactivate_offer_commerce_applicability(:organizationId, :offerId, :actorUserId)")
+    fun deactivateOfferApplicability(
+        @Bind("organizationId") organizationId: String,
+        @Bind("offerId") offerId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): Boolean
+
+    @SqlQuery("SELECT deactivate_membership_offer_applicability(:organizationId, :offerId, :actorUserId)")
+    fun deactivateMembershipOfferApplicability(
+        @Bind("organizationId") organizationId: String,
+        @Bind("offerId") offerId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): Boolean
     @SqlQuery("""SELECT save_commerce_product_snapshot(
         :organizationId, :integrationConfigurationId, :storeId, :externalProductId,
         :externalVariantId, :externalSku, :productName, :description, :currencyCode,

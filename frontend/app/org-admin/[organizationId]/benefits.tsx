@@ -185,30 +185,20 @@ function benefitAdjustmentType(
   }
 }
 
-function mappingForProduct(
-  product: Product,
+function mappingsForProduct(
+  productId: string,
   mappings: CommerceProductMapping[],
-): CommerceProductMapping | undefined {
-  return mappings.find(
-    (mapping) =>
-      mapping.externalProductId === product.id ||
-      (product.productCode.length > 0 &&
-        mapping.externalSku === product.productCode),
-  );
+): CommerceProductMapping[] {
+  return mappings.filter((mapping) => mapping.productId === productId);
 }
-
-function productForMapping(
-  mapping: CommerceProductMapping,
-  products: Product[],
-): Product | undefined {
-  return products.find(
-    (product) =>
-      mapping.externalProductId === product.id ||
-      (product.productCode.length > 0 &&
-        mapping.externalSku === product.productCode),
-  );
-}
-
+type BenefitCommerceConfiguration = {
+  productIds: string[];
+  adjustmentType: "PRODUCT_FREE" | "PRODUCT_PERCENT_OFF" | "PRODUCT_FIXED_OFF";
+  percentage?: number;
+  amountMinor?: number;
+  currencyCode?: string;
+  active: boolean;
+};
 /* -------------------------------------------------------------------------- */
 /* MAIN                                                                       */
 /* -------------------------------------------------------------------------- */
@@ -260,6 +250,8 @@ export default function OrgAdminBenefits() {
   const [commerceApplicability, setCommerceApplicability] = useState<
     Record<string, BenefitCommerceApplicability>
   >({});
+
+  const [commerceConfigurations, setCommerceConfigurations] = useState<Record<string, BenefitCommerceConfiguration>>({});
 
   const [loading, setLoading] = useState(true);
 
@@ -331,13 +323,11 @@ export default function OrgAdminBenefits() {
             const mappedProduct = applicabilityByBenefitId
               .get(benefit.id)
               ?.productMappings.map((mapping) =>
-                productForMapping(mapping, productList),
+                productList.find((product) => product.id === mapping.productId),
               )
               .find((product): product is Product => Boolean(product));
 
-            return mappedProduct
-              ? { ...benefit, productId: mappedProduct.id }
-              : benefit;
+            return mappedProduct ? { ...benefit, productId: mappedProduct.id } : benefit;
           }),
         );
 
@@ -361,6 +351,7 @@ export default function OrgAdminBenefits() {
         setCommerceApplicability(
           Object.fromEntries(applicabilityByBenefitId),
         );
+        setCommerceConfigurations(Object.fromEntries([...applicabilityByBenefitId.entries()].map(([benefitId, applicability]) => [benefitId, { productIds: applicability.productMappings.map((mapping) => mapping.productId).filter((productId): productId is string => Boolean(productId)), adjustmentType: applicability.adjustmentType as BenefitCommerceConfiguration["adjustmentType"], percentage: applicability.percentage ?? undefined, amountMinor: applicability.amountMinor ?? undefined, currencyCode: applicability.currencyCode ?? undefined, active: applicability.active }])));
 
         /*
          * Every fresh organization load starts in View mode.
@@ -396,45 +387,18 @@ export default function OrgAdminBenefits() {
 
   const requiresCommerceSave = (benefit: Benefit): boolean => {
     const adjustmentType = benefitAdjustmentType(benefit, benefitTypes);
-    const committed = committedBenefits.find((item) => item.id === benefit.id);
-
-    if (!adjustmentType) {
-      return false;
-    }
-
-    if (!committed) {
-      return true;
-    }
-
-    if (
-      committed.benefitTypeId !== benefit.benefitTypeId ||
-      committed.productId !== benefit.productId
-    ) {
-      return true;
-    }
-
-    if (adjustmentType !== "PRODUCT_FREE") {
-      return false;
-    }
-
+    if (!adjustmentType) return false;
+    const configuration = commerceConfigurations[benefit.id];
     const existing = commerceApplicability[benefit.id];
-    const selectedProduct = products.find(
-      (product) => product.id === benefit.productId,
-    );
-    const mapping = selectedProduct
-      ? mappingForProduct(selectedProduct, commerceMappings)
-      : undefined;
-
-    return (
-      !existing ||
-      existing.adjustmentType !== adjustmentType ||
-      !mapping ||
-      !existing.productMappings.some(
-        (existingMapping) => existingMapping.mappingId === mapping.mappingId,
-      )
-    );
+    if (!configuration || !existing) return true;
+    const existingProductIds = existing.productMappings.map((mapping) => mapping.productId).filter((id): id is string => Boolean(id)).sort();
+    return configuration.adjustmentType !== existing.adjustmentType ||
+      configuration.percentage !== (existing.percentage ?? undefined) ||
+      configuration.amountMinor !== (existing.amountMinor ?? undefined) ||
+      configuration.currencyCode !== (existing.currencyCode ?? undefined) ||
+      configuration.active !== existing.active ||
+      JSON.stringify([...configuration.productIds].sort()) !== JSON.stringify(existingProductIds);
   };
-
   const hasChanges = useMemo(
     () =>
       !benefitsEqual(committedBenefits, benefits) ||
@@ -485,49 +449,24 @@ export default function OrgAdminBenefits() {
   const getDisplayName = (benefit: Benefit) =>
     benefit.displayName ?? benefit.benefitName;
 
-  const commerceApplicabilityFor = (
-    benefit: Benefit,
-  ): BenefitCommerceApplicabilityWrite | null => {
-    const adjustmentType = benefitAdjustmentType(benefit, benefitTypes);
-
-    if (!adjustmentType) {
-      return null;
+  const commerceApplicabilityFor = (benefit: Benefit): BenefitCommerceApplicabilityWrite | null => {
+    const configuration = commerceConfigurations[benefit.id];
+    if (!configuration) return null;
+    const mappingIds: string[] = [];
+    const unmapped: string[] = [];
+    const ambiguous: string[] = [];
+    for (const productId of configuration.productIds) {
+      const matches = mappingsForProduct(productId, commerceMappings);
+      const productName = getProductName(productId);
+      if (matches.length === 0) unmapped.push(productName);
+      else if (matches.length > 1) ambiguous.push(productName);
+      else mappingIds.push(matches[0].mappingId);
     }
-
-    if (!benefit.productId) {
-      throw new Error(
-        `${getTypeName(benefit.benefitTypeId)} requires a POS Product.`,
-      );
-    }
-
-    const product = products.find((item) => item.id === benefit.productId);
-    const mapping = product && mappingForProduct(product, commerceMappings);
-
-    if (!mapping) {
-      throw new Error(
-        `The selected Product for "${getDisplayName(benefit)}" does not have an active Commerce product mapping. Sync or reconcile that POS product before saving this benefit.`,
-      );
-    }
-
-    if (adjustmentType === "PRODUCT_PERCENT_OFF") {
-      throw new Error(
-        `Percentage Discount for "${getDisplayName(benefit)}" requires an existing percentage value. The current Benefit form has no percentage field to reuse.`,
-      );
-    }
-
-    if (adjustmentType === "PRODUCT_FIXED_OFF") {
-      throw new Error(
-        `Fixed Amount for "${getDisplayName(benefit)}" requires an existing fixed adjustment amount. Retail Price and Cost are not discount amounts and will not be used.`,
-      );
-    }
-
-    return {
-      adjustmentType,
-      active: true,
-      productMappingIds: [mapping.mappingId],
-    };
+    if (unmapped.length) throw new Error(`These selected Products have no active Commerce mapping: ${unmapped.join(", ")}. Sync or reconcile them before saving.`);
+    if (ambiguous.length) throw new Error(`These selected Products have more than one active Commerce mapping and require an explicit Commerce context: ${ambiguous.join(", ")}.`);
+    if (!mappingIds.length) throw new Error("Select at least one mapped POS Product.");
+    return { adjustmentType: configuration.adjustmentType, percentage: configuration.percentage, amountMinor: configuration.amountMinor, currencyCode: configuration.currencyCode, active: configuration.active, productMappingIds: mappingIds };
   };
-
   /* ---------------------------------------------------------------------- */
   /* BENEFIT CODE                                                           */
   /* ---------------------------------------------------------------------- */
@@ -654,6 +593,7 @@ export default function OrgAdminBenefits() {
   const handleSaveDraft = async (
     benefit: Benefit,
     benefitRules: BenefitUsageRule[],
+    configuration: BenefitCommerceConfiguration | null,
   ) => {
     setBenefits((current) => {
       const next = [...current];
@@ -676,6 +616,8 @@ export default function OrgAdminBenefits() {
 
       return next;
     });
+
+    setCommerceConfigurations((current) => { const next = { ...current }; if (configuration) next[benefit.id] = configuration; else delete next[benefit.id]; return next; });
 
     setRules((current) => [
       ...current.filter((rule) => rule.benefitId !== benefit.id),
@@ -1388,6 +1330,7 @@ export default function OrgAdminBenefits() {
             benefitTypes={benefitTypes}
             benefitStatuses={benefitStatuses}
             products={products}
+            commerceConfiguration={commerceConfigurations[editingBenefit.id] ?? null}
             usageRules={rules.filter(
               (rule) => rule.benefitId === editingBenefit.id && !rule.isDeleted,
             )}

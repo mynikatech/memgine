@@ -26,7 +26,13 @@ import { useRouter } from "expo-router";
 import { APP_ROUTES } from "@/src/constants/navigation";
 import type { PickedBrandingAsset } from "@/src/core/brandingAssetPicker";
 import { brandingAssetApi } from "@/src/data/api/branding-asset-api";
-import { offerCommerceApi, type CommerceProductMapping, type OfferCommerceApplicabilityWrite } from "@/src/data/api/offer-commerce-api";
+import {
+  offerCommerceApi,
+  type CommerceProductMapping,
+  type MembershipOfferApplicabilityWrite,
+  type OfferCommerceApplicabilityWrite,
+  type OfferCommerceConfiguration,
+} from "@/src/data/api/offer-commerce-api";
 
 export default function OrgAdminOffers() {
   const { organization } = useBusiness();
@@ -47,7 +53,12 @@ export default function OrgAdminOffers() {
   const [offerStatuses, setOfferStatuses] = useState<Status[]>([]);
   const [commerceMappings, setCommerceMappings] = useState<CommerceProductMapping[]>([]);
   const [posProducts, setPosProducts] = useState<Product[]>([]);
-  const [commerceApplicability, setCommerceApplicability] = useState<Record<string, OfferCommerceApplicabilityWrite>>({});
+  const [commerceConfigurations, setCommerceConfigurations] = useState<Record<string, OfferCommerceConfiguration>>({});
+  const [committedCommerceConfigurations, setCommittedCommerceConfigurations] = useState<Record<string, OfferCommerceConfiguration>>({});
+  const [membershipConfigurations, setMembershipConfigurations] = useState<Record<string, MembershipOfferApplicabilityWrite>>({});
+  const [committedMembershipConfigurations, setCommittedMembershipConfigurations] = useState<Record<string, MembershipOfferApplicabilityWrite>>({});
+  const [targetModes, setTargetModes] = useState<Record<string, "POS_PRODUCT" | "MEMBERSHIP_PRODUCT">>({});
+  const [committedTargetModes, setCommittedTargetModes] = useState<Record<string, "POS_PRODUCT" | "MEMBERSHIP_PRODUCT">>({});
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -108,8 +119,46 @@ export default function OrgAdminOffers() {
         setOfferStatuses(statusList);
         setCommerceMappings(mappings);
         setPosProducts(catalogProducts);
-        const applicability = await Promise.all(activeOffers.map(async (offer) => [offer.id, await offerCommerceApi.applicability(organization.id, offer.id)] as const));
-        if (mounted) setCommerceApplicability(Object.fromEntries(applicability.filter(([, value]) => value).map(([id, value]) => [id, { adjustmentType: value!.adjustmentType, percentage: value!.percentage ?? undefined, amountMinor: value!.amountMinor ?? undefined, currencyCode: value!.currencyCode ?? undefined, active: value!.active, productMappingIds: value!.productMappings.map((mapping) => mapping.mappingId).slice(0, 1) }])));
+        const [posApplicability, membershipApplicability] = await Promise.all([
+          Promise.all(activeOffers.map(async (offer) => [offer.id, await offerCommerceApi.applicability(organization.id, offer.id)] as const)),
+          Promise.all(activeOffers.map(async (offer) => [offer.id, await offerCommerceApi.membershipApplicability(organization.id, offer.id)] as const)),
+        ]);
+
+        if (mounted) {
+          const posConfigurations = Object.fromEntries(posApplicability.filter(([, value]) => value?.active).map(([id, value]) => [id, {
+            productIds: value!.productMappings.map((mapping) => mapping.productId).filter((productId): productId is string => Boolean(productId)),
+            adjustmentType: value!.adjustmentType as OfferCommerceConfiguration["adjustmentType"],
+            percentage: value!.percentage ?? undefined,
+            amountMinor: value!.amountMinor ?? undefined,
+            currencyCode: value!.currencyCode ?? undefined,
+            active: value!.active,
+          }]));
+          const membershipConfigurations = Object.fromEntries(membershipApplicability.filter(([, value]) => value?.active).map(([id, value]) => [id, {
+            behavior: value!.behavior,
+            targetMembershipProductId: value!.targetMembershipProductId,
+            targetSubscriptionPlanId: value!.targetSubscriptionPlanId ?? undefined,
+            sourceMembershipProductId: value!.sourceMembershipProductId ?? undefined,
+            sourceSubscriptionPlanId: value!.sourceSubscriptionPlanId ?? undefined,
+            adjustmentType: value!.adjustmentType,
+            percentage: value!.percentage ?? undefined,
+            amountMinor: value!.amountMinor ?? undefined,
+            currencyCode: value!.currencyCode ?? undefined,
+            active: value!.active,
+            customerApplicability: value!.customerApplicability ?? "ALL",
+            membershipTargetMode: value!.membershipTargetMode ?? "ALL_MEMBERSHIP_PRODUCTS",
+            selectedMembershipProductIds: value!.selectedMembershipProductIds ?? [],
+          }]));
+          setCommerceConfigurations(posConfigurations);
+          setCommittedCommerceConfigurations(posConfigurations);
+          setMembershipConfigurations(membershipConfigurations);
+          setCommittedMembershipConfigurations(membershipConfigurations);
+          const modes = Object.fromEntries(activeOffers.map((offer) => [
+            offer.id,
+            membershipConfigurations[offer.id] ? "MEMBERSHIP_PRODUCT" : "POS_PRODUCT",
+          ] as const));
+          setTargetModes(modes);
+          setCommittedTargetModes(modes);
+        }
 
         setIsEditing(false);
         setSaveMessageVisible(false);
@@ -143,10 +192,31 @@ export default function OrgAdminOffers() {
   const hasChanges = useMemo(
     () =>
       JSON.stringify(offers) !== JSON.stringify(committedOffers) ||
-      JSON.stringify(usageRules) !== JSON.stringify(committedUsageRules),
-    [offers, committedOffers, usageRules, committedUsageRules],
+      JSON.stringify(usageRules) !== JSON.stringify(committedUsageRules) ||
+      JSON.stringify(commerceConfigurations) !== JSON.stringify(committedCommerceConfigurations) ||
+      JSON.stringify(membershipConfigurations) !== JSON.stringify(committedMembershipConfigurations) ||
+      JSON.stringify(targetModes) !== JSON.stringify(committedTargetModes),
+    [offers, committedOffers, usageRules, committedUsageRules, commerceConfigurations, committedCommerceConfigurations, membershipConfigurations, committedMembershipConfigurations, targetModes, committedTargetModes],
   );
 
+  const commerceApplicabilityFor = (offer: Offer): OfferCommerceApplicabilityWrite => {
+    const configuration = commerceConfigurations[offer.id];
+    if (!configuration) throw new Error("POS Product configuration is required.");
+    const mappingIds: string[] = [];
+    const unmapped: string[] = [];
+    const ambiguous: string[] = [];
+    for (const productId of configuration.productIds) {
+      const mappings = commerceMappings.filter((mapping) => mapping.productId === productId);
+      const productName = posProducts.find((product) => product.id === productId)?.productName ?? productId;
+      if (!mappings.length) unmapped.push(productName);
+      else if (mappings.length > 1) ambiguous.push(productName);
+      else mappingIds.push(mappings[0].mappingId);
+    }
+    if (unmapped.length) throw new Error(`These selected Products have no active Commerce mapping: ${unmapped.join(", ")}. Sync or reconcile them before saving.`);
+    if (ambiguous.length) throw new Error(`These selected Products have multiple active POS mappings and cannot be resolved automatically: ${ambiguous.join(", ")}.`);
+    if (!mappingIds.length) throw new Error("Select at least one mapped POS Product.");
+    return { adjustmentType: configuration.adjustmentType, percentage: configuration.percentage, amountMinor: configuration.amountMinor, currencyCode: configuration.currencyCode, active: configuration.active, productMappingIds: mappingIds };
+  };
   const getProductName = (productId?: string) => {
     if (!productId) {
       return "All products";
@@ -364,7 +434,9 @@ export default function OrgAdminOffers() {
     updatedOffer: Offer,
     updatedRules: OfferUsageRule[],
     image?: PickedBrandingAsset,
-    applicability?: OfferCommerceApplicabilityWrite,
+    configuration?: OfferCommerceConfiguration,
+    membershipConfiguration?: MembershipOfferApplicabilityWrite,
+    targetMode?: "POS_PRODUCT" | "MEMBERSHIP_PRODUCT",
   ) => {
     setPendingImages((current) => {
       const next = { ...current };
@@ -390,7 +462,9 @@ export default function OrgAdminOffers() {
 
       return [...otherRules, ...updatedRules];
     });
-    if (applicability) setCommerceApplicability((current) => ({ ...current, [updatedOffer.id]: applicability }));
+    if (configuration) setCommerceConfigurations((current) => ({ ...current, [updatedOffer.id]: configuration }));
+    if (membershipConfiguration) setMembershipConfigurations((current) => ({ ...current, [updatedOffer.id]: membershipConfiguration }));
+    if (targetMode) setTargetModes((current) => ({ ...current, [updatedOffer.id]: targetMode }));
 
     setFormVisible(false);
     setEditingOffer(null);
@@ -457,11 +531,19 @@ export default function OrgAdminOffers() {
         const previousRules = committedUsageRules.filter(
           (rule) => rule.offerId === offer.id,
         );
+        const mode = targetModes[offer.id] ?? "POS_PRODUCT";
+        const configurationChanged =
+          JSON.stringify(commerceConfigurations[offer.id]) !== JSON.stringify(committedCommerceConfigurations[offer.id]) ||
+          JSON.stringify(membershipConfigurations[offer.id]) !== JSON.stringify(committedMembershipConfigurations[offer.id]) ||
+          mode !== (committedTargetModes[offer.id] ?? "POS_PRODUCT");
         if (
           !existing ||
           JSON.stringify(existing) !== JSON.stringify(offer) ||
-          JSON.stringify(currentRules) !== JSON.stringify(previousRules)
+          JSON.stringify(currentRules) !== JSON.stringify(previousRules) ||
+          configurationChanged
         ) {
+          const hadPosApplicability = Boolean(committedCommerceConfigurations[offer.id]);
+          const hadMembershipApplicability = Boolean(committedMembershipConfigurations[offer.id]);
           let offerToSave = offer;
           const pendingImage = pendingImages[offer.id];
           if (pendingImage) {
@@ -488,9 +570,20 @@ export default function OrgAdminOffers() {
             currentRules,
             !existing,
           );
-          const applicability = commerceApplicability[offer.id];
-          if (!applicability) throw new Error("POS Product configuration is required.");
-          await offerCommerceApi.save(organization.id, savedOffer.id, applicability);
+          if (mode === "POS_PRODUCT") {
+            if (hadMembershipApplicability) {
+              await offerCommerceApi.deactivateMembershipApplicability(organization.id, savedOffer.id);
+            }
+            const applicability = commerceApplicabilityFor(offer);
+            await offerCommerceApi.save(organization.id, savedOffer.id, applicability);
+          } else {
+            if (hadPosApplicability) {
+              await offerCommerceApi.deactivateApplicability(organization.id, savedOffer.id);
+            }
+            const applicability = membershipConfigurations[offer.id];
+            if (!applicability) throw new Error("Membership Product configuration is required.");
+            await offerCommerceApi.saveMembershipApplicability(organization.id, savedOffer.id, applicability);
+          }
           setCommittedOffers((current) => [
             ...current.filter((item) => item.id !== savedOffer.id),
             savedOffer,
@@ -552,6 +645,21 @@ export default function OrgAdminOffers() {
 
       setUsageRules(activePersistedRules);
       setPendingImages({});
+      const activeCommerceConfigurations = Object.fromEntries(
+        Object.entries(commerceConfigurations).filter(([offerId]) =>
+          (targetModes[offerId] ?? "POS_PRODUCT") === "POS_PRODUCT",
+        ),
+      );
+      const activeMembershipConfigurations = Object.fromEntries(
+        Object.entries(membershipConfigurations).filter(([offerId]) =>
+          targetModes[offerId] === "MEMBERSHIP_PRODUCT",
+        ),
+      );
+      setCommerceConfigurations(activeCommerceConfigurations);
+      setCommittedCommerceConfigurations(activeCommerceConfigurations);
+      setMembershipConfigurations(activeMembershipConfigurations);
+      setCommittedMembershipConfigurations(activeMembershipConfigurations);
+      setCommittedTargetModes(targetModes);
 
       setIsEditing(false);
       setFormVisible(false);
@@ -584,6 +692,9 @@ export default function OrgAdminOffers() {
 
     setUsageRules(committedUsageRules);
     setPendingImages({});
+    setCommerceConfigurations(committedCommerceConfigurations);
+    setMembershipConfigurations(committedMembershipConfigurations);
+    setTargetModes(committedTargetModes);
 
     setIsEditing(false);
     setFormVisible(false);
@@ -803,8 +914,10 @@ export default function OrgAdminOffers() {
             existingOffers={offers}
             usageRules={editingOfferRules}
             commerceMappings={commerceMappings}
-            posProducts={posProducts.map((product) => ({ id: product.id, name: product.productName ? `${product.productName}${product.productCode ? ` (${product.productCode})` : ""}` : product.productCode, mappingId: commerceMappings.find((mapping) => mapping.externalProductId === product.id || mapping.externalSku === product.productCode)?.mappingId }))}
-            commerceApplicability={commerceApplicability[editingOffer.id] ?? { adjustmentType: "PRODUCT_PERCENT_OFF", percentage: editingOffer.discountPercentage, active: true, productMappingIds: [] }}
+            posProducts={posProducts.map((product) => ({ id: product.id, name: product.productName ? `${product.productName}${product.productCode ? ` (${product.productCode})` : ""}` : product.productCode }))}
+            commerceConfiguration={commerceConfigurations[editingOffer.id] ?? { adjustmentType: "PRODUCT_PERCENT_OFF", percentage: editingOffer.discountPercentage, active: true, productIds: [] }}
+            membershipConfiguration={membershipConfigurations[editingOffer.id] ?? null}
+            targetMode={targetModes[editingOffer.id] ?? "POS_PRODUCT"}
             isNewOffer={
               !committedOffers.some((item) => item.id === editingOffer.id)
             }

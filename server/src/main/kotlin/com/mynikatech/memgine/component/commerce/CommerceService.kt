@@ -189,6 +189,29 @@ class CommerceService(
         validId(organizationId), validId(offerId), request, actorUserId, false
     )
 
+    fun membershipOfferApplicability(organizationId: String, offerId: String, actorUserId: String): MembershipOfferApplicabilityDto? = translate {
+        sql.membershipOfferApplicability(validId(organizationId), validId(offerId), actorUserId)?.let(::membershipOfferApplicabilityDto)
+    }
+
+    fun saveMembershipOfferApplicability(organizationId: String, offerId: String, request: MembershipOfferApplicabilityWriteDto, actorUserId: String): MembershipOfferApplicabilityDto = translate {
+        val behavior = request.behavior.trim().uppercase()
+        val adjustmentType = request.adjustmentType.trim().uppercase()
+        if (behavior !in setOf("PURCHASE_DISCOUNT", "UPGRADE") || adjustmentType !in setOf("PRODUCT_PERCENT_OFF", "PRODUCT_FIXED_OFF", "PRODUCT_SPECIAL_PRICE")) throw BadRequestException("Invalid membership offer applicability")
+        val customerApplicability = request.customerApplicability.trim().uppercase()
+        val membershipTargetMode = request.membershipTargetMode.trim().uppercase()
+        if (customerApplicability !in setOf("ALL", "NEW_CUSTOMER", "EXISTING_CUSTOMER") || membershipTargetMode !in setOf("ALL_MEMBERSHIP_PRODUCTS", "SELECTED_MEMBERSHIP_PRODUCTS")) throw BadRequestException("Invalid membership offer targeting")
+        sql.saveMembershipOfferApplicability(validId(organizationId), validId(offerId), behavior, request.targetMembershipProductId?.let(::validId), request.targetSubscriptionPlanId?.let(::validId), request.sourceMembershipProductId?.let(::validId), request.sourceSubscriptionPlanId?.let(::validId), adjustmentType, request.percentage, request.amountMinor, request.currencyCode?.trim()?.uppercase(), request.active, customerApplicability, membershipTargetMode, request.selectedMembershipProductIds.map(::validId).toTypedArray(), actorUserId)
+        sql.membershipOfferApplicability(validId(organizationId), validId(offerId), actorUserId)?.let(::membershipOfferApplicabilityDto)
+            ?: throw NotFoundException("Membership offer applicability was not saved")
+    }
+
+    fun deactivateOfferApplicability(organizationId: String, offerId: String, actorUserId: String): Boolean = translate {
+        sql.deactivateOfferApplicability(validId(organizationId), validId(offerId), actorUserId)
+    }
+
+    fun deactivateMembershipOfferApplicability(organizationId: String, offerId: String, actorUserId: String): Boolean = translate {
+        sql.deactivateMembershipOfferApplicability(validId(organizationId), validId(offerId), actorUserId)
+    }
     /** Phase 1 boundary only. No registered provider means no external catalog call occurs. */
     fun catalogProvider(providerCode: String): CommerceCatalogProvider =
         providers.catalogProvider(providerCode)
@@ -746,11 +769,17 @@ class CommerceService(
         }
     }
 
+    private fun membershipOfferApplicabilityDto(row: MembershipOfferApplicabilityRow) = MembershipOfferApplicabilityDto(
+        row.applicabilityId, row.offerId, row.behavior, row.targetMembershipProductId,
+        row.targetSubscriptionPlanId, row.sourceMembershipProductId, row.sourceSubscriptionPlanId,
+        row.adjustmentType, row.percentage, row.amountMinor, row.currencyCode, row.active, row.versionNo,
+        row.customerApplicability, row.membershipTargetMode, row.selectedMembershipProductIds
+    )
     private fun mappingDto(
         row: CommerceProductMappingRow,
         snapshots: List<CommerceProductSnapshotRow>
     ) = CommerceProductMappingDto(
-        row.mappingId, row.organizationId, row.integrationConfigurationId, row.storeId,
+        row.mappingId, row.organizationId, row.productId, row.integrationConfigurationId, row.storeId,
         row.externalProductId, row.externalVariantId, row.externalSku, row.active,
         snapshots.firstOrNull {
             it.organizationId == row.organizationId &&

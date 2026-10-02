@@ -90,6 +90,7 @@ data class CommerceProductSnapshotWriteDto(
 data class CommerceProductMappingDto(
     val mappingId: String,
     val organizationId: String,
+    val productId: String? = null,
     val integrationConfigurationId: String,
     val storeId: String? = null,
     val externalProductId: String,
@@ -133,6 +134,42 @@ data class CommerceApplicabilityWriteDto(
     val productMappingIds: List<String> = emptyList()
 )
 
+@Serializable
+data class MembershipOfferApplicabilityDto(
+    val applicabilityId: String,
+    val offerId: String,
+    val behavior: String,
+    val targetMembershipProductId: String? = null,
+    val targetSubscriptionPlanId: String? = null,
+    val sourceMembershipProductId: String? = null,
+    val sourceSubscriptionPlanId: String? = null,
+    val adjustmentType: String,
+    val percentage: Double? = null,
+    val amountMinor: Long? = null,
+    val currencyCode: String? = null,
+    val active: Boolean,
+    val versionNo: Int,
+    val customerApplicability: String = "ALL",
+    val membershipTargetMode: String = "ALL_MEMBERSHIP_PRODUCTS",
+    val selectedMembershipProductIds: List<String> = emptyList()
+)
+
+@Serializable
+data class MembershipOfferApplicabilityWriteDto(
+    val behavior: String,
+    val targetMembershipProductId: String? = null,
+    val targetSubscriptionPlanId: String? = null,
+    val sourceMembershipProductId: String? = null,
+    val sourceSubscriptionPlanId: String? = null,
+    val adjustmentType: String,
+    val percentage: Double? = null,
+    val amountMinor: Long? = null,
+    val currencyCode: String? = null,
+    val active: Boolean = true,
+    val customerApplicability: String = "ALL",
+    val membershipTargetMode: String = "ALL_MEMBERSHIP_PRODUCTS",
+    val selectedMembershipProductIds: List<String> = emptyList()
+)
 @Serializable
 data class CommerceTransactionCreateDto(
     val storeId: String? = null,

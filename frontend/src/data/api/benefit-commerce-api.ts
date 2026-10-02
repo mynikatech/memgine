@@ -4,6 +4,8 @@ import { httpClient } from "./http-client";
 
 export type CommerceProductMapping = {
   mappingId: ID;
+  /** Canonical durable Product identity from migration 124. */
+  productId?: ID | null;
   active: boolean;
   externalProductId: string;
   externalSku?: string | null;

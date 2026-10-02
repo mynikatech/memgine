@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 125-membership-offer-applicability
+      author: mynikatech
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/125-membership-offer-applicability.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

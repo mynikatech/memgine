@@ -142,6 +142,19 @@ fun Route.commerceRoutes(service: CommerceService) {
                     orgId(call), required(call.parameters["benefitId"]), call.receive<CommerceApplicabilityWriteDto>(), call.authenticatedPrincipal().userId), call.callId))
             }
         }
+        route("/offers/{offerId}/membership-applicability") {
+            get {
+                call.respond(ApiResponse.success(service.membershipOfferApplicability(orgId(call), required(call.parameters["offerId"]), call.authenticatedPrincipal().userId), call.callId))
+            }
+            put {
+                call.respond(ApiResponse.success(service.saveMembershipOfferApplicability(orgId(call), required(call.parameters["offerId"]), call.receive<MembershipOfferApplicabilityWriteDto>(), call.authenticatedPrincipal().userId), call.callId))
+            }
+            post("/deactivate") {
+                call.respond(ApiResponse.success(service.deactivateMembershipOfferApplicability(
+                    orgId(call), required(call.parameters["offerId"]), call.authenticatedPrincipal().userId
+                ), call.callId))
+            }
+        }
         route("/offers/{offerId}/commerce-applicability") {
             get {
                 call.respond(ApiResponse.success(service.offerApplicability(orgId(call), required(call.parameters["offerId"]), call.authenticatedPrincipal().userId), call.callId))
@@ -149,6 +162,11 @@ fun Route.commerceRoutes(service: CommerceService) {
             put {
                 call.respond(ApiResponse.success(service.saveOfferApplicability(
                     orgId(call), required(call.parameters["offerId"]), call.receive<CommerceApplicabilityWriteDto>(), call.authenticatedPrincipal().userId), call.callId))
+            }
+            post("/deactivate") {
+                call.respond(ApiResponse.success(service.deactivateOfferApplicability(
+                    orgId(call), required(call.parameters["offerId"]), call.authenticatedPrincipal().userId
+                ), call.callId))
             }
         }
     }

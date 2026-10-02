@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Image, Pressable, StyleSheet, View } from "react-native";
+import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { DateInput } from "../DateInput";
 import * as ImagePicker from "expo-image-picker";
 import type { PickedBrandingAsset } from "@/src/core/brandingAssetPicker";
@@ -7,21 +7,23 @@ import { resolveAssetUrl } from "@/src/data/api/asset-url";
 
 import type {
   MembershipProduct,
+  SubscriptionPlan,
   Offer,
   OfferUsageRule,
   Status,
   Store,
 } from "@/src/core";
 
-import { OfferCtaType, OfferFrequencyType } from "@/src/core";
+import { OfferCtaType, OfferFrequencyType, services } from "@/src/core";
 
 import { FieldLabel } from "../FieldLabel";
 import { Input } from "../Input";
 import { Modal } from "../Modal";
 import { ReferenceSelect } from "../ReferenceSelect";
 import { Text } from "../Text";
+import { Checkbox } from "../Checkbox";
 import { TextArea } from "../TextArea";
-import type { CommerceProductMapping, OfferCommerceApplicabilityWrite } from "@/src/data/api/offer-commerce-api";
+import type { CommerceProductMapping, OfferCommerceConfiguration, MembershipOfferApplicabilityWrite } from "@/src/data/api/offer-commerce-api";
 
 type OfferFormProps = {
   offer: Offer;
@@ -31,8 +33,10 @@ type OfferFormProps = {
   existingOffers: Offer[];
   usageRules: OfferUsageRule[];
   commerceMappings: CommerceProductMapping[];
-  posProducts: Array<{ id: string; name: string; mappingId?: string }>;
-  commerceApplicability: OfferCommerceApplicabilityWrite | null;
+  posProducts: Array<{ id: string; name: string }>;
+  commerceConfiguration: OfferCommerceConfiguration | null;
+  membershipConfiguration: MembershipOfferApplicabilityWrite | null;
+  targetMode: "POS_PRODUCT" | "MEMBERSHIP_PRODUCT";
   isNewOffer?: boolean;
   readOnly?: boolean;
 
@@ -40,7 +44,9 @@ type OfferFormProps = {
     offer: Offer,
     usageRules: OfferUsageRule[],
     image?: PickedBrandingAsset,
-    applicability?: OfferCommerceApplicabilityWrite,
+    configuration?: OfferCommerceConfiguration,
+    membershipConfiguration?: MembershipOfferApplicabilityWrite,
+    targetMode?: "POS_PRODUCT" | "MEMBERSHIP_PRODUCT",
   ) => Promise<void>;
   onCancel: () => void;
 };
@@ -56,6 +62,7 @@ const FREQUENCY_OPTIONS: Array<{
   { id: OfferFrequencyType.ONE_TIME, name: "One Time" },
 ];
 
+const COUNTRY_CURRENCY: Record<string, string> = { CA: "CAD", US: "USD", GB: "GBP", UK: "GBP", IN: "INR", AU: "AUD", SG: "SGD", AE: "AED", NZ: "NZD" };
 const DAY_OPTIONS = [
   { id: "MON", name: "Mon" },
   { id: "TUE", name: "Tue" },
@@ -281,7 +288,9 @@ export function OfferForm({
   usageRules,
   commerceMappings,
   posProducts,
-  commerceApplicability,
+  commerceConfiguration,
+  membershipConfiguration,
+  targetMode,
   isNewOffer = false,
   readOnly = false,
   onSave,
@@ -297,21 +306,43 @@ export function OfferForm({
 
   const [saving, setSaving] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [applicability, setApplicability] = useState<OfferCommerceApplicabilityWrite | null>(commerceApplicability);
+  const [applicability, setApplicability] = useState<OfferCommerceConfiguration | null>(commerceConfiguration);
+  const [productSearch, setProductSearch] = useState("");
+  const [mode, setMode] = useState<"POS_PRODUCT" | "MEMBERSHIP_PRODUCT">(targetMode);
+  const [membershipApplicability, setMembershipApplicability] = useState<MembershipOfferApplicabilityWrite | null>(membershipConfiguration);
+  const [targetPlans, setTargetPlans] = useState<SubscriptionPlan[]>([]);
+  const [sourcePlans, setSourcePlans] = useState<SubscriptionPlan[]>([]);
+  const [defaultCurrency, setDefaultCurrency] = useState("CAD");
 
   const timeZoneOptions = useMemo(getTimeZoneOptions, []);
+
+  useEffect(() => { let mounted = true; void services.organization.getOrganizationDetails(offer.organizationId).then((details) => { const currency = COUNTRY_CURRENCY[details?.address.countryCode?.trim().toUpperCase() ?? ""]; if (mounted && currency) setDefaultCurrency(currency); }).catch(() => undefined); return () => { mounted = false; }; }, [offer.organizationId]);
 
   useEffect(() => {
     setDraft(offer);
     setPendingImage(undefined);
     setRules(cloneRules(usageRules));
     setValidationError(null);
-    setApplicability(commerceApplicability);
-  }, [offer, usageRules, commerceApplicability]);
+    setApplicability(commerceConfiguration);
+    setProductSearch("");
+    setMode(targetMode);
+    setMembershipApplicability(membershipConfiguration);
+  }, [offer, usageRules, commerceConfiguration, membershipConfiguration, targetMode]);
 
-  const mappingItems = useMemo(() => posProducts.map((product) => ({ id: product.id, name: product.name })), [posProducts]);
-  const selectedProductId = useMemo(() => posProducts.find((product) => product.mappingId === applicability?.productMappingIds[0])?.id ?? "", [applicability, posProducts]);
-
+  useEffect(() => {
+    const target = membershipApplicability?.behavior === "PURCHASE_DISCOUNT"
+      ? (membershipApplicability.selectedMembershipProductIds.length === 1 ? membershipApplicability.selectedMembershipProductIds[0] : undefined)
+      : membershipApplicability?.targetMembershipProductId;
+    void (target ? services.subscriptionPlan.listByProduct(target) : Promise.resolve([])).then(setTargetPlans).catch(() => setTargetPlans([]));
+  }, [membershipApplicability?.targetMembershipProductId, membershipApplicability?.behavior, membershipApplicability?.selectedMembershipProductIds]);
+  useEffect(() => {
+    const source = membershipApplicability?.sourceMembershipProductId;
+    void (source ? services.subscriptionPlan.listByProduct(source) : Promise.resolve([])).then(setSourcePlans).catch(() => setSourcePlans([]));
+  }, [membershipApplicability?.sourceMembershipProductId]);
+  const filteredPosProducts = useMemo(() => {
+    const query = productSearch.trim().toLowerCase();
+    return query ? posProducts.filter((product) => product.name.toLowerCase().includes(query)) : posProducts;
+  }, [posProducts, productSearch]);
   const productItems = useMemo(
     () =>
       membershipProducts
@@ -547,10 +578,25 @@ export function OfferForm({
       return "Offer Status is required.";
     }
 
-    if (!selectedProductId) return "POS Product is required.";
-    if (!applicability?.productMappingIds[0]) return "The selected POS Product has no Commerce mapping. Configure the existing POS product mapping first.";
-    if (applicability.adjustmentType === "PRODUCT_PERCENT_OFF" && (!applicability.percentage || applicability.percentage <= 0 || applicability.percentage > 100)) return "Percentage must be greater than 0 and at most 100.";
-    if (["PRODUCT_FIXED_OFF", "PRODUCT_SPECIAL_PRICE"].includes(applicability.adjustmentType) && (applicability.amountMinor === undefined || applicability.amountMinor < 0)) return "Adjustment amount is required.";
+    if (mode === "POS_PRODUCT") {
+      if (!applicability?.productIds.length) return "Select at least one POS Product.";
+    } else {
+      if (!membershipApplicability) return "Membership Product configuration is required.";
+      if (membershipApplicability.behavior === "UPGRADE" && !membershipApplicability.targetMembershipProductId) return "Upgrade To Membership Product is required.";
+      if (membershipApplicability.behavior === "PURCHASE_DISCOUNT" && membershipApplicability.membershipTargetMode === "SELECTED_MEMBERSHIP_PRODUCTS" && membershipApplicability.selectedMembershipProductIds.length === 0) return "Select at least one Membership Product.";
+      const planProductId = membershipApplicability.behavior === "PURCHASE_DISCOUNT" ? membershipApplicability.selectedMembershipProductIds[0] : membershipApplicability.targetMembershipProductId;
+      const targetProduct = membershipProducts.find((product) => product.id === planProductId);
+      if (membershipApplicability.targetSubscriptionPlanId && !targetProduct?.plans.some((plan) => plan.id === membershipApplicability.targetSubscriptionPlanId)) return "Target Subscription Plan must belong to the target Membership Product.";
+      if (membershipApplicability.behavior === "UPGRADE" && !membershipApplicability.sourceMembershipProductId && membershipApplicability.sourceSubscriptionPlanId) return "Select a Current Membership Product before selecting its plan.";
+      const sourceProduct = membershipProducts.find((product) => product.id === membershipApplicability.sourceMembershipProductId);
+      if (membershipApplicability.behavior === "UPGRADE" && membershipApplicability.sourceSubscriptionPlanId && !sourceProduct?.plans.some((plan) => plan.id === membershipApplicability.sourceSubscriptionPlanId)) return "Current Subscription Plan must belong to the current Membership Product.";
+      if (membershipApplicability.behavior === "UPGRADE" && membershipApplicability.sourceMembershipProductId === membershipApplicability.targetMembershipProductId && (membershipApplicability.sourceSubscriptionPlanId ?? "") === (membershipApplicability.targetSubscriptionPlanId ?? "")) return "Current and target memberships cannot be identical.";
+    }
+    const currentAdjustment = mode === "POS_PRODUCT" ? applicability : membershipApplicability;
+    if (currentAdjustment?.adjustmentType === "PRODUCT_PERCENT_OFF" && (!currentAdjustment.percentage || currentAdjustment.percentage <= 0 || currentAdjustment.percentage > 100)) return "Percentage must be greater than 0 and at most 100.";
+    const adjustmentAmountMinor = currentAdjustment?.amountMinor ?? undefined;
+    if (["PRODUCT_FIXED_OFF", "PRODUCT_SPECIAL_PRICE"].includes(currentAdjustment?.adjustmentType ?? "") &&
+      (adjustmentAmountMinor === undefined || adjustmentAmountMinor < (currentAdjustment?.adjustmentType === "PRODUCT_FIXED_OFF" ? 1 : 0))) return "Adjustment amount is required.";
 
     for (let index = 0; index < rules.length; index += 1) {
       const rule = rules[index];
@@ -661,7 +707,7 @@ export function OfferForm({
             : undefined,
       }));
 
-      await onSave(normalizedOffer, normalizedRules, pendingImage, applicability ?? undefined);
+      await onSave(normalizedOffer, normalizedRules, pendingImage, mode === "POS_PRODUCT" ? applicability ?? undefined : undefined, mode === "MEMBERSHIP_PRODUCT" ? membershipApplicability ?? undefined : undefined, mode);
     } catch (error) {
       Alert.alert(
         "Unable to save offer",
@@ -777,7 +823,7 @@ export function OfferForm({
         </Text>
 
         <ReferenceSelect
-          label="Membership Product"
+          label="Membership Scope"
           value={draft.membershipProductId ?? ""}
           items={productItems}
           allowClear
@@ -825,26 +871,27 @@ export function OfferForm({
       </View>
 
       <View style={styles.section}>
-        <Text variant="body" color="text">POS Product Adjustment</Text>
-        <ReferenceSelect
-          label="Adjustment Type"
-          required
-          value={applicability?.adjustmentType ?? "PRODUCT_PERCENT_OFF"}
-          items={[
-            { id: "PRODUCT_PERCENT_OFF", name: "Percent off" },
-            { id: "PRODUCT_FIXED_OFF", name: "Fixed amount off" },
-            { id: "PRODUCT_SPECIAL_PRICE", name: "Special price" },
-            { id: "PRODUCT_FREE", name: "Free product" },
-          ]}
-          onChange={(adjustmentType) => setApplicability((current) => ({ adjustmentType, active: true, productMappingIds: current?.productMappingIds ?? [], percentage: adjustmentType === "PRODUCT_PERCENT_OFF" ? current?.percentage : undefined, amountMinor: ["PRODUCT_FIXED_OFF", "PRODUCT_SPECIAL_PRICE"].includes(adjustmentType) ? current?.amountMinor : undefined }))}
-          disabled={readOnly}
-        />
-        {applicability?.adjustmentType === "PRODUCT_PERCENT_OFF" ? <Input label="Percentage" value={applicability.percentage?.toString() ?? ""} keyboardType="decimal-pad" onChangeText={(value) => setApplicability((current) => current ? { ...current, percentage: Number(value.replace(/[^0-9.]/g, "")) || undefined } : current)} editable={!readOnly} /> : null}
-        {["PRODUCT_FIXED_OFF", "PRODUCT_SPECIAL_PRICE"].includes(applicability?.adjustmentType ?? "") ? <Input label={applicability?.adjustmentType === "PRODUCT_SPECIAL_PRICE" ? "Special Price (minor units)" : "Amount Off (minor units)"} value={applicability?.amountMinor?.toString() ?? ""} keyboardType="number-pad" onChangeText={(value) => setApplicability((current) => current ? { ...current, amountMinor: value ? Number(value.replace(/[^0-9]/g, "")) : undefined } : current)} editable={!readOnly} /> : null}
-        <ReferenceSelect label="POS Product" required value={selectedProductId} items={mappingItems} placeholder="Select POS product" onChange={(productId) => { const mappingId = posProducts.find((product) => product.id === productId)?.mappingId; setApplicability((current) => current ? { ...current, productMappingIds: mappingId ? [mappingId] : [] } : { adjustmentType: "PRODUCT_PERCENT_OFF", active: true, productMappingIds: mappingId ? [mappingId] : [] }); }} disabled={readOnly} />
-      </View>
-
-      <View style={styles.section}>
+        <Text variant="body" color="text">Offer Applies To</Text>
+        <View style={styles.modeRow}>
+          <Pressable disabled={readOnly} onPress={() => setMode("POS_PRODUCT")} style={[styles.modeButton, mode === "POS_PRODUCT" && styles.modeButtonSelected]}><Text variant="body" color={mode === "POS_PRODUCT" ? "background" : "text"}>POS Product</Text></Pressable>
+          <Pressable disabled={readOnly} onPress={() => setMode("MEMBERSHIP_PRODUCT")} style={[styles.modeButton, mode === "MEMBERSHIP_PRODUCT" && styles.modeButtonSelected]}><Text variant="body" color={mode === "MEMBERSHIP_PRODUCT" ? "background" : "text"}>Membership Product</Text></Pressable>
+        </View>
+        {mode === "POS_PRODUCT" ? <>
+          <Text variant="body" color="text">POS Product Adjustment</Text>
+          <ReferenceSelect label="Adjustment Type" required value={applicability?.adjustmentType ?? "PRODUCT_PERCENT_OFF"} items={[{ id: "PRODUCT_PERCENT_OFF", name: "Percent off" }, { id: "PRODUCT_FIXED_OFF", name: "Fixed amount off" }, { id: "PRODUCT_SPECIAL_PRICE", name: "Special price" }, { id: "PRODUCT_FREE", name: "Free product" }]} onChange={(adjustmentType) => setApplicability((current) => ({ adjustmentType: adjustmentType as OfferCommerceConfiguration["adjustmentType"], active: true, productIds: current?.productIds ?? [], percentage: adjustmentType === "PRODUCT_PERCENT_OFF" ? current?.percentage : undefined, amountMinor: ["PRODUCT_FIXED_OFF", "PRODUCT_SPECIAL_PRICE"].includes(adjustmentType) ? current?.amountMinor : undefined, currencyCode: ["PRODUCT_FIXED_OFF", "PRODUCT_SPECIAL_PRICE"].includes(adjustmentType) ? current?.currencyCode ?? defaultCurrency : undefined }))} disabled={readOnly} />
+          {applicability?.adjustmentType === "PRODUCT_PERCENT_OFF" ? <Input label="Percentage" value={applicability.percentage?.toString() ?? ""} keyboardType="decimal-pad" onChangeText={(value) => setApplicability((current) => current ? { ...current, percentage: Number(value.replace(/[^0-9.]/g, "")) || undefined } : current)} editable={!readOnly} /> : null}
+          {["PRODUCT_FIXED_OFF", "PRODUCT_SPECIAL_PRICE"].includes(applicability?.adjustmentType ?? "") ? <Input label={applicability?.adjustmentType === "PRODUCT_SPECIAL_PRICE" ? `Special Price (${applicability?.currencyCode ?? defaultCurrency})` : `Amount Off (${applicability?.currencyCode ?? defaultCurrency})`} value={applicability?.amountMinor === undefined ? "" : (applicability.amountMinor / 100).toFixed(2)} keyboardType="decimal-pad" onChangeText={(value) => setApplicability((current) => current ? { ...current, amountMinor: value ? Math.round(Number(value.replace(/[^0-9.]/g, "")) * 100) : undefined, currencyCode: current.currencyCode ?? defaultCurrency } : current)} editable={!readOnly} /> : null}
+          <FieldLabel label="POS Products" required /><Input label="Search products" value={productSearch} onChangeText={setProductSearch} placeholder="Search name or code" editable={!readOnly} />
+          <ScrollView style={styles.productList} nestedScrollEnabled>{filteredPosProducts.map((product) => <Checkbox key={product.id} value={applicability?.productIds.includes(product.id) ?? false} onValueChange={() => setApplicability((current) => { const productIds = current?.productIds ?? []; return { adjustmentType: current?.adjustmentType ?? "PRODUCT_PERCENT_OFF", active: current?.active ?? true, percentage: current?.percentage, amountMinor: current?.amountMinor, currencyCode: current?.currencyCode, productIds: productIds.includes(product.id) ? productIds.filter((id) => id !== product.id) : [...productIds, product.id] }; })} label={product.name} disabled={readOnly} />)}</ScrollView>
+        </> : <>
+          <Text variant="body" color="text">Membership Offer Type</Text>
+          <View style={styles.modeRow}><Pressable disabled={readOnly} onPress={() => setMembershipApplicability((current) => ({ ...(current ?? { targetMembershipProductId: "", adjustmentType: "PRODUCT_PERCENT_OFF", active: true, customerApplicability: "ALL", membershipTargetMode: "ALL_MEMBERSHIP_PRODUCTS", selectedMembershipProductIds: [] }), behavior: "PURCHASE_DISCOUNT", sourceMembershipProductId: undefined, sourceSubscriptionPlanId: undefined }))} style={[styles.modeButton, membershipApplicability?.behavior === "PURCHASE_DISCOUNT" && styles.modeButtonSelected]}><Text variant="body" color={membershipApplicability?.behavior === "PURCHASE_DISCOUNT" ? "background" : "text"}>Purchase Discount</Text></Pressable><Pressable disabled={readOnly} onPress={() => setMembershipApplicability((current) => ({ ...(current ?? { targetMembershipProductId: "", adjustmentType: "PRODUCT_PERCENT_OFF", active: true, customerApplicability: "ALL", membershipTargetMode: "ALL_MEMBERSHIP_PRODUCTS", selectedMembershipProductIds: [] }), behavior: "UPGRADE" }))} style={[styles.modeButton, membershipApplicability?.behavior === "UPGRADE" && styles.modeButtonSelected]}><Text variant="body" color={membershipApplicability?.behavior === "UPGRADE" ? "background" : "text"}>Upgrade</Text></Pressable></View>
+          {membershipApplicability?.behavior === "PURCHASE_DISCOUNT" ? <><Text variant="body" color="text">Customer Eligibility</Text><View style={styles.modeRow}>{([['ALL','Everyone'],['NEW_CUSTOMER','New Customers'],['EXISTING_CUSTOMER','Existing Customers']] as const).map(([value,label]) => <Pressable key={value} disabled={readOnly} onPress={() => setMembershipApplicability((current) => current ? { ...current, customerApplicability: value } : current)} style={[styles.modeButton, membershipApplicability.customerApplicability === value && styles.modeButtonSelected]}><Text variant="bodySmall" color={membershipApplicability.customerApplicability === value ? "background" : "text"}>{label}</Text></Pressable>)}</View><Text variant="body" color="text">Membership Applies To</Text><View style={styles.modeRow}>{([['ALL_MEMBERSHIP_PRODUCTS','All Membership Products'],['SELECTED_MEMBERSHIP_PRODUCTS','Selected Membership Products']] as const).map(([value,label]) => <Pressable key={value} disabled={readOnly} onPress={() => setMembershipApplicability((current) => current ? { ...current, membershipTargetMode: value, selectedMembershipProductIds: value === 'ALL_MEMBERSHIP_PRODUCTS' ? [] : current.selectedMembershipProductIds, targetSubscriptionPlanId: value === 'ALL_MEMBERSHIP_PRODUCTS' ? undefined : current.targetSubscriptionPlanId } : current)} style={[styles.modeButton, membershipApplicability.membershipTargetMode === value && styles.modeButtonSelected]}><Text variant="bodySmall" color={membershipApplicability.membershipTargetMode === value ? "background" : "text"}>{label}</Text></Pressable>)}</View>{membershipApplicability.membershipTargetMode === 'SELECTED_MEMBERSHIP_PRODUCTS' ? <ScrollView style={styles.productList} nestedScrollEnabled>{productItems.map((product) => <Checkbox key={product.id} value={membershipApplicability.selectedMembershipProductIds.includes(product.id)} onValueChange={() => setMembershipApplicability((current) => current ? { ...current, selectedMembershipProductIds: current.selectedMembershipProductIds.includes(product.id) ? current.selectedMembershipProductIds.filter((id) => id !== product.id) : [...current.selectedMembershipProductIds, product.id], targetSubscriptionPlanId: undefined } : current)} label={product.name} disabled={readOnly} />)}</ScrollView> : null}{membershipApplicability.membershipTargetMode === 'SELECTED_MEMBERSHIP_PRODUCTS' && membershipApplicability.selectedMembershipProductIds.length === 1 ? <ReferenceSelect label="Target Subscription Plan" value={membershipApplicability.targetSubscriptionPlanId ?? ""} items={targetPlans.filter((plan) => !plan.isDeleted).map((plan) => ({ id: plan.id, name: plan.subscriptionPlanName }))} allowClear onChange={(value) => setMembershipApplicability((current) => current ? { ...current, targetSubscriptionPlanId: value || undefined } : current)} disabled={readOnly} /> : null}</> : <><ReferenceSelect label="Current Membership Product" value={membershipApplicability?.sourceMembershipProductId ?? ""} items={productItems} allowClear onChange={(value) => setMembershipApplicability((current) => current ? { ...current, sourceMembershipProductId: value || undefined, sourceSubscriptionPlanId: undefined } : current)} disabled={readOnly} /><ReferenceSelect label="Current Subscription Plan" value={membershipApplicability?.sourceSubscriptionPlanId ?? ""} items={sourcePlans.filter((plan) => !plan.isDeleted).map((plan) => ({ id: plan.id, name: plan.subscriptionPlanName }))} allowClear onChange={(value) => setMembershipApplicability((current) => current ? { ...current, sourceSubscriptionPlanId: value || undefined } : current)} disabled={readOnly || !membershipApplicability?.sourceMembershipProductId} /><ReferenceSelect label="Upgrade To Membership Product" required value={membershipApplicability?.targetMembershipProductId ?? ""} items={productItems} onChange={(value) => setMembershipApplicability((current) => ({ ...(current ?? { behavior: "UPGRADE", adjustmentType: "PRODUCT_PERCENT_OFF", active: true, customerApplicability: "ALL", membershipTargetMode: "ALL_MEMBERSHIP_PRODUCTS", selectedMembershipProductIds: [] }), targetMembershipProductId: value, targetSubscriptionPlanId: undefined }))} disabled={readOnly} /><ReferenceSelect label="Upgrade To Subscription Plan" value={membershipApplicability?.targetSubscriptionPlanId ?? ""} items={targetPlans.filter((plan) => !plan.isDeleted).map((plan) => ({ id: plan.id, name: plan.subscriptionPlanName }))} allowClear onChange={(value) => setMembershipApplicability((current) => current ? { ...current, targetSubscriptionPlanId: value || undefined } : current)} disabled={readOnly || !membershipApplicability?.targetMembershipProductId} /></>}
+          <ReferenceSelect label="Offer Adjustment" required value={membershipApplicability?.adjustmentType ?? "PRODUCT_PERCENT_OFF"} items={[{ id: "PRODUCT_PERCENT_OFF", name: "Percentage Off" }, { id: "PRODUCT_FIXED_OFF", name: "Fixed Amount Off" }, { id: "PRODUCT_SPECIAL_PRICE", name: "Special Price" }]} onChange={(value) => setMembershipApplicability((current) => current ? { ...current, adjustmentType: value as MembershipOfferApplicabilityWrite["adjustmentType"], percentage: value === "PRODUCT_PERCENT_OFF" ? current.percentage : undefined, amountMinor: value === "PRODUCT_PERCENT_OFF" ? undefined : current.amountMinor, currencyCode: value === "PRODUCT_PERCENT_OFF" ? undefined : current.currencyCode ?? defaultCurrency } : current)} disabled={readOnly} />
+          {membershipApplicability?.adjustmentType === "PRODUCT_PERCENT_OFF" ? <Input label="Percentage" value={membershipApplicability.percentage?.toString() ?? ""} keyboardType="decimal-pad" onChangeText={(value) => setMembershipApplicability((current) => current ? { ...current, percentage: Number(value.replace(/[^0-9.]/g, "")) || undefined } : current)} editable={!readOnly} /> : null}
+          {["PRODUCT_FIXED_OFF", "PRODUCT_SPECIAL_PRICE"].includes(membershipApplicability?.adjustmentType ?? "") ? <Input label={membershipApplicability?.adjustmentType === "PRODUCT_SPECIAL_PRICE" ? `Special Membership Price (${membershipApplicability?.currencyCode ?? defaultCurrency})` : `Fixed Discount Amount (${membershipApplicability?.currencyCode ?? defaultCurrency})`} value={membershipApplicability?.amountMinor == null ? "" : ((membershipApplicability?.amountMinor ?? 0) / 100).toFixed(2)} keyboardType="decimal-pad" onChangeText={(value) => setMembershipApplicability((current) => current ? { ...current, amountMinor: value ? Math.round(Number(value.replace(/[^0-9.]/g, "")) * 100) : undefined, currencyCode: current.currencyCode ?? defaultCurrency } : current)} editable={!readOnly} /> : null}
+        </>}
+      </View>      <View style={styles.section}>
         <Text variant="body" color="text">
           Call to Action
         </Text>
@@ -1322,6 +1369,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
+  productList: { maxHeight: 220, borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 8, padding: 10 },
+  modeRow: { flexDirection: "row", gap: 10 },
+  modeButton: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  modeButtonSelected: { backgroundColor: "#0F766E", borderColor: "#0F766E" },
   timeZoneOption: {
     minHeight: 48,
     paddingHorizontal: 14,
