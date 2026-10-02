@@ -1442,6 +1442,53 @@ export default function JoinFlow() {
           return;
         }
 
+        if (intent.providerCode === "POYNT") {
+          if (!intent.commerceTransactionId) {
+            throw new Error("Terminal payment is missing its Commerce transaction.");
+          }
+
+          await services.counter.startRemoteTerminalPayment(
+            context,
+            intent.commerceTransactionId,
+          );
+
+          for (let attempts = 0; attempts < 10; attempts += 1) {
+            const confirmed = await services.counter.payment(
+              orgId,
+              intent.paymentIntentId,
+            );
+
+            if (
+              confirmed.payment.status === "SUCCEEDED" &&
+              confirmed.subscription
+            ) {
+              finishSubscription(
+                confirmed.subscription,
+                confirmed.payment.providerReferenceId ??
+                  confirmed.payment.paymentIntentId,
+              );
+
+              return;
+            }
+
+            if (
+              confirmed.payment.status === "FAILED" ||
+              confirmed.payment.status === "CANCELED" ||
+              confirmed.payment.status === "CANCELLED"
+            ) {
+              throw new Error("Payment was not completed. No membership was created.");
+            }
+
+            await new Promise<void>((resolve) => {
+              setTimeout(resolve, 2_000);
+            });
+          }
+
+          throw new Error(
+            "Payment confirmation is still processing. Please wait and try again.",
+          );
+        }
+
         if (intent.providerCode !== "TEST") {
           throw new Error("Provider checkout is not configured yet.");
         }

@@ -324,6 +324,10 @@ export function BusinessProvider({
    *
    * There is deliberately no mock/default organization fallback.
    */
+
+  if (!sessionLoading && !session && !organizationId) {
+    return <>{children}</>;
+  }
   if (resolving || !value) {
     return (
       <View style={styles.loading}>

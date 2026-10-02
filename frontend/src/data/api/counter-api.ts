@@ -56,6 +56,7 @@ export type PaymentIntent = {
   checkoutUrl?: string | null;
   monerisHostedTokenizationProfileId?: string | null;
   monerisHostedTokenizationUrl?: string | null;
+  commerceTransactionId?: ID | null;
 };
 
 export type PaymentConfirmation = {
@@ -362,6 +363,15 @@ export class CounterApi {
       challengeId,
       idempotencyKey,
       returnContext: productId ? { productId } : undefined,
+    });
+  }
+
+  startRemoteTerminalPayment(
+    ctx: CounterContext,
+    commerceTransactionId: ID,
+  ): Promise<ApiResult<{ commerceTransactionId: ID; referenceId: string; status: string }>> {
+    return httpClient.post(this.path(ctx, "purchases/payment/remote-terminal/start"), {
+      commerceTransactionId,
     });
   }
 

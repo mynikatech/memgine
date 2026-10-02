@@ -33,6 +33,7 @@ import com.mynikatech.memgine.component.notification.UnavailableExternalNotifica
 import com.mynikatech.memgine.component.integrationconfiguration.IntegrationConfigurationService
 import com.mynikatech.memgine.component.integrationconfiguration.integrationConfigurationRoutes
 import com.mynikatech.memgine.component.commerce.CommerceService
+import com.mynikatech.memgine.component.commerce.CounterCommercePaymentService
 import com.mynikatech.memgine.component.commerce.CommerceSql
 import com.mynikatech.memgine.component.commerce.commerceRoutes
 import com.mynikatech.memgine.component.commerce.poyntPaymentBridgeCallbackRoutes
@@ -162,7 +163,6 @@ fun Application.configureRouting(
     val paymentService = PaymentService(database.jdbi, config.server.environment, config.payment)
     val customerService = CustomerService(database.jdbi.onDemand(CustomerSql::class.java),
         membershipProductService, benefitService, storeService, customerDevIdentityEnabled, businessOtpService, paymentService)
-    val counterService = CounterService(database.jdbi, businessOtpService, paymentService, redemptionService, phoneNormalizer)
     val notificationConfigurationService = NotificationConfigurationService(database.jdbi)
     val integrationConfigurationService = IntegrationConfigurationService(database.jdbi)
     val poyntTokens = PoyntTokenService(
@@ -176,17 +176,33 @@ fun Application.configureRouting(
         poyntCommerceSql,
         PoyntAuthenticatedCatalogClient(poyntHttpTransport, poyntTokens),
         PoyntAuthenticatedOrderClient(poyntHttpTransport, poyntTokens),
-        PoyntSqlCheckoutConfigurationResolver(poyntCommerceSql)
+        PoyntSqlCheckoutConfigurationResolver(poyntCommerceSql),
+        PoyntPaymentBridgeClient(poyntHttpTransport, poyntTokens)
+    )
+    val commerceProviders = CommerceProviderRegistry(listOf(poyntCommerceProvider))
+    val remotePaymentConfiguration = CommerceRemotePaymentConfiguration(
+        config.poynt.paymentBridgeCallbackUrl,
+        config.poynt.paymentBridgeCallbackHeaderName,
+        config.poynt.paymentBridgeCallbackHeaderValue,
+        config.poynt.paymentBridgeTtlSeconds
+    )
+    val counterCommercePaymentService = CounterCommercePaymentService(
+        database.jdbi,
+        commerceProviders,
+        remotePaymentConfiguration
+    )
+    val counterService = CounterService(
+        database.jdbi,
+        businessOtpService,
+        paymentService,
+        counterCommercePaymentService,
+        redemptionService,
+        phoneNormalizer
     )
     val commerceService = CommerceService(
         database.jdbi.onDemand(CommerceSql::class.java),
-        CommerceProviderRegistry(listOf(poyntCommerceProvider)),
-        CommerceRemotePaymentConfiguration(
-            config.poynt.paymentBridgeCallbackUrl,
-            config.poynt.paymentBridgeCallbackHeaderName,
-            config.poynt.paymentBridgeCallbackHeaderValue,
-            config.poynt.paymentBridgeTtlSeconds
-        ),
+        commerceProviders,
+        remotePaymentConfiguration,
         CommercePaymentProviderPolicy(config.server.environment)
     )
     val customerExperienceReleaseService =
@@ -232,7 +248,12 @@ fun Application.configureRouting(
             notificationRoutes(notificationService)
             integrationConfigurationRoutes(integrationConfigurationService)
             commerceRoutes(commerceService)
-            poyntPaymentBridgeCallbackRoutes(commerceService, config.poynt.paymentBridgeCallbackHeaderName, config.poynt.paymentBridgeCallbackHeaderValue)
+            poyntPaymentBridgeCallbackRoutes(
+                commerceService,
+                counterCommercePaymentService,
+                config.poynt.paymentBridgeCallbackHeaderName,
+                config.poynt.paymentBridgeCallbackHeaderValue
+            )
             customerExperienceReleaseRoutes(
                 customerExperienceReleaseService
             )

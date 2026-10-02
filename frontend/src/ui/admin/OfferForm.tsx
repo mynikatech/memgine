@@ -21,6 +21,7 @@ import { Modal } from "../Modal";
 import { ReferenceSelect } from "../ReferenceSelect";
 import { Text } from "../Text";
 import { TextArea } from "../TextArea";
+import type { CommerceProductMapping, OfferCommerceApplicabilityWrite } from "@/src/data/api/offer-commerce-api";
 
 type OfferFormProps = {
   offer: Offer;
@@ -29,6 +30,9 @@ type OfferFormProps = {
   offerStatuses: Status[];
   existingOffers: Offer[];
   usageRules: OfferUsageRule[];
+  commerceMappings: CommerceProductMapping[];
+  posProducts: Array<{ id: string; name: string; mappingId?: string }>;
+  commerceApplicability: OfferCommerceApplicabilityWrite | null;
   isNewOffer?: boolean;
   readOnly?: boolean;
 
@@ -36,6 +40,7 @@ type OfferFormProps = {
     offer: Offer,
     usageRules: OfferUsageRule[],
     image?: PickedBrandingAsset,
+    applicability?: OfferCommerceApplicabilityWrite,
   ) => Promise<void>;
   onCancel: () => void;
 };
@@ -274,6 +279,9 @@ export function OfferForm({
   offerStatuses,
   existingOffers,
   usageRules,
+  commerceMappings,
+  posProducts,
+  commerceApplicability,
   isNewOffer = false,
   readOnly = false,
   onSave,
@@ -289,6 +297,7 @@ export function OfferForm({
 
   const [saving, setSaving] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [applicability, setApplicability] = useState<OfferCommerceApplicabilityWrite | null>(commerceApplicability);
 
   const timeZoneOptions = useMemo(getTimeZoneOptions, []);
 
@@ -297,7 +306,11 @@ export function OfferForm({
     setPendingImage(undefined);
     setRules(cloneRules(usageRules));
     setValidationError(null);
-  }, [offer, usageRules]);
+    setApplicability(commerceApplicability);
+  }, [offer, usageRules, commerceApplicability]);
+
+  const mappingItems = useMemo(() => posProducts.map((product) => ({ id: product.id, name: product.name })), [posProducts]);
+  const selectedProductId = useMemo(() => posProducts.find((product) => product.mappingId === applicability?.productMappingIds[0])?.id ?? "", [applicability, posProducts]);
 
   const productItems = useMemo(
     () =>
@@ -534,6 +547,11 @@ export function OfferForm({
       return "Offer Status is required.";
     }
 
+    if (!selectedProductId) return "POS Product is required.";
+    if (!applicability?.productMappingIds[0]) return "The selected POS Product has no Commerce mapping. Configure the existing POS product mapping first.";
+    if (applicability.adjustmentType === "PRODUCT_PERCENT_OFF" && (!applicability.percentage || applicability.percentage <= 0 || applicability.percentage > 100)) return "Percentage must be greater than 0 and at most 100.";
+    if (["PRODUCT_FIXED_OFF", "PRODUCT_SPECIAL_PRICE"].includes(applicability.adjustmentType) && (applicability.amountMinor === undefined || applicability.amountMinor < 0)) return "Adjustment amount is required.";
+
     for (let index = 0; index < rules.length; index += 1) {
       const rule = rules[index];
 
@@ -643,7 +661,7 @@ export function OfferForm({
             : undefined,
       }));
 
-      await onSave(normalizedOffer, normalizedRules, pendingImage);
+      await onSave(normalizedOffer, normalizedRules, pendingImage, applicability ?? undefined);
     } catch (error) {
       Alert.alert(
         "Unable to save offer",
@@ -804,6 +822,26 @@ export function OfferForm({
           placeholder="e.g. 10"
           editable={!readOnly}
         />
+      </View>
+
+      <View style={styles.section}>
+        <Text variant="body" color="text">POS Product Adjustment</Text>
+        <ReferenceSelect
+          label="Adjustment Type"
+          required
+          value={applicability?.adjustmentType ?? "PRODUCT_PERCENT_OFF"}
+          items={[
+            { id: "PRODUCT_PERCENT_OFF", name: "Percent off" },
+            { id: "PRODUCT_FIXED_OFF", name: "Fixed amount off" },
+            { id: "PRODUCT_SPECIAL_PRICE", name: "Special price" },
+            { id: "PRODUCT_FREE", name: "Free product" },
+          ]}
+          onChange={(adjustmentType) => setApplicability((current) => ({ adjustmentType, active: true, productMappingIds: current?.productMappingIds ?? [], percentage: adjustmentType === "PRODUCT_PERCENT_OFF" ? current?.percentage : undefined, amountMinor: ["PRODUCT_FIXED_OFF", "PRODUCT_SPECIAL_PRICE"].includes(adjustmentType) ? current?.amountMinor : undefined }))}
+          disabled={readOnly}
+        />
+        {applicability?.adjustmentType === "PRODUCT_PERCENT_OFF" ? <Input label="Percentage" value={applicability.percentage?.toString() ?? ""} keyboardType="decimal-pad" onChangeText={(value) => setApplicability((current) => current ? { ...current, percentage: Number(value.replace(/[^0-9.]/g, "")) || undefined } : current)} editable={!readOnly} /> : null}
+        {["PRODUCT_FIXED_OFF", "PRODUCT_SPECIAL_PRICE"].includes(applicability?.adjustmentType ?? "") ? <Input label={applicability?.adjustmentType === "PRODUCT_SPECIAL_PRICE" ? "Special Price (minor units)" : "Amount Off (minor units)"} value={applicability?.amountMinor?.toString() ?? ""} keyboardType="number-pad" onChangeText={(value) => setApplicability((current) => current ? { ...current, amountMinor: value ? Number(value.replace(/[^0-9]/g, "")) : undefined } : current)} editable={!readOnly} /> : null}
+        <ReferenceSelect label="POS Product" required value={selectedProductId} items={mappingItems} placeholder="Select POS product" onChange={(productId) => { const mappingId = posProducts.find((product) => product.id === productId)?.mappingId; setApplicability((current) => current ? { ...current, productMappingIds: mappingId ? [mappingId] : [] } : { adjustmentType: "PRODUCT_PERCENT_OFF", active: true, productMappingIds: mappingId ? [mappingId] : [] }); }} disabled={readOnly} />
       </View>
 
       <View style={styles.section}>

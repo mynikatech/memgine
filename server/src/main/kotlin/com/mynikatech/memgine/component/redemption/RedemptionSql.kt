@@ -66,7 +66,7 @@ interface RedemptionSql {
         @Bind("actorUserId") actorUserId: String
     ): List<RedemptionTransactionValidationDto>
 
-    @SqlQuery("SELECT * FROM execute_redemption_transaction(:transactionId, :organizationId, :storeId, :staffId, :actorUserId)")
+    @SqlQuery("SELECT * FROM commerce_execute_counter_redemption_transaction(:transactionId, :organizationId, :storeId, :staffId, :actorUserId)")
     fun executeTransaction(
         @Bind("transactionId") transactionId: String,
         @Bind("organizationId") organizationId: String,

@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 122-counter-membership-commerce-payment-routing
+      author: mynikatech
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/122-counter-membership-commerce-payment-routing.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

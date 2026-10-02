@@ -116,6 +116,11 @@ export class CounterService {
       .then((result) => this.unwrap(result));
   }
 
+  startRemoteTerminalPayment(ctx: CounterContext, commerceTransactionId: ID) {
+    return this.api.startRemoteTerminalPayment(ctx, commerceTransactionId)
+      .then((result) => this.unwrap(result));
+  }
+
   payment(organizationId: ID, paymentIntentId: ID) {
     return this.api.payment(organizationId, paymentIntentId)
       .then((result) => this.unwrap(result));

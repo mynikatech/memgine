@@ -8,6 +8,7 @@ import type {
   Status,
   Store,
 } from "@/src/core";
+import type { Product } from "@/src/core";
 
 import { OfferCtaType, services } from "@/src/core";
 
@@ -25,6 +26,7 @@ import { useRouter } from "expo-router";
 import { APP_ROUTES } from "@/src/constants/navigation";
 import type { PickedBrandingAsset } from "@/src/core/brandingAssetPicker";
 import { brandingAssetApi } from "@/src/data/api/branding-asset-api";
+import { offerCommerceApi, type CommerceProductMapping, type OfferCommerceApplicabilityWrite } from "@/src/data/api/offer-commerce-api";
 
 export default function OrgAdminOffers() {
   const { organization } = useBusiness();
@@ -43,6 +45,9 @@ export default function OrgAdminOffers() {
   const [products, setProducts] = useState<MembershipProduct[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [offerStatuses, setOfferStatuses] = useState<Status[]>([]);
+  const [commerceMappings, setCommerceMappings] = useState<CommerceProductMapping[]>([]);
+  const [posProducts, setPosProducts] = useState<Product[]>([]);
+  const [commerceApplicability, setCommerceApplicability] = useState<Record<string, OfferCommerceApplicabilityWrite>>({});
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -63,12 +68,14 @@ export default function OrgAdminOffers() {
       setLoading(true);
 
       try {
-        const [offerList, productList, storeList, statusList] =
+        const [offerList, productList, storeList, statusList, mappings, catalogProducts] =
           await Promise.all([
             services.offer.listByOrganization(organization.id),
             services.membershipProduct.listProducts(organization.id),
             services.organization.listStores(organization.id),
             services.status.listOfferStatuses(),
+            offerCommerceApi.mappings(organization.id),
+            services.benefit.listCatalogProducts(organization.id),
           ]);
 
         if (!mounted) {
@@ -99,6 +106,10 @@ export default function OrgAdminOffers() {
         setProducts(productList);
         setStores(storeList);
         setOfferStatuses(statusList);
+        setCommerceMappings(mappings);
+        setPosProducts(catalogProducts);
+        const applicability = await Promise.all(activeOffers.map(async (offer) => [offer.id, await offerCommerceApi.applicability(organization.id, offer.id)] as const));
+        if (mounted) setCommerceApplicability(Object.fromEntries(applicability.filter(([, value]) => value).map(([id, value]) => [id, { adjustmentType: value!.adjustmentType, percentage: value!.percentage ?? undefined, amountMinor: value!.amountMinor ?? undefined, currencyCode: value!.currencyCode ?? undefined, active: value!.active, productMappingIds: value!.productMappings.map((mapping) => mapping.mappingId).slice(0, 1) }])));
 
         setIsEditing(false);
         setSaveMessageVisible(false);
@@ -353,6 +364,7 @@ export default function OrgAdminOffers() {
     updatedOffer: Offer,
     updatedRules: OfferUsageRule[],
     image?: PickedBrandingAsset,
+    applicability?: OfferCommerceApplicabilityWrite,
   ) => {
     setPendingImages((current) => {
       const next = { ...current };
@@ -378,6 +390,7 @@ export default function OrgAdminOffers() {
 
       return [...otherRules, ...updatedRules];
     });
+    if (applicability) setCommerceApplicability((current) => ({ ...current, [updatedOffer.id]: applicability }));
 
     setFormVisible(false);
     setEditingOffer(null);
@@ -475,6 +488,9 @@ export default function OrgAdminOffers() {
             currentRules,
             !existing,
           );
+          const applicability = commerceApplicability[offer.id];
+          if (!applicability) throw new Error("POS Product configuration is required.");
+          await offerCommerceApi.save(organization.id, savedOffer.id, applicability);
           setCommittedOffers((current) => [
             ...current.filter((item) => item.id !== savedOffer.id),
             savedOffer,
@@ -786,6 +802,9 @@ export default function OrgAdminOffers() {
             offerStatuses={offerStatuses}
             existingOffers={offers}
             usageRules={editingOfferRules}
+            commerceMappings={commerceMappings}
+            posProducts={posProducts.map((product) => ({ id: product.id, name: product.productName ? `${product.productName}${product.productCode ? ` (${product.productCode})` : ""}` : product.productCode, mappingId: commerceMappings.find((mapping) => mapping.externalProductId === product.id || mapping.externalSku === product.productCode)?.mappingId }))}
+            commerceApplicability={commerceApplicability[editingOffer.id] ?? { adjustmentType: "PRODUCT_PERCENT_OFF", percentage: editingOffer.discountPercentage, active: true, productMappingIds: [] }}
             isNewOffer={
               !committedOffers.some((item) => item.id === editingOffer.id)
             }

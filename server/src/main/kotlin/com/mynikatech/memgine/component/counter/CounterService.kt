@@ -8,6 +8,7 @@ import com.mynikatech.memgine.component.otp.BusinessOtpContextRow
 import com.mynikatech.memgine.component.otp.BusinessOtpService
 import com.mynikatech.memgine.component.otp.OtpPurpose
 import com.mynikatech.memgine.component.otp.OtpRequestResult
+import com.mynikatech.memgine.component.commerce.CounterCommercePaymentService
 import com.mynikatech.memgine.component.payment.PaymentService
 import com.mynikatech.memgine.component.redemption.RedemptionService
 import com.mynikatech.memgine.net.dto.*
@@ -23,6 +24,7 @@ class CounterService(
     private val jdbi: Jdbi,
     private val businessOtp: BusinessOtpService,
     private val payments: PaymentService,
+    private val counterCommercePayments: CounterCommercePaymentService,
     private val redemptions: RedemptionService,
     private val phoneNormalizer: PhoneNormalizer = PhoneNormalizer()
 ) {
@@ -350,7 +352,7 @@ class CounterService(
         val customerUserId = purchase.customerUserId
             ?: throw BadRequestException("Customer is required for Counter membership payment")
 
-        return payments.startCounterMembershipPayment(
+        val intent = payments.startCounterMembershipPayment(
             org,
             request.copy(
                 returnContext = PaymentReturnContextDto(
@@ -364,6 +366,62 @@ class CounterService(
             purchase.staffId,
             customerUserId,
             purchase.planId,
+            principal.userId
+        )
+
+        if (intent.providerCode.equals("POYNT", ignoreCase = true)) {
+            val commerceTransactionId = intent.commerceTransactionId
+                ?: throw ConflictException("Counter payment is missing its Commerce transaction")
+            counterCommercePayments.prepareMembershipProviderOrder(org, commerceTransactionId, principal.userId)
+        }
+
+        return intent
+    }
+
+    fun startTerminalPayment(
+        org: String,
+        request: CounterCommercePaymentRequest,
+        principal: AuthenticatedPrincipal
+    ): CommerceTerminalPaymentInstruction =
+        counterCommercePayments.startLocalTerminalPayment(
+            org,
+            request.commerceTransactionId,
+            principal.userId
+        )
+
+    fun recordTerminalPaymentResult(
+        org: String,
+        request: CounterCommerceTerminalPaymentResultRequest,
+        principal: AuthenticatedPrincipal
+    ): Boolean = counterCommercePayments.recordLocalTerminalPaymentResult(
+        org,
+        request.commerceTransactionId,
+        principal.userId,
+        CommerceTerminalPaymentResultRequest(
+            providerTransactionId = request.providerTransactionId,
+            providerStatus = request.providerStatus,
+            amountMinor = request.amountMinor,
+            currencyCode = request.currencyCode,
+            failureCode = request.failureCode,
+            failureMessage = request.failureMessage
+        )
+    )
+
+    fun startRemoteTerminalPayment(
+        org: String,
+        request: CounterCommercePaymentRequest,
+        principal: AuthenticatedPrincipal
+    ): CommerceRemoteTerminalPaymentDispatchDto {
+        val posContext = principal.posContext
+            ?: throw ForbiddenException("Counter terminal context is required")
+        if (posContext.organizationId != org) {
+            throw ForbiddenException("Counter terminal does not belong to this organization")
+        }
+        return counterCommercePayments.startRemoteTerminalPayment(
+            org,
+            request.commerceTransactionId,
+            posContext.storeId,
+            posContext.staffId,
             principal.userId
         )
     }

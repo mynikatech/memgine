@@ -235,7 +235,6 @@ public final class CounterFlowController {
         content.addView(context);
         button("Redeem", () -> showCustomerEntry(terminal, CounterAction.REDEEM), true);
         button("Sell Membership", () -> showCustomerEntry(terminal, CounterAction.SELL), true);
-        button("Start Terminal Payment", () -> showCommerceTerminalPayment(terminal), false);
         button("Customers", () -> showCustomers(terminal), false);
         button("Lock Counter", () -> {
             staffSession.clear();
@@ -244,93 +243,6 @@ public final class CounterFlowController {
         }, false);
         cancelButton();
     }
-
-    /**
-     * Phase 3C-B accepts an already-created Commerce transaction. Creating lines,
-     * provider orders, fulfillment, and membership activation remain server flows.
-     */
-    private void showCommerceTerminalPayment(TerminalContext terminal) {
-    render("Terminal Payment");
-    text("Enter the Memgine Commerce transaction ID after its Poynt order is ready.");
-
-    EditText transactionId = input("Commerce transaction ID");
-
-    final Button[] start = new Button[1];
-
-    start[0] = button("Start terminal payment", () -> {
-        String id = transactionId.getText().toString().trim();
-
-        if (id.isEmpty()) {
-            setStatus("Commerce transaction ID is required.");
-            return;
-        }
-
-        if (terminalPaymentStarting || activeTerminalPayment != null) {
-            setStatus("A terminal payment is already in progress.");
-            return;
-        }
-
-        String token = staffSession.token();
-
-        if (token == null) {
-            refresh();
-            return;
-        }
-
-        terminalPaymentStarting = true;
-        start[0].setEnabled(false);
-        setStatus("Starting payment");
-
-        background(
-                () -> api.startTerminalPayment(terminal, token, id),
-                instruction -> {
-                    terminalPaymentStarting = false;
-
-                    if (!"POYNT".equalsIgnoreCase(instruction.providerCode)) {
-                        activeTerminalPayment = instruction;
-                        reportTerminalPaymentResult(
-                                terminal,
-                                new CommerceTerminalPaymentResult(
-                                        null,
-                                        "FAILED",
-                                        instruction.amountMinor,
-                                        instruction.currencyCode,
-                                        "UNSUPPORTED_PROVIDER",
-                                        "This terminal cannot process the configured provider."
-                                )
-                        );
-                        return;
-                    }
-
-                    if (instruction.amountMinor <= 0) {
-                        activeTerminalPayment = instruction;
-                        reportTerminalPaymentResult(
-                                terminal,
-                                new CommerceTerminalPaymentResult(
-                                        null,
-                                        "FAILED",
-                                        instruction.amountMinor,
-                                        instruction.currencyCode,
-                                        "ZERO_AMOUNT",
-                                        "This transaction does not require terminal payment."
-                                )
-                        );
-                        return;
-                    }
-
-                    launchPoyntPayment(terminal, instruction);
-                },
-                exception -> {
-                    terminalPaymentStarting = false;
-                    start[0].setEnabled(true);
-                    setStatus(apiErrorMessage(exception));
-                }
-        );
-    }, true);
-
-    button("Back", () -> showCounterHome(terminal));
-    cancelButton();
-}
 
     private void launchPoyntPayment(TerminalContext terminal, CommerceTerminalPaymentInstruction instruction) {
         activeTerminalPayment = instruction;
@@ -495,7 +407,7 @@ public final class CounterFlowController {
     private void showTerminalPaymentRecorded(TerminalContext terminal, CommerceTerminalPaymentResult result) {
         render("Terminal Payment");
         if ("SUCCEEDED".equals(result.providerStatus)) {
-            text("Payment successful. Fulfillment is pending.");
+            text("Payment succeeded and membership was created.");
         } else if ("CANCELLED".equals(result.providerStatus)) {
             text("Payment cancelled. The Commerce transaction remains ready to retry.");
         } else {
@@ -881,7 +793,21 @@ public final class CounterFlowController {
                         challenge.challengeId,
                         challenge.challengeId + ":poynt"
                 ),
-                intent -> showTerminalPaymentDeferred(terminal, customer, plan)
+                intent -> {
+                    if ("TEST".equalsIgnoreCase(intent.providerCode)) {
+                        background(
+                                () -> api.confirmTestPayment(terminal, staffSession.token(), intent.id),
+                                ignored -> showProviderPaymentSuccess(terminal, customer, plan),
+                                exception -> setStatus(apiErrorMessage(exception))
+                        );
+                        return;
+                    }
+                    if (!"POYNT".equalsIgnoreCase(intent.providerCode)) {
+                        setStatus("The configured payment provider is unavailable.");
+                        return;
+                    }
+                    startMembershipTerminalPayment(terminal, intent);
+                }
         ));
         button("Pay By Cash and Subscribe", () -> background(
                 () -> api.startCashPayment(
@@ -903,13 +829,44 @@ public final class CounterFlowController {
         cancelButton();
     }
 
-    private void showTerminalPaymentDeferred(TerminalContext terminal, Customer customer, Plan plan) {
-        render("Terminal Payment");
-        text(plan.name + " · " + formatPrice(plan.price, plan.currencyCode));
-        text("Terminal payment integration is not available yet.");
-        text("No subscription has been created.");
-        button("Back", () -> showCounterHome(terminal));
-        cancelButton();
+    private void startMembershipTerminalPayment(TerminalContext terminal, PaymentIntent intent) {
+        String commerceTransactionId = intent.commerceTransactionId == null
+                ? ""
+                : intent.commerceTransactionId.trim();
+        if (commerceTransactionId.isEmpty()) {
+            setStatus("Terminal payment is missing its Commerce transaction.");
+            return;
+        }
+        if (terminalPaymentStarting || activeTerminalPayment != null) {
+            setStatus("A terminal payment is already in progress.");
+            return;
+        }
+        String token = staffSession.token();
+        if (token == null) {
+            refresh();
+            return;
+        }
+        terminalPaymentStarting = true;
+        setStatus("Starting payment");
+        background(
+                () -> api.startTerminalPayment(terminal, token, commerceTransactionId),
+                instruction -> {
+                    terminalPaymentStarting = false;
+                    if (!"POYNT".equalsIgnoreCase(instruction.providerCode)) {
+                        setStatus("The configured payment provider is unavailable.");
+                        return;
+                    }
+                    if (instruction.amountMinor <= 0) {
+                        setStatus("Terminal payment amount is unavailable.");
+                        return;
+                    }
+                    launchPoyntPayment(terminal, instruction);
+                },
+                exception -> {
+                    terminalPaymentStarting = false;
+                    setStatus(apiErrorMessage(exception));
+                }
+        );
     }
 
     private void showCashConfirmation(
@@ -935,6 +892,15 @@ public final class CounterFlowController {
         text(customer.displayName);
         text(plan.name + " · " + formatPrice(plan.price, plan.currencyCode));
         text("Cash payment confirmed and membership created.");
+        button("Back to Counter Home", () -> showCounterHome(terminal));
+        cancelButton();
+    }
+
+    private void showProviderPaymentSuccess(TerminalContext terminal, Customer customer, Plan plan) {
+        render("Membership Sold");
+        text(customer.displayName);
+        text(plan.name + " · " + formatPrice(plan.price, plan.currencyCode));
+        text("Payment succeeded and membership was created.");
         button("Back to Counter Home", () -> showCounterHome(terminal));
         cancelButton();
     }

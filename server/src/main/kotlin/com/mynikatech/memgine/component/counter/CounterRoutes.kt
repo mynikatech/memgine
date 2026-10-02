@@ -151,6 +151,27 @@ fun Route.counterRoutes(service: CounterService) {
                 call.callId
             ))
         }
+        post("/purchases/payment/terminal/start") {
+            val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            call.respond(ApiResponse.success(
+                service.startTerminalPayment(org, call.receive<CounterCommercePaymentRequest>(), call.authenticatedPrincipal()),
+                call.callId
+            ))
+        }
+        post("/purchases/payment/terminal/result") {
+            val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            call.respond(ApiResponse.success(
+                service.recordTerminalPaymentResult(org, call.receive<CounterCommerceTerminalPaymentResultRequest>(), call.authenticatedPrincipal()),
+                call.callId
+            ))
+        }
+        post("/purchases/payment/remote-terminal/start") {
+            val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            call.respond(ApiResponse.success(
+                service.startRemoteTerminalPayment(org, call.receive<CounterCommercePaymentRequest>(), call.authenticatedPrincipal()),
+                call.callId
+            ))
+        }
         post("/purchases/payment/cash/start") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             call.respond(ApiResponse.success(

@@ -22,7 +22,12 @@ class PoyntCommerceProvider(
     override val capabilities get() = buildSet { addAll(setOf(CommerceCapability.CATALOG, CommerceCapability.PRODUCT_LOOKUP, CommerceCapability.ORDER, CommerceCapability.DISCOUNT, CommerceCapability.TERMINAL_PAYMENT)); if (paymentBridgeClient != null) add(CommerceCapability.REMOTE_PAYMENT) }
 
     override fun dispatchRemoteTerminalPayment(request: CommerceRemoteTerminalPaymentRequest) {
-        val configuration = config(request.organizationId, request.integrationConfigurationId, request.actorUserId)
+        val configuration = config(
+            request.organizationId,
+            request.integrationConfigurationId,
+            request.actorUserId,
+            request.transactionId
+        )
         (paymentBridgeClient ?: throw BadRequestException("Poynt Payment Bridge client is unavailable")).dispatch(configuration, request)
     }
     override fun getProduct(request: CommerceCatalogProductRequest): CommerceProductSnapshotWriteDto? = product(request)
@@ -86,6 +91,15 @@ class PoyntCommerceProvider(
         if (discountTotal < 0 || discountTotal > subtotal) {
             throw BadRequestException("Poynt order discounts are invalid")
         }
+        val taxTotal = request.authoritativeTaxTotalMinor ?: 0L
+        if (taxTotal < 0) {
+            throw BadRequestException("Poynt order tax is invalid")
+        }
+        val calculatedTotal = subtotal - discountTotal + taxTotal
+        val netTotal = request.authoritativeTotalMinor ?: calculatedTotal
+        if (netTotal != calculatedTotal) {
+            throw BadRequestException("Poynt order total does not match authoritative Commerce totals")
+        }
         val orderDiscounts = request.materializedAdjustments.filter { it.targetLineId == null }.map(::discount)
         return PreparedPoyntOrder(
             configuration,
@@ -93,10 +107,10 @@ class PoyntCommerceProvider(
                 items = items,
                 amounts = PoyntOrderAmounts(
                     subTotal = subtotal,
-                    taxTotal = 0,
+                    taxTotal = taxTotal,
                     discountTotal = discountTotal,
                     feeTotal = 0,
-                    netTotal = subtotal - discountTotal,
+                    netTotal = netTotal,
                     currency = currency
                 ),
                 discounts = orderDiscounts,
@@ -180,9 +194,30 @@ class PoyntCommerceProvider(
     private fun checkoutConfigurationResolverOrThrow(): PoyntCheckoutConfigurationResolver =
         checkoutConfigurationResolver ?: throw BadRequestException("Poynt checkout configuration is unavailable")
 
-    private fun config(org: String, integration: String, actor: String): PoyntCatalogConfiguration = sql.catalogConfiguration(org, integration, actor)?.let {
-        PoyntCatalogConfiguration(it.integrationConfigurationId,it.organizationId,it.applicationId,it.businessId,it.providerStoreId,it.secretReference,it.merchantCurrencyCode,it.lastIncrementalSyncAt)
-    } ?: throw BadRequestException("Poynt catalog configuration is unavailable")
+    private fun config(
+        org: String,
+        integration: String,
+        actor: String,
+        transactionId: String? = null
+    ): PoyntCatalogConfiguration {
+        val row = if (transactionId.isNullOrBlank()) {
+            sql.catalogConfiguration(org, integration, actor)
+        } else {
+            sql.counterCatalogConfiguration(transactionId, actor)
+                ?.takeIf { it.organizationId == org && it.integrationConfigurationId == integration }
+        } ?: throw BadRequestException("Poynt catalog configuration is unavailable")
+
+        return PoyntCatalogConfiguration(
+            row.integrationConfigurationId,
+            row.organizationId,
+            row.applicationId,
+            row.businessId,
+            row.providerStoreId,
+            row.secretReference,
+            row.merchantCurrencyCode,
+            row.lastIncrementalSyncAt
+        )
+    }
 
     private fun mapProduct(product: PoyntProduct, config: PoyntCatalogConfiguration, storeId: String?): List<CommerceProductSnapshotWriteDto> {
         val variants = product.variants.filter { it.active }
@@ -225,8 +260,15 @@ class PoyntSqlCheckoutConfigurationResolver(
             ?: throw BadRequestException("Commerce integration configuration is required")
         val actorUserId = request.actorUserId?.takeIf { it.isNotBlank() }
             ?: throw BadRequestException("Commerce checkout actor is required")
-        val row = sql.catalogConfiguration(request.organizationId, integrationId, actorUserId)
-            ?: throw BadRequestException("Poynt checkout configuration is unavailable")
+        val row = if (request.sourceChannel == "COUNTER_MEMBERSHIP") {
+            sql.counterCatalogConfiguration(request.transactionId, actorUserId)
+                ?.takeIf {
+                    it.organizationId == request.organizationId &&
+                        it.integrationConfigurationId == integrationId
+                }
+        } else {
+            sql.catalogConfiguration(request.organizationId, integrationId, actorUserId)
+        } ?: throw BadRequestException("Poynt checkout configuration is unavailable")
         return PoyntCatalogConfiguration(
             row.integrationConfigurationId,
             row.organizationId,
@@ -244,4 +286,7 @@ data class PoyntCatalogConfigurationRow(var integrationConfigurationId: String="
 interface PoyntCommerceSql {
  @SqlQuery("SELECT * FROM commerce_get_catalog_configuration(:organizationId,:integrationId,:actorUserId)") @RegisterBeanMapper(PoyntCatalogConfigurationRow::class)
  fun catalogConfiguration(@Bind("organizationId") organizationId:String,@Bind("integrationId") integrationId:String,@Bind("actorUserId") actorUserId:String):PoyntCatalogConfigurationRow?
+
+ @SqlQuery("SELECT * FROM commerce_get_poynt_catalog_configuration_for_counter_transaction(:transactionId,:actorUserId)") @RegisterBeanMapper(PoyntCatalogConfigurationRow::class)
+ fun counterCatalogConfiguration(@Bind("transactionId") transactionId:String,@Bind("actorUserId") actorUserId:String):PoyntCatalogConfigurationRow?
 }

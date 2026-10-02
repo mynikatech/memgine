@@ -31,13 +31,23 @@ internal object PoyntPaymentBridgeCallbackSecurity {
     }
 }
 
-fun Route.poyntPaymentBridgeCallbackRoutes(service: CommerceService, headerName: String, headerValue: String) {
+fun Route.poyntPaymentBridgeCallbackRoutes(
+    service: CommerceService,
+    counterPaymentService: CounterCommercePaymentService,
+    headerName: String,
+    headerValue: String
+) {
     route("/commerce/providers/poynt/payment-bridge") {
         post("/callback") {
             if (headerName.isBlank() || headerValue.isBlank()) throw ForbiddenException("Poynt callback is unavailable")
             PoyntPaymentBridgeCallbackSecurity.authenticate(call.request.headers[headerName], headerValue)
-            val body = PoyntPaymentBridgeCallbackSecurity.decode(call.receive<ByteArray>(), call.request.headers["Content-Encoding"])
-            service.recordRemoteTerminalPaymentCallback(PoyntPaymentBridgeCallbackParser.parse(body))
+            val body = PoyntPaymentBridgeCallbackSecurity.decode(
+                call.receive<ByteArray>(),
+                call.request.headers["Content-Encoding"]
+            )
+            val callback = PoyntPaymentBridgeCallbackParser.parse(body)
+            service.recordRemoteTerminalPaymentCallback(callback)
+            counterPaymentService.finalizeRemoteTerminalPayment(callback.referenceId)
             call.respond(ApiResponse.success(true, call.callId))
         }
     }

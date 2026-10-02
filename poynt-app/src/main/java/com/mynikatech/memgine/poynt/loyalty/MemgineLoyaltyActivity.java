@@ -4,7 +4,8 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
-
+import android.os.Build;
+import android.content.Context;
 import com.mynikatech.memgine.poynt.R;
 import com.mynikatech.memgine.poynt.ui.counter.CounterFlowFragment;
 
@@ -25,12 +26,21 @@ public final class MemgineLoyaltyActivity extends Activity {
 
     @Override protected void onStart() {
         super.onStart();
+
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intents.ACTION_TRANSACTION_COMPLETED);
         filter.addAction(Intents.ACTION_PAYMENT_CANCELED);
-        registerReceiver(transactionReceiver, filter);
-    }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(
+                    transactionReceiver,
+                    filter,
+                    Context.RECEIVER_EXPORTED
+            );
+        } else {
+            registerReceiver(transactionReceiver, filter);
+        }
+    }
     @Override protected void onStop() {
         unregisterReceiver(transactionReceiver);
         super.onStop();

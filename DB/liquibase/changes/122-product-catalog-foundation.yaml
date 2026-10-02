@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 122-product-catalog-foundation
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/122-product-catalog-foundation.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

@@ -476,18 +476,38 @@ public final class MemgineApiClient {
         return true;
     }
 
+    public boolean confirmTestPayment(
+            TerminalContext terminal,
+            String sessionToken,
+            String paymentIntentId
+    ) throws Exception {
+        JSONObject request = new JSONObject();
+        request.put("status", "SUCCEEDED");
+        call(
+                "POST",
+                "/api/v1/organizations/" + terminal.organizationId + "/payments/"
+                        + paymentIntentId + "/test-result",
+                null,
+                sessionToken,
+                request
+        );
+        return true;
+    }
+
     public CommerceTerminalPaymentInstruction startTerminalPayment(
             TerminalContext terminal,
             String sessionToken,
             String commerceTransactionId
     ) throws Exception {
+        JSONObject request = new JSONObject();
+        request.put("commerceTransactionId", commerceTransactionId);
         JSONObject data = call(
                 "POST",
-                "/api/v1/organizations/" + terminal.organizationId + "/commerce/transactions/"
-                        + commerceTransactionId + "/terminal-payment/start",
+                "/api/v1/organizations/" + terminal.organizationId
+                        + "/counter/purchases/payment/terminal/start",
                 null,
                 sessionToken,
-                null
+                request
         );
         return new CommerceTerminalPaymentInstruction(
                 data.getString("commerceTransactionId"),
@@ -506,6 +526,7 @@ public final class MemgineApiClient {
             CommerceTerminalPaymentResult result
     ) throws Exception {
         JSONObject request = new JSONObject();
+        request.put("commerceTransactionId", instruction.commerceTransactionId);
         if (result.providerTransactionId == null) {
             request.put("providerTransactionId", JSONObject.NULL);
         } else {
@@ -518,8 +539,8 @@ public final class MemgineApiClient {
         if (result.failureMessage != null) request.put("failureMessage", result.failureMessage);
         call(
                 "POST",
-                "/api/v1/organizations/" + terminal.organizationId + "/commerce/transactions/"
-                        + instruction.commerceTransactionId + "/terminal-payment/result",
+                "/api/v1/organizations/" + terminal.organizationId
+                        + "/counter/purchases/payment/terminal/result",
                 null,
                 sessionToken,
                 request
@@ -531,7 +552,10 @@ public final class MemgineApiClient {
                 data.getString("paymentIntentId"),
                 data.getString("providerCode"),
                 data.getDouble("amount"),
-                data.getString("currencyCode")
+                data.getString("currencyCode"),
+                data.isNull("commerceTransactionId")
+                        ? null
+                        : data.getString("commerceTransactionId")
         );
     }
 

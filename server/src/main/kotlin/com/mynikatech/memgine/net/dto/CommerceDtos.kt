@@ -264,7 +264,11 @@ data class CommerceCheckoutRequest(
     /** Server-supplied actor used only by an authorized integration-configuration resolver. */
     val actorUserId: String? = null,
     /** Server-materialized Benefit/Offer outcomes. Providers must not evaluate eligibility. */
-    val materializedAdjustments: List<CommerceCheckoutAdjustment> = emptyList()
+    val materializedAdjustments: List<CommerceCheckoutAdjustment> = emptyList(),
+    /** Server-authoritative tax for internally priced membership checkout. */
+    val authoritativeTaxTotalMinor: Long? = null,
+    /** Server-authoritative final total for internally priced membership checkout. */
+    val authoritativeTotalMinor: Long? = null
 )
 
 data class CommerceCheckoutAdjustment(

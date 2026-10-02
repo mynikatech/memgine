@@ -3,6 +3,7 @@
     "name": "memgine",
     "slug": "frontend",
     "version": "1.0.0",
+    "owner": "mynikatech",
     "orientation": "portrait",
     "icon": "./assets/images/memgine-icon.png",
     "scheme": "frontend",
@@ -10,7 +11,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.memgineroutingcore.njtuu4",
+      "bundleIdentifier": "com.mynikatech.memgine",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }

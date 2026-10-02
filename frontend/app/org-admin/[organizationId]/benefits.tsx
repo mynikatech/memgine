@@ -30,6 +30,12 @@ import { useRouter } from "expo-router";
 import { APP_ROUTES } from "@/src/constants/navigation";
 
 import { benefitDraftStore } from "@/src/core/services/benefit-draft-store";
+import {
+  benefitCommerceApi,
+  type BenefitCommerceApplicability,
+  type BenefitCommerceApplicabilityWrite,
+  type CommerceProductMapping,
+} from "@/src/data/api/benefit-commerce-api";
 
 /* -------------------------------------------------------------------------- */
 /* HELPERS                                                                    */
@@ -159,6 +165,50 @@ function formatRuleSummary(rule: BenefitUsageRule): string {
   return parts.join(" • ");
 }
 
+function benefitAdjustmentType(
+  benefit: Benefit,
+  benefitTypes: ReferenceDataItem[],
+): string | null {
+  switch (
+    benefitTypes.find((type) => type.id === benefit.benefitTypeId)?.code
+  ) {
+    case "FREE_ITEM":
+      return "PRODUCT_FREE";
+    case "PERCENTAGE":
+      return "PRODUCT_PERCENT_OFF";
+    case "FIXED":
+      return "PRODUCT_FIXED_OFF";
+    // Service has no established product-level Commerce adjustment.
+    case "SERVICE":
+    default:
+      return null;
+  }
+}
+
+function mappingForProduct(
+  product: Product,
+  mappings: CommerceProductMapping[],
+): CommerceProductMapping | undefined {
+  return mappings.find(
+    (mapping) =>
+      mapping.externalProductId === product.id ||
+      (product.productCode.length > 0 &&
+        mapping.externalSku === product.productCode),
+  );
+}
+
+function productForMapping(
+  mapping: CommerceProductMapping,
+  products: Product[],
+): Product | undefined {
+  return products.find(
+    (product) =>
+      mapping.externalProductId === product.id ||
+      (product.productCode.length > 0 &&
+        mapping.externalSku === product.productCode),
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 /* MAIN                                                                       */
 /* -------------------------------------------------------------------------- */
@@ -203,6 +253,14 @@ export default function OrgAdminBenefits() {
 
   const [products, setProducts] = useState<Product[]>([]);
 
+  const [commerceMappings, setCommerceMappings] = useState<
+    CommerceProductMapping[]
+  >([]);
+
+  const [commerceApplicability, setCommerceApplicability] = useState<
+    Record<string, BenefitCommerceApplicability>
+  >({});
+
   const [loading, setLoading] = useState(true);
 
   const [saving, setSaving] = useState(false);
@@ -231,23 +289,57 @@ export default function OrgAdminBenefits() {
           typeList,
           statusList,
           productList,
+          mappingList,
         ] = await Promise.all([
           services.benefit.listByOrganization(organization.id),
           services.referenceData.listBenefitCategories(),
           services.referenceData.listBenefitTypes(),
           services.status.listBenefitStatuses(),
           services.benefit.listCatalogProducts(organization.id),
+          benefitCommerceApi.mappings(organization.id),
         ]);
 
         const loadedRules = await services.benefitUsageRule.listByBenefits(
           persistedBenefits.map((item) => item.id),
         );
 
+        const loadedApplicability = await Promise.all(
+          persistedBenefits.map(async (benefit) => [
+            benefit.id,
+            await benefitCommerceApi.applicability(organization.id, benefit.id),
+          ] as const),
+        );
+
         if (!mounted) {
           return;
         }
 
-        const persistedSnapshot = cloneBenefits(persistedBenefits);
+        const applicabilityByBenefitId = new Map(
+          loadedApplicability.filter(
+            (entry): entry is [string, BenefitCommerceApplicability] =>
+              entry[1] !== null,
+          ),
+        );
+
+        // Legacy Product remains authoritative when present. For a legacy
+        // record without it, render the product represented by the saved
+        // Commerce mapping so reopening the form keeps the current selection.
+        const persistedSnapshot = cloneBenefits(
+          persistedBenefits.map((benefit) => {
+            if (benefit.productId) return benefit;
+
+            const mappedProduct = applicabilityByBenefitId
+              .get(benefit.id)
+              ?.productMappings.map((mapping) =>
+                productForMapping(mapping, productList),
+              )
+              .find((product): product is Product => Boolean(product));
+
+            return mappedProduct
+              ? { ...benefit, productId: mappedProduct.id }
+              : benefit;
+          }),
+        );
 
         /*
          * PostgreSQL is authoritative on every fresh load.
@@ -265,6 +357,10 @@ export default function OrgAdminBenefits() {
         setBenefitTypes(typeList);
         setBenefitStatuses(statusList);
         setProducts(productList);
+        setCommerceMappings(mappingList);
+        setCommerceApplicability(
+          Object.fromEntries(applicabilityByBenefitId),
+        );
 
         /*
          * Every fresh organization load starts in View mode.
@@ -298,11 +394,64 @@ export default function OrgAdminBenefits() {
   /* DERIVED                                                                */
   /* ---------------------------------------------------------------------- */
 
+  const requiresCommerceSave = (benefit: Benefit): boolean => {
+    const adjustmentType = benefitAdjustmentType(benefit, benefitTypes);
+    const committed = committedBenefits.find((item) => item.id === benefit.id);
+
+    if (!adjustmentType) {
+      return false;
+    }
+
+    if (!committed) {
+      return true;
+    }
+
+    if (
+      committed.benefitTypeId !== benefit.benefitTypeId ||
+      committed.productId !== benefit.productId
+    ) {
+      return true;
+    }
+
+    if (adjustmentType !== "PRODUCT_FREE") {
+      return false;
+    }
+
+    const existing = commerceApplicability[benefit.id];
+    const selectedProduct = products.find(
+      (product) => product.id === benefit.productId,
+    );
+    const mapping = selectedProduct
+      ? mappingForProduct(selectedProduct, commerceMappings)
+      : undefined;
+
+    return (
+      !existing ||
+      existing.adjustmentType !== adjustmentType ||
+      !mapping ||
+      !existing.productMappings.some(
+        (existingMapping) => existingMapping.mappingId === mapping.mappingId,
+      )
+    );
+  };
+
   const hasChanges = useMemo(
     () =>
       !benefitsEqual(committedBenefits, benefits) ||
-      !rulesEqual(committedRules, rules),
-    [committedBenefits, benefits, committedRules, rules],
+      !rulesEqual(committedRules, rules) ||
+      benefits.some(
+        (benefit) => !benefit.isDeleted && requiresCommerceSave(benefit),
+      ),
+    [
+      committedBenefits,
+      benefits,
+      committedRules,
+      rules,
+      benefitTypes,
+      products,
+      commerceMappings,
+      commerceApplicability,
+    ],
   );
 
   const visibleBenefits = useMemo(
@@ -335,6 +484,49 @@ export default function OrgAdminBenefits() {
 
   const getDisplayName = (benefit: Benefit) =>
     benefit.displayName ?? benefit.benefitName;
+
+  const commerceApplicabilityFor = (
+    benefit: Benefit,
+  ): BenefitCommerceApplicabilityWrite | null => {
+    const adjustmentType = benefitAdjustmentType(benefit, benefitTypes);
+
+    if (!adjustmentType) {
+      return null;
+    }
+
+    if (!benefit.productId) {
+      throw new Error(
+        `${getTypeName(benefit.benefitTypeId)} requires a POS Product.`,
+      );
+    }
+
+    const product = products.find((item) => item.id === benefit.productId);
+    const mapping = product && mappingForProduct(product, commerceMappings);
+
+    if (!mapping) {
+      throw new Error(
+        `The selected Product for "${getDisplayName(benefit)}" does not have an active Commerce product mapping. Sync or reconcile that POS product before saving this benefit.`,
+      );
+    }
+
+    if (adjustmentType === "PRODUCT_PERCENT_OFF") {
+      throw new Error(
+        `Percentage Discount for "${getDisplayName(benefit)}" requires an existing percentage value. The current Benefit form has no percentage field to reuse.`,
+      );
+    }
+
+    if (adjustmentType === "PRODUCT_FIXED_OFF") {
+      throw new Error(
+        `Fixed Amount for "${getDisplayName(benefit)}" requires an existing fixed adjustment amount. Retail Price and Cost are not discount amounts and will not be used.`,
+      );
+    }
+
+    return {
+      adjustmentType,
+      active: true,
+      productMappingIds: [mapping.mappingId],
+    };
+  };
 
   /* ---------------------------------------------------------------------- */
   /* BENEFIT CODE                                                           */
@@ -562,6 +754,33 @@ export default function OrgAdminBenefits() {
         benefits.map((benefit) => [benefit.id, benefit]),
       );
 
+      const benefitsRequiringCommerceSave = benefits.filter(
+        (benefit) =>
+          !benefit.isDeleted && requiresCommerceSave(benefit),
+      );
+
+      // Validate all Commerce applicability before changing any legacy Benefit.
+      // This prevents an invalid selected product from being persisted without
+      // the corresponding product-level adjustment.
+      const applicabilityByBenefitId = new Map(
+        benefitsRequiringCommerceSave.map((benefit) => [
+          benefit.id,
+          commerceApplicabilityFor(benefit),
+        ]),
+      );
+
+      const saveCommerceApplicability = async (savedBenefit: Benefit) => {
+        const applicability = applicabilityByBenefitId.get(savedBenefit.id);
+
+        if (applicability) {
+          await benefitCommerceApi.save(
+            organization.id,
+            savedBenefit.id,
+            applicability,
+          );
+        }
+      };
+
       /* -------------------------------------------------------------- */
       /* CREATE                                                         */
       /* -------------------------------------------------------------- */
@@ -571,13 +790,15 @@ export default function OrgAdminBenefits() {
           continue;
         }
 
-        await services.benefit.saveBenefitWithRules(
+        const savedBenefit = await services.benefit.saveBenefitWithRules(
           organization.id,
           benefit,
           rules.filter(
             (rule) => rule.benefitId === benefit.id && !rule.isDeleted,
           ),
         );
+
+        await saveCommerceApplicability(savedBenefit);
       }
 
       /* -------------------------------------------------------------- */
@@ -601,11 +822,13 @@ export default function OrgAdminBenefits() {
           JSON.stringify(committed) !== JSON.stringify(benefit) ||
           !rulesEqual(previousRules, currentRules)
         ) {
-          await services.benefit.saveBenefitWithRules(
+          const savedBenefit = await services.benefit.saveBenefitWithRules(
             organization.id,
             benefit,
             currentRules,
           );
+
+          await saveCommerceApplicability(savedBenefit);
         }
       }
 
@@ -633,6 +856,13 @@ export default function OrgAdminBenefits() {
         refreshed.map((item) => item.id),
       );
 
+      const refreshedApplicability = await Promise.all(
+        refreshed.map(async (benefit) => [
+          benefit.id,
+          await benefitCommerceApi.applicability(organization.id, benefit.id),
+        ] as const),
+      );
+
       const snapshot = cloneBenefits(refreshed);
 
       setCommittedBenefits(cloneBenefits(snapshot));
@@ -642,6 +872,15 @@ export default function OrgAdminBenefits() {
       setBenefits(cloneBenefits(snapshot));
 
       setRules(cloneRules(refreshedRules));
+
+      setCommerceApplicability(
+        Object.fromEntries(
+          refreshedApplicability.filter(
+            (entry): entry is [string, BenefitCommerceApplicability] =>
+              entry[1] !== null,
+          ),
+        ),
+      );
 
       benefitDraftStore.clear(organization.id);
 

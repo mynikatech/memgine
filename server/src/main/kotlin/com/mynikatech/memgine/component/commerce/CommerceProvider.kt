@@ -20,7 +20,8 @@ data class CommerceRemoteTerminalPaymentRequest(
     val organizationId: String, val integrationConfigurationId: String, val actorUserId: String, val providerOrderId: String,
     val amountMinor: Long, val currencyCode: String, val referenceId: String,
     val target: CommerceRemoteTerminalTarget, val callbackUrl: String,
-    val callbackHeaderName: String, val callbackHeaderValue: String, val ttlSeconds: Long
+    val callbackHeaderName: String, val callbackHeaderValue: String, val ttlSeconds: Long,
+    val transactionId: String? = null
 )
 data class CommerceRemoteTerminalTarget(
     val providerBusinessId: String, val providerStoreId: String, val providerDeviceId: String
