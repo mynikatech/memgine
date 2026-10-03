@@ -6,7 +6,10 @@ import {
   type CounterRedemptionTransaction,
   type CounterRedemptionSelection,
 } from "@/src/data/api/counter-api";
-import type { MembershipPurchaseQuote } from "@/src/data/api/counter-api";
+import type {
+  MembershipPurchaseQuote,
+  CounterRedemptionCheckout,
+} from "@/src/data/api/counter-api";
 
 export class CounterService {
   constructor(private readonly api: CounterApi) {}
@@ -103,6 +106,40 @@ export class CounterService {
         offerIds,
         redemptionMethod,
       )
+      .then((result) => this.unwrap(result));
+  }
+
+  prepareRedemptionCheckout(
+    ctx: CounterContext,
+    transactionId: ID,
+  ): Promise<CounterRedemptionCheckout> {
+    return this.api
+      .prepareRedemptionCheckout(ctx, transactionId)
+      .then((result) => this.unwrap(result));
+  }
+
+  redemptionCheckout(
+    ctx: CounterContext,
+    transactionId: ID,
+  ): Promise<CounterRedemptionCheckout> {
+    return this.api
+      .redemptionCheckout(ctx, transactionId)
+      .then((result) => this.unwrap(result));
+  }
+
+  startRedemptionRemoteTerminalPayment(ctx: CounterContext, transactionId: ID) {
+    return this.api
+      .startRedemptionRemoteTerminalPayment(ctx, transactionId)
+      .then((result) => this.unwrap(result));
+  }
+
+  confirmRedemptionTestPayment(
+    ctx: CounterContext,
+    transactionId: ID,
+    status: "SUCCEEDED" | "FAILED" | "CANCELLED" = "SUCCEEDED",
+  ): Promise<CounterRedemptionCheckout> {
+    return this.api
+      .confirmRedemptionTestPayment(ctx, transactionId, status)
       .then((result) => this.unwrap(result));
   }
 

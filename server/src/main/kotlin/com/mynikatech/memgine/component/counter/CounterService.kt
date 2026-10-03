@@ -624,11 +624,8 @@ class CounterService(
         validation.firstOrNull { !it.eligible }?.let {
             throw BadRequestException(it.rejectionReason ?: "A selected item is no longer available")
         }
-        val result = redemptions.executeTransaction(
-            org, transaction.transactionId, request.storeId, request.staffId, principal.userId
-        )
         businessOtp.consume(input.challengeId, OtpPurpose.COUNTER_REDEMPTION_VERIFY)
-        return result
+        return transaction
     }
 
     private fun validatePurchase(org: String, request: CounterPurchaseRequest, principal: AuthenticatedPrincipal) {

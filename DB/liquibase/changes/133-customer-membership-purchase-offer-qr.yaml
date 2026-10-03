@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 133-customer-membership-purchase-offer-qr
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/133-customer-membership-purchase-offer-qr.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

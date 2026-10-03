@@ -33,7 +33,11 @@ type BenefitFormProps = {
   usageRules: BenefitUsageRule[];
 
   commerceConfiguration?: BenefitCommerceConfiguration | null;
-  onSave: (benefit: Benefit, usageRules: BenefitUsageRule[], commerceConfiguration: BenefitCommerceConfiguration | null) => Promise<void>;
+  onSave: (
+    benefit: Benefit,
+    usageRules: BenefitUsageRule[],
+    commerceConfiguration: BenefitCommerceConfiguration | null,
+  ) => Promise<void>;
   onCancel: () => void;
 };
 
@@ -48,12 +52,19 @@ type BenefitCommerceConfiguration = {
   active: boolean;
 };
 
-function commerceAdjustmentType(benefitTypeId: string, benefitTypes: ReferenceDataItem[]): BenefitCommerceConfiguration["adjustmentType"] | null {
+function commerceAdjustmentType(
+  benefitTypeId: string,
+  benefitTypes: ReferenceDataItem[],
+): BenefitCommerceConfiguration["adjustmentType"] | null {
   switch (benefitTypes.find((type) => type.id === benefitTypeId)?.code) {
-    case "FREE_ITEM": return "PRODUCT_FREE";
-    case "PERCENTAGE": return "PRODUCT_PERCENT_OFF";
-    case "FIXED": return "PRODUCT_FIXED_OFF";
-    default: return null;
+    case "FREE_ITEM":
+      return "PRODUCT_FREE";
+    case "PERCENTAGE":
+      return "PRODUCT_PERCENT_OFF";
+    case "FIXED":
+      return "PRODUCT_FIXED_OFF";
+    default:
+      return null;
   }
 }
 
@@ -376,9 +387,19 @@ export function BenefitForm({
   );
 
   const [costInput, setCostInput] = useState(moneyToInput(benefit.cost));
-  const [commerceProductIds, setCommerceProductIds] = useState<string[]>(() => commerceConfiguration?.productIds ?? (benefit.productId ? [benefit.productId] : []));
-  const [percentageInput, setPercentageInput] = useState(() => commerceConfiguration?.percentage?.toString() ?? "");
-  const [fixedAmountInput, setFixedAmountInput] = useState(() => commerceConfiguration?.amountMinor !== undefined ? (commerceConfiguration.amountMinor / 100).toFixed(2) : "");
+  const [commerceProductIds, setCommerceProductIds] = useState<string[]>(
+    () =>
+      commerceConfiguration?.productIds ??
+      (benefit.productId ? [benefit.productId] : []),
+  );
+  const [percentageInput, setPercentageInput] = useState(
+    () => commerceConfiguration?.percentage?.toString() ?? "",
+  );
+  const [fixedAmountInput, setFixedAmountInput] = useState(() =>
+    commerceConfiguration?.amountMinor !== undefined
+      ? (commerceConfiguration.amountMinor / 100).toFixed(2)
+      : "",
+  );
   const [commerceError, setCommerceError] = useState<string | undefined>();
   const [productSearch, setProductSearch] = useState("");
 
@@ -398,9 +419,16 @@ export function BenefitForm({
 
     setRetailPriceInput(moneyToInput(benefit.retailPrice));
     setCostInput(moneyToInput(benefit.cost));
-    setCommerceProductIds(commerceConfiguration?.productIds ?? (benefit.productId ? [benefit.productId] : []));
+    setCommerceProductIds(
+      commerceConfiguration?.productIds ??
+        (benefit.productId ? [benefit.productId] : []),
+    );
     setPercentageInput(commerceConfiguration?.percentage?.toString() ?? "");
-    setFixedAmountInput(commerceConfiguration?.amountMinor !== undefined ? (commerceConfiguration.amountMinor / 100).toFixed(2) : "");
+    setFixedAmountInput(
+      commerceConfiguration?.amountMinor !== undefined
+        ? (commerceConfiguration.amountMinor / 100).toFixed(2)
+        : "",
+    );
     setCommerceError(undefined);
     setProductSearch("");
 
@@ -544,32 +572,69 @@ export function BenefitForm({
     return undefined;
   };
 
-  const selectedAdjustmentType = commerceAdjustmentType(form.benefitTypeId, benefitTypes);
+  const selectedAdjustmentType = commerceAdjustmentType(
+    form.benefitTypeId,
+    benefitTypes,
+  );
+  const selectedAdjustmentLabel =
+    selectedAdjustmentType === "PRODUCT_FREE"
+      ? "Free Item"
+      : selectedAdjustmentType === "PRODUCT_PERCENT_OFF"
+        ? "Percentage Off"
+        : selectedAdjustmentType === "PRODUCT_FIXED_OFF"
+          ? "Fixed Amount Off"
+          : "";
   const filteredProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
     if (!query) return products;
-    return products.filter((product) => `${product.productName} ${product.productCode}`.toLowerCase().includes(query));
+    return products.filter((product) =>
+      `${product.productName} ${product.productCode}`
+        .toLowerCase()
+        .includes(query),
+    );
   }, [products, productSearch]);
-  const toggleCommerceProduct = (productId: string) => setCommerceProductIds((current) => {
-    const next = current.includes(productId) ? current.filter((id) => id !== productId) : [...current, productId];
-    update("productId", next[0] || undefined);
-    return next;
-  });
-  const currentCommerceConfiguration = (): BenefitCommerceConfiguration | null => {
-    if (!selectedAdjustmentType) return null;
-    if (!commerceProductIds.length) throw new Error("Select at least one POS Product.");
-    if (selectedAdjustmentType === "PRODUCT_PERCENT_OFF") {
-      const percentage = Number(percentageInput);
-      if (!Number.isFinite(percentage) || percentage <= 0 || percentage > 100) throw new Error("Percentage must be greater than 0 and at most 100.");
-      return { productIds: commerceProductIds, adjustmentType: selectedAdjustmentType, percentage, active: true };
-    }
-    if (selectedAdjustmentType === "PRODUCT_FIXED_OFF") {
-      const amount = Number(fixedAmountInput);
-      if (!Number.isFinite(amount) || amount <= 0) throw new Error("Fixed amount must be greater than 0.");
-      return { productIds: commerceProductIds, adjustmentType: selectedAdjustmentType, amountMinor: Math.round(amount * 100), currencyCode: defaultCurrency, active: true };
-    }
-    return { productIds: commerceProductIds, adjustmentType: selectedAdjustmentType, active: true };
-  };
+  const toggleCommerceProduct = (productId: string) =>
+    setCommerceProductIds((current) => {
+      const next = current.includes(productId)
+        ? current.filter((id) => id !== productId)
+        : [...current, productId];
+      update("productId", next[0] || undefined);
+      return next;
+    });
+  const currentCommerceConfiguration =
+    (): BenefitCommerceConfiguration | null => {
+      if (!selectedAdjustmentType) return null;
+      if (!commerceProductIds.length)
+        throw new Error("Select at least one POS Product.");
+      if (selectedAdjustmentType === "PRODUCT_PERCENT_OFF") {
+        const percentage = Number(percentageInput);
+        if (!Number.isFinite(percentage) || percentage <= 0 || percentage > 100)
+          throw new Error("Percentage must be greater than 0 and at most 100.");
+        return {
+          productIds: commerceProductIds,
+          adjustmentType: selectedAdjustmentType,
+          percentage,
+          active: true,
+        };
+      }
+      if (selectedAdjustmentType === "PRODUCT_FIXED_OFF") {
+        const amount = Number(fixedAmountInput);
+        if (!Number.isFinite(amount) || amount <= 0)
+          throw new Error("Fixed amount must be greater than 0.");
+        return {
+          productIds: commerceProductIds,
+          adjustmentType: selectedAdjustmentType,
+          amountMinor: Math.round(amount * 100),
+          currencyCode: defaultCurrency,
+          active: true,
+        };
+      }
+      return {
+        productIds: commerceProductIds,
+        adjustmentType: selectedAdjustmentType,
+        active: true,
+      };
+    };
   const validate = () => {
     const requiredFields = [
       "benefitName",
@@ -637,11 +702,27 @@ export function BenefitForm({
 
     try {
       let configuration: BenefitCommerceConfiguration | null;
-      try { configuration = currentCommerceConfiguration(); setCommerceError(undefined); }
-      catch (error) { setCommerceError(error instanceof Error ? error.message : "Invalid Commerce configuration."); return; }
+      try {
+        configuration = currentCommerceConfiguration();
+        setCommerceError(undefined);
+      } catch (error) {
+        setCommerceError(
+          error instanceof Error
+            ? error.message
+            : "Invalid Commerce configuration.",
+        );
+        return;
+      }
       await onSave(
         { ...form, disclaimerText: form.disclaimerText?.trim() || undefined },
-        rules.map((rule) => ({ ...rule, ruleName: rule.ruleName.trim() || `${form.benefitName.trim() || "Benefit"} Usage Rule`, effectiveDate: rule.effectiveDate || form.effectiveDate, expiryDate: rule.expiryDate || form.expiryDate })),
+        rules.map((rule) => ({
+          ...rule,
+          ruleName:
+            rule.ruleName.trim() ||
+            `${form.benefitName.trim() || "Benefit"} Usage Rule`,
+          effectiveDate: rule.effectiveDate || form.effectiveDate,
+          expiryDate: rule.expiryDate || form.expiryDate,
+        })),
         configuration,
       );
     } finally {
@@ -730,21 +811,89 @@ export function BenefitForm({
           </View>
           {selectedAdjustmentType ? (
             <View style={styles.fullWidth}>
-              <Text variant="bodySmall" color="text">POS Products *</Text>
-              <Text variant="bodySmall" color="textMuted">Select every canonical Product this adjustment can apply to.</Text>
-              <Input label="Search products" value={productSearch} onChangeText={setProductSearch} placeholder="Search name or code" />
+              <Input
+                label="POS Adjustment"
+                value={selectedAdjustmentLabel}
+                editable={false}
+                onChangeText={() => {}}
+              />
+
+              <Text variant="bodySmall" color="textMuted">
+                Derived automatically from the selected Benefit Type.
+              </Text>
+
+              <Text variant="bodySmall" color="text">
+                POS Products *
+              </Text>
+
+              <Text variant="bodySmall" color="textMuted">
+                Select every canonical Product this adjustment can apply to.
+              </Text>
+              <Text variant="bodySmall" color="textMuted">
+                Select every canonical Product this adjustment can apply to.
+              </Text>
+              <Input
+                label="Search products"
+                value={productSearch}
+                onChangeText={setProductSearch}
+                placeholder="Search name or code"
+              />
               <ScrollView style={styles.productList} nestedScrollEnabled>
                 {filteredProducts.map((product) => (
-                  <Checkbox key={product.id} value={commerceProductIds.includes(product.id)} onValueChange={() => toggleCommerceProduct(product.id)} label={product.productName ? `${product.productName}${product.productCode ? ` (${product.productCode})` : ""}` : product.productCode} />
+                  <Checkbox
+                    key={product.id}
+                    value={commerceProductIds.includes(product.id)}
+                    onValueChange={() => toggleCommerceProduct(product.id)}
+                    label={
+                      product.productName
+                        ? `${product.productName}${product.productCode ? ` (${product.productCode})` : ""}`
+                        : product.productCode
+                    }
+                  />
                 ))}
               </ScrollView>
-              {commerceError ? <Text variant="bodySmall" color="danger">{commerceError}</Text> : null}
-              {selectedAdjustmentType === "PRODUCT_PERCENT_OFF" ? <Input label="Percentage" value={percentageInput} keyboardType="decimal-pad" placeholder="e.g. 20" error={commerceError} onChangeText={setPercentageInput} /> : null}
-              {selectedAdjustmentType === "PRODUCT_FIXED_OFF" ? <Input label={`Fixed amount off (${defaultCurrency})`} value={fixedAmountInput} keyboardType="decimal-pad" placeholder="e.g. 5.00" error={commerceError} onChangeText={setFixedAmountInput} /> : null}
+              {commerceError ? (
+                <Text variant="bodySmall" color="danger">
+                  {commerceError}
+                </Text>
+              ) : null}
+              {selectedAdjustmentType === "PRODUCT_PERCENT_OFF" ? (
+                <Input
+                  label="Percentage"
+                  value={percentageInput}
+                  keyboardType="decimal-pad"
+                  placeholder="e.g. 20"
+                  error={commerceError}
+                  onChangeText={setPercentageInput}
+                />
+              ) : null}
+              {selectedAdjustmentType === "PRODUCT_FIXED_OFF" ? (
+                <Input
+                  label={`Fixed amount off (${defaultCurrency})`}
+                  value={fixedAmountInput}
+                  keyboardType="decimal-pad"
+                  placeholder="e.g. 5.00"
+                  error={commerceError}
+                  onChangeText={setFixedAmountInput}
+                />
+              ) : null}
             </View>
           ) : (
             <View style={styles.field}>
-              <ReferenceSelect<Product> label="Product" value={form.productId ?? ""} items={products} placeholder="Please select" allowClear getItemId={(item) => item.id} renderItemLabel={(item) => item.productName ? `${item.productName}${item.productCode ? ` (${item.productCode})` : ""}` : item.productCode} onChange={(value) => update("productId", value || undefined)} />
+              <ReferenceSelect<Product>
+                label="Product"
+                value={form.productId ?? ""}
+                items={products}
+                placeholder="Please select"
+                allowClear
+                getItemId={(item) => item.id}
+                renderItemLabel={(item) =>
+                  item.productName
+                    ? `${item.productName}${item.productCode ? ` (${item.productCode})` : ""}`
+                    : item.productCode
+                }
+                onChange={(value) => update("productId", value || undefined)}
+              />
             </View>
           )}
 
@@ -1249,7 +1398,13 @@ const styles = StyleSheet.create({
   fullWidth: {
     width: "100%",
   },
-  productList: { maxHeight: 220, borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 8, padding: 10 },
+  productList: {
+    maxHeight: 220,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 8,
+    padding: 10,
+  },
 
   actions: {
     flexDirection: "row",

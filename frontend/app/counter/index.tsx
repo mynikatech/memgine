@@ -41,6 +41,7 @@ import {
   type CustomerFormSubmitResult,
 } from "@/src/ui/admin/CustomerForm";
 import type {
+  CounterRedemptionCheckout,
   CounterRedemptionTransaction,
   CounterRedemptionTransactionValidation,
 } from "@/src/data/api/counter-api";
@@ -61,6 +62,14 @@ const normalizeOtp = (value: string): string =>
 type CounterResult = RedemptionResult | OfferRedemptionResult;
 
 type DynamicRedemptionStage = "scan" | "review" | "success";
+
+type RedemptionCheckoutStage =
+  | "idle"
+  | "preparing"
+  | "ready"
+  | "waiting"
+  | "failed"
+  | "complete";
 
 const RESULT_STYLE: Record<CounterResult["kind"], { fg: string; bg: string }> =
   {
@@ -226,6 +235,17 @@ export default function StaffCounter() {
     useState<CounterRedemptionTransaction | null>(null);
   const qrScanInFlight = useRef(false);
   const qrExecutionInFlight = useRef(false);
+
+  const [redemptionCheckout, setRedemptionCheckout] =
+    useState<CounterRedemptionCheckout | null>(null);
+  const [redemptionCheckoutStage, setRedemptionCheckoutStage] =
+    useState<RedemptionCheckoutStage>("idle");
+  const redemptionCheckoutValidationRef = useRef<
+    CounterRedemptionTransactionValidation[]
+  >([]);
+  const redemptionCheckoutInFlight = useRef(false);
+  const redemptionRemoteStartInFlight = useRef(false);
+
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const [membershipOfferQrText, setMembershipOfferQrText] = useState("");
@@ -293,6 +313,11 @@ export default function StaffCounter() {
     setResolvedTransaction(null);
     setTransactionValidation([]);
     setExecutedTransaction(null);
+    setRedemptionCheckout(null);
+    setRedemptionCheckoutStage("idle");
+    redemptionCheckoutValidationRef.current = [];
+    redemptionCheckoutInFlight.current = false;
+    redemptionRemoteStartInFlight.current = false;
     qrScanInFlight.current = false;
     qrExecutionInFlight.current = false;
     setMembershipOfferQrText("");
@@ -988,6 +1013,11 @@ export default function StaffCounter() {
     setResolvedTransaction(null);
     setTransactionValidation([]);
     setExecutedTransaction(null);
+    setRedemptionCheckout(null);
+    setRedemptionCheckoutStage("idle");
+    redemptionCheckoutValidationRef.current = [];
+    redemptionCheckoutInFlight.current = false;
+    redemptionRemoteStartInFlight.current = false;
     setError("");
     setBusy(false);
     qrScanInFlight.current = false;
@@ -1049,6 +1079,290 @@ export default function StaffCounter() {
     setScannerActive(true);
   };
 
+  const finishRedemptionCheckout = async (
+    checkout: CounterRedemptionCheckout,
+  ) => {
+    setRedemptionCheckout(checkout);
+    setRedemptionCheckoutStage("complete");
+
+    const completed: CounterRedemptionTransaction = {
+      transactionId: checkout.redemptionTransactionId,
+      transactionNumber: checkout.transactionNumber,
+      status: checkout.redemptionStatus,
+      completedAt: checkout.redemptionCompletedAt,
+    };
+
+    setExecutedTransaction(completed);
+
+    if (mode === "qr") {
+      setDynamicRedemptionStage("success");
+    }
+
+    const validation = redemptionCheckoutValidationRef.current;
+
+    setResult({
+      kind: "SUCCESS",
+      message: `Redemption ${checkout.transactionNumber} completed after POS payment.`,
+      customer: customer ?? undefined,
+      outcomes: validation.map((item) => ({
+        benefitId: item.itemId,
+        title: item.displayName ?? item.itemId,
+        status: "REDEEMED",
+        redemptionId: checkout.redemptionTransactionId,
+      })),
+    });
+
+    if (customer) {
+      const refreshed = await loadMembershipData(customer.id);
+      setMemberships(refreshed.memberships);
+      setAvailableForSale(refreshed.availableProducts);
+
+      if (selectedSubId) {
+        await loadRedemptionSelection(selectedSubId, customer.id);
+      }
+    }
+  };
+
+  const applyRedemptionCheckoutState = async (
+    latest: CounterRedemptionCheckout,
+    autoStartRemotePayment: boolean,
+  ) => {
+    setRedemptionCheckout(latest);
+
+    if (
+      latest.redemptionStatus === "SUCCESS" ||
+      latest.commerceStatus === "COMPLETED"
+    ) {
+      await finishRedemptionCheckout(latest);
+      return;
+    }
+
+    if (latest.commerceStatus === "PROVIDER_IN_PROGRESS") {
+      setRedemptionCheckoutStage("waiting");
+      return;
+    }
+
+    if (latest.commerceStatus === "ORDER_CREATED" && latest.paymentRequired) {
+      if (latest.providerCode === "TEST") {
+        setRedemptionCheckoutStage("ready");
+        return;
+      }
+
+      if (latest.providerCode === "POYNT") {
+        if (!autoStartRemotePayment) {
+          setRedemptionCheckoutStage("failed");
+          setError(
+            latest.failureMessage ||
+              "Terminal payment did not complete. You can retry the payment.",
+          );
+          return;
+        }
+
+        if (redemptionRemoteStartInFlight.current) return;
+        redemptionRemoteStartInFlight.current = true;
+
+        try {
+          setRedemptionCheckoutStage("ready");
+
+          await services.counter.startRedemptionRemoteTerminalPayment(
+            counterContext(),
+            latest.redemptionTransactionId,
+          );
+
+          const waiting = await services.counter.redemptionCheckout(
+            counterContext(),
+            latest.redemptionTransactionId,
+          );
+
+          setRedemptionCheckout(waiting);
+          setRedemptionCheckoutStage("waiting");
+        } finally {
+          redemptionRemoteStartInFlight.current = false;
+        }
+
+        return;
+      }
+
+      throw new Error(
+        `Unsupported Counter payment provider: ${latest.providerCode}`,
+      );
+    }
+
+    if (latest.commerceStatus === "ORDER_CREATED" && !latest.paymentRequired) {
+      const refreshed = await services.counter.redemptionCheckout(
+        counterContext(),
+        latest.redemptionTransactionId,
+      );
+
+      if (
+        refreshed.redemptionStatus === "SUCCESS" ||
+        refreshed.commerceStatus === "COMPLETED"
+      ) {
+        await finishRedemptionCheckout(refreshed);
+        return;
+      }
+    }
+
+    setRedemptionCheckoutStage("failed");
+    setError(
+      latest.failureMessage ||
+        `Redemption checkout stopped in state ${latest.commerceStatus}.`,
+    );
+  };
+
+  const beginRedemptionCheckout = async (
+    transaction: CounterRedemptionTransaction,
+    validation: CounterRedemptionTransactionValidation[],
+  ) => {
+    if (redemptionCheckoutInFlight.current) return;
+
+    const rejected = validation.find((item) => !item.eligible);
+    if (rejected) {
+      throw new Error(
+        rejected.rejectionReason ?? "A selected item is no longer available.",
+      );
+    }
+
+    redemptionCheckoutValidationRef.current = validation;
+    redemptionCheckoutInFlight.current = true;
+    setBusy(true);
+    setResult(null);
+    setError("");
+    setRedemptionCheckout(null);
+    setRedemptionCheckoutStage("preparing");
+
+    try {
+      const checkout = await services.counter.prepareRedemptionCheckout(
+        counterContext(),
+        transaction.transactionId,
+      );
+
+      await applyRedemptionCheckoutState(checkout, true);
+    } catch (failure) {
+      setRedemptionCheckoutStage("failed");
+      throw failure;
+    } finally {
+      redemptionCheckoutInFlight.current = false;
+      setBusy(false);
+    }
+  };
+
+  const completeTestRedemptionPayment = async () => {
+    if (!redemptionCheckout) return;
+
+    setBusy(true);
+    setError("");
+
+    try {
+      const completed = await services.counter.confirmRedemptionTestPayment(
+        counterContext(),
+        redemptionCheckout.redemptionTransactionId,
+        "SUCCEEDED",
+      );
+
+      await applyRedemptionCheckoutState(completed, false);
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Unable to complete TEST redemption payment.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const retryRedemptionTerminalPayment = async () => {
+    if (!redemptionCheckout) return;
+
+    setBusy(true);
+    setError("");
+
+    try {
+      await services.counter.startRedemptionRemoteTerminalPayment(
+        counterContext(),
+        redemptionCheckout.redemptionTransactionId,
+      );
+
+      const latest = await services.counter.redemptionCheckout(
+        counterContext(),
+        redemptionCheckout.redemptionTransactionId,
+      );
+
+      setRedemptionCheckout(latest);
+      setRedemptionCheckoutStage("waiting");
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Unable to retry terminal payment.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (
+      redemptionCheckoutStage !== "waiting" ||
+      !redemptionCheckout ||
+      redemptionCheckout.providerCode !== "POYNT"
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const poll = async () => {
+      try {
+        const latest = await services.counter.redemptionCheckout(
+          counterContext(),
+          redemptionCheckout.redemptionTransactionId,
+        );
+
+        if (cancelled) return;
+
+        setRedemptionCheckout(latest);
+
+        if (
+          latest.redemptionStatus === "SUCCESS" ||
+          latest.commerceStatus === "COMPLETED"
+        ) {
+          await finishRedemptionCheckout(latest);
+          return;
+        }
+
+        if (latest.commerceStatus === "PROVIDER_IN_PROGRESS") {
+          timer = setTimeout(() => void poll(), 1500);
+          return;
+        }
+
+        setRedemptionCheckoutStage("failed");
+        setError(
+          latest.failureMessage ||
+            "Terminal payment was not completed. You can retry the payment.",
+        );
+      } catch (failure) {
+        if (cancelled) return;
+
+        setRedemptionCheckoutStage("failed");
+        setError(
+          failure instanceof Error
+            ? failure.message
+            : "Unable to check terminal payment status.",
+        );
+      }
+    };
+
+    timer = setTimeout(() => void poll(), 1500);
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [redemptionCheckoutStage, redemptionCheckout?.redemptionTransactionId]);
+
   const executeDynamicRedemption = async () => {
     if (
       !resolvedTransaction ||
@@ -1058,20 +1372,15 @@ export default function StaffCounter() {
     ) {
       return;
     }
+
     qrExecutionInFlight.current = true;
-    setBusy(true);
     setError("");
+
     try {
-      const completed = await services.counter.executeRedemptionTransaction(
-        counterContext(),
-        resolvedTransaction.transactionId,
-      );
-      setExecutedTransaction(completed);
-      setDynamicRedemptionStage("success");
+      await beginRedemptionCheckout(resolvedTransaction, transactionValidation);
     } catch (failure) {
       setError(redemptionQrError(failure));
     } finally {
-      setBusy(false);
       qrExecutionInFlight.current = false;
     }
   };
@@ -1131,37 +1440,22 @@ export default function StaffCounter() {
         normalizeOtp(otpCode),
       );
 
-      setResult({
-        kind: "SUCCESS",
-        message: `Redemption ${completed.transactionNumber} completed on the server.`,
-        customer: customer ?? undefined,
-        outcomes: [
-          ...(redemptionSelection?.benefits ?? []),
-          ...(redemptionSelection?.offers ?? []),
-        ]
-          .filter(
-            (item) =>
-              selectedBenefitIds.has(item.id) || selectedOfferIds.has(item.id),
-          )
-          .map((item) => ({
-            benefitId: item.id,
-            title: item.displayName,
-            status: "REDEEMED",
-            redemptionId: completed.transactionId,
-          })),
-      });
+      const validation = await services.counter.validateRedemptionTransaction(
+        counterContext(),
+        completed.transactionId,
+      );
+
+      // Retain the exact OTP-authorized transaction for POS retries.
+      // A provider/order failure must not require another OTP.
+      setResolvedTransaction(completed);
+      setTransactionValidation(validation);
 
       setOtpRequestId("");
       setOtpSent(false);
       setOtpCode("");
       setDevCode("");
 
-      if (customer) {
-        const refreshed = await loadMembershipData(customer.id);
-        setMemberships(refreshed.memberships);
-        setAvailableForSale(refreshed.availableProducts);
-        await loadRedemptionSelection(selectedSubId, customer.id);
-      }
+      await beginRedemptionCheckout(completed, validation);
     } catch (failure) {
       setError(
         failure instanceof Error
@@ -1273,6 +1567,18 @@ export default function StaffCounter() {
     setError("");
 
     try {
+      if (
+        resolvedTransaction &&
+        transactionValidation.length > 0 &&
+        transactionValidation.every((item) => item.eligible)
+      ) {
+        await beginRedemptionCheckout(
+          resolvedTransaction,
+          transactionValidation,
+        );
+        return;
+      }
+
       const benefitIds = Array.from(selectedBenefitIds);
       const offerIds = Array.from(selectedOfferIds);
 
@@ -1301,34 +1607,18 @@ export default function StaffCounter() {
           rejected.rejectionReason ?? "A selected item is no longer available.",
         );
       }
-      const completed = await services.counter.executeRedemptionTransaction(
-        counterContext(),
-        transaction.transactionId,
-      );
 
-      setResult({
-        kind: "SUCCESS",
-        message: `Redemption ${completed.transactionNumber} completed on the server.`,
-        customer,
-        outcomes: validation.map((item) => ({
-          benefitId: item.itemId,
-          title: item.displayName ?? item.itemId,
-          status: "REDEEMED",
-          redemptionId: completed.transactionId,
-        })),
-      });
+      // Retain the exact transaction so provider/order failure retries the same
+      // PENDING basket instead of creating a duplicate redemption transaction.
+      setResolvedTransaction(transaction);
+      setTransactionValidation(validation);
 
-      const refreshed = await loadMembershipData(customer.id);
-
-      setMemberships(refreshed.memberships);
-      setAvailableForSale(refreshed.availableProducts);
-
-      await loadRedemptionSelection(selectedSubId, customer.id);
+      await beginRedemptionCheckout(transaction, validation);
     } catch (failure) {
       setError(
         failure instanceof Error
           ? failure.message
-          : "Unable to redeem benefits.",
+          : "Unable to prepare redemption checkout.",
       );
     } finally {
       setBusy(false);
@@ -1588,7 +1878,7 @@ export default function StaffCounter() {
                   ]}
                 >
                   <Text style={styles.primaryBtnText}>
-                    {busy ? "Redeeming..." : "Redeem Selected"}
+                    {busy ? "Preparing..." : "Continue to POS"}
                   </Text>
                 </Pressable>
               ) : !otpSent ? (
@@ -1642,7 +1932,7 @@ export default function StaffCounter() {
                     ]}
                   >
                     <Text style={styles.primaryBtnText}>
-                      {otpVerifying ? "Verifying..." : "Verify & Redeem"}
+                      {otpVerifying ? "Verifying..." : "Verify & Continue"}
                     </Text>
                   </Pressable>
 
@@ -2222,7 +2512,7 @@ export default function StaffCounter() {
                 ]}
               >
                 <Text style={styles.primaryBtnText}>
-                  {busy ? "Redeeming..." : "Confirm Redemption"}
+                  {busy ? "Preparing..." : "Continue to POS"}
                 </Text>
               </Pressable>
               <Pressable
@@ -2490,6 +2780,132 @@ export default function StaffCounter() {
           )}
 
           {afterIdentify(RedemptionMethod.STAFF_ASSISTED)}
+        </View>
+      ) : null}
+
+      {action === "redeem" &&
+      redemptionCheckoutStage === "failed" &&
+      !redemptionCheckout &&
+      resolvedTransaction &&
+      transactionValidation.length > 0 &&
+      transactionValidation.every((item) => item.eligible) ? (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>POS Checkout Not Completed</Text>
+          <Text style={styles.muted}>
+            The redemption is still pending and has not consumed any Benefit or
+            Offer.
+          </Text>
+
+          <Pressable
+            testID="counter-redemption-retry-checkout"
+            disabled={busy}
+            onPress={() =>
+              void beginRedemptionCheckout(
+                resolvedTransaction,
+                transactionValidation,
+              )
+            }
+            style={[styles.primaryBtn, busy && styles.btnDisabled]}
+          >
+            <Text style={styles.primaryBtnText}>
+              {busy ? "Retrying..." : "Retry POS Checkout"}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {action === "redeem" &&
+      redemptionCheckout &&
+      redemptionCheckoutStage !== "idle" &&
+      redemptionCheckoutStage !== "complete" ? (
+        <View testID="counter-redemption-checkout" style={styles.card}>
+          <Text style={styles.cardTitle}>
+            {redemptionCheckoutStage === "preparing"
+              ? "Preparing POS Order"
+              : redemptionCheckoutStage === "waiting"
+                ? "Waiting for Payment"
+                : redemptionCheckoutStage === "failed"
+                  ? "Payment Not Completed"
+                  : "Ready for Payment"}
+          </Text>
+
+          <Text style={styles.muted}>
+            Redemption {redemptionCheckout.transactionNumber}
+          </Text>
+
+          {redemptionCheckout.subtotalMinor != null &&
+          redemptionCheckout.currencyCode ? (
+            <>
+              <View style={styles.ctxRow}>
+                <Text style={styles.ctxLabel}>POS subtotal</Text>
+                <Text style={styles.ctxValue}>
+                  {redemptionCheckout.currencyCode}{" "}
+                  {(redemptionCheckout.subtotalMinor / 100).toFixed(2)}
+                </Text>
+              </View>
+
+              <View style={styles.ctxRow}>
+                <Text style={styles.ctxLabel}>Benefit / Offer discount</Text>
+                <Text style={styles.ctxValue}>
+                  {redemptionCheckout.currencyCode}{" "}
+                  {(
+                    (redemptionCheckout.adjustmentTotalMinor ?? 0) / 100
+                  ).toFixed(2)}
+                </Text>
+              </View>
+
+              <View style={styles.ctxRow}>
+                <Text style={styles.ctxLabel}>Tax</Text>
+                <Text style={styles.ctxValue}>
+                  {redemptionCheckout.currencyCode}{" "}
+                  {((redemptionCheckout.taxTotalMinor ?? 0) / 100).toFixed(2)}
+                </Text>
+              </View>
+
+              <View style={styles.ctxRow}>
+                <Text style={styles.ctxLabel}>Amount to pay</Text>
+                <Text style={styles.ctxValue}>
+                  {redemptionCheckout.currencyCode}{" "}
+                  {((redemptionCheckout.totalMinor ?? 0) / 100).toFixed(2)}
+                </Text>
+              </View>
+            </>
+          ) : null}
+
+          {redemptionCheckoutStage === "waiting" ? (
+            <Text style={styles.identified}>
+              Payment was sent to the store terminal. Complete the payment on
+              the Poynt device.
+            </Text>
+          ) : null}
+
+          {redemptionCheckoutStage === "ready" &&
+          redemptionCheckout.providerCode === "TEST" ? (
+            <Pressable
+              testID="counter-redemption-test-payment"
+              disabled={busy}
+              onPress={() => void completeTestRedemptionPayment()}
+              style={[styles.primaryBtn, busy && styles.btnDisabled]}
+            >
+              <Text style={styles.primaryBtnText}>
+                {busy ? "Completing..." : "Complete TEST Payment"}
+              </Text>
+            </Pressable>
+          ) : null}
+
+          {redemptionCheckoutStage === "failed" &&
+          redemptionCheckout.providerCode === "POYNT" ? (
+            <Pressable
+              testID="counter-redemption-retry-payment"
+              disabled={busy}
+              onPress={() => void retryRedemptionTerminalPayment()}
+              style={[styles.primaryBtn, busy && styles.btnDisabled]}
+            >
+              <Text style={styles.primaryBtnText}>
+                {busy ? "Retrying..." : "Retry Terminal Payment"}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
 

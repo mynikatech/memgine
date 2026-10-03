@@ -59,6 +59,7 @@ import com.mynikatech.memgine.component.organizationaccess.organizationAccessRou
 import com.mynikatech.memgine.component.organizationmaintenance.OrganizationMaintenanceService
 import com.mynikatech.memgine.component.organizationmaintenance.OrganizationMaintenanceSql
 import com.mynikatech.memgine.component.organizationmaintenance.organizationMaintenanceRoutes
+import com.mynikatech.memgine.component.commerce.counterRedemptionCheckoutRoutes
 import com.mynikatech.memgine.component.auth.AuthenticationService
 import com.mynikatech.memgine.component.auth.AuthenticationSql
 import com.mynikatech.memgine.component.auth.authenticationRoutes
@@ -189,7 +190,9 @@ fun Application.configureRouting(
     val counterCommercePaymentService = CounterCommercePaymentService(
         database.jdbi,
         commerceProviders,
-        remotePaymentConfiguration
+        remotePaymentConfiguration,
+        testProviderEnabled =
+            config.server.environment in setOf("local", "dev", "development")
     )
     val counterService = CounterService(
         database.jdbi,
@@ -243,6 +246,7 @@ fun Application.configureRouting(
             customerRoutes(customerService)
             customerSelfServiceRoutes(customerService, redemptionService)
             counterRoutes(counterService)
+            counterRedemptionCheckoutRoutes(counterCommercePaymentService)
             paymentRoutes(paymentService)
             notificationConfigurationRoutes(notificationConfigurationService)
             notificationRoutes(notificationService)

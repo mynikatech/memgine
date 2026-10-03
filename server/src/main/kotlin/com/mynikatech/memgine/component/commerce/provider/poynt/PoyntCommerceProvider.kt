@@ -66,7 +66,12 @@ class PoyntCommerceProvider(
         throw BadRequestException("Poynt order cancellation is not supported in this phase")
 
     private fun product(request: CommerceCatalogProductRequest): CommerceProductSnapshotWriteDto? {
-        val config = config(request.organizationId, request.integrationConfigurationId, request.actorUserId)
+        val config = config(
+            request.organizationId,
+            request.integrationConfigurationId,
+            request.actorUserId,
+            request.transactionId
+        )
         val body = client.get(config, client.productUri(config.businessId, request.externalProductId))
         val product = parseProduct(Json.parseToJsonElement(body).jsonObject) ?: return null
         return mapProduct(product, config, null).firstOrNull { it.externalVariantId == request.externalVariantId }
@@ -260,7 +265,7 @@ class PoyntSqlCheckoutConfigurationResolver(
             ?: throw BadRequestException("Commerce integration configuration is required")
         val actorUserId = request.actorUserId?.takeIf { it.isNotBlank() }
             ?: throw BadRequestException("Commerce checkout actor is required")
-        val row = if (request.sourceChannel == "COUNTER_MEMBERSHIP") {
+        val row = if (request.sourceChannel in setOf("COUNTER", "COUNTER_REDEMPTION")) {
             sql.counterCatalogConfiguration(request.transactionId, actorUserId)
                 ?.takeIf {
                     it.organizationId == request.organizationId &&

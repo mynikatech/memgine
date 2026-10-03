@@ -251,7 +251,9 @@ export default function OrgAdminBenefits() {
     Record<string, BenefitCommerceApplicability>
   >({});
 
-  const [commerceConfigurations, setCommerceConfigurations] = useState<Record<string, BenefitCommerceConfiguration>>({});
+  const [commerceConfigurations, setCommerceConfigurations] = useState<
+    Record<string, BenefitCommerceConfiguration>
+  >({});
 
   const [loading, setLoading] = useState(true);
 
@@ -296,10 +298,16 @@ export default function OrgAdminBenefits() {
         );
 
         const loadedApplicability = await Promise.all(
-          persistedBenefits.map(async (benefit) => [
-            benefit.id,
-            await benefitCommerceApi.applicability(organization.id, benefit.id),
-          ] as const),
+          persistedBenefits.map(
+            async (benefit) =>
+              [
+                benefit.id,
+                await benefitCommerceApi.applicability(
+                  organization.id,
+                  benefit.id,
+                ),
+              ] as const,
+          ),
         );
 
         if (!mounted) {
@@ -327,7 +335,9 @@ export default function OrgAdminBenefits() {
               )
               .find((product): product is Product => Boolean(product));
 
-            return mappedProduct ? { ...benefit, productId: mappedProduct.id } : benefit;
+            return mappedProduct
+              ? { ...benefit, productId: mappedProduct.id }
+              : benefit;
           }),
         );
 
@@ -348,10 +358,29 @@ export default function OrgAdminBenefits() {
         setBenefitStatuses(statusList);
         setProducts(productList);
         setCommerceMappings(mappingList);
-        setCommerceApplicability(
-          Object.fromEntries(applicabilityByBenefitId),
+        setCommerceApplicability(Object.fromEntries(applicabilityByBenefitId));
+        setCommerceConfigurations(
+          Object.fromEntries(
+            [...applicabilityByBenefitId.entries()].map(
+              ([benefitId, applicability]) => [
+                benefitId,
+                {
+                  productIds: applicability.productMappings
+                    .map((mapping) => mapping.productId)
+                    .filter((productId): productId is string =>
+                      Boolean(productId),
+                    ),
+                  adjustmentType:
+                    applicability.adjustmentType as BenefitCommerceConfiguration["adjustmentType"],
+                  percentage: applicability.percentage ?? undefined,
+                  amountMinor: applicability.amountMinor ?? undefined,
+                  currencyCode: applicability.currencyCode ?? undefined,
+                  active: applicability.active,
+                },
+              ],
+            ),
+          ),
         );
-        setCommerceConfigurations(Object.fromEntries([...applicabilityByBenefitId.entries()].map(([benefitId, applicability]) => [benefitId, { productIds: applicability.productMappings.map((mapping) => mapping.productId).filter((productId): productId is string => Boolean(productId)), adjustmentType: applicability.adjustmentType as BenefitCommerceConfiguration["adjustmentType"], percentage: applicability.percentage ?? undefined, amountMinor: applicability.amountMinor ?? undefined, currencyCode: applicability.currencyCode ?? undefined, active: applicability.active }])));
 
         /*
          * Every fresh organization load starts in View mode.
@@ -391,13 +420,19 @@ export default function OrgAdminBenefits() {
     const configuration = commerceConfigurations[benefit.id];
     const existing = commerceApplicability[benefit.id];
     if (!configuration || !existing) return true;
-    const existingProductIds = existing.productMappings.map((mapping) => mapping.productId).filter((id): id is string => Boolean(id)).sort();
-    return configuration.adjustmentType !== existing.adjustmentType ||
+    const existingProductIds = existing.productMappings
+      .map((mapping) => mapping.productId)
+      .filter((id): id is string => Boolean(id))
+      .sort();
+    return (
+      configuration.adjustmentType !== existing.adjustmentType ||
       configuration.percentage !== (existing.percentage ?? undefined) ||
       configuration.amountMinor !== (existing.amountMinor ?? undefined) ||
       configuration.currencyCode !== (existing.currencyCode ?? undefined) ||
       configuration.active !== existing.active ||
-      JSON.stringify([...configuration.productIds].sort()) !== JSON.stringify(existingProductIds);
+      JSON.stringify([...configuration.productIds].sort()) !==
+        JSON.stringify(existingProductIds)
+    );
   };
   const hasChanges = useMemo(
     () =>
@@ -415,6 +450,7 @@ export default function OrgAdminBenefits() {
       products,
       commerceMappings,
       commerceApplicability,
+      commerceConfigurations,
     ],
   );
 
@@ -449,7 +485,9 @@ export default function OrgAdminBenefits() {
   const getDisplayName = (benefit: Benefit) =>
     benefit.displayName ?? benefit.benefitName;
 
-  const commerceApplicabilityFor = (benefit: Benefit): BenefitCommerceApplicabilityWrite | null => {
+  const commerceApplicabilityFor = (
+    benefit: Benefit,
+  ): BenefitCommerceApplicabilityWrite | null => {
     const configuration = commerceConfigurations[benefit.id];
     if (!configuration) return null;
     const mappingIds: string[] = [];
@@ -462,10 +500,24 @@ export default function OrgAdminBenefits() {
       else if (matches.length > 1) ambiguous.push(productName);
       else mappingIds.push(matches[0].mappingId);
     }
-    if (unmapped.length) throw new Error(`These selected Products have no active Commerce mapping: ${unmapped.join(", ")}. Sync or reconcile them before saving.`);
-    if (ambiguous.length) throw new Error(`These selected Products have more than one active Commerce mapping and require an explicit Commerce context: ${ambiguous.join(", ")}.`);
-    if (!mappingIds.length) throw new Error("Select at least one mapped POS Product.");
-    return { adjustmentType: configuration.adjustmentType, percentage: configuration.percentage, amountMinor: configuration.amountMinor, currencyCode: configuration.currencyCode, active: configuration.active, productMappingIds: mappingIds };
+    if (unmapped.length)
+      throw new Error(
+        `These selected Products have no active Commerce mapping: ${unmapped.join(", ")}. Sync or reconcile them before saving.`,
+      );
+    if (ambiguous.length)
+      throw new Error(
+        `These selected Products have more than one active Commerce mapping and require an explicit Commerce context: ${ambiguous.join(", ")}.`,
+      );
+    if (!mappingIds.length)
+      throw new Error("Select at least one mapped POS Product.");
+    return {
+      adjustmentType: configuration.adjustmentType,
+      percentage: configuration.percentage,
+      amountMinor: configuration.amountMinor,
+      currencyCode: configuration.currencyCode,
+      active: configuration.active,
+      productMappingIds: mappingIds,
+    };
   };
   /* ---------------------------------------------------------------------- */
   /* BENEFIT CODE                                                           */
@@ -617,7 +669,12 @@ export default function OrgAdminBenefits() {
       return next;
     });
 
-    setCommerceConfigurations((current) => { const next = { ...current }; if (configuration) next[benefit.id] = configuration; else delete next[benefit.id]; return next; });
+    setCommerceConfigurations((current) => {
+      const next = { ...current };
+      if (configuration) next[benefit.id] = configuration;
+      else delete next[benefit.id];
+      return next;
+    });
 
     setRules((current) => [
       ...current.filter((rule) => rule.benefitId !== benefit.id),
@@ -681,7 +738,18 @@ export default function OrgAdminBenefits() {
   /* ---------------------------------------------------------------------- */
 
   const handleSaveChanges = async () => {
-    if (!hasChanges || saving) {
+    console.log("[BENEFIT-SAVE]", {
+      hasChanges,
+      saving,
+      commerceConfigurations,
+      commerceApplicability,
+    });
+    if (saving) {
+      return;
+    }
+
+    if (!hasChanges) {
+      Alert.alert("Nothing to save", "No changes have been made.");
       return;
     }
 
@@ -697,8 +765,7 @@ export default function OrgAdminBenefits() {
       );
 
       const benefitsRequiringCommerceSave = benefits.filter(
-        (benefit) =>
-          !benefit.isDeleted && requiresCommerceSave(benefit),
+        (benefit) => !benefit.isDeleted && requiresCommerceSave(benefit),
       );
 
       // Validate all Commerce applicability before changing any legacy Benefit.
@@ -760,16 +827,23 @@ export default function OrgAdminBenefits() {
         const previousRules = committedRules.filter(
           (rule) => rule.benefitId === benefit.id && !rule.isDeleted,
         );
-        if (
+        const benefitOrRulesChanged =
           JSON.stringify(committed) !== JSON.stringify(benefit) ||
-          !rulesEqual(previousRules, currentRules)
-        ) {
-          const savedBenefit = await services.benefit.saveBenefitWithRules(
+          !rulesEqual(previousRules, currentRules);
+
+        const commerceChanged = applicabilityByBenefitId.has(benefit.id);
+
+        let savedBenefit = benefit;
+
+        if (benefitOrRulesChanged) {
+          savedBenefit = await services.benefit.saveBenefitWithRules(
             organization.id,
             benefit,
             currentRules,
           );
+        }
 
+        if (commerceChanged) {
           await saveCommerceApplicability(savedBenefit);
         }
       }
@@ -799,10 +873,16 @@ export default function OrgAdminBenefits() {
       );
 
       const refreshedApplicability = await Promise.all(
-        refreshed.map(async (benefit) => [
-          benefit.id,
-          await benefitCommerceApi.applicability(organization.id, benefit.id),
-        ] as const),
+        refreshed.map(
+          async (benefit) =>
+            [
+              benefit.id,
+              await benefitCommerceApi.applicability(
+                organization.id,
+                benefit.id,
+              ),
+            ] as const,
+        ),
       );
 
       const snapshot = cloneBenefits(refreshed);
@@ -815,15 +895,37 @@ export default function OrgAdminBenefits() {
 
       setRules(cloneRules(refreshedRules));
 
-      setCommerceApplicability(
-        Object.fromEntries(
-          refreshedApplicability.filter(
-            (entry): entry is [string, BenefitCommerceApplicability] =>
-              entry[1] !== null,
-          ),
+      const refreshedApplicabilityMap = Object.fromEntries(
+        refreshedApplicability.filter(
+          (entry): entry is [string, BenefitCommerceApplicability] =>
+            entry[1] !== null,
         ),
       );
 
+      setCommerceApplicability(refreshedApplicabilityMap);
+
+      setCommerceConfigurations(
+        Object.fromEntries(
+          Object.entries(refreshedApplicabilityMap).map(
+            ([benefitId, applicability]) => [
+              benefitId,
+              {
+                productIds: applicability.productMappings
+                  .map((mapping) => mapping.productId)
+                  .filter((productId): productId is string =>
+                    Boolean(productId),
+                  ),
+                adjustmentType:
+                  applicability.adjustmentType as BenefitCommerceConfiguration["adjustmentType"],
+                percentage: applicability.percentage ?? undefined,
+                amountMinor: applicability.amountMinor ?? undefined,
+                currencyCode: applicability.currencyCode ?? undefined,
+                active: applicability.active,
+              },
+            ],
+          ),
+        ),
+      );
       benefitDraftStore.clear(organization.id);
 
       /*
@@ -845,6 +947,7 @@ export default function OrgAdminBenefits() {
       /*
        * Preserve the draft when Save fails.
        */
+      console.error("[BENEFIT-SAVE] failed", error);
       Alert.alert(
         "Unable to save changes",
         error instanceof Error
@@ -861,10 +964,14 @@ export default function OrgAdminBenefits() {
   /* ---------------------------------------------------------------------- */
 
   const handleDiscardChanges = () => {
-    if (!hasChanges || saving) {
+    if (saving) {
       return;
     }
 
+    if (!hasChanges) {
+      Alert.alert("Nothing to save", "No changes have been made.");
+      return;
+    }
     const restored = cloneBenefits(committedBenefits);
 
     setBenefits(restored);
@@ -1141,7 +1248,7 @@ export default function OrgAdminBenefits() {
                 onPress={() => {
                   void handleSaveChanges();
                 }}
-                disabled={!hasChanges || saving}
+                disabled={saving}
               />
 
               <Pressable
@@ -1330,7 +1437,9 @@ export default function OrgAdminBenefits() {
             benefitTypes={benefitTypes}
             benefitStatuses={benefitStatuses}
             products={products}
-            commerceConfiguration={commerceConfigurations[editingBenefit.id] ?? null}
+            commerceConfiguration={
+              commerceConfigurations[editingBenefit.id] ?? null
+            }
             usageRules={rules.filter(
               (rule) => rule.benefitId === editingBenefit.id && !rule.isDeleted,
             )}

@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 135-counter-redemption-pos-payment
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/135-counter-redemption-pos-payment.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

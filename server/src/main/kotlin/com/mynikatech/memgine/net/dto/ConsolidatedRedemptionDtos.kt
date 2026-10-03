@@ -2,7 +2,7 @@ package com.mynikatech.memgine.net.dto
 
 import kotlinx.serialization.Serializable
 
-/** Server-side basket contracts. Counter and QR clients will be wired in a later phase. */
+/** Server-side basket contracts. */
 @Serializable
 data class CreateRedemptionTransactionRequest(
     val storeId: String,
@@ -96,4 +96,58 @@ data class RedemptionTransactionValidationDto(
 )
 
 @Serializable
-data class ExecuteRedemptionTransactionRequest(val storeId: String, val staffId: String)
+data class ExecuteRedemptionTransactionRequest(
+    val storeId: String,
+    val staffId: String
+)
+
+/**
+ * Store/staff context for the shared Counter redemption Commerce checkout.
+ *
+ * No amount, provider ID, provider order ID, or terminal identity is accepted
+ * from the client.
+ */
+@Serializable
+data class CounterRedemptionCheckoutRequest(
+    val storeId: String,
+    val staffId: String
+)
+
+/**
+ * Server-authoritative state for a Counter Benefit/Offer redemption checkout.
+ * Monetary values are always minor units and come from persisted Commerce state.
+ */
+@Serializable
+data class CounterRedemptionCheckoutDto(
+    val redemptionTransactionId: String,
+    val transactionNumber: String,
+    val redemptionStatus: String,
+    val redemptionCompletedAt: String? = null,
+    val commerceTransactionId: String,
+    val providerCode: String,
+    val commerceStatus: String,
+    val subtotalMinor: Long? = null,
+    val adjustmentTotalMinor: Long? = null,
+    val taxTotalMinor: Long? = null,
+    val totalMinor: Long? = null,
+    val currencyCode: String? = null,
+    val providerOrderId: String? = null,
+    val providerTransactionId: String? = null,
+    val failureCode: String? = null,
+    val failureMessage: String? = null,
+    val paymentRequired: Boolean
+)
+
+/**
+ * LOCAL/DEV-only TEST-provider result.
+ *
+ * Amount/currency/provider transaction identity remain server-generated.
+ */
+@Serializable
+data class CounterRedemptionTestPaymentRequest(
+    val storeId: String,
+    val staffId: String,
+    val status: String = "SUCCEEDED",
+    val failureCode: String? = null,
+    val failureMessage: String? = null
+)
