@@ -216,6 +216,119 @@ public final class MemgineApiClient {
         return result;
     }
 
+    public CounterRedemptionCheckout prepareRedemptionCheckout(
+            TerminalContext terminal,
+            String staffId,
+            String sessionToken,
+            String redemptionTransactionId
+    ) throws Exception {
+        JSONObject request = new JSONObject();
+        request.put("storeId", terminal.storeId);
+        request.put("staffId", staffId);
+        JSONObject data = call(
+                "POST",
+                "/api/v1/organizations/" + terminal.organizationId
+                        + "/counter/redemption-transactions/" + redemptionTransactionId + "/checkout",
+                null,
+                sessionToken,
+                request
+        );
+        return redemptionCheckout(data);
+    }
+
+    public CounterRedemptionCheckout redemptionCheckout(
+            TerminalContext terminal,
+            String staffId,
+            String sessionToken,
+            String redemptionTransactionId
+    ) throws Exception {
+        JSONObject data = call(
+                "GET",
+                "/api/v1/organizations/" + terminal.organizationId
+                        + "/counter/redemption-transactions/" + redemptionTransactionId
+                        + "/checkout?storeId=" + terminal.storeId + "&staffId=" + staffId,
+                null,
+                sessionToken,
+                null
+        );
+        return redemptionCheckout(data);
+    }
+
+    public CounterRedemptionCheckout confirmRedemptionTestPayment(
+            TerminalContext terminal,
+            String staffId,
+            String sessionToken,
+            String redemptionTransactionId,
+            String status
+    ) throws Exception {
+        JSONObject request = new JSONObject();
+        request.put("storeId", terminal.storeId);
+        request.put("staffId", staffId);
+        request.put("status", status);
+        JSONObject data = call(
+                "POST",
+                "/api/v1/organizations/" + terminal.organizationId
+                        + "/counter/redemption-transactions/" + redemptionTransactionId
+                        + "/payment/test-result",
+                null,
+                sessionToken,
+                request
+        );
+        return redemptionCheckout(data);
+    }
+
+    public CommerceTerminalPaymentInstruction startCommerceTerminalPayment(
+            TerminalContext terminal,
+            String sessionToken,
+            String commerceTransactionId
+    ) throws Exception {
+        JSONObject data = call(
+                "POST",
+                "/api/v1/organizations/" + terminal.organizationId
+                        + "/commerce/transactions/" + commerceTransactionId
+                        + "/terminal-payment/start",
+                null,
+                sessionToken,
+                null
+        );
+        return new CommerceTerminalPaymentInstruction(
+                data.getString("commerceTransactionId"),
+                data.getString("providerCode"),
+                data.getString("providerOrderId"),
+                data.getLong("amountMinor"),
+                data.getString("currencyCode"),
+                data.getString("referenceId")
+        );
+    }
+
+    public void recordCommerceTerminalPaymentResult(
+            TerminalContext terminal,
+            String sessionToken,
+            CommerceTerminalPaymentInstruction instruction,
+            CommerceTerminalPaymentResult result
+    ) throws Exception {
+        JSONObject request = new JSONObject();
+        if (result.providerTransactionId == null) {
+            request.put("providerTransactionId", JSONObject.NULL);
+        } else {
+            request.put("providerTransactionId", result.providerTransactionId);
+        }
+        request.put("providerStatus", result.providerStatus);
+        request.put("amountMinor", result.amountMinor);
+        request.put("currencyCode", result.currencyCode);
+        if (result.failureCode != null) request.put("failureCode", result.failureCode);
+        if (result.failureMessage != null) request.put("failureMessage", result.failureMessage);
+        call(
+                "POST",
+                "/api/v1/organizations/" + terminal.organizationId
+                        + "/commerce/transactions/" + instruction.commerceTransactionId
+                        + "/terminal-payment/result",
+                null,
+                sessionToken,
+                request
+        );
+    }
+
     public void executeRedemptionTransaction(
             TerminalContext terminal, String staffId, String sessionToken, String transactionId
     ) throws Exception {
@@ -557,6 +670,32 @@ public final class MemgineApiClient {
                         ? null
                         : data.getString("commerceTransactionId")
         );
+    }
+
+    private CounterRedemptionCheckout redemptionCheckout(JSONObject data) {
+        return new CounterRedemptionCheckout(
+                data.optString("redemptionTransactionId"),
+                data.optString("transactionNumber"),
+                data.optString("redemptionStatus"),
+                data.isNull("redemptionCompletedAt") ? null : data.optString("redemptionCompletedAt"),
+                data.optString("commerceTransactionId"),
+                data.optString("providerCode"),
+                data.optString("commerceStatus"),
+                nullableLong(data, "subtotalMinor"),
+                nullableLong(data, "adjustmentTotalMinor"),
+                nullableLong(data, "taxTotalMinor"),
+                nullableLong(data, "totalMinor"),
+                data.isNull("currencyCode") ? null : data.optString("currencyCode"),
+                data.isNull("providerOrderId") ? null : data.optString("providerOrderId"),
+                data.isNull("providerTransactionId") ? null : data.optString("providerTransactionId"),
+                data.isNull("failureCode") ? null : data.optString("failureCode"),
+                data.isNull("failureMessage") ? null : data.optString("failureMessage"),
+                data.optBoolean("paymentRequired")
+        );
+    }
+
+    private static Long nullableLong(JSONObject data, String name) {
+        return data.isNull(name) || !data.has(name) ? null : data.optLong(name);
     }
 
         private JSONObject call(

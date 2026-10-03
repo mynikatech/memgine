@@ -60,6 +60,8 @@ public final class CounterFlowController {
     private CommerceTerminalPaymentResult pendingTerminalPaymentResult;
     private boolean terminalPaymentStarting;
     private boolean terminalPaymentReporting;
+    private String activeRedemptionTransactionId;
+    private Customer activeRedemptionCustomer;
 
     private enum CounterAction {
         REDEEM,
@@ -369,6 +371,9 @@ public final class CounterFlowController {
             return;
         }
         CommerceTerminalPaymentInstruction instruction = activeTerminalPayment;
+        final String redemptionTransactionId = activeRedemptionTransactionId;
+        final Customer redemptionCustomer = activeRedemptionCustomer;
+        final boolean redemptionPayment = redemptionTransactionId != null;
         pendingTerminalPaymentResult = result;
         terminalPaymentReporting = true;
         render("Recording terminal payment");
@@ -377,14 +382,26 @@ public final class CounterFlowController {
                 () -> {
                     String token = staffSession.token();
                     if (token == null) throw new ApiException("Counter session is unavailable", true);
-                    api.recordTerminalPaymentResult(terminal, token, instruction, result);
+                    if (redemptionPayment) {
+                        api.recordCommerceTerminalPaymentResult(terminal, token, instruction, result);
+                    } else {
+                        api.recordTerminalPaymentResult(terminal, token, instruction, result);
+                    }
                     return true;
                 },
                 ignored -> {
                     terminalPaymentReporting = false;
                     activeTerminalPayment = null;
                     pendingTerminalPaymentResult = null;
-                    showTerminalPaymentRecorded(terminal, result);
+                    if (redemptionPayment && redemptionCustomer != null) {
+                        refreshRedemptionCheckout(
+                                terminal,
+                                redemptionCustomer,
+                                redemptionTransactionId
+                        );
+                    } else {
+                        showTerminalPaymentRecorded(terminal, result);
+                    }
                 },
                 exception -> {
                     terminalPaymentReporting = false;
@@ -847,6 +864,8 @@ public final class CounterFlowController {
             return;
         }
         terminalPaymentStarting = true;
+        activeRedemptionTransactionId = null;
+        activeRedemptionCustomer = null;
         setStatus("Starting payment");
         background(
                 () -> api.startTerminalPayment(terminal, token, commerceTransactionId),
@@ -1015,9 +1034,13 @@ public final class CounterFlowController {
             for (RedemptionSelection.Item item : validation) {
                 if (!item.available()) throw new ApiException(item.displayReason == null ? "A selected item is no longer available." : item.displayReason);
             }
-            api.executeRedemptionTransaction(terminal, staffSession.staffId(), staffSession.token(), transactionId);
-            return transactionId;
-        }, transactionId -> showRedemptionSuccess(terminal, customer, transactionId)));
+            return api.prepareRedemptionCheckout(
+                    terminal,
+                    staffSession.staffId(),
+                    staffSession.token(),
+                    transactionId
+            );
+        }, checkout -> handleRedemptionCheckout(terminal, customer, checkout)));
         button("Back", () -> {
             showSubscriptions(terminal, customer, subscriptions);
         });
@@ -1028,11 +1051,141 @@ public final class CounterFlowController {
         return item.displayReason == null || item.displayReason.isEmpty() ? "Unavailable" : item.displayReason;
     }
 
+    private void handleRedemptionCheckout(
+            TerminalContext terminal,
+            Customer customer,
+            CounterRedemptionCheckout checkout
+    ) {
+        activeRedemptionTransactionId = checkout.redemptionTransactionId;
+        activeRedemptionCustomer = customer;
+
+        if (checkout.completed()) {
+            activeRedemptionTransactionId = null;
+            activeRedemptionCustomer = null;
+            showRedemptionSuccess(terminal, customer, checkout.redemptionTransactionId);
+            return;
+        }
+
+        if ("PROVIDER_IN_PROGRESS".equalsIgnoreCase(checkout.commerceStatus)) {
+            render("Redemption Payment");
+            text(customer.displayName);
+            text("Payment is in progress for transaction " + checkout.transactionNumber + ".");
+            button("Refresh Payment Status", () -> refreshRedemptionCheckout(
+                    terminal, customer, checkout.redemptionTransactionId
+            ));
+            cancelButton();
+            return;
+        }
+
+        if (!"ORDER_CREATED".equalsIgnoreCase(checkout.commerceStatus)) {
+            render("Redemption Checkout");
+            text(customer.displayName);
+            setStatus(checkout.failureMessage == null || checkout.failureMessage.isEmpty()
+                    ? "Redemption checkout is not ready for payment."
+                    : checkout.failureMessage);
+            button("Refresh", () -> refreshRedemptionCheckout(
+                    terminal, customer, checkout.redemptionTransactionId
+            ));
+            cancelButton();
+            return;
+        }
+
+        if (!checkout.paymentRequired || checkout.totalMinor == null || checkout.totalMinor <= 0L) {
+            refreshRedemptionCheckout(terminal, customer, checkout.redemptionTransactionId);
+            return;
+        }
+
+        render("Redemption Payment");
+        text(customer.displayName);
+        text("Transaction: " + checkout.transactionNumber);
+        if (checkout.currencyCode != null) {
+            text("Amount: " + checkout.currencyCode + " "
+                    + String.format(Locale.US, "%.2f", checkout.totalMinor / 100.0d));
+        }
+
+        if ("TEST".equalsIgnoreCase(checkout.providerCode)) {
+            button("Complete TEST Payment", () -> background(
+                    () -> api.confirmRedemptionTestPayment(
+                            terminal,
+                            staffSession.staffId(),
+                            staffSession.token(),
+                            checkout.redemptionTransactionId,
+                            "SUCCEEDED"
+                    ),
+                    updated -> handleRedemptionCheckout(terminal, customer, updated)
+            ), true);
+        } else if ("POYNT".equalsIgnoreCase(checkout.providerCode)) {
+            button("Pay on Poynt Terminal", () ->
+                    startRedemptionTerminalPayment(terminal, customer, checkout), true);
+        } else {
+            setStatus("The configured redemption payment provider is unavailable.");
+        }
+
+        button("Back", () -> showCounterHome(terminal));
+        cancelButton();
+    }
+
+    private void refreshRedemptionCheckout(
+            TerminalContext terminal,
+            Customer customer,
+            String redemptionTransactionId
+    ) {
+        background(
+                () -> api.redemptionCheckout(
+                        terminal,
+                        staffSession.staffId(),
+                        staffSession.token(),
+                        redemptionTransactionId
+                ),
+                checkout -> handleRedemptionCheckout(terminal, customer, checkout)
+        );
+    }
+
+    private void startRedemptionTerminalPayment(
+            TerminalContext terminal,
+            Customer customer,
+            CounterRedemptionCheckout checkout
+    ) {
+        if (terminalPaymentStarting || activeTerminalPayment != null) {
+            setStatus("A terminal payment is already in progress.");
+            return;
+        }
+        String token = staffSession.token();
+        if (token == null) {
+            refresh();
+            return;
+        }
+
+        activeRedemptionTransactionId = checkout.redemptionTransactionId;
+        activeRedemptionCustomer = customer;
+        terminalPaymentStarting = true;
+        setStatus("Starting payment");
+        background(
+                () -> api.startCommerceTerminalPayment(
+                        terminal,
+                        token,
+                        checkout.commerceTransactionId
+                ),
+                instruction -> {
+                    terminalPaymentStarting = false;
+                    if (!"POYNT".equalsIgnoreCase(instruction.providerCode)) {
+                        setStatus("The configured payment provider is unavailable.");
+                        return;
+                    }
+                    launchPoyntPayment(terminal, instruction);
+                },
+                exception -> {
+                    terminalPaymentStarting = false;
+                    setStatus(apiErrorMessage(exception));
+                }
+        );
+    }
+
     private void showRedemptionSuccess(TerminalContext terminal, Customer customer, String transactionId) {
         render("Redemption successful");
         text(customer.displayName);
         text("Transaction: " + transactionId);
-        text("All selected benefits and offers were redeemed together.");
+        text("Payment completed and all selected benefits and offers were redeemed together.");
         button("Back to Counter Home", () -> showCounterHome(terminal));
         cancelButton();
     }
