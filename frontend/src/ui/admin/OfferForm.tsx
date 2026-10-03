@@ -303,18 +303,16 @@ function membershipProductLabel(product: MembershipProduct): string {
   const baseName =
     product.displayName?.trim() || product.membershipProductName.trim();
 
-  const tier = product.tier?.trim();
+  const activePlanNames = product.plans
+    .filter((plan) => !plan.isDeleted)
+    .map((plan) => plan.subscriptionPlanName?.trim())
+    .filter((name): name is string => Boolean(name));
 
-  if (!tier) {
+  if (activePlanNames.length === 0) {
     return baseName;
   }
 
-  // Avoid "Artisan Pass Gold — Gold" if the display name already includes tier.
-  if (baseName.toLowerCase().includes(tier.toLowerCase())) {
-    return baseName;
-  }
-
-  return `${baseName} — ${tier}`;
+  return `${baseName} — ${activePlanNames.join(" / ")}`;
 }
 
 export function OfferForm({
@@ -1201,16 +1199,29 @@ export function OfferForm({
                 onPress={() =>
                   setMembershipApplicability((current) => ({
                     ...(current ?? {
-                      targetMembershipProductId: "",
                       adjustmentType: "PRODUCT_PERCENT_OFF",
                       active: true,
                       customerApplicability: "ALL",
                       membershipTargetMode: "ALL_MEMBERSHIP_PRODUCTS",
                       selectedMembershipProductIds: [],
                     }),
+
                     behavior: "PURCHASE_DISCOUNT",
+
+                    // Purchase Discount uses selectedMembershipProductIds,
+                    // not targetMembershipProductId.
+                    targetMembershipProductId: undefined,
+
+                    // Clear Upgrade-only source fields.
                     sourceMembershipProductId: undefined,
                     sourceSubscriptionPlanId: undefined,
+
+                    // Preserve the selected plan only if we were already
+                    // editing a Purchase Discount.
+                    targetSubscriptionPlanId:
+                      current?.behavior === "PURCHASE_DISCOUNT"
+                        ? current.targetSubscriptionPlanId
+                        : undefined,
                   }))
                 }
                 style={[
@@ -1235,14 +1246,22 @@ export function OfferForm({
                 onPress={() =>
                   setMembershipApplicability((current) => ({
                     ...(current ?? {
-                      targetMembershipProductId: "",
                       adjustmentType: "PRODUCT_PERCENT_OFF",
                       active: true,
                       customerApplicability: "ALL",
                       membershipTargetMode: "ALL_MEMBERSHIP_PRODUCTS",
                       selectedMembershipProductIds: [],
                     }),
+
                     behavior: "UPGRADE",
+
+                    // Upgrade does not use Purchase Discount product targeting.
+                    membershipTargetMode: "ALL_MEMBERSHIP_PRODUCTS",
+                    selectedMembershipProductIds: [],
+
+                    // The target plan must be selected again after choosing
+                    // the Upgrade target Membership Product.
+                    targetSubscriptionPlanId: undefined,
                   }))
                 }
                 style={[
