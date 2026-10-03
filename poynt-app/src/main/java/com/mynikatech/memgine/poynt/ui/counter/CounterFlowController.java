@@ -62,6 +62,7 @@ public final class CounterFlowController {
     private boolean terminalPaymentReporting;
     private String activeRedemptionTransactionId;
     private Customer activeRedemptionCustomer;
+    private MembershipPurchaseOfferQr resolvedMembershipPurchaseOffer;
 
     private enum CounterAction {
         REDEEM,
@@ -501,6 +502,7 @@ public final class CounterFlowController {
     }
 
     private void showCustomerEntry(TerminalContext terminal, CounterAction action) {
+        resolvedMembershipPurchaseOffer = null;
         render(action == CounterAction.REDEEM ? "Redeem Benefit" : "Sell Membership");
         text(action == CounterAction.REDEEM
                 ? "Choose how to identify the customer."
@@ -707,7 +709,7 @@ public final class CounterFlowController {
                 String title = product.displayName.isEmpty() ? product.name : product.displayName;
                 String detail = plan.name + " · " + formatPrice(plan.price, plan.currencyCode);
                 Button sell = button(title + "\n" + detail + (plan.periodUnit.isEmpty() ? "" : " · " + plan.periodUnit),
-                        () -> showPurchaseOtp(terminal, customer, plan), true);
+                        () -> loadPurchaseQuote(terminal, customer, product, plan), true);
                 if (!product.description.isEmpty() || !plan.description.isEmpty()) {
                     text(!plan.description.isEmpty() ? plan.description : product.description);
                 }
@@ -726,7 +728,96 @@ public final class CounterFlowController {
         cancelButton();
     }
 
-    private void showPurchaseOtp(TerminalContext terminal, Customer customer, Plan plan) {
+    private void loadPurchaseQuote(
+            TerminalContext terminal,
+            Customer customer,
+            MembershipProduct product,
+            Plan plan
+    ) {
+        String explicitOfferId = resolvedMembershipPurchaseOffer == null
+                ? null
+                : resolvedMembershipPurchaseOffer.offerId;
+
+        background(
+                () -> api.purchaseQuote(
+                        terminal,
+                        staffSession.staffId(),
+                        staffSession.token(),
+                        plan.id,
+                        customer.userId,
+                        explicitOfferId
+                ),
+                quote -> showPurchaseReview(terminal, customer, product, plan, quote)
+        );
+    }
+
+    private void showPurchaseReview(
+            TerminalContext terminal,
+            Customer customer,
+            MembershipProduct product,
+            Plan plan,
+            MembershipPurchaseQuote quote
+    ) {
+        render("Sell · Review Membership");
+        String productName = product.displayName.isEmpty() ? product.name : product.displayName;
+        text(productName);
+        text(plan.name);
+
+        text("Subtotal: " + formatPrice(quote.subtotalAmount, quote.currencyCode));
+
+        if (quote.hasOffer()) {
+            String offerName;
+            if (resolvedMembershipPurchaseOffer != null
+                    && quote.appliedOfferId.equals(resolvedMembershipPurchaseOffer.offerId)) {
+                offerName = resolvedMembershipPurchaseOffer.displayName == null
+                        || resolvedMembershipPurchaseOffer.displayName.isEmpty()
+                        ? "Membership Offer"
+                        : resolvedMembershipPurchaseOffer.displayName;
+            } else {
+                offerName = "Best eligible Membership Offer";
+            }
+            text("Offer applied: " + offerName);
+            text("Discount: -" + formatPrice(quote.discountAmount, quote.currencyCode));
+        } else if (resolvedMembershipPurchaseOffer != null) {
+            text("The selected Membership Offer did not produce a discount for this plan.");
+        }
+
+        if (quote.taxAmount > 0d) {
+            String taxLabel = quote.taxName != null && !quote.taxName.isEmpty()
+                    ? quote.taxName
+                    : quote.taxCode != null && !quote.taxCode.isEmpty()
+                            ? quote.taxCode
+                            : "Tax";
+            text(taxLabel + " (" + quote.taxRate + "%): "
+                    + formatPrice(quote.taxAmount, quote.currencyCode));
+        }
+
+        text("Total: " + formatPrice(quote.totalAmount, quote.currencyCode));
+
+        if (resolvedMembershipPurchaseOffer != null) {
+            button("Remove Membership Offer", () -> {
+                resolvedMembershipPurchaseOffer = null;
+                loadPurchaseQuote(terminal, customer, product, plan);
+            });
+        }
+
+        button("Continue to Customer Verification",
+                () -> showPurchaseOtp(terminal, customer, product, plan, quote), true);
+        button("Back", () -> showPlansAfterReload(terminal, customer));
+        cancelButton();
+    }
+
+    private void showPlansAfterReload(TerminalContext terminal, Customer customer) {
+        loadPlans(terminal, customer);
+    }
+
+    private void showPurchaseOtp(
+            TerminalContext terminal,
+            Customer customer,
+            MembershipProduct product,
+            Plan plan,
+            MembershipPurchaseQuote quote
+    ) {
         render("Sell · Verify Customer");
         text(plan.name + " · " + formatPrice(plan.price, plan.currencyCode));
         text("Request the purchase-bound OTP before payment. The membership is not created until the later payment-completion phase.");
@@ -735,20 +826,24 @@ public final class CounterFlowController {
                 challenge -> showPurchaseOtpCode(
                         terminal,
                         customer,
+                        product,
                         plan,
+                        quote,
                         challenge,
                         System.currentTimeMillis() + OTP_RESEND_COOLDOWN_MS,
                         null
                 )
         ));
-        button("Back", () -> loadPlans(terminal, customer));
+        button("Back", () -> showPurchaseReview(terminal, customer, product, plan, quote));
         cancelButton();
     }
 
     private void showPurchaseOtpCode(
             TerminalContext terminal,
             Customer customer,
+            MembershipProduct product,
             Plan plan,
+            MembershipPurchaseQuote quote,
             OtpChallenge challenge,
             long resendAvailableAt,
             String message
@@ -769,7 +864,7 @@ public final class CounterFlowController {
                             challenge.challengeId, code),
                     ignored -> {
                         setStatus("");
-                        showPaymentPending(terminal, customer, plan, challenge);
+                        showPaymentPending(terminal, customer, product, plan, quote, challenge);
                     }
             );
         });
@@ -783,7 +878,9 @@ public final class CounterFlowController {
                     replacement -> showPurchaseOtpCode(
                             terminal,
                             customer,
+                            product,
                             plan,
+                            quote,
                             replacement,
                             System.currentTimeMillis() + OTP_RESEND_COOLDOWN_MS,
                             "A new verification code has been sent."
@@ -791,30 +888,41 @@ public final class CounterFlowController {
             );
         });
         updateResendButton(resend[0], resendAvailableAt);
-        button("Back", () -> showPurchaseOtp(terminal, customer, plan));
+        button("Back", () -> showPurchaseOtp(terminal, customer, product, plan, quote));
         cancelButton();
         if (message != null) {
             setStatus(message);
         }
     }
 
-    private void showPaymentPending(TerminalContext terminal, Customer customer, Plan plan, OtpChallenge challenge) {
+    private void showPaymentPending(
+            TerminalContext terminal,
+            Customer customer,
+            MembershipProduct product,
+            Plan plan,
+            MembershipPurchaseQuote quote,
+            OtpChallenge challenge
+    ) {
         render("Membership Payment");
         text(customer.displayName);
-        text(plan.name + " · " + formatPrice(plan.price, plan.currencyCode));
+        text(plan.name + " · " + formatPrice(quote.totalAmount, quote.currencyCode));
+        if (quote.hasOffer()) {
+            text("Membership Offer discount: -" + formatPrice(quote.discountAmount, quote.currencyCode));
+        }
         text("Customer verification is complete. Choose how the purchase is paid.");
         button("Pay", () -> background(
                 () -> api.startPurchasePayment(
                         terminal,
                         staffSession.token(),
                         challenge.challengeId,
-                        challenge.challengeId + ":poynt"
+                        challenge.challengeId + ":poynt",
+                        explicitMembershipOfferId()
                 ),
                 intent -> {
                     if ("TEST".equalsIgnoreCase(intent.providerCode)) {
                         background(
                                 () -> api.confirmTestPayment(terminal, staffSession.token(), intent.id),
-                                ignored -> showProviderPaymentSuccess(terminal, customer, plan),
+                                ignored -> showProviderPaymentSuccess(terminal, customer, plan, quote),
                                 exception -> setStatus(apiErrorMessage(exception))
                         );
                         return;
@@ -831,14 +939,17 @@ public final class CounterFlowController {
                         terminal,
                         staffSession.token(),
                         challenge.challengeId,
-                        challenge.challengeId + ":cash"
+                        challenge.challengeId + ":cash",
+                        explicitMembershipOfferId()
                 ),
-                intent -> showCashConfirmation(terminal, customer, plan, challenge, intent)
+                intent -> showCashConfirmation(terminal, customer, product, plan, quote, challenge, intent)
         ));
         button("Back", () -> showPurchaseOtpCode(
                 terminal,
                 customer,
+                product,
                 plan,
+                quote,
                 challenge,
                 System.currentTimeMillis() + OTP_RESEND_COOLDOWN_MS,
                 null
@@ -891,7 +1002,9 @@ public final class CounterFlowController {
     private void showCashConfirmation(
             TerminalContext terminal,
             Customer customer,
+            MembershipProduct product,
             Plan plan,
+            MembershipPurchaseQuote quote,
             OtpChallenge challenge,
             PaymentIntent intent
     ) {
@@ -900,25 +1013,35 @@ public final class CounterFlowController {
         text("Confirm " + formatPrice(intent.amount, intent.currencyCode) + " cash received.");
         button("Confirm Cash Received", () -> background(
                 () -> api.confirmCashPayment(terminal, staffSession.token(), intent.id),
-                ignored -> showCashSuccess(terminal, customer, plan)
+                ignored -> showCashSuccess(terminal, customer, plan, quote)
         ));
-        button("Back", () -> showPaymentPending(terminal, customer, plan, challenge));
+        button("Back", () -> showPaymentPending(terminal, customer, product, plan, quote, challenge));
         cancelButton();
     }
 
-    private void showCashSuccess(TerminalContext terminal, Customer customer, Plan plan) {
+    private void showCashSuccess(
+            TerminalContext terminal,
+            Customer customer,
+            Plan plan,
+            MembershipPurchaseQuote quote
+    ) {
         render("Membership Sold");
         text(customer.displayName);
-        text(plan.name + " · " + formatPrice(plan.price, plan.currencyCode));
+        text(plan.name + " · " + formatPrice(quote.totalAmount, quote.currencyCode));
         text("Cash payment confirmed and membership created.");
         button("Back to Counter Home", () -> showCounterHome(terminal));
         cancelButton();
     }
 
-    private void showProviderPaymentSuccess(TerminalContext terminal, Customer customer, Plan plan) {
+    private void showProviderPaymentSuccess(
+            TerminalContext terminal,
+            Customer customer,
+            Plan plan,
+            MembershipPurchaseQuote quote
+    ) {
         render("Membership Sold");
         text(customer.displayName);
-        text(plan.name + " · " + formatPrice(plan.price, plan.currencyCode));
+        text(plan.name + " · " + formatPrice(quote.totalAmount, quote.currencyCode));
         text("Payment succeeded and membership was created.");
         button("Back to Counter Home", () -> showCounterHome(terminal));
         cancelButton();
@@ -938,6 +1061,41 @@ public final class CounterFlowController {
                     subscriptions -> showSubscriptions(terminal, customer, subscriptions)
             ));
         } else {
+            text("Membership Offer (optional)");
+            if (resolvedMembershipPurchaseOffer != null) {
+                text("Offer applied: " + (
+                        resolvedMembershipPurchaseOffer.displayName == null
+                                || resolvedMembershipPurchaseOffer.displayName.isEmpty()
+                                ? "Membership Offer"
+                                : resolvedMembershipPurchaseOffer.displayName
+                ));
+                button("Remove Membership Offer", () -> {
+                    resolvedMembershipPurchaseOffer = null;
+                    showCustomer(terminal, customer, CounterAction.SELL, back);
+                });
+            } else {
+                EditText offerQr = input("Membership Offer QR reference");
+                button("Use Membership Offer QR", () -> {
+                    String token = normalizeMembershipOfferQrToken(offerQr.getText().toString());
+                    if (token.isEmpty()) {
+                        setStatus("Enter a Membership Offer QR reference.");
+                        return;
+                    }
+                    background(
+                            () -> api.resolveMembershipPurchaseOfferQr(
+                                    terminal,
+                                    staffSession.staffId(),
+                                    staffSession.token(),
+                                    token
+                            ),
+                            resolved -> {
+                                resolvedMembershipPurchaseOffer = resolved;
+                                showCustomer(terminal, customer, CounterAction.SELL, back);
+                            }
+                    );
+                });
+            }
+
             button("Choose Membership", () -> loadPlans(terminal, customer));
         }
         button("Back", back);
@@ -1188,6 +1346,31 @@ public final class CounterFlowController {
         text("Payment completed and all selected benefits and offers were redeemed together.");
         button("Back to Counter Home", () -> showCounterHome(terminal));
         cancelButton();
+    }
+
+    private String explicitMembershipOfferId() {
+        return resolvedMembershipPurchaseOffer == null
+                ? null
+                : resolvedMembershipPurchaseOffer.offerId;
+    }
+
+    private static String normalizeMembershipOfferQrToken(String rawValue) {
+        if (rawValue == null) return "";
+        String value = rawValue.trim();
+        if (value.isEmpty()) return "";
+
+        int marker = value.indexOf("/qr/");
+        if (marker >= 0) {
+            String token = value.substring(marker + 4);
+            int query = token.indexOf('?');
+            if (query >= 0) token = token.substring(0, query);
+            int fragment = token.indexOf('#');
+            if (fragment >= 0) token = token.substring(0, fragment);
+            while (token.endsWith("/")) token = token.substring(0, token.length() - 1);
+            return token.trim();
+        }
+
+        return value;
     }
 
     private static String normalizedPhone(String value) {

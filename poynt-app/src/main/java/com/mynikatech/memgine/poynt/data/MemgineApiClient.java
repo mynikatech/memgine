@@ -479,6 +479,68 @@ public final class MemgineApiClient {
         return activeStatusIdsForProduct;
     }
 
+    public MembershipPurchaseQuote purchaseQuote(
+            TerminalContext terminal,
+            String staffId,
+            String sessionToken,
+            String planId,
+            String customerUserId,
+            String explicitOfferId
+    ) throws Exception {
+        StringBuilder path = new StringBuilder(
+                "/api/v1/organizations/" + terminal.organizationId
+                        + "/counter/purchases/quote?storeId=" + terminal.storeId
+                        + "&staffId=" + staffId
+                        + "&planId=" + planId
+        );
+        if (customerUserId != null && !customerUserId.trim().isEmpty()) {
+            path.append("&customerUserId=").append(customerUserId.trim());
+        }
+        if (explicitOfferId != null && !explicitOfferId.trim().isEmpty()) {
+            path.append("&explicitOfferId=").append(explicitOfferId.trim());
+        }
+
+        JSONObject data = call("GET", path.toString(), null, sessionToken, null);
+        return new MembershipPurchaseQuote(
+                data.getString("planId"),
+                data.optString("membershipProductId"),
+                data.getDouble("subtotalAmount"),
+                data.isNull("appliedOfferId") ? null : data.optString("appliedOfferId"),
+                data.isNull("adjustmentType") ? null : data.optString("adjustmentType"),
+                data.optDouble("discountAmount", 0d),
+                data.optDouble("netSubtotalAmount", data.getDouble("subtotalAmount")),
+                data.optDouble("taxRate", 0d),
+                data.optDouble("taxAmount", 0d),
+                data.getDouble("totalAmount"),
+                data.getString("currencyCode"),
+                data.isNull("taxCode") ? null : data.optString("taxCode"),
+                data.isNull("taxName") ? null : data.optString("taxName")
+        );
+    }
+
+    public MembershipPurchaseOfferQr resolveMembershipPurchaseOfferQr(
+            TerminalContext terminal,
+            String staffId,
+            String sessionToken,
+            String token
+    ) throws Exception {
+        JSONObject request = new JSONObject();
+        request.put("token", token);
+        JSONObject data = call(
+                "POST",
+                "/api/v1/organizations/" + terminal.organizationId
+                        + "/counter/purchases/offers/qr/resolve?storeId="
+                        + terminal.storeId + "&staffId=" + staffId,
+                null,
+                sessionToken,
+                request
+        );
+        return new MembershipPurchaseOfferQr(
+                data.getString("offerId"),
+                data.optString("displayName")
+        );
+    }
+
     public OtpChallenge requestPurchaseOtp(
                 TerminalContext terminal,
                 String staffId,
@@ -540,9 +602,22 @@ public final class MemgineApiClient {
             String challengeId,
             String idempotencyKey
     ) throws Exception {
+        return startPurchasePayment(terminal, sessionToken, challengeId, idempotencyKey, null);
+    }
+
+    public PaymentIntent startPurchasePayment(
+            TerminalContext terminal,
+            String sessionToken,
+            String challengeId,
+            String idempotencyKey,
+            String explicitOfferId
+    ) throws Exception {
         JSONObject request = new JSONObject();
         request.put("challengeId", challengeId);
         request.put("idempotencyKey", idempotencyKey);
+        if (explicitOfferId != null && !explicitOfferId.trim().isEmpty()) {
+            request.put("explicitOfferId", explicitOfferId.trim());
+        }
         JSONObject data = call(
                 "POST",
                 "/api/v1/organizations/" + terminal.organizationId + "/counter/purchases/payment/start",
@@ -559,9 +634,22 @@ public final class MemgineApiClient {
             String challengeId,
             String idempotencyKey
     ) throws Exception {
+        return startCashPayment(terminal, sessionToken, challengeId, idempotencyKey, null);
+    }
+
+    public PaymentIntent startCashPayment(
+            TerminalContext terminal,
+            String sessionToken,
+            String challengeId,
+            String idempotencyKey,
+            String explicitOfferId
+    ) throws Exception {
         JSONObject request = new JSONObject();
         request.put("challengeId", challengeId);
         request.put("idempotencyKey", idempotencyKey);
+        if (explicitOfferId != null && !explicitOfferId.trim().isEmpty()) {
+            request.put("explicitOfferId", explicitOfferId.trim());
+        }
         JSONObject data = call(
                 "POST",
                 "/api/v1/organizations/" + terminal.organizationId + "/counter/purchases/payment/cash/start",
