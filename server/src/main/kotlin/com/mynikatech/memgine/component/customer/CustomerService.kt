@@ -322,14 +322,13 @@ class CustomerService(
             request.planId,
             customerUserId,
             request.idempotencyKey,
-            request.returnContext
+            request.returnContext,
+            request.explicitOfferId
         )
     }
 
-    fun purchaseQuote(organizationId: String, customerUserId: String, planId: String) =
-        authorizeCustomer(organizationId, customerUserId).let {
-            payments.quoteMembership(organizationId, planId)
-        }
+    fun purchaseQuote(organizationId: String, customerUserId: String, planId: String, explicitOfferId: String?) =
+        payments.quoteCustomerMembership(organizationId, planId, customerUserId, explicitOfferId)
 
     fun hasActiveRelationship(organizationId: String, userId: String): Boolean = sql.hasActiveRelationship(organizationId, userId)
 

@@ -175,20 +175,23 @@ export class CustomerDataApi {
     planId: ID,
     idempotencyKey: string,
     productId?: ID,
+    explicitOfferId?: ID,
   ): Promise<ApiResult<PaymentIntent>> {
     return httpClient.post(`${base(organizationId)}/purchases/payment/start-authenticated`, {
       planId,
       idempotencyKey,
       returnContext: productId ? { productId } : undefined,
+      explicitOfferId,
     });
   }
 
   purchaseQuote(
     organizationId: ID,
     planId: ID,
+    explicitOfferId?: ID,
   ): Promise<ApiResult<MembershipPurchaseQuote>> {
     return httpClient.get(
-      `${base(organizationId)}/purchases/quote?planId=${encodeURIComponent(planId)}`,
+      `${base(organizationId)}/purchases/quote?planId=${encodeURIComponent(planId)}${explicitOfferId ? `&explicitOfferId=${encodeURIComponent(explicitOfferId)}` : ""}`,
     );
   }
 

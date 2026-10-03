@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 136-customer-membership-commerce-payment
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/136-customer-membership-commerce-payment.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

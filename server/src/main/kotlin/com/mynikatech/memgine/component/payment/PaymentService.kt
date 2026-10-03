@@ -11,6 +11,7 @@ import com.mynikatech.memgine.net.dto.PaymentIntentDto
 import com.mynikatech.memgine.net.dto.PaymentReturnContextDto
 import com.mynikatech.memgine.net.dto.PaymentStartRequestDto
 import com.mynikatech.memgine.net.dto.MembershipPurchaseQuoteDto
+import com.mynikatech.memgine.net.dto.CounterMembershipPurchaseQuoteDto
 import com.mynikatech.memgine.net.dto.TestPaymentConfirmationDto
 import com.stripe.model.Event
 import org.jdbi.v3.core.Jdbi
@@ -40,6 +41,22 @@ class PaymentService(
         validateId(planId, "membership plan id")
         return translate {
             sql().quote(org, planId)
+                ?: throw NotFoundException("Membership plan was not found")
+        }
+    }
+
+    fun quoteCustomerMembership(
+        org: String,
+        planId: String,
+        customerUserId: String,
+        explicitOfferId: String?
+    ): CounterMembershipPurchaseQuoteDto {
+        validateId(org, "organization id")
+        validateId(planId, "membership plan id")
+        validateId(customerUserId, "customer user id")
+        explicitOfferId?.let { validateId(it, "membership offer id") }
+        return translate {
+            sql().quoteCustomerMembership(org, customerUserId, planId, explicitOfferId)
                 ?: throw NotFoundException("Membership plan was not found")
         }
     }
@@ -159,21 +176,25 @@ class PaymentService(
         planId: String,
         customerUserId: String,
         idempotencyKey: String,
-        returnContext: PaymentReturnContextDto? = null
+        returnContext: PaymentReturnContextDto? = null,
+        explicitOfferId: String? = null
     ): PaymentIntentDto {
         requirePaymentProvider()
         validateId(org, "organization id")
         validateId(planId, "membership plan id")
         validateId(customerUserId, "customer user id")
+        explicitOfferId?.let { validateId(it, "membership offer id") }
         validateIdempotencyKey(idempotencyKey)
-        val intent = translate { sql().startCustomer(
+        val intent = translate { sql().startCustomerCommerce(
             UUID.randomUUID().toString(),
             UUID.randomUUID().toString(),
             org,
             planId,
             customerUserId,
             configuredProvider.code,
-            idempotencyKey.trim()
+            idempotencyKey.trim(),
+            explicitOfferId,
+            customerUserId
         ) ?: throw ConflictException("Payment was not started") }
         return checkoutForProvider(intent, org, returnContext, customerUserId)
     }

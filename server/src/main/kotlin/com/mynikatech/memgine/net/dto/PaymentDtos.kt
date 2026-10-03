@@ -34,7 +34,8 @@ data class MembershipPurchaseQuoteDto(
 data class AuthenticatedMembershipPaymentStartDto(
     val planId: String,
     val idempotencyKey: String,
-    val returnContext: PaymentReturnContextDto? = null
+    val returnContext: PaymentReturnContextDto? = null,
+    val explicitOfferId: String? = null
 )
 
 @Serializable

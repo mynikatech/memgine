@@ -124,7 +124,10 @@ fun Route.customerSelfServiceRoutes(service: CustomerService, redemptionService:
                 val planId = call.request.queryParameters["planId"]
                     ?: throw BadRequestException("Membership plan id is required")
                 call.respond(ApiResponse.success(
-                    service.purchaseQuote(call.organizationId(), call.userId(), planId),
+                    service.purchaseQuote(
+                        call.organizationId(), call.userId(), planId,
+                        call.request.queryParameters["explicitOfferId"]
+                    ),
                     call.callId
                 ))
             }

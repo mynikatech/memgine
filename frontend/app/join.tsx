@@ -959,8 +959,12 @@ export default function JoinFlow() {
               customerId || undefined,
               explicitOfferId || undefined,
             )
-          : organizationUserId
-            ? await services.customerData.purchaseQuote(orgId, plan.id)
+          : session?.userId
+            ? await services.customerData.purchaseQuote(
+                orgId,
+                plan.id,
+                explicitOfferId || undefined,
+              )
             : null;
 
         console.log("[TAX-QUOTE] response", quote);
@@ -1000,6 +1004,7 @@ export default function JoinFlow() {
     plan,
     params.source,
     explicitOfferId,
+    session?.userId,
   ]);
 
   const requestCounterPurchaseOtp = useCallback(
@@ -1409,7 +1414,7 @@ export default function JoinFlow() {
     if (
       !product ||
       !plan ||
-      (!isStaffSale && !organizationUserId && !phoneVerified)
+      (!isStaffSale && !session?.userId)
     ) {
       return;
     }
@@ -1561,6 +1566,8 @@ export default function JoinFlow() {
         `${orgId}:${plan.id}:provider`,
 
         product.id,
+
+        explicitOfferId || undefined,
       );
 
       if (intent.providerCode === "STRIPE" && intent.checkoutUrl) {
@@ -1645,6 +1652,8 @@ export default function JoinFlow() {
     redirectToStripeCheckout,
 
     explicitOfferId,
+
+    session?.userId,
   ]);
 
   const requestCashPayment = useCallback(async () => {
@@ -2371,7 +2380,7 @@ export default function JoinFlow() {
                     },
                   ]),
 
-              ...(purchaseQuote && purchaseQuote.taxAmount > 0
+              ...(purchaseQuote
                 ? [
                     {
                       label: `${purchaseQuote.taxName ?? purchaseQuote.taxCode ?? "Tax"} (${purchaseQuote.taxRate}%)`,
@@ -2431,9 +2440,9 @@ export default function JoinFlow() {
             </Card>
           </Section>
 
-          {!organizationUserId && !phoneVerified && !isStaffSale ? (
+          {!session?.userId && !isStaffSale ? (
             <Text variant="bodySmall" color="textMuted">
-              Verify the customer phone to continue.
+              Sign in to continue.
             </Text>
           ) : null}
 
@@ -2454,7 +2463,7 @@ export default function JoinFlow() {
                 : t("join.payAndSubscribe")
             }
             fullWidth
-            disabled={!isStaffSale && !organizationUserId && !phoneVerified}
+            disabled={!isStaffSale && !session?.userId}
             onPress={payAndSubscribe}
             testID="join-pay"
           />

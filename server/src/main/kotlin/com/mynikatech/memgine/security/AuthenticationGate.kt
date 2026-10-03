@@ -126,14 +126,11 @@ private fun protectOrganizationPath(
     }
 
     if (resource == "payments" && method == HttpMethod.Post && parts.getOrNull(6) == "test-result") {
-        val authenticated = principal ?: throw UnauthorizedException("Authentication is required")
-        if (
-            authenticated.has("COUNTER_ACCESS", organizationId) ||
-            authenticated.has("ORG_ADMIN_ACCESS", organizationId)
-        ) {
-            return
-        }
-        throw ForbiddenException("Access is not permitted")
+        // PaymentService and the payment SQL functions verify that this principal owns
+        // the requested intent. CUSTOMER_SESSION purchases have no organization role
+        // until successful finalization creates the customer relationship.
+        if (principal == null) throw UnauthorizedException("Authentication is required")
+        return
     }
 
     if (resource == "payments" && method == HttpMethod.Get) {

@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 138-customer-session-payment-authorization
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/138-customer-session-payment-authorization.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

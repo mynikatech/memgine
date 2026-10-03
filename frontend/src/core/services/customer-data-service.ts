@@ -145,14 +145,15 @@ export class CustomerDataService {
     planId: ID,
     idempotencyKey: string,
     productId?: ID,
+    explicitOfferId?: ID,
   ): Promise<PaymentIntent> {
-    const result = await this.api.startAuthenticatedPayment(organizationId, planId, idempotencyKey, productId);
+    const result = await this.api.startAuthenticatedPayment(organizationId, planId, idempotencyKey, productId, explicitOfferId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
 
-  async purchaseQuote(organizationId: ID, planId: ID): Promise<MembershipPurchaseQuote> {
-    const result = await this.api.purchaseQuote(organizationId, planId);
+  async purchaseQuote(organizationId: ID, planId: ID, explicitOfferId?: ID): Promise<MembershipPurchaseQuote> {
+    const result = await this.api.purchaseQuote(organizationId, planId, explicitOfferId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }

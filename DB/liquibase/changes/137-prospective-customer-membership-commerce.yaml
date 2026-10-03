@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 137-prospective-customer-membership-commerce
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/137-prospective-customer-membership-commerce.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

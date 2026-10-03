@@ -2,6 +2,7 @@ package com.mynikatech.memgine.component.payment
 
 import com.mynikatech.memgine.net.dto.PaymentIntentDto
 import com.mynikatech.memgine.net.dto.MembershipPurchaseQuoteDto
+import com.mynikatech.memgine.net.dto.CounterMembershipPurchaseQuoteDto
 import org.jdbi.v3.sqlobject.config.RegisterBeanMapper
 import org.jdbi.v3.sqlobject.customizer.Bind
 import org.jdbi.v3.sqlobject.statement.SqlQuery
@@ -13,6 +14,15 @@ interface PaymentSql {
         @Bind("organizationId") organizationId: String,
         @Bind("planId") planId: String
     ): MembershipPurchaseQuoteDto?
+
+    @SqlQuery("""SELECT * FROM customer_membership_purchase_offer_quote(
+        :organizationId, :customerUserId, :planId, :explicitOfferId)""")
+    fun quoteCustomerMembership(
+        @Bind("organizationId") organizationId: String,
+        @Bind("customerUserId") customerUserId: String,
+        @Bind("planId") planId: String,
+        @Bind("explicitOfferId") explicitOfferId: String?
+    ): CounterMembershipPurchaseQuoteDto?
 
     @SqlQuery("""SELECT * FROM payment_start_membership_intent(
         :intentId, :attemptId, :organizationId, :challengeId, :providerCode, :idempotencyKey, :actorUserId)""")
@@ -66,6 +76,21 @@ interface PaymentSql {
         @Bind("customerUserId") customerUserId: String,
         @Bind("providerCode") providerCode: String,
         @Bind("idempotencyKey") idempotencyKey: String
+    ): PaymentIntentDto?
+
+    @SqlQuery("""SELECT * FROM payment_start_customer_commerce_membership_intent(
+        :intentId, :attemptId, :organizationId, :planId, :customerUserId,
+        :providerCode, :idempotencyKey, :explicitOfferId, :actorUserId)""")
+    fun startCustomerCommerce(
+        @Bind("intentId") intentId: String,
+        @Bind("attemptId") attemptId: String,
+        @Bind("organizationId") organizationId: String,
+        @Bind("planId") planId: String,
+        @Bind("customerUserId") customerUserId: String,
+        @Bind("providerCode") providerCode: String,
+        @Bind("idempotencyKey") idempotencyKey: String,
+        @Bind("explicitOfferId") explicitOfferId: String?,
+        @Bind("actorUserId") actorUserId: String
     ): PaymentIntentDto?
 
     @SqlQuery("SELECT * FROM payment_get_intent(:organizationId, :intentId, :actorUserId)")
