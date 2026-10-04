@@ -4,6 +4,7 @@ import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.model.common.ApiResponse
 import com.mynikatech.memgine.net.dto.PaymentConfirmationDto
 import com.mynikatech.memgine.net.dto.MonerisPaymentConfirmationDto
+import com.mynikatech.memgine.net.dto.PoyntCollectConfirmationDto
 import com.mynikatech.memgine.net.dto.TestPaymentConfirmationDto
 import com.mynikatech.memgine.security.authenticatedPrincipal
 import io.ktor.server.application.call
@@ -64,6 +65,17 @@ fun Route.paymentRoutes(service: PaymentService) {
                 paymentIntentId,
                 call.authenticatedPrincipal().userId,
                 call.receive<MonerisPaymentConfirmationDto>().temporaryToken
+            )
+            call.respond(ApiResponse.success(PaymentConfirmationDto(result.first, result.second), call.callId))
+        }
+        post("/{paymentIntentId}/poynt-collect/confirm") {
+            val organizationId = call.parameters["organizationId"]
+                ?: throw BadRequestException("Organization id is required")
+            val paymentIntentId = call.parameters["paymentIntentId"]
+                ?: throw BadRequestException("Payment intent id is required")
+            val result = service.confirmCollectAndFinalize(
+                organizationId, paymentIntentId, call.authenticatedPrincipal().userId,
+                call.receive<PoyntCollectConfirmationDto>().nonce
             )
             call.respond(ApiResponse.success(PaymentConfirmationDto(result.first, result.second), call.callId))
         }

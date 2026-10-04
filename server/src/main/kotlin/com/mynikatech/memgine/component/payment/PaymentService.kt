@@ -6,6 +6,7 @@ import com.mynikatech.memgine.exception.NotFoundException
 import com.mynikatech.memgine.exception.ForbiddenException
 import com.mynikatech.memgine.exception.ApiException
 import com.mynikatech.memgine.config.PaymentConfig
+import com.mynikatech.memgine.component.commerce.provider.poynt.PoyntCatalogConfiguration
 import com.mynikatech.memgine.net.dto.CounterPurchaseResult
 import com.mynikatech.memgine.net.dto.PaymentIntentDto
 import com.mynikatech.memgine.net.dto.PaymentReturnContextDto
@@ -22,7 +23,8 @@ class PaymentService(
     private val jdbi: Jdbi,
     environment: String,
     paymentConfig: PaymentConfig,
-    private val paymentSqlOverride: PaymentSql? = null
+    private val paymentSqlOverride: PaymentSql? = null,
+    private val collectProvider: PoyntCollectPaymentProvider? = null
 ) {
     private val testProvider = TestPaymentProvider(environment in setOf("local", "dev", "development"))
     private val stripeProvider = StripePaymentProvider(paymentConfig)
@@ -31,6 +33,7 @@ class PaymentService(
         "TEST" -> testProvider
         "STRIPE" -> stripeProvider
         "MONERIS" -> monerisProvider
+        "POYNT_COLLECT" -> collectProvider ?: throw IllegalArgumentException("Poynt Collect is not configured")
         else -> throw IllegalArgumentException("Unsupported payment provider configuration")
     }
     private fun sql() = paymentSqlOverride ?: jdbi.onDemand(PaymentSql::class.java)
@@ -329,6 +332,64 @@ class PaymentService(
             }
             syncCommercePaymentResult(org, intentId, actorUserId)
             throw BadRequestException("Moneris payment was not approved")
+        }
+        syncCommercePaymentResult(org, intentId, actorUserId)
+        return getConfirmation(org, intentId, actorUserId)
+    }
+
+    fun confirmCollectAndFinalize(
+        org: String, intentId: String, actorUserId: String, nonce: String
+    ): Pair<PaymentIntentDto, CounterPurchaseResult?> {
+        val provider = collectProvider ?: throw BadRequestException("Poynt Collect is not configured")
+        if (configuredProvider.code != provider.code || !provider.isAvailable) {
+            throw BadRequestException("Poynt Collect payment is unavailable")
+        }
+        val current = get(org, intentId, actorUserId)
+        if (current.providerCode != provider.code) throw BadRequestException("Payment is not a Collect payment")
+        if (current.status == "SUCCEEDED") return getConfirmation(org, intentId, actorUserId)
+        if (current.status != "PENDING") throw ConflictException("Payment is already in progress or closed")
+        if (nonce.isBlank() || nonce.length > 4096) throw BadRequestException("Payment nonce is invalid")
+        val row = translate { sql().collectConfiguration(org, intentId, actorUserId) }
+            ?: throw BadRequestException("Poynt Collect configuration is unavailable")
+        if (row.organizationId != org || row.providerStoreId.isNullOrBlank() ||
+            row.merchantCurrencyCode != current.currencyCode || row.businessId.isBlank() ||
+            row.applicationId.isBlank() || row.secretReference.isBlank()
+        ) throw BadRequestException("Poynt Collect configuration is unavailable")
+        val configuration = PoyntCatalogConfiguration(
+            row.integrationConfigurationId, row.organizationId, row.applicationId,
+            row.businessId, row.providerStoreId, row.secretReference,
+            row.merchantCurrencyCode, null
+        )
+        // Resolve OAuth before claiming the intent; credential errors cannot strand it.
+        val token = provider.token(configuration)
+        if (!translate { sql().claimCollectCharge(org, intentId, actorUserId) }) {
+            throw ConflictException("Payment is already in progress or closed")
+        }
+        val result = provider.charge(current, configuration, nonce, token, amountMinor(current.amount))
+        val persistedReference = translate {
+            sql().setProviderReference(intentId, provider.code, result.transactionId, actorUserId)
+        } ?: throw ConflictException("Collect transaction reference is unavailable")
+        if (persistedReference != result.transactionId) {
+            throw ConflictException("Payment is associated with another Collect transaction")
+        }
+        if (result.approved) {
+            translate {
+                sql().confirmProviderSuccess(
+                    intentId, org, provider.code, result.transactionId,
+                    amountMinor(current.amount), current.currencyCode
+                )
+            } ?: throw ConflictException("Collect payment finalization is unavailable")
+        } else if (result.definiteDecline) {
+            translate {
+                sql().recordProviderFailure(
+                    intentId, org, provider.code, result.transactionId, "FAILED", "POYNT_COLLECT_DECLINED"
+                )
+            }
+            syncCommercePaymentResult(org, intentId, actorUserId)
+            throw BadRequestException("Poynt Collect payment was declined")
+        }
+        if (!result.approved) {
+            throw ConflictException("Poynt Collect result is inconsistent; payment requires reconciliation")
         }
         syncCommercePaymentResult(org, intentId, actorUserId)
         return getConfirmation(org, intentId, actorUserId)

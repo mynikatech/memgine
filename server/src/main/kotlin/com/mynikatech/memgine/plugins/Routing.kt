@@ -20,6 +20,7 @@ import com.mynikatech.memgine.component.customer.customerSelfServiceRoutes
 import com.mynikatech.memgine.component.counter.CounterService
 import com.mynikatech.memgine.component.counter.counterRoutes
 import com.mynikatech.memgine.component.payment.PaymentService
+import com.mynikatech.memgine.component.payment.PoyntCollectPaymentProvider
 import com.mynikatech.memgine.component.payment.paymentRoutes
 import com.mynikatech.memgine.component.notificationconfiguration.NotificationConfigurationService
 import com.mynikatech.memgine.component.notificationconfiguration.notificationConfigurationRoutes
@@ -161,9 +162,6 @@ fun Application.configureRouting(
     val offerService = OfferService(database.jdbi)
     val subscriptionService = SubscriptionService(database.jdbi.onDemand(SubscriptionSql::class.java))
     val redemptionService = RedemptionService(database.jdbi.onDemand(RedemptionSql::class.java))
-    val paymentService = PaymentService(database.jdbi, config.server.environment, config.payment)
-    val customerService = CustomerService(database.jdbi.onDemand(CustomerSql::class.java),
-        membershipProductService, benefitService, storeService, customerDevIdentityEnabled, businessOtpService, paymentService)
     val notificationConfigurationService = NotificationConfigurationService(database.jdbi)
     val integrationConfigurationService = IntegrationConfigurationService(database.jdbi)
     val poyntTokens = PoyntTokenService(
@@ -173,6 +171,20 @@ fun Application.configureRouting(
     )
     val poyntCommerceSql = database.jdbi.onDemand(PoyntCommerceSql::class.java)
     val poyntHttpTransport = PoyntCloudHttpTransport(config.poynt.cloudBaseUrl, config.poynt.apiVersion)
+    val collectTokens = PoyntTokenService(
+        AwsSecretsManagerPoyntCredentialResolver(config.poynt.secretsRegion),
+        PoyntCloudTokenTransport(config.poynt.collectBaseUrl, config.poynt.apiVersion),
+        config.poynt.jwtAudience
+    )
+    val collectProvider = PoyntCollectPaymentProvider(
+        config.poynt.collectBaseUrl,
+        PoyntCloudHttpTransport(config.poynt.collectBaseUrl, config.poynt.apiVersion),
+        collectTokens::token
+    )
+    val paymentService = PaymentService(database.jdbi, config.server.environment, config.payment,
+        collectProvider = collectProvider)
+    val customerService = CustomerService(database.jdbi.onDemand(CustomerSql::class.java),
+        membershipProductService, benefitService, storeService, customerDevIdentityEnabled, businessOtpService, paymentService)
     val poyntCommerceProvider = PoyntCommerceProvider(
         poyntCommerceSql,
         PoyntAuthenticatedCatalogClient(poyntHttpTransport, poyntTokens),

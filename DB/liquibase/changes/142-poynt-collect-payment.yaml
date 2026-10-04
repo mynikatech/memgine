@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 142-poynt-collect-payment
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/142-poynt-collect-payment.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

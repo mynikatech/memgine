@@ -280,6 +280,8 @@ data class AppConfig(
 
                 poynt = PoyntCommerceConfig(
                     cloudBaseUrl = value("memgine.poynt.cloudBaseUrl", "MEMGINE_POYNT_CLOUD_BASE_URL", DEFAULT_POYNT_CLOUD_BASE_URL).trim().trimEnd('/'),
+                    collectBaseUrl = value("memgine.poynt.collectBaseUrl", "MEMGINE_POYNT_COLLECT_BASE_URL", DEFAULT_POYNT_CLOUD_BASE_URL).trim().trimEnd('/'),
+                    collectSdkUrl = value("memgine.poynt.collectSdkUrl", "MEMGINE_POYNT_COLLECT_SDK_URL", "https://collect.commerce.godaddy.com/sdk.js").trim(),
                     secretsRegion = optionalValue("memgine.poynt.secretsRegion", "MEMGINE_POYNT_SECRETS_REGION") ?: assetAwsRegion,
                     apiVersion = value("memgine.poynt.apiVersion", "MEMGINE_POYNT_API_VERSION", "1.2").trim(),
                     jwtAudience = value("memgine.poynt.jwtAudience", "MEMGINE_POYNT_JWT_AUDIENCE", DEFAULT_POYNT_JWT_AUDIENCE).trim(),
@@ -339,6 +341,8 @@ data class OtpConfig(
 
 data class PoyntCommerceConfig(
     val cloudBaseUrl: String,
+    val collectBaseUrl: String = DEFAULT_POYNT_CLOUD_BASE_URL,
+    val collectSdkUrl: String = "https://collect.commerce.godaddy.com/sdk.js",
     val secretsRegion: String,
     val apiVersion: String,
     val jwtAudience: String,

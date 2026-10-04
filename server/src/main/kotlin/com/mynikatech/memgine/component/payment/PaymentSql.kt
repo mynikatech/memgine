@@ -9,6 +9,21 @@ import org.jdbi.v3.sqlobject.statement.SqlQuery
 
 @RegisterBeanMapper(CounterPaymentFinalizationRow::class)
 interface PaymentSql {
+    @SqlQuery("SELECT * FROM payment_get_poynt_collect_configuration(:organizationId, :intentId, :actorUserId)")
+    @RegisterBeanMapper(PoyntCollectConfigurationRow::class)
+    fun collectConfiguration(
+        @Bind("organizationId") organizationId: String,
+        @Bind("intentId") intentId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): PoyntCollectConfigurationRow?
+
+    @SqlQuery("SELECT payment_claim_poynt_collect_charge(:organizationId, :intentId, :actorUserId)")
+    fun claimCollectCharge(
+        @Bind("organizationId") organizationId: String,
+        @Bind("intentId") intentId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): Boolean
+
     @SqlQuery("SELECT * FROM membership_purchase_quote(:organizationId, :planId)")
     fun quote(
         @Bind("organizationId") organizationId: String,
@@ -175,6 +190,16 @@ interface PaymentSql {
         @Bind("actorUserId") actorUserId: String
     ): CounterPaymentFinalizationRow?
 }
+
+data class PoyntCollectConfigurationRow(
+    var integrationConfigurationId: String = "",
+    var organizationId: String = "",
+    var applicationId: String = "",
+    var businessId: String = "",
+    var providerStoreId: String? = null,
+    var secretReference: String = "",
+    var merchantCurrencyCode: String = ""
+)
 
 data class CounterPaymentFinalizationRow(
     var subscriptionId: String = "",

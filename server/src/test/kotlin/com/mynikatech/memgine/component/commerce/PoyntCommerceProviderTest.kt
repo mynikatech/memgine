@@ -27,6 +27,7 @@ class PoyntCommerceProviderTest {
     private val sql = object : PoyntCommerceSql {
         override fun catalogConfiguration(organizationId: String, integrationId: String, actorUserId: String) =
             PoyntCatalogConfigurationRow(integrationId, organizationId, "urn:aid:memgine", "business", null, "secret", "USD", null, null, "2026-01-01T00:00:00Z")
+        override fun counterCatalogConfiguration(transactionId: String, actorUserId: String): PoyntCatalogConfigurationRow? = null
     }
     private val privateKeyPem = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair().private.encoded.let {
         "-----BEGIN PRIVATE KEY-----\n${Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(it)}\n-----END PRIVATE KEY-----"

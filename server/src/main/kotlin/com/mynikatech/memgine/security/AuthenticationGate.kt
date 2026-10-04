@@ -140,7 +140,8 @@ private fun protectOrganizationPath(
         return
     }
 
-    if (resource == "payments" && method == HttpMethod.Post && parts.getOrNull(6) == "moneris") {
+    if (resource == "payments" && method == HttpMethod.Post &&
+        parts.getOrNull(6) in setOf("moneris", "poynt-collect")) {
         // The confirmation service first reads through payment_get_intent, which
         // enforces creator/customer ownership before the one-time token is sent.
         if (principal == null) throw UnauthorizedException("Authentication is required")
