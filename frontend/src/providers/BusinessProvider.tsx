@@ -55,6 +55,12 @@ type BusinessContextValue = {
 const BusinessCtx = createContext<BusinessContextValue | null>(null);
 
 const ThemeOverrideCtx = createContext<Theme | null>(null);
+type ActiveBusinessControlValue = {
+  setActiveBusiness: (organizationId: ID) => void;
+};
+
+const ActiveBusinessControlCtx =
+  createContext<ActiveBusinessControlValue | null>(null);
 
 export type BusinessProviderOverrides = {
   organizationId?: ID;
@@ -100,10 +106,44 @@ export function BusinessProvider({
     session?.posContext?.organizationId ??
     session?.access.find((context) => context.organizationId)?.organizationId ??
     null;
-
   const [activeOrgId, setActiveOrgId] = useState<ID | null>(
     organizationId ?? null,
   );
+  const activeBusinessControl = useMemo<ActiveBusinessControlValue>(
+    () => ({
+      setActiveBusiness: (nextOrganizationId) => {
+        setActiveOrgId(nextOrganizationId);
+
+        void activeOrganizationStore.set(nextOrganizationId).catch((error) => {
+          console.error(
+            "[BusinessProvider] active organization persistence failed:",
+            error,
+          );
+        });
+      },
+    }),
+    [],
+  );
+
+  const hasBusinessAccess =
+    session?.access.some((context) =>
+      context.capabilities.some((capability) =>
+        [
+          "PLATFORM_ADMIN_ACCESS",
+          "BUSINESS_OWNER_ACCESS",
+          "ORG_ADMIN_ACCESS",
+          "COUNTER_ACCESS",
+        ].includes(capability),
+      ),
+    ) ?? false;
+
+  const platformCustomerWithoutBusinessContext =
+    !sessionLoading &&
+    !!session &&
+    !organizationId &&
+    !activeOrgId &&
+    !sessionOrganizationId &&
+    !hasBusinessAccess;
 
   const [resolvedContext, setResolvedContext] =
     useState<BusinessContext | null>(null);
@@ -328,6 +368,15 @@ export function BusinessProvider({
   if (!sessionLoading && !session && !organizationId) {
     return <>{children}</>;
   }
+
+  if (platformCustomerWithoutBusinessContext) {
+    return (
+      <ActiveBusinessControlCtx.Provider value={activeBusinessControl}>
+        {children}
+      </ActiveBusinessControlCtx.Provider>
+    );
+  }
+
   if (resolving || !value) {
     return (
       <View style={styles.loading}>
@@ -335,7 +384,11 @@ export function BusinessProvider({
       </View>
     );
   }
-  return <BusinessCtx.Provider value={value}>{children}</BusinessCtx.Provider>;
+  return (
+    <ActiveBusinessControlCtx.Provider value={activeBusinessControl}>
+      <BusinessCtx.Provider value={value}>{children}</BusinessCtx.Provider>
+    </ActiveBusinessControlCtx.Provider>
+  );
 }
 
 export function BusinessPreviewScope({
@@ -358,6 +411,18 @@ export function BusinessPreviewScope({
       {children}
     </BusinessProvider>
   );
+}
+
+export function useActiveBusinessControl(): ActiveBusinessControlValue {
+  const ctx = useContext(ActiveBusinessControlCtx);
+
+  if (!ctx) {
+    throw new Error(
+      "useActiveBusinessControl must be used within a BusinessProvider",
+    );
+  }
+
+  return ctx;
 }
 
 export function useBusiness(): BusinessContextValue {

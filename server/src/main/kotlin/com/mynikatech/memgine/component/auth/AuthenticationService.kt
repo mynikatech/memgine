@@ -131,6 +131,81 @@ class AuthenticationService(
         sql.passwordConfigured(principal.userId), sessionToken,
         principal.posContext?.let { PosSessionContextDto(it.deviceId, it.organizationId, it.storeId, it.staffId) }
     )
+    
+    fun requestRegistrationOtp(request: OtpLoginRequest): OtpChallengeResponse {
+        val result = otpService.request(
+            request.phone,
+            request.regionCode,
+            OtpPurpose.PHONE_VERIFICATION
+        )
+        return OtpChallengeResponse(
+            result.challengeId,
+            result.expiresAt,
+            result.resendAt,
+            result.devCode
+        )
+    }
+
+    fun verifyRegistrationOtp(
+        request: CustomerRegistrationVerifyRequest,
+        clientIp: String?,
+        userAgent: String?
+    ): CreatedAuthenticationSession {
+        val firstName = request.firstName.trim()
+        val lastName = request.lastName.trim()
+        val email = request.primaryEmail?.trim()?.takeIf { it.isNotEmpty() }
+
+        if (firstName.isEmpty() || firstName.length > 100 ||
+            lastName.isEmpty() || lastName.length > 100 ||
+            (email?.length ?: 0) > 254) {
+            throw BadRequestException("Invalid registration details")
+        }
+
+        val verification = otpService.verify(
+            request.challengeId,
+            request.otp,
+            OtpPurpose.PHONE_VERIFICATION
+        )
+
+        val existing = sql.identity(verification.destination)
+        if (existing != null) {
+            throw com.mynikatech.memgine.exception.ConflictException(
+                "A Memgine account already exists for this mobile number. Sign in instead."
+            )
+        }
+
+        val registered = try {
+            sql.registerCustomerUser(
+                verification.destination,
+                firstName,
+                lastName,
+                email
+            ) ?: throw BadRequestException("Registration could not be completed")
+        } catch (error: Exception) {
+            val postgres = generateSequence<Throwable>(error) { it.cause }
+                .filterIsInstance<org.postgresql.util.PSQLException>()
+                .firstOrNull()
+
+            when (postgres?.sqlState) {
+                "23505" -> throw com.mynikatech.memgine.exception.ConflictException(
+                    postgres.serverErrorMessage?.message
+                        ?: "A Memgine account already exists for these details"
+                )
+                "22023" -> throw BadRequestException("Invalid registration details")
+                else -> throw error
+            }
+        }
+
+        return createSession(
+            registered.userId,
+            registered.displayName,
+            clientIp,
+            userAgent,
+            emptyList(),
+            config.customerSessionDurationDays * 24 * 60
+        )
+    }
+
 
     private fun createSession(
         userId: String, displayName: String, clientIp: String?, userAgent: String?,

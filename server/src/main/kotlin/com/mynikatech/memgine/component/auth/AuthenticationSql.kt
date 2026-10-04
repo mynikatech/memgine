@@ -27,6 +27,10 @@ data class AuthAccessRow(
     var roleCode: String = "",
     var capabilityCode: String = ""
 )
+data class AuthRegisteredUserRow(
+    var userId: String = "",
+    var displayName: String = ""
+)
 
 data class AuthPosContextRow(
     var posSession: Boolean = false, var valid: Boolean = false,
@@ -104,6 +108,21 @@ interface AuthenticationSql {
     @SqlQuery("SELECT * FROM auth_resolve_pos_session_context(:sessionId)")
     @RegisterBeanMapper(AuthPosContextRow::class)
     fun posContext(@Bind("sessionId") sessionId: String): AuthPosContextRow?
+        
+        
+    @SqlQuery(
+        """SELECT * FROM auth_register_customer_user(
+            :phone, :firstName, :lastName, :primaryEmail
+        )"""
+    )
+    @RegisterBeanMapper(AuthRegisteredUserRow::class)
+    fun registerCustomerUser(
+        @Bind("phone") phone: String,
+        @Bind("firstName") firstName: String,
+        @Bind("lastName") lastName: String,
+        @Bind("primaryEmail") primaryEmail: String?,
+    ): AuthRegisteredUserRow?
+
     
     @SqlQuery(
     """

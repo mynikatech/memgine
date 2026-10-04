@@ -5,6 +5,7 @@ export {
   useBusiness,
   useCan,
   useTheme,
+  useActiveBusinessControl,
 } from "./BusinessProvider";
 export {
   CustomerContextProvider,

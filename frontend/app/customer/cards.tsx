@@ -14,7 +14,7 @@ import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
 import {
   BusinessThemeScope,
-  useBusiness,
+  useActiveBusinessControl,
   useCustomerContext,
   useTranslation,
 } from "@/src/providers";
@@ -44,7 +44,7 @@ type OrgGroup = {
 /** Server-backed wallet for the authenticated customer. */
 export default function MyCards() {
   const router = useRouter();
-  const { configuration, setActiveBusiness } = useBusiness();
+  const { setActiveBusiness } = useActiveBusinessControl();
   const {
     customerId,
     profiles,
@@ -168,9 +168,7 @@ export default function MyCards() {
                       }
                     : undefined,
                 ),
-                cardStyle:
-                  configuration.customerExperience.cardStyle ??
-                  CardStyle.MODERN,
+                cardStyle: CardStyle.MODERN,
                 logoUrl: branding?.logoUrl,
                 cards: cards.filter((card): card is CardVM => card !== null),
               };
@@ -218,13 +216,7 @@ export default function MyCards() {
       return () => {
         active = false;
       };
-    }, [
-      customerId,
-      customersLoading,
-      customersError,
-      profiles,
-      configuration.customerExperience.cardStyle,
-    ]),
+    }, [customerId, customersLoading, customersError, profiles]),
   );
 
   const openBusiness = (card: CardVM) => {

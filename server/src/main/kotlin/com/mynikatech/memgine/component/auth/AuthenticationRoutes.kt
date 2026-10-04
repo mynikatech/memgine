@@ -71,6 +71,39 @@ fun Route.authenticationRoutes(service: AuthenticationService, config: Authentic
             val updated = service.setPassword(call.authenticatedPrincipal(), call.receive())
             call.respond(ApiResponse.success(SetPasswordResponse(updated), call.callId))
         }
+        post("/register/otp/request") {
+            call.respond(
+                ApiResponse.success(
+                    service.requestRegistrationOtp(call.receive()),
+                    call.callId
+                )
+            )
+        }
+
+        post("/register/otp/verify") {
+            val created = service.verifyRegistrationOtp(
+                call.receive(),
+                call.clientIp(),
+                call.request.headers[HttpHeaders.UserAgent]
+            )
+            val native = call.isNativeAuthenticationClient()
+            if (!native) {
+                call.setSessionCookie(
+                    config,
+                    created.token,
+                    config.customerSessionDurationDays * 24 * 60
+                )
+            }
+            call.respond(
+                ApiResponse.success(
+                    service.toDto(
+                        created.principal,
+                        if (native) created.token else null
+                    ),
+                    call.callId
+                )
+            )
+        }
     }
 }
 

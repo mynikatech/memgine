@@ -16,7 +16,12 @@ export type AuthSession = {
   access: AuthAccessContext[];
   passwordConfigured: boolean;
   sessionToken?: string | null;
-  posContext?: { deviceId: string; organizationId: string; storeId: string; staffId: string } | null;
+  posContext?: {
+    deviceId: string;
+    organizationId: string;
+    storeId: string;
+    staffId: string;
+  } | null;
 };
 
 export type OtpChallenge = {
@@ -80,7 +85,41 @@ export class AuthApi {
     );
   }
 
-  unlockPos(staffId: string, pin: string) { return posApi.unlock(staffId, pin); }
+  unlockPos(staffId: string, pin: string) {
+    return posApi.unlock(staffId, pin);
+  }
+
+  requestRegistrationOtp(phone: string, regionCode: string) {
+    return httpClient.post<{ phone: string; regionCode: string }, OtpChallenge>(
+      "/api/v1/auth/register/otp/request",
+      { phone, regionCode },
+    );
+  }
+
+  verifyRegistrationOtp(
+    challengeId: string,
+    otp: string,
+    firstName: string,
+    lastName: string,
+    primaryEmail?: string,
+  ) {
+    return httpClient.post<
+      {
+        challengeId: string;
+        otp: string;
+        firstName: string;
+        lastName: string;
+        primaryEmail?: string;
+      },
+      AuthSession
+    >("/api/v1/auth/register/otp/verify", {
+      challengeId,
+      otp,
+      firstName,
+      lastName,
+      primaryEmail,
+    });
+  }
 }
 
 export const authApi = new AuthApi();

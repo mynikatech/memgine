@@ -36,3 +36,13 @@ import kotlinx.serialization.Serializable
 )
 @Serializable data class LogoutResponse(val loggedOut: Boolean)
 @Serializable data class SetPasswordResponse(val updated: Boolean)
+
+@Serializable
+data class CustomerRegistrationVerifyRequest(
+    val challengeId: String,
+    val otp: String,
+    val firstName: String,
+    val lastName: String,
+    val primaryEmail: String? = null
+)
+

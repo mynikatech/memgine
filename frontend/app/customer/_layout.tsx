@@ -1,3 +1,4 @@
+import { Slot } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, Tabs } from "expo-router";
 import { Platform } from "react-native";
@@ -13,7 +14,12 @@ export default function CustomerLayout() {
   const { t } = useTranslation();
   const { loading, session } = useAuth();
 
-  if (!loading && !session) return <Redirect href={Platform.OS === "web" ? "/customer-login" : "/mobile-entry"} />;
+  if (!loading && !session)
+    return (
+      <Redirect
+        href={Platform.OS === "web" ? "/customer-login" : "/mobile-entry"}
+      />
+    );
 
   return (
     <Tabs
@@ -62,7 +68,10 @@ export default function CustomerLayout() {
           ),
         }}
       />
-      <Tabs.Screen name="notifications" options={{ href: null, title: "Notifications" }} />
+      <Tabs.Screen
+        name="notifications"
+        options={{ href: null, title: "Notifications" }}
+      />
     </Tabs>
   );
 }

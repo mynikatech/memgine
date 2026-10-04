@@ -1,6 +1,6 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { services, type CountryReference } from "@/src/core";
@@ -45,18 +45,37 @@ export default function CustomerLoginScreen() {
     [countries, phone.countryId],
   );
   const regionCode = country?.countryCode ?? "CA";
-  const requestedReturnTo = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
-  const returnTo = requestedReturnTo?.startsWith("/join") || requestedReturnTo?.startsWith("/discover/")
-    ? requestedReturnTo
-    : APP_ROUTES.customer.cards;
+  const requestedReturnTo = Array.isArray(params.returnTo)
+    ? params.returnTo[0]
+    : params.returnTo;
+  const returnTo =
+    requestedReturnTo?.startsWith("/join") ||
+    requestedReturnTo?.startsWith("/discover/")
+      ? requestedReturnTo
+      : APP_ROUTES.customer.cards;
   if (!auth.loading && auth.session) {
     if (Platform.OS !== "web" && auth.mobileSessionMode === "business") {
-      return <View style={styles.page}><View style={styles.card}>
-        <Text variant="title">Continue as Customer?</Text>
-        <Text color="textMuted">You are currently signed in for business access. Continuing signs out that session before customer sign in.</Text>
-        <Button label="Continue as Customer" fullWidth onPress={() => void auth.logout()} />
-        <Button label="Cancel" variant="ghost" onPress={() => router.replace(APP_ROUTES.root as never)} />
-      </View></View>;
+      return (
+        <View style={styles.page}>
+          <View style={styles.card}>
+            <Text variant="title">Continue as Customer?</Text>
+            <Text color="textMuted">
+              You are currently signed in for business access. Continuing signs
+              out that session before customer sign in.
+            </Text>
+            <Button
+              label="Continue as Customer"
+              fullWidth
+              onPress={() => void auth.logout()}
+            />
+            <Button
+              label="Cancel"
+              variant="ghost"
+              onPress={() => router.replace(APP_ROUTES.root as never)}
+            />
+          </View>
+        </View>
+      );
     }
     return <Redirect href={returnTo as never} />;
   }
@@ -152,6 +171,13 @@ export default function CustomerLoginScreen() {
           />
         )}
         {error ? <Text color="danger">{error}</Text> : null}
+        <View style={styles.joinRow}>
+          <Text color="textMuted">New to Memgine?</Text>
+
+          <Pressable onPress={() => router.push(APP_ROUTES.register as never)}>
+            <Text color="primary">Join Memgine</Text>
+          </Pressable>
+        </View>
       </View>
     </View>
   );
@@ -164,6 +190,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
+  },
+  joinRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 6,
   },
   card: {
     width: "100%",

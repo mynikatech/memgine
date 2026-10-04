@@ -271,6 +271,14 @@ export default function LoginScreen() {
           )}
 
           {error ? <Text color="danger">{error}</Text> : null}
+          <View style={styles.joinRow}>
+            <Text color="textMuted">New to Memgine?</Text>
+            <Pressable
+              onPress={() => router.push(APP_ROUTES.register as never)}
+            >
+              <Text color="primary">Join Memgine</Text>
+            </Pressable>
+          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -313,6 +321,12 @@ const styles = StyleSheet.create({
     gap: 18,
     borderWidth: 1,
     borderColor: "#E4E7EB",
+  },
+  joinRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 6,
   },
 
   tabs: {

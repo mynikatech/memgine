@@ -1,21 +1,35 @@
 import { useRouter } from "expo-router";
 import { View } from "react-native";
+import { APP_ROUTES } from "@/src/constants/navigation";
 
 import { Screen } from "@/src/layout";
-import { useAuth, useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
+import {
+  useAuth,
+  useTheme,
+  useCustomerContext,
+  useTranslation,
+} from "@/src/providers";
 import { Card, Header, ListRow, Section, StateView, Text } from "@/src/ui";
 import { CustomerNotificationBell } from "@/src/ui/domain/CustomerNotificationBell";
 import { unauthenticatedLanding } from "@/src/core/auth/auth-navigation";
 
 export default function Profile() {
   const router = useRouter();
-  const { theme } = useBusiness();
+  const theme = useTheme();
   const { t, locale, currency, timezone } = useTranslation();
-  const { customerId, profiles, customersLoading, customersError, refreshCustomers } = useCustomerContext();
+  const {
+    customerId,
+    profiles,
+    customersLoading,
+    customersError,
+    refreshCustomers,
+  } = useCustomerContext();
   const { session, logout } = useAuth();
   const relationships = profiles.filter((row) => row.userId === customerId);
   const customer = relationships[0];
-  const name = customer?.displayName?.trim() || session?.displayName?.trim() ||
+  const name =
+    customer?.displayName?.trim() ||
+    session?.displayName?.trim() ||
     [customer?.firstName, customer?.lastName].filter(Boolean).join(" ").trim();
   const initial = (name || "?").charAt(0).toUpperCase();
 
@@ -38,10 +52,18 @@ export default function Profile() {
         />
       }
     >
-      {customersLoading ? <StateView kind="loading" message={t("common.loading")} /> : null}
-      {customersError ? <StateView kind="error" title={t("common.error")}
-        message={customersError} actionLabel={t("common.retry")}
-        onAction={() => void refreshCustomers()} /> : null}
+      {customersLoading ? (
+        <StateView kind="loading" message={t("common.loading")} />
+      ) : null}
+      {customersError ? (
+        <StateView
+          kind="error"
+          title={t("common.error")}
+          message={customersError}
+          actionLabel={t("common.retry")}
+          onAction={() => void refreshCustomers()}
+        />
+      ) : null}
       <Card padding="lg" testID="profile-identity">
         <View
           style={{
@@ -76,7 +98,9 @@ export default function Profile() {
               </Text>
             ) : null}
             {customer?.primaryPhone ? (
-              <Text variant="bodySmall" color="textMuted">{customer.primaryPhone}</Text>
+              <Text variant="bodySmall" color="textMuted">
+                {customer.primaryPhone}
+              </Text>
             ) : null}
           </View>
         </View>
@@ -86,8 +110,12 @@ export default function Profile() {
         <Section title="Businesses" testID="profile-businesses">
           <Card padding="md">
             {relationships.map((row) => (
-              <ListRow key={row.organizationUserId} label={row.organizationName}
-                value={row.relationshipStatusName} showChevron={false} />
+              <ListRow
+                key={row.organizationUserId}
+                label={row.organizationName}
+                value={row.relationshipStatusName}
+                showChevron={false}
+              />
             ))}
           </Card>
         </Section>
@@ -122,8 +150,16 @@ export default function Profile() {
             testID="profile-about"
           />
 
-          <ListRow label="Sign out" icon="log-out-outline" onPress={() => { void logout().then(() => router.replace(unauthenticatedLanding() as never)); }}
-            testID="profile-sign-out" />
+          <ListRow
+            label="Sign out"
+            icon="log-out-outline"
+            onPress={() => {
+              void logout().then(() =>
+                router.replace(APP_ROUTES.customerLogin as never),
+              );
+            }}
+            testID="profile-sign-out"
+          />
         </Card>
       </Section>
     </Screen>

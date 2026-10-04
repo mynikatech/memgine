@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 141-customer-self-registration
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/141-customer-self-registration.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
