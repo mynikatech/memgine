@@ -30,6 +30,16 @@ fun Route.paymentRoutes(service: PaymentService) {
     }
 
     route("/organizations/{organizationId}/payments") {
+        get("/{paymentIntentId}/poynt-collect/config") {
+            val organizationId = call.parameters["organizationId"]
+                ?: throw BadRequestException("Organization id is required")
+            val paymentIntentId = call.parameters["paymentIntentId"]
+                ?: throw BadRequestException("Payment intent id is required")
+            call.respond(ApiResponse.success(
+                service.collectBootstrap(organizationId, paymentIntentId, call.authenticatedPrincipal().userId),
+                call.callId
+            ))
+        }
         get("/{paymentIntentId}") {
             val organizationId = call.parameters["organizationId"]
                 ?: throw BadRequestException("Organization id is required")

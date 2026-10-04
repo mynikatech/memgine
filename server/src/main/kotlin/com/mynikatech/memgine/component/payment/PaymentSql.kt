@@ -93,16 +93,15 @@ interface PaymentSql {
         @Bind("idempotencyKey") idempotencyKey: String
     ): PaymentIntentDto?
 
-    @SqlQuery("""SELECT * FROM payment_start_customer_commerce_membership_intent(
+    @SqlQuery("""SELECT * FROM payment_start_customer_routed_commerce_membership_intent(
         :intentId, :attemptId, :organizationId, :planId, :customerUserId,
-        :providerCode, :idempotencyKey, :explicitOfferId, :actorUserId)""")
+        :idempotencyKey, :explicitOfferId, :actorUserId)""")
     fun startCustomerCommerce(
         @Bind("intentId") intentId: String,
         @Bind("attemptId") attemptId: String,
         @Bind("organizationId") organizationId: String,
         @Bind("planId") planId: String,
         @Bind("customerUserId") customerUserId: String,
-        @Bind("providerCode") providerCode: String,
         @Bind("idempotencyKey") idempotencyKey: String,
         @Bind("explicitOfferId") explicitOfferId: String?,
         @Bind("actorUserId") actorUserId: String

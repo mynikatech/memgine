@@ -7,6 +7,7 @@ import type {
   Store,
 } from "@/src/core";
 import { CustomerDataApi } from "@/src/data/api/customer-data-api";
+import type { PoyntCollectBootstrap } from "@/src/data/api/customer-data-api";
 import type {
   CustomerDiscoverableOrganization,
   CustomerCombinedOffer,
@@ -30,6 +31,12 @@ import type {
 import type { OrgAdminRedemption } from "@/src/data/api/org-admin-transaction-api";
 
 export type CustomerChoice = { userId: ID; displayName: string };
+
+export class CustomerPaymentStatusError extends Error {
+  constructor(message: string, readonly code: string) {
+    super(message);
+  }
+}
 export type CustomerProfile = {
   organizationUserId: ID;
   organizationId: ID;
@@ -271,6 +278,34 @@ export class CustomerDataService {
       temporaryToken,
     );
     if (!result.success) throw new Error(result.error.message);
+    return result.data;
+  }
+
+  async collectBootstrap(
+    organizationId: ID,
+    paymentIntentId: ID,
+  ): Promise<PoyntCollectBootstrap> {
+    const result = await this.api.collectBootstrap(organizationId, paymentIntentId);
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
+  }
+
+  async confirmCollectPayment(
+    organizationId: ID,
+    paymentIntentId: ID,
+    nonce: string,
+  ): Promise<PaymentConfirmation> {
+    const result = await this.api.confirmCollectPayment(organizationId, paymentIntentId, nonce);
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
+  }
+
+  async paymentStatus(
+    organizationId: ID,
+    paymentIntentId: ID,
+  ): Promise<PaymentConfirmation> {
+    const result = await this.api.paymentStatus(organizationId, paymentIntentId);
+    if (!result.success) throw new CustomerPaymentStatusError(result.error.message, result.error.code);
     return result.data;
   }
 

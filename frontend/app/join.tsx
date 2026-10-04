@@ -16,6 +16,9 @@ import type {
 } from "@/src/core";
 
 import type { MembershipPurchaseQuote } from "@/src/data/api/counter-api";
+import type { PoyntCollectBootstrap } from "@/src/data/api/customer-data-api";
+import { PoyntCollectCardForm } from "@/src/ui/payment/PoyntCollectCardForm";
+import { CustomerPaymentStatusError } from "@/src/core/services/customer-data-service";
 
 import { services } from "@/src/core";
 
@@ -107,6 +110,7 @@ type Step =
   | "purchaseOtp"
   | "review"
   | "monerisCard"
+  | "collectCard"
   | "processing"
   | "success";
 
@@ -324,6 +328,17 @@ export default function JoinFlow() {
 
     hostedTokenizationUrl: string;
   } | null>(null);
+
+  const [collectPayment, setCollectPayment] = useState<{
+    paymentIntentId: string;
+    amount: number;
+    configuration: PoyntCollectBootstrap;
+  } | null>(null);
+
+  const [collectPendingIntentId, setCollectPendingIntentId] = useState<
+    string | null
+  >(null);
+  const collectPolling = useRef(false);
 
   const monerisFrameRef = useRef<any>(null);
 
@@ -1192,6 +1207,117 @@ export default function JoinFlow() {
     [isStaffSale, orgId, setActiveContext],
   );
 
+  const checkCollectPayment = useCallback(
+    async (intentId: string) => {
+      if (collectPolling.current) return;
+      collectPolling.current = true;
+      let statusMessage =
+        "Payment is still processing. Check its status before trying another purchase.";
+      try {
+        for (let attempt = 0; attempt < 10; attempt += 1) {
+          const confirmed = await services.customerData.paymentStatus(
+            orgId,
+            intentId,
+          );
+          if (
+            confirmed.payment.status === "SUCCEEDED" &&
+            confirmed.subscription
+          ) {
+            setCollectPendingIntentId(null);
+            setCollectPayment(null);
+            finishSubscription(
+              confirmed.subscription,
+              confirmed.payment.providerReferenceId ??
+                confirmed.payment.paymentIntentId,
+            );
+            return;
+          }
+          if (confirmed.payment.status === "SUCCEEDED") {
+            setCollectPendingIntentId(intentId);
+            setOtpError(
+              "Payment succeeded. Membership confirmation is still pending; check again shortly.",
+            );
+            setStep("processing");
+            return;
+          }
+          if (
+            ["FAILED", "CANCELED", "CANCELLED"].includes(
+              confirmed.payment.status,
+            )
+          ) {
+            setCollectPendingIntentId(null);
+            setCollectPayment(null);
+            setOtpError("Payment was not approved. No membership was created.");
+            setStep("review");
+            return;
+          }
+          if (confirmed.payment.status !== "PROCESSING") {
+            setCollectPendingIntentId(null);
+            setOtpError(
+              "Payment was not completed. Please check card details before trying again.",
+            );
+            setStep("collectCard");
+            return;
+          }
+          if (attempt < 9)
+            await new Promise<void>((resolve) => setTimeout(resolve, 2_000));
+        }
+      } catch (error) {
+        // Keep the intent available for status checks; never dispatch another charge here.
+        if (
+          error instanceof CustomerPaymentStatusError &&
+          ["UNAUTHORIZED", "HTTP_401"].includes(error.code)
+        ) {
+          statusMessage =
+            "Your session expired. Sign in again to check this payment; do not retry the charge.";
+        } else {
+          statusMessage =
+            "Payment status is temporarily unavailable. Check again before trying another purchase.";
+        }
+      } finally {
+        collectPolling.current = false;
+      }
+      setCollectPendingIntentId(intentId);
+      setOtpError(statusMessage);
+      setStep("processing");
+    },
+    [finishSubscription, orgId],
+  );
+
+  const confirmCollectNonce = useCallback(
+    async (nonce: string) => {
+      if (!collectPayment) return;
+      const intentId = collectPayment.paymentIntentId;
+      setCollectPendingIntentId(intentId);
+      setOtpError(undefined);
+      setStep("processing");
+      try {
+        const confirmed = await services.customerData.confirmCollectPayment(
+          orgId,
+          intentId,
+          nonce,
+        );
+        if (
+          confirmed.payment.status === "SUCCEEDED" &&
+          confirmed.subscription
+        ) {
+          setCollectPendingIntentId(null);
+          setCollectPayment(null);
+          finishSubscription(
+            confirmed.subscription,
+            confirmed.payment.providerReferenceId ??
+              confirmed.payment.paymentIntentId,
+          );
+          return;
+        }
+      } catch {
+        // A timeout can mean the provider received the charge. Read status before any retry.
+      }
+      await checkCollectPayment(intentId);
+    },
+    [checkCollectPayment, collectPayment, finishSubscription, orgId],
+  );
+
   const confirmMonerisToken = useCallback(
     async (temporaryToken: string) => {
       if (!monerisPayment || !temporaryToken) return;
@@ -1412,11 +1538,7 @@ export default function JoinFlow() {
 
   const payAndSubscribe = useCallback(async () => {
     const customerUserId = session?.userId;
-    if (
-      !product ||
-      !plan ||
-      (!isStaffSale && !customerUserId)
-    ) {
+    if (!product || !plan || (!isStaffSale && !customerUserId)) {
       return;
     }
 
@@ -1602,6 +1724,54 @@ export default function JoinFlow() {
         return;
       }
 
+      if (intent.providerCode === "POYNT_COLLECT") {
+        if (Platform.OS !== "web") {
+          throw new Error(
+            "Secure card entry is available in the web checkout only.",
+          );
+        }
+        if (intent.status === "SUCCEEDED") {
+          const confirmed = await services.customerData.paymentStatus(
+            orgId,
+            intent.paymentIntentId,
+          );
+          if (
+            confirmed.payment.status === "SUCCEEDED" &&
+            confirmed.subscription
+          ) {
+            finishSubscription(
+              confirmed.subscription,
+              confirmed.payment.providerReferenceId ??
+                confirmed.payment.paymentIntentId,
+            );
+            return;
+          }
+          setCollectPendingIntentId(intent.paymentIntentId);
+          await checkCollectPayment(intent.paymentIntentId);
+          return;
+        }
+        if (intent.status === "PROCESSING") {
+          setCollectPendingIntentId(intent.paymentIntentId);
+          await checkCollectPayment(intent.paymentIntentId);
+          return;
+        }
+        if (intent.status !== "PENDING") {
+          throw new Error("This payment cannot accept card details.");
+        }
+        const configuration = await services.customerData.collectBootstrap(
+          orgId,
+          intent.paymentIntentId,
+        );
+        setCollectPayment({
+          paymentIntentId: intent.paymentIntentId,
+          amount: intent.amount,
+          configuration,
+        });
+        setOtpError(undefined);
+        setStep("collectCard");
+        return;
+      }
+
       if (intent.providerCode !== "TEST") {
         throw new Error("Provider checkout is not configured yet.");
       }
@@ -1651,6 +1821,8 @@ export default function JoinFlow() {
     finishSubscription,
 
     redirectToStripeCheckout,
+
+    checkCollectPayment,
 
     explicitOfferId,
 
@@ -2482,6 +2654,105 @@ export default function JoinFlow() {
 
       {/* PROCESSING */}
 
+      {step === "collectCard" && collectPayment && Platform.OS === "web" ? (
+        <View style={{ gap: theme.spacing.lg }} testID="join-collect-card">
+          <View>
+            <Text variant="h2" color="text">
+              Pay securely by card
+            </Text>
+            <Text
+              variant="body"
+              color="textMuted"
+              style={{ marginTop: theme.spacing.sm }}
+            >
+              Enter card details in the secure Poynt Collect form.
+            </Text>
+          </View>
+          <Card padding="lg">
+            <View style={{ gap: theme.spacing.md }}>
+              <Text variant="bodyStrong" color="text">
+                {product?.displayName ?? product?.membershipProductName} ·{" "}
+                {intervalLabel}
+              </Text>
+              <ReceiptSummary
+                title={t("join.receiptTitle")}
+                meta={[
+                  {
+                    label: t("join.plan"),
+                    value: `${product?.displayName ?? product?.membershipProductName} · ${plan?.subscriptionPlanName ?? intervalLabel}`,
+                  },
+                ]}
+                lines={
+                  purchaseQuote?.appliedOfferId
+                    ? [
+                        {
+                          label: "Regular price",
+                          amountMinor: Math.round(
+                            purchaseQuote.subtotalAmount * 100,
+                          ),
+                        },
+                        {
+                          label: "Offer discount",
+                          amountMinor: -Math.round(
+                            (purchaseQuote.discountAmount ?? 0) * 100,
+                          ),
+                        },
+                        {
+                          label: "Subtotal",
+                          amountMinor: Math.round(
+                            (purchaseQuote.netSubtotalAmount ??
+                              purchaseQuote.subtotalAmount) * 100,
+                          ),
+                        },
+                        {
+                          label: `${purchaseQuote.taxName ?? purchaseQuote.taxCode ?? "Tax"} (${purchaseQuote.taxRate}%)`,
+                          amountMinor: Math.round(
+                            purchaseQuote.taxAmount * 100,
+                          ),
+                        },
+                      ]
+                    : [
+                        {
+                          label: product?.membershipProductName ?? "Membership",
+                          amountMinor:
+                            purchaseQuote?.subtotalAmount != null
+                              ? Math.round(purchaseQuote.subtotalAmount * 100)
+                              : (plan?.price.amountMinor ??
+                                Math.round(collectPayment.amount * 100)),
+                        },
+                        ...(purchaseQuote
+                          ? [
+                              {
+                                label: `${purchaseQuote.taxName ?? purchaseQuote.taxCode ?? "Tax"} (${purchaseQuote.taxRate}%)`,
+                                amountMinor: Math.round(
+                                  purchaseQuote.taxAmount * 100,
+                                ),
+                              },
+                            ]
+                          : []),
+                      ]
+                }
+                totalMinor={Math.round(collectPayment.amount * 100)}
+              />
+              {otpError ? (
+                <Text variant="bodySmall" color="textMuted">
+                  {otpError}
+                </Text>
+              ) : null}
+              <PoyntCollectCardForm
+                configuration={collectPayment.configuration}
+                onNonce={confirmCollectNonce}
+                payLabel={`Pay ${formatMoney(Math.round(collectPayment.amount * 100))} & Subscribe`}
+                onBack={() => {
+                  setOtpError(undefined);
+                  setStep("review");
+                }}
+              />
+            </View>
+          </Card>
+        </View>
+      ) : null}
+
       {step === "monerisCard" && monerisPayment && monerisIframeUrl ? (
         <View style={{ gap: theme.spacing.lg }} testID="join-moneris-card">
           <View>
@@ -2544,15 +2815,35 @@ export default function JoinFlow() {
       ) : null}
 
       {step === "processing" ? (
-        <StateView
-          kind="loading"
-          message={
-            returnedPaymentIntentId
-              ? "Payment confirmation is processing..."
-              : t("join.processing")
-          }
-          testID="join-processing"
-        />
+        <View style={{ gap: theme.spacing.md }}>
+          <StateView
+            kind="loading"
+            message={
+              collectPendingIntentId
+                ? "Checking payment status..."
+                : returnedPaymentIntentId
+                  ? "Payment confirmation is processing..."
+                  : t("join.processing")
+            }
+            testID="join-processing"
+          />
+          {collectPendingIntentId && otpError ? (
+            <>
+              <Text variant="bodySmall" color="textMuted">
+                {otpError}
+              </Text>
+              <Button
+                label="Check payment status"
+                fullWidth
+                onPress={() => {
+                  setOtpError(undefined);
+                  void checkCollectPayment(collectPendingIntentId);
+                }}
+                testID="join-collect-check-status"
+              />
+            </>
+          ) : null}
+        </View>
       ) : null}
 
       {/* SUCCESS */}
@@ -2667,13 +2958,50 @@ export default function JoinFlow() {
               },
             ]}
             lines={[
-              {
-                label: product.membershipProductName,
+              ...(purchaseQuote?.appliedOfferId
+                ? [
+                    {
+                      label: "Regular price",
+                      amountMinor: Math.round(
+                        purchaseQuote.subtotalAmount * 100,
+                      ),
+                    },
+                    {
+                      label: "Offer discount",
+                      amountMinor: -Math.round(
+                        (purchaseQuote.discountAmount ?? 0) * 100,
+                      ),
+                    },
+                    {
+                      label: "Subtotal",
+                      amountMinor: Math.round(
+                        (purchaseQuote.netSubtotalAmount ??
+                          purchaseQuote.subtotalAmount) * 100,
+                      ),
+                    },
+                  ]
+                : [
+                    {
+                      label: product.membershipProductName,
+                      amountMinor:
+                        purchaseQuote?.subtotalAmount != null
+                          ? Math.round(purchaseQuote.subtotalAmount * 100)
+                          : subscription.totalAmount.amountMinor,
+                    },
+                  ]),
 
-                amountMinor: plan.price.amountMinor,
-              },
+              ...(purchaseQuote
+                ? [
+                    {
+                      label: `${
+                        purchaseQuote.taxName ?? purchaseQuote.taxCode ?? "Tax"
+                      } (${purchaseQuote.taxRate}%)`,
+                      amountMinor: Math.round(purchaseQuote.taxAmount * 100),
+                    },
+                  ]
+                : []),
             ]}
-            totalMinor={plan.price.amountMinor}
+            totalMinor={subscription.totalAmount.amountMinor}
           />
 
           {/* The customer preview remains part of the separate customer journey. */}

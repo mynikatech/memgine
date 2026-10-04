@@ -9,6 +9,7 @@ import com.mynikatech.memgine.exception.ConflictException
 import com.mynikatech.memgine.exception.NotFoundException
 import com.mynikatech.memgine.net.dto.PaymentIntentDto
 import com.mynikatech.memgine.net.dto.PoyntCollectConfirmationDto
+import com.mynikatech.memgine.net.dto.PoyntCollectBootstrapDto
 import java.io.IOException
 import java.lang.reflect.Proxy
 import java.net.URI
@@ -28,6 +29,53 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class PoyntCollectConfirmationSecurityTest {
+    @Test fun `bootstrap exposes only SDK and public Collect identifiers to owner`() {
+        val fixture = Fixture(SUCCESS)
+        val result = fixture.service.collectBootstrap("ORG-1", "PAY-1", "CUSTOMER-1")
+        assertEquals(PoyntCollectBootstrapDto(
+            "https://collect.commerce.ote-godaddy.com/sdk.js", "BUS-1", "APP-1"
+        ), result)
+        val body = Json.parseToJsonElement(Json.encodeToString(result)).jsonObject
+        assertEquals(setOf("sdkUrl", "businessId", "applicationId"), body.keys)
+        assertEquals(1, fixture.sql.configurationReads.get())
+        assertEquals(0, fixture.tokenLookups.get())
+    }
+
+    @Test fun `routed Collect payment works when the global provider is TEST`() {
+        val fixture = Fixture(SUCCESS, configuredProviderCode = "TEST")
+        fixture.service.collectBootstrap("ORG-1", "PAY-1", "CUSTOMER-1")
+        val result = fixture.service.confirmCollectAndFinalize("ORG-1", "PAY-1", "CUSTOMER-1", "nonce")
+        assertEquals("SUCCEEDED", result.first.status)
+        assertEquals(1, fixture.transport.posts.get())
+    }
+
+    @Test fun `bootstrap rejects another customer and organization before configuration read`() {
+        val fixture = Fixture(SUCCESS)
+        assertFailsWith<NotFoundException> {
+            fixture.service.collectBootstrap("ORG-1", "PAY-1", "CUSTOMER-2")
+        }
+        assertFailsWith<NotFoundException> {
+            fixture.service.collectBootstrap("ORG-2", "PAY-1", "CUSTOMER-1")
+        }
+        assertEquals(0, fixture.sql.configurationReads.get())
+    }
+
+    @Test fun `bootstrap rejects a payment for another provider`() {
+        val fixture = Fixture(SUCCESS, intentProviderCode = "TEST")
+        assertFailsWith<BadRequestException> {
+            fixture.service.collectBootstrap("ORG-1", "PAY-1", "CUSTOMER-1")
+        }
+        assertEquals(0, fixture.sql.configurationReads.get())
+    }
+
+    @Test fun `bootstrap rejects an untrusted SDK URL`() {
+        val fixture = Fixture(SUCCESS, sdkUrl = "javascript:alert(1)")
+        assertFailsWith<BadRequestException> {
+            fixture.service.collectBootstrap("ORG-1", "PAY-1", "CUSTOMER-1")
+        }
+        assertEquals(0, fixture.tokenLookups.get())
+    }
+
     @Test fun `confirm contract contains only nonce`() {
         val body = Json.parseToJsonElement(Json.encodeToString(PoyntCollectConfirmationDto("nonce"))).jsonObject
         assertEquals(setOf("nonce"), body.keys)
@@ -133,9 +181,12 @@ class PoyntCollectConfirmationSecurityTest {
         failToken: Boolean = false,
         timeout: Boolean = false,
         entered: CountDownLatch? = null,
-        release: CountDownLatch? = null
+        release: CountDownLatch? = null,
+        intentProviderCode: String = "POYNT_COLLECT",
+        sdkUrl: String = "https://collect.commerce.ote-godaddy.com/sdk.js",
+        configuredProviderCode: String = "POYNT_COLLECT"
     ) {
-        val sql = FakeSql()
+        val sql = FakeSql(intentProviderCode)
         val transport = FakeTransport(body, timeout, entered, release)
         val tokenLookups = AtomicInteger()
         private val provider = PoyntCollectPaymentProvider("https://services-ote.poynt.net", transport) {
@@ -145,13 +196,13 @@ class PoyntCollectConfirmationSecurityTest {
         }
         val service = PaymentService(
             Jdbi.create("jdbc:postgresql://unused/memgine"), "dev",
-            PaymentConfig("POYNT_COLLECT", "", "", "", "", "", "",
+            PaymentConfig(configuredProviderCode, "", "", "", "", "", "",
                 "https://api.sb.moneris.io", "2026-08-14", "", ""),
-            sql.proxy, provider
+            sql.proxy, provider, sdkUrl
         )
     }
 
-    private class FakeSql {
+    private class FakeSql(private val intentProviderCode: String) {
         val status = AtomicReference("PENDING")
         val reference = AtomicReference<String?>(null)
         val claims = AtomicInteger()
@@ -164,7 +215,7 @@ class PoyntCollectConfirmationSecurityTest {
         ) { _, method, args ->
             when (method.name) {
                 "get" -> if (args?.get(0) == "ORG-1" && args[1] == "PAY-1" && args[2] == "CUSTOMER-1")
-                    PaymentIntentDto("PAY-1", "POYNT_COLLECT", status.get(), 89.99, "CAD",
+                    PaymentIntentDto("PAY-1", intentProviderCode, status.get(), 89.99, "CAD",
                         providerReferenceId = reference.get(), membershipPlanId = "PLAN-1",
                         customerUserId = "CUSTOMER-1", createdAt = "2026-10-04T00:00:00Z") else null
                 "collectConfiguration" -> {

@@ -75,6 +75,13 @@ data class MonerisPaymentConfirmationDto(
 data class PoyntCollectConfirmationDto(val nonce: String)
 
 @Serializable
+data class PoyntCollectBootstrapDto(
+    val sdkUrl: String,
+    val businessId: String,
+    val applicationId: String
+)
+
+@Serializable
 data class PaymentConfirmationDto(
     val payment: PaymentIntentDto,
     val subscription: CounterPurchaseResult? = null

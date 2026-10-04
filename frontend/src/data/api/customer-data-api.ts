@@ -35,6 +35,15 @@ import { StoreApi } from "./store-api";
 const base = (organizationId: ID) =>
   `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}`;
 
+export type PoyntCollectBootstrap = {
+  sdkUrl: string;
+  businessId: string;
+  applicationId: string;
+};
+
+const collectPaymentPath = (organizationId: ID, paymentIntentId: ID) =>
+  `/api/v1/organizations/${encodeURIComponent(organizationId)}/payments/${encodeURIComponent(paymentIntentId)}`;
+
 export type CustomerDiscoverableOrganization = {
   organizationId: ID;
   name: string;
@@ -266,6 +275,28 @@ export class CustomerDataApi {
       `/api/v1/organizations/${encodeURIComponent(organizationId)}/payments/${encodeURIComponent(paymentIntentId)}/moneris/confirm`,
       { temporaryToken },
     );
+  }
+
+  collectBootstrap(
+    organizationId: ID,
+    paymentIntentId: ID,
+  ): Promise<ApiResult<PoyntCollectBootstrap>> {
+    return httpClient.get(`${collectPaymentPath(organizationId, paymentIntentId)}/poynt-collect/config`);
+  }
+
+  confirmCollectPayment(
+    organizationId: ID,
+    paymentIntentId: ID,
+    nonce: string,
+  ): Promise<ApiResult<PaymentConfirmation>> {
+    return httpClient.post(`${collectPaymentPath(organizationId, paymentIntentId)}/poynt-collect/confirm`, { nonce });
+  }
+
+  paymentStatus(
+    organizationId: ID,
+    paymentIntentId: ID,
+  ): Promise<ApiResult<PaymentConfirmation>> {
+    return httpClient.get(collectPaymentPath(organizationId, paymentIntentId));
   }
 
   preference(

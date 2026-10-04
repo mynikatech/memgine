@@ -14,6 +14,7 @@ import com.mynikatech.memgine.net.dto.PaymentStartRequestDto
 import com.mynikatech.memgine.net.dto.MembershipPurchaseQuoteDto
 import com.mynikatech.memgine.net.dto.CounterMembershipPurchaseQuoteDto
 import com.mynikatech.memgine.net.dto.TestPaymentConfirmationDto
+import com.mynikatech.memgine.net.dto.PoyntCollectBootstrapDto
 import com.stripe.model.Event
 import org.jdbi.v3.core.Jdbi
 import java.util.UUID
@@ -24,7 +25,8 @@ class PaymentService(
     environment: String,
     paymentConfig: PaymentConfig,
     private val paymentSqlOverride: PaymentSql? = null,
-    private val collectProvider: PoyntCollectPaymentProvider? = null
+    private val collectProvider: PoyntCollectPaymentProvider? = null,
+    private val collectSdkUrl: String = "https://collect.commerce.godaddy.com/sdk.js"
 ) {
     private val testProvider = TestPaymentProvider(environment in setOf("local", "dev", "development"))
     private val stripeProvider = StripePaymentProvider(paymentConfig)
@@ -182,7 +184,6 @@ class PaymentService(
         returnContext: PaymentReturnContextDto? = null,
         explicitOfferId: String? = null
     ): PaymentIntentDto {
-        requirePaymentProvider()
         validateId(org, "organization id")
         validateId(planId, "membership plan id")
         validateId(customerUserId, "customer user id")
@@ -194,16 +195,37 @@ class PaymentService(
             org,
             planId,
             customerUserId,
-            configuredProvider.code,
             idempotencyKey.trim(),
             explicitOfferId,
             customerUserId
         ) ?: throw ConflictException("Payment was not started") }
+        requireCustomerPaymentProvider(intent.providerCode)
         return checkoutForProvider(intent, org, returnContext, customerUserId)
     }
 
     fun get(org: String, intentId: String, actorUserId: String): PaymentIntentDto = translate {
         sql().get(org, intentId, actorUserId) ?: throw NotFoundException("Payment was not found")
+    }
+
+    fun collectBootstrap(org: String, intentId: String, actorUserId: String): PoyntCollectBootstrapDto {
+        val provider = collectProvider ?: throw BadRequestException("Poynt Collect is not configured")
+        if (!provider.isAvailable) {
+            throw BadRequestException("Poynt Collect payment is unavailable")
+        }
+        val current = get(org, intentId, actorUserId)
+        if (current.providerCode != provider.code) throw BadRequestException("Payment is not a Collect payment")
+        if (current.status != "PENDING") throw ConflictException("Payment cannot accept card details")
+        val row = translate { sql().collectConfiguration(org, intentId, actorUserId) }
+            ?: throw BadRequestException("Poynt Collect configuration is unavailable")
+        if (row.organizationId != org || row.providerStoreId.isNullOrBlank() ||
+            row.merchantCurrencyCode != current.currencyCode || row.businessId.isBlank() ||
+            row.applicationId.isBlank() || row.secretReference.isBlank()
+        ) throw BadRequestException("Poynt Collect configuration is unavailable")
+        if (collectSdkUrl !in setOf(
+                "https://collect.commerce.godaddy.com/sdk.js",
+                "https://collect.commerce.ote-godaddy.com/sdk.js"
+            )) throw BadRequestException("Poynt Collect SDK is unavailable")
+        return PoyntCollectBootstrapDto(collectSdkUrl, row.businessId, row.applicationId)
     }
 
     fun getConfirmation(org: String, intentId: String, actorUserId: String): Pair<PaymentIntentDto, CounterPurchaseResult?> {
@@ -341,7 +363,7 @@ class PaymentService(
         org: String, intentId: String, actorUserId: String, nonce: String
     ): Pair<PaymentIntentDto, CounterPurchaseResult?> {
         val provider = collectProvider ?: throw BadRequestException("Poynt Collect is not configured")
-        if (configuredProvider.code != provider.code || !provider.isAvailable) {
+        if (!provider.isAvailable) {
             throw BadRequestException("Poynt Collect payment is unavailable")
         }
         val current = get(org, intentId, actorUserId)
@@ -509,6 +531,19 @@ class PaymentService(
 
     private fun requirePaymentProvider() {
         if (!configuredProvider.isAvailable) throw BadRequestException("Payment provider is not configured")
+    }
+
+    private fun requireCustomerPaymentProvider(code: String) {
+        val provider = when (code) {
+            "TEST" -> testProvider
+            "STRIPE" -> stripeProvider
+            "MONERIS" -> monerisProvider
+            "POYNT_COLLECT" -> collectProvider
+            else -> null
+        }
+        if (provider?.isAvailable != true) {
+            throw BadRequestException("Customer payment provider is unavailable")
+        }
     }
 
     private fun <T> translate(action: () -> T): T {

@@ -47,6 +47,12 @@ class CounterMembershipPaymentStartTest {
             "org", request(), "store", "staff", "customer", "plan", "actor"
         ).providerCode)
 
+        val poyntSql = recordingSql(providerCode = "POYNT")
+        assertEquals("POYNT", service("TEST", poyntSql).startCounterMembershipPayment(
+            "org", request(), "store", "staff", "customer", "plan", "actor"
+        ).providerCode)
+        assertEquals(listOf("startCounterMembership"), poyntSql.calls)
+
         val cashSql = recordingSql(providerCode = "CASH")
         assertEquals("CASH", service("TEST", cashSql).startCounterCashPayment("org", request(), "actor").providerCode)
         assertTrue(cashSql.calls.contains("start"))

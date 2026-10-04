@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 143-customer-commerce-payment-routing
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/143-customer-commerce-payment-routing.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
