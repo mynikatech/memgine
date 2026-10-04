@@ -228,6 +228,16 @@ export function resolveExperience(
       ? input.formatDate(subscription.endDate)
       : "—";
 
+    const selectedPlan = product.plans.find(
+      (plan) => plan.id === subscription.subscriptionPlanId,
+    );
+
+    const productLabel = product.displayName ?? product.membershipProductName;
+
+    const membershipLabel = selectedPlan?.subscriptionPlanName
+      ? `${productLabel} · ${selectedPlan.subscriptionPlanName}`
+      : productLabel;
+
     const daysRemaining = subscription.endDate
       ? Math.max(
           0,
@@ -238,7 +248,7 @@ export function resolveExperience(
       : null;
 
     membership = {
-      tier: product.displayName ?? product.membershipProductName,
+      tier: membershipLabel,
 
       productName: product.membershipProductName,
 
