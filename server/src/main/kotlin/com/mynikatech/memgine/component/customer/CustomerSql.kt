@@ -2,6 +2,7 @@ package com.mynikatech.memgine.component.customer
 
 import com.mynikatech.memgine.net.dto.OrgAdminCustomerDto
 import com.mynikatech.memgine.net.dto.CustomerDiscoverableOrganizationDto
+import com.mynikatech.memgine.net.dto.CustomerMembershipPurchaseOfferQrIssueRow
 import com.mynikatech.memgine.net.dto.CounterSubscriptionDto
 import com.mynikatech.memgine.net.dto.CounterPurchaseResult
 import com.mynikatech.memgine.net.dto.CustomerChoiceDto
@@ -102,6 +103,16 @@ interface CustomerSql {
         @Bind("organizationId") organizationId: String,
         @Bind("userId") userId: String,
     ): List<CustomerMembershipPurchaseOfferRow>
+    
+    @SqlQuery("""SELECT * FROM issue_customer_membership_purchase_offer_qr(
+        :organizationId, :userId, :offerId, :tokenHash)""")
+    @RegisterBeanMapper(CustomerMembershipPurchaseOfferQrIssueRow::class)
+    fun issueMembershipPurchaseOfferQr(
+        @Bind("organizationId") organizationId: String,
+        @Bind("userId") userId: String,
+        @Bind("offerId") offerId: String,
+        @Bind("tokenHash") tokenHash: String,
+    ): CustomerMembershipPurchaseOfferQrIssueRow?
 
     @SqlQuery("SELECT id FROM get_customer_join_membership_ids(:organizationId)")
     fun joinMembershipIds(@Bind("organizationId") organizationId: String): List<String>

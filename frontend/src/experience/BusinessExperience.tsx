@@ -58,10 +58,18 @@ function formatPhoneNumber(
 }
 
 function parseCanonicalUtcTimestamp(value: string): Date {
-  const normalized = value.trim().replace(" ", "T");
-  return new Date(
-    /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized) ? normalized : `${normalized}Z`,
-  );
+  let normalized = value.trim().replace(" ", "T");
+
+  // PostgreSQL timestamptz::text may return offsets such as +00 or -05.
+  if (/[+-]\d{2}$/.test(normalized)) {
+    normalized = `${normalized}:00`;
+  } else if (/[+-]\d{4}$/.test(normalized)) {
+    normalized = normalized.replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
+  } else if (!/(?:Z|[+-]\d{2}:\d{2})$/i.test(normalized)) {
+    normalized = `${normalized}Z`;
+  }
+
+  return new Date(normalized);
 }
 
 function formatBusinessExpiry(
@@ -775,6 +783,20 @@ export function BusinessExperience({
   const [pendingRedemption, setPendingRedemption] =
     useState<PendingRedemption | null>(null);
   const [redemptionLoading, setRedemptionLoading] = useState(false);
+
+  type MembershipPurchaseOfferQr = {
+    qrReference: string;
+    offerId: string;
+    displayName: string;
+    expiresAt: string;
+    productId: string;
+  };
+  const [membershipOfferQr, setMembershipOfferQr] =
+    useState<MembershipPurchaseOfferQr | null>(null);
+  const [
+    membershipOfferQrLoadingProductId,
+    setMembershipOfferQrLoadingProductId,
+  ] = useState<string | null>(null);
   useEffect(() => {
     setSelectedBenefitIds(new Set());
     setSelectedOfferIds(new Set());
@@ -1010,6 +1032,38 @@ export function BusinessExperience({
     // A card is shown only when the server returned one unambiguous target.
     // Pricing remains exclusively resolved by the quote endpoint.
     return candidates.length === 1 ? candidates[0] : undefined;
+  };
+
+  const issueMembershipPurchaseOfferQr = async (
+    offerId: string,
+    productId: string,
+  ) => {
+    if (isPreviewMode || membershipOfferQrLoadingProductId) return;
+
+    setMembershipOfferQrLoadingProductId(productId);
+    setCustomerActionError(null);
+
+    try {
+      const qr = await services.customerData.issueMembershipPurchaseOfferQr(
+        organization.id,
+        offerId,
+      );
+
+      setMembershipOfferQr({
+        ...qr,
+        productId,
+      });
+    } catch (error) {
+      setMembershipOfferQr(null);
+
+      setCustomerActionError(
+        error instanceof Error
+          ? error.message
+          : "Unable to generate Membership Offer QR.",
+      );
+    } finally {
+      setMembershipOfferQrLoadingProductId(null);
+    }
   };
 
   /* ------------------------------------------------------------------ */
@@ -1460,14 +1514,26 @@ export function BusinessExperience({
                       {membershipOffer ? (
                         <>
                           <Button
-                            label="Show QR at Store"
+                            label={
+                              membershipOfferQrLoadingProductId === p.id
+                                ? "Generating QR…"
+                                : "Show QR at Store"
+                            }
                             size="sm"
                             variant="outline"
-                            disabled
+                            disabled={
+                              membershipOfferQrLoadingProductId !== null
+                            }
+                            onPress={() => {
+                              void issueMembershipPurchaseOfferQr(
+                                membershipOffer.offerId,
+                                p.id,
+                              );
+                            }}
                             testID={`experience-membership-offer-${membershipOffer.offerId}-qr`}
                           />
                           <Text variant="caption" color="textMuted">
-                            Membership Offer QR is coming next.
+                            QR expires 5 minutes after it is generated.
                           </Text>
                         </>
                       ) : null}
@@ -2992,6 +3058,51 @@ export function BusinessExperience({
             </View>
           ) : null}
         </Modal>
+
+        {!isPreviewMode ? (
+          <Modal
+            visible={!!membershipOfferQr}
+            onClose={() => setMembershipOfferQr(null)}
+            title="Membership purchase QR"
+            testID="experience-membership-purchase-offer-qr-modal"
+          >
+            {membershipOfferQr ? (
+              <View style={{ gap: theme.spacing.md }}>
+                <Text variant="title" color="text">
+                  {membershipOfferQr.displayName}
+                </Text>
+                <Text variant="bodySmall" color="textMuted">
+                  Show this QR at the Counter to use your Membership Offer.
+                </Text>
+                <QrPlaceholder
+                  value={membershipOfferQr.qrReference}
+                  size={208}
+                  caption="Present this code to the Counter."
+                  testID="experience-membership-purchase-offer-qr"
+                />
+                <Text variant="bodySmall" color="textMuted">
+                  Expires at:{" "}
+                  {formatBusinessExpiry(
+                    membershipOfferQr.expiresAt,
+                    configuration.localization.timezone,
+                    configuration.localization.defaultLanguage,
+                  )}
+                </Text>
+                <Button
+                  label="Generate new QR"
+                  variant="secondary"
+                  disabled={membershipOfferQrLoadingProductId !== null}
+                  onPress={() => {
+                    void issueMembershipPurchaseOfferQr(
+                      membershipOfferQr.offerId,
+                      membershipOfferQr.productId,
+                    );
+                  }}
+                />
+              </View>
+            ) : null}
+          </Modal>
+        ) : null}
 
         {!isPreviewMode ? (
           <Modal

@@ -39,6 +39,10 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import org.postgresql.util.PSQLException
+import com.mynikatech.memgine.net.dto.CustomerMembershipPurchaseOfferQrDto
+import java.security.MessageDigest
+import java.security.SecureRandom
+import java.util.Base64
 
 class CustomerService(
     private val sql: CustomerSql,
@@ -50,6 +54,7 @@ class CustomerService(
     private val payments: PaymentService
 ) {
     private val json = Json { ignoreUnknownKeys = true }
+    private val membershipOfferQrRandom = SecureRandom()
 
     // Existing Org Admin components use this development actor until request auth is wired.
     fun list(organizationId: String, actorUserId: String): List<OrgAdminCustomerDto> {
@@ -177,6 +182,58 @@ class CustomerService(
         }
         return regular + membershipPurchase
     }
+    
+    fun issueMembershipPurchaseOfferQr(
+        organizationId: String,
+        userId: String,
+        offerId: String,
+    ): CustomerMembershipPurchaseOfferQrDto {
+        validateUserId(userId)
+
+        if (organizationId.isBlank() || organizationId.length > 40) {
+            throw BadRequestException("Invalid organization id")
+        }
+        if (offerId.isBlank() || offerId.length > 64) {
+            throw BadRequestException("Invalid Membership Offer id")
+        }
+
+        val rawReference = ByteArray(32)
+            .also(membershipOfferQrRandom::nextBytes)
+            .let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
+
+        val tokenHash = MessageDigest.getInstance("SHA-256")
+            .digest(rawReference.toByteArray(Charsets.UTF_8))
+            .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+
+        val row = try {
+            sql.issueMembershipPurchaseOfferQr(
+                organizationId,
+                userId,
+                offerId,
+                tokenHash,
+            ) ?: throw BadRequestException("Unable to generate Membership Offer QR")
+        } catch (error: Exception) {
+            val postgres = generateSequence<Throwable>(error) { it.cause }
+                .filterIsInstance<PSQLException>()
+                .firstOrNull()
+
+            when (postgres?.sqlState) {
+                "P0002", "22023" ->
+                    throw BadRequestException("Membership Offer is unavailable")
+                "42501" ->
+                    throw ForbiddenException("Membership Offer QR is not permitted")
+                else -> throw error
+            }
+        }
+
+        return CustomerMembershipPurchaseOfferQrDto(
+            qrReference = rawReference,
+            offerId = row.offerId,
+            displayName = row.displayName,
+            expiresAt = row.expiresAt,
+        )
+    }
+
 
     fun memberships(organizationId: String, userId: String?): List<MembershipProductDto> {
         if (userId != null) authorizeCustomer(organizationId, userId)

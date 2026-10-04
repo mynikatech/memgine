@@ -1,4 +1,11 @@
-import type { Benefit, BenefitUsageRule, ID, MembershipProduct, Offer, Store } from "@/src/core";
+import type {
+  Benefit,
+  BenefitUsageRule,
+  ID,
+  MembershipProduct,
+  Offer,
+  Store,
+} from "@/src/core";
 import { CustomerDataApi } from "@/src/data/api/customer-data-api";
 import type {
   CustomerDiscoverableOrganization,
@@ -9,21 +16,40 @@ import type {
   CustomerRedemptionTransactionRequest,
   PendingRedemptionTransaction,
   RedemptionTransactionQr,
+  CustomerMembershipPurchaseOfferQr,
 } from "@/src/data/api/customer-data-api";
-import type { CounterPurchaseResult, CounterSubscription } from "@/src/data/api/counter-api";
-import type { MembershipPurchaseQuote, PaymentConfirmation, PaymentIntent } from "@/src/data/api/counter-api";
+import type {
+  CounterPurchaseResult,
+  CounterSubscription,
+} from "@/src/data/api/counter-api";
+import type {
+  MembershipPurchaseQuote,
+  PaymentConfirmation,
+  PaymentIntent,
+} from "@/src/data/api/counter-api";
 import type { OrgAdminRedemption } from "@/src/data/api/org-admin-transaction-api";
 
 export type CustomerChoice = { userId: ID; displayName: string };
 export type CustomerProfile = {
-  organizationUserId: ID; organizationId: ID; organizationName: string;
-  userId: ID; userCode: string; firstName: string; middleName?: string | null;
-  lastName?: string | null; displayName?: string | null;
-  primaryEmail?: string | null; primaryPhone: string;
-  userStatusId: ID; userStatusName: string;
-  organizationUserTypeId: ID; organizationUserStatusId: ID;
-  relationshipStatusName: string; joiningDate: string;
-  subscriptionCount: number; membershipName?: string | null;
+  organizationUserId: ID;
+  organizationId: ID;
+  organizationName: string;
+  userId: ID;
+  userCode: string;
+  firstName: string;
+  middleName?: string | null;
+  lastName?: string | null;
+  displayName?: string | null;
+  primaryEmail?: string | null;
+  primaryPhone: string;
+  userStatusId: ID;
+  userStatusName: string;
+  organizationUserTypeId: ID;
+  organizationUserStatusId: ID;
+  relationshipStatusName: string;
+  joiningDate: string;
+  subscriptionCount: number;
+  membershipName?: string | null;
 };
 
 /** Customer-facing data only. Server errors always reach the screen. */
@@ -41,6 +67,17 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
+  async issueMembershipPurchaseOfferQr(
+    organizationId: ID,
+    offerId: ID,
+  ): Promise<CustomerMembershipPurchaseOfferQr> {
+    const result = await this.api.issueMembershipPurchaseOfferQr(
+      organizationId,
+      offerId,
+    );
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
+  }
 
   async discoverOrganizationDetail(
     organizationId: ID,
@@ -54,7 +91,10 @@ export class CustomerDataService {
     organizationId: ID,
     subscriptionId: ID,
   ): Promise<CustomerRedemptionItemStatus[]> {
-    const result = await this.api.redemptionItemStatuses(organizationId, subscriptionId);
+    const result = await this.api.redemptionItemStatuses(
+      organizationId,
+      subscriptionId,
+    );
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
@@ -63,7 +103,10 @@ export class CustomerDataService {
     organizationId: ID,
     request: CustomerRedemptionTransactionRequest,
   ): Promise<PendingRedemptionTransaction> {
-    const result = await this.api.createRedemptionTransaction(organizationId, request);
+    const result = await this.api.createRedemptionTransaction(
+      organizationId,
+      request,
+    );
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
@@ -72,7 +115,10 @@ export class CustomerDataService {
     organizationId: ID,
     transactionId: ID,
   ): Promise<RedemptionTransactionQr> {
-    const result = await this.api.issueRedemptionTransactionQr(organizationId, transactionId);
+    const result = await this.api.issueRedemptionTransactionQr(
+      organizationId,
+      transactionId,
+    );
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
@@ -81,7 +127,10 @@ export class CustomerDataService {
     organizationId: ID,
     transactionId: ID,
   ): Promise<CustomerRedemptionTransactionStatus> {
-    const result = await this.api.redemptionTransactionStatus(organizationId, transactionId);
+    const result = await this.api.redemptionTransactionStatus(
+      organizationId,
+      transactionId,
+    );
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
@@ -92,19 +141,28 @@ export class CustomerDataService {
     return result.data;
   }
 
-  async subscriptions(organizationId: ID, userId: ID): Promise<CounterSubscription[]> {
+  async subscriptions(
+    organizationId: ID,
+    userId: ID,
+  ): Promise<CounterSubscription[]> {
     const result = await this.api.subscriptions(organizationId, userId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
 
-  async redemptions(organizationId: ID, userId: ID): Promise<OrgAdminRedemption[]> {
+  async redemptions(
+    organizationId: ID,
+    userId: ID,
+  ): Promise<OrgAdminRedemption[]> {
     const result = await this.api.redemptions(organizationId, userId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
 
-  async membershipProducts(organizationId: ID, userId?: ID): Promise<MembershipProduct[]> {
+  async membershipProducts(
+    organizationId: ID,
+    userId?: ID,
+  ): Promise<MembershipProduct[]> {
     const result = await this.api.membershipProducts(organizationId, userId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
@@ -116,7 +174,11 @@ export class CustomerDataService {
     return result.data;
   }
 
-  benefitRules(organizationId: ID, userId: ID, benefitId: ID): Promise<BenefitUsageRule[]> {
+  benefitRules(
+    organizationId: ID,
+    userId: ID,
+    benefitId: ID,
+  ): Promise<BenefitUsageRule[]> {
     return this.api.benefitRules(organizationId, userId, benefitId);
   }
 
@@ -138,10 +200,17 @@ export class CustomerDataService {
     return result.data;
   }
 
-  async purchase(organizationId: ID, input: {
-    planId: ID; customerUserId?: ID; firstName?: string; lastName?: string;
-    primaryEmail?: string; primaryPhone?: string;
-  }): Promise<CounterPurchaseResult> {
+  async purchase(
+    organizationId: ID,
+    input: {
+      planId: ID;
+      customerUserId?: ID;
+      firstName?: string;
+      lastName?: string;
+      primaryEmail?: string;
+      primaryPhone?: string;
+    },
+  ): Promise<CounterPurchaseResult> {
     const result = await this.api.purchase(organizationId, input);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
@@ -154,13 +223,27 @@ export class CustomerDataService {
     productId?: ID,
     explicitOfferId?: ID,
   ): Promise<PaymentIntent> {
-    const result = await this.api.startAuthenticatedPayment(organizationId, planId, idempotencyKey, productId, explicitOfferId);
+    const result = await this.api.startAuthenticatedPayment(
+      organizationId,
+      planId,
+      idempotencyKey,
+      productId,
+      explicitOfferId,
+    );
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
 
-  async purchaseQuote(organizationId: ID, planId: ID, explicitOfferId?: ID): Promise<MembershipPurchaseQuote> {
-    const result = await this.api.purchaseQuote(organizationId, planId, explicitOfferId);
+  async purchaseQuote(
+    organizationId: ID,
+    planId: ID,
+    explicitOfferId?: ID,
+  ): Promise<MembershipPurchaseQuote> {
+    const result = await this.api.purchaseQuote(
+      organizationId,
+      planId,
+      explicitOfferId,
+    );
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
@@ -169,7 +252,10 @@ export class CustomerDataService {
     organizationId: ID,
     paymentIntentId: ID,
   ): Promise<PaymentConfirmation> {
-    const result = await this.api.confirmTestPayment(organizationId, paymentIntentId);
+    const result = await this.api.confirmTestPayment(
+      organizationId,
+      paymentIntentId,
+    );
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
@@ -179,19 +265,37 @@ export class CustomerDataService {
     paymentIntentId: ID,
     temporaryToken: string,
   ): Promise<PaymentConfirmation> {
-    const result = await this.api.confirmMonerisPayment(organizationId, paymentIntentId, temporaryToken);
+    const result = await this.api.confirmMonerisPayment(
+      organizationId,
+      paymentIntentId,
+      temporaryToken,
+    );
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
 
-  async preference(organizationId: ID, userId: ID, code: string): Promise<string | null> {
+  async preference(
+    organizationId: ID,
+    userId: ID,
+    code: string,
+  ): Promise<string | null> {
     const result = await this.api.preference(organizationId, userId, code);
     if (!result.success) throw new Error(result.error.message);
     return result.data.value;
   }
 
-  async setPreference(organizationId: ID, userId: ID, code: string, value: string): Promise<string> {
-    const result = await this.api.setPreference(organizationId, userId, code, value);
+  async setPreference(
+    organizationId: ID,
+    userId: ID,
+    code: string,
+    value: string,
+  ): Promise<string> {
+    const result = await this.api.setPreference(
+      organizationId,
+      userId,
+      code,
+      value,
+    );
     if (!result.success) throw new Error(result.error.message);
     return result.data.value;
   }

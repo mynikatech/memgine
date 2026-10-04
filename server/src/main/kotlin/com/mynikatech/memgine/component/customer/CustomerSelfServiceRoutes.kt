@@ -107,6 +107,20 @@ fun Route.customerSelfServiceRoutes(service: CustomerService, redemptionService:
                     service.combinedOffers(call.organizationId(), call.userId()), call.callId
                 ))
             }
+            post("/membership-purchase-offers/{offerId}/qr") {
+                val offerId = call.parameters["offerId"]
+                    ?: throw BadRequestException("Membership Offer id is required")
+                call.respond(
+                    ApiResponse.success(
+                        service.issueMembershipPurchaseOfferQr(
+                            call.organizationId(),
+                            call.userId(),
+                            offerId,
+                        ),
+                        call.callId,
+                    )
+                )
+            }
             get("/membership-products") {
                 call.respond(ApiResponse.success(service.memberships(call.organizationId(), null), call.callId))
             }

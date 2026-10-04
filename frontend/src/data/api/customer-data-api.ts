@@ -14,9 +14,16 @@ import type {
 } from "@/src/core";
 import type { TemplateDefinition } from "@/src/core/template/template-definition";
 import type { CounterPurchaseResult, CounterSubscription } from "./counter-api";
-import type { MembershipPurchaseQuote, PaymentConfirmation, PaymentIntent } from "./counter-api";
+import type {
+  MembershipPurchaseQuote,
+  PaymentConfirmation,
+  PaymentIntent,
+} from "./counter-api";
 import type { OrgAdminRedemption } from "./org-admin-transaction-api";
-import type { CustomerChoice, CustomerProfile } from "@/src/core/services/customer-data-service";
+import type {
+  CustomerChoice,
+  CustomerProfile,
+} from "@/src/core/services/customer-data-service";
 import { entityStatusApi } from "./entity-status-api";
 import { httpClient } from "./http-client";
 import { apiSuccess, type ApiResult } from "./result";
@@ -43,6 +50,12 @@ export type CustomerCombinedOffer = {
   regularOffer?: Offer | null;
   applicableMembershipProductIds: ID[];
 };
+export type CustomerMembershipPurchaseOfferQr = {
+  qrReference: string;
+  offerId: ID;
+  displayName: string;
+  expiresAt: string;
+};
 
 export type CustomerDiscoveryDetail = {
   organization: Pick<
@@ -51,7 +64,10 @@ export type CustomerDiscoveryDetail = {
   >;
   publishedExperience: {
     configuration: BusinessConfiguration;
-    template: Pick<TemplateDefinition, "id" | "sections" | "supportedCardStyles">;
+    template: Pick<
+      TemplateDefinition,
+      "id" | "sections" | "supportedCardStyles"
+    >;
     definition: CustomerExperienceDefinition;
     organizationBranding?: Pick<
       OrganizationBranding,
@@ -123,7 +139,10 @@ export class CustomerDataApi {
     organizationId: ID,
     request: CustomerRedemptionTransactionRequest,
   ): Promise<ApiResult<PendingRedemptionTransaction>> {
-    return httpClient.post(`${base(organizationId)}/redemption-transactions`, request);
+    return httpClient.post(
+      `${base(organizationId)}/redemption-transactions`,
+      request,
+    );
   }
   issueRedemptionTransactionQr(
     organizationId: ID,
@@ -131,6 +150,15 @@ export class CustomerDataApi {
   ): Promise<ApiResult<RedemptionTransactionQr>> {
     return httpClient.post(
       `${base(organizationId)}/redemption-transactions/${encodeURIComponent(transactionId)}/qr`,
+      {},
+    );
+  }
+  issueMembershipPurchaseOfferQr(
+    organizationId: ID,
+    offerId: ID,
+  ): Promise<ApiResult<CustomerMembershipPurchaseOfferQr>> {
+    return httpClient.post(
+      `${base(organizationId)}/membership-purchase-offers/${encodeURIComponent(offerId)}/qr`,
       {},
     );
   }
@@ -150,7 +178,9 @@ export class CustomerDataApi {
       `${base(organizationId)}/subscriptions/${encodeURIComponent(subscriptionId)}/redemption-item-status`,
     );
   }
-  discoverOrganizations(): Promise<ApiResult<CustomerDiscoverableOrganization[]>> {
+  discoverOrganizations(): Promise<
+    ApiResult<CustomerDiscoverableOrganization[]>
+  > {
     return httpClient.get("/api/v1/customer/discover/organizations");
   }
   discoverOrganizationDetail(
@@ -168,14 +198,19 @@ export class CustomerDataApi {
     return httpClient.get("/api/v1/customer/relationships");
   }
 
-  purchase(organizationId: ID, input: {
-    planId: ID; customerUserId?: ID; firstName?: string; lastName?: string;
-    primaryEmail?: string; primaryPhone?: string;
-  }): Promise<ApiResult<CounterPurchaseResult>> {
+  purchase(
+    organizationId: ID,
+    input: {
+      planId: ID;
+      customerUserId?: ID;
+      firstName?: string;
+      lastName?: string;
+      primaryEmail?: string;
+      primaryPhone?: string;
+    },
+  ): Promise<ApiResult<CounterPurchaseResult>> {
     const { customerUserId: _customerUserId, ...request } = input;
-    return httpClient.post(
-      `${base(organizationId)}/purchases`, request,
-    );
+    return httpClient.post(`${base(organizationId)}/purchases`, request);
   }
 
   startAuthenticatedPayment(
@@ -185,12 +220,15 @@ export class CustomerDataApi {
     productId?: ID,
     explicitOfferId?: ID,
   ): Promise<ApiResult<PaymentIntent>> {
-    return httpClient.post(`${base(organizationId)}/purchases/payment/start-authenticated`, {
-      planId,
-      idempotencyKey,
-      returnContext: productId ? { productId } : undefined,
-      explicitOfferId,
-    });
+    return httpClient.post(
+      `${base(organizationId)}/purchases/payment/start-authenticated`,
+      {
+        planId,
+        idempotencyKey,
+        returnContext: productId ? { productId } : undefined,
+        explicitOfferId,
+      },
+    );
   }
 
   purchaseQuote(
@@ -203,7 +241,9 @@ export class CustomerDataApi {
     );
   }
 
-  combinedOffers(organizationId: ID): Promise<ApiResult<CustomerCombinedOffer[]>> {
+  combinedOffers(
+    organizationId: ID,
+  ): Promise<ApiResult<CustomerCombinedOffer[]>> {
     return httpClient.get(`${base(organizationId)}/combined-offers`);
   }
 
@@ -228,41 +268,72 @@ export class CustomerDataApi {
     );
   }
 
-  preference(organizationId: ID, userId: ID, code: string): Promise<ApiResult<{ value: string | null }>> {
+  preference(
+    organizationId: ID,
+    userId: ID,
+    code: string,
+  ): Promise<ApiResult<{ value: string | null }>> {
     return httpClient.get(
       `${base(organizationId)}/preferences/${encodeURIComponent(code)}`,
     );
   }
 
-  setPreference(organizationId: ID, userId: ID, code: string, value: string): Promise<ApiResult<{ value: string }>> {
+  setPreference(
+    organizationId: ID,
+    userId: ID,
+    code: string,
+    value: string,
+  ): Promise<ApiResult<{ value: string }>> {
     return httpClient.put(
       `${base(organizationId)}/preferences/${encodeURIComponent(code)}`,
       { value },
     );
   }
 
-  async subscriptions(organizationId: ID, userId: ID): Promise<ApiResult<CounterSubscription[]>> {
+  async subscriptions(
+    organizationId: ID,
+    userId: ID,
+  ): Promise<ApiResult<CounterSubscription[]>> {
     const result = await httpClient.get<CounterSubscription[]>(
       `${base(organizationId)}/subscriptions`,
     );
     if (!result.success) return result;
-    return apiSuccess(await Promise.all(result.data.map(async (row) => ({
-      ...row,
-      subscriptionStatusId: await entityStatusApi.resolveStatusId(row.subscriptionStatusId),
-    }))));
+    return apiSuccess(
+      await Promise.all(
+        result.data.map(async (row) => ({
+          ...row,
+          subscriptionStatusId: await entityStatusApi.resolveStatusId(
+            row.subscriptionStatusId,
+          ),
+        })),
+      ),
+    );
   }
 
-  async redemptions(organizationId: ID, userId: ID): Promise<ApiResult<OrgAdminRedemption[]>> {
+  async redemptions(
+    organizationId: ID,
+    userId: ID,
+  ): Promise<ApiResult<OrgAdminRedemption[]>> {
     const result = await httpClient.get<OrgAdminRedemption[]>(
       `${base(organizationId)}/history/redemptions`,
     );
     if (!result.success) return result;
-    return apiSuccess(await Promise.all(result.data.map(async (row) => ({
-      ...row, redemptionStatusId: await entityStatusApi.resolveStatusId(row.redemptionStatusId),
-    }))));
+    return apiSuccess(
+      await Promise.all(
+        result.data.map(async (row) => ({
+          ...row,
+          redemptionStatusId: await entityStatusApi.resolveStatusId(
+            row.redemptionStatusId,
+          ),
+        })),
+      ),
+    );
   }
 
-  membershipProducts(organizationId: ID, userId?: ID): Promise<ApiResult<MembershipProduct[]>> {
+  membershipProducts(
+    organizationId: ID,
+    userId?: ID,
+  ): Promise<ApiResult<MembershipProduct[]>> {
     return new MembershipProductApi().listForCustomer(organizationId, userId);
   }
 
@@ -270,7 +341,11 @@ export class CustomerDataApi {
     return new BenefitApi().listForCustomer(organizationId, userId);
   }
 
-  async benefitRules(organizationId: ID, userId: ID, benefitId: ID): Promise<BenefitUsageRule[]> {
+  async benefitRules(
+    organizationId: ID,
+    userId: ID,
+    benefitId: ID,
+  ): Promise<BenefitUsageRule[]> {
     return new BenefitApi().rulesForCustomer(organizationId, userId, benefitId);
   }
 
