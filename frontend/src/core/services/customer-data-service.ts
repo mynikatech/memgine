@@ -2,6 +2,7 @@ import type { Benefit, BenefitUsageRule, ID, MembershipProduct, Offer, Store } f
 import { CustomerDataApi } from "@/src/data/api/customer-data-api";
 import type {
   CustomerDiscoverableOrganization,
+  CustomerCombinedOffer,
   CustomerDiscoveryDetail,
   CustomerRedemptionItemStatus,
   CustomerRedemptionTransactionStatus,
@@ -121,6 +122,12 @@ export class CustomerDataService {
 
   async offers(organizationId: ID, userId: ID): Promise<Offer[]> {
     const result = await this.api.offers(organizationId, userId);
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
+  }
+
+  async combinedOffers(organizationId: ID): Promise<CustomerCombinedOffer[]> {
+    const result = await this.api.combinedOffers(organizationId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }

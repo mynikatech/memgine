@@ -160,7 +160,7 @@ try {
     $manifestFile = Join-Path $staging "release-manifest.json"
     [IO.File]::WriteAllText($manifestFile, $manifest)
 
-    & aws --profile $AwsProfile --no-cli-pager s3 cp $Jar "s3://$bucket/releases/$ReleaseId/server/server.jar"
+    & aws --profile $AwsProfile --no-cli-pager s3api put-object --bucket $bucket --key "releases/$ReleaseId/server/server.jar" --body $Jar | Out-Null
     Assert-LastExitCode "Backend JAR upload failed."
 
     & aws --profile $AwsProfile --no-cli-pager s3 sync (Join-Path $staging "frontend") "s3://$bucket/releases/$ReleaseId/frontend/" --delete

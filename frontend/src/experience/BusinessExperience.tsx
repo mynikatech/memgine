@@ -104,6 +104,7 @@ type Props = {
 
   benefits: Benefit[];
   offers: Offer[];
+  membershipPurchaseOffers?: { offerId: string; displayName: string; applicableMembershipProductIds: string[] }[];
   stores: Store[];
   redemptions: Redemption[];
   benefitUsageRules?: BenefitUsageRule[];
@@ -121,6 +122,7 @@ type Props = {
   availableMemberships: MembershipProduct[];
 
   onJoin: (productId: string) => void;
+  onUseMembershipPurchaseOffer?: (offerId: string, displayName: string) => void;
   onExit: () => void;
 
   /**
@@ -215,6 +217,7 @@ export function BusinessExperience({
   product,
   benefits,
   offers,
+  membershipPurchaseOffers = [],
   stores,
   redemptions,
   benefitUsageRules,
@@ -225,6 +228,7 @@ export function BusinessExperience({
   onSelectSubscription,
   availableMemberships,
   onJoin,
+  onUseMembershipPurchaseOffer,
   onExit,
   previewDefinition,
   organizationOverride,
@@ -685,6 +689,15 @@ export function BusinessExperience({
     onTabChange?.(nextTab);
   };
 
+  const membershipPurchaseOfferIds = useMemo(
+    () => new Set(membershipPurchaseOffers.map((offer) => offer.offerId)),
+    [membershipPurchaseOffers],
+  );
+  const regularOffers = useMemo(
+    () => offers.filter((offer) => !membershipPurchaseOfferIds.has(offer.id)),
+    [membershipPurchaseOfferIds, offers],
+  );
+
   const exp = useMemo(
     () =>
       resolveExperience({
@@ -696,7 +709,7 @@ export function BusinessExperience({
         subscriptionStatus,
         product,
         benefits,
-        offers,
+        offers: regularOffers,
         stores,
         redemptions,
         formatDate,
@@ -713,7 +726,7 @@ export function BusinessExperience({
       subscriptionStatus,
       product,
       benefits,
-      offers,
+      regularOffers,
       stores,
       redemptions,
       formatDate,
@@ -788,9 +801,11 @@ export function BusinessExperience({
     setSelectedBenefitIds((previous) => new Set([...previous].filter((id) => allowedBenefitIds.has(id))));
     setSelectedOfferIds((previous) => new Set([...previous].filter((id) => allowedOfferIds.has(id))));
   }, [selectableBenefitKey, selectableOfferKey]);
-  const createRedemptionTransaction = async () => {
+  const createRedemptionTransaction = async (scope: "ALL" | "OFFERS" = "ALL") => {
     if (!subscription || isPreviewMode || redemptionLoading) return;
-    const benefitIds = selectableBenefits.filter(({ benefit }) => selectedBenefitIds.has(benefit.id)).map(({ benefit }) => benefit.id);
+    const benefitIds = scope === "ALL"
+      ? selectableBenefits.filter(({ benefit }) => selectedBenefitIds.has(benefit.id)).map(({ benefit }) => benefit.id)
+      : [];
     const offerIds = selectableOffers.filter(({ offer }) => selectedOfferIds.has(offer.id)).map(({ offer }) => offer.id);
     if (!benefitIds.length && !offerIds.length) return;
     setRedemptionLoading(true); setCustomerActionError(null);
@@ -882,6 +897,14 @@ export function BusinessExperience({
   ].filter(Boolean).join(" + ");
 
   const hasRedeemable = selectableBenefits.length > 0 || selectableOffers.length > 0;
+  const membershipOfferForProduct = (membershipProductId: string) => {
+    const candidates = membershipPurchaseOffers.filter((offer) =>
+      offer.applicableMembershipProductIds.includes(membershipProductId),
+    );
+    // A card is shown only when the server returned one unambiguous target.
+    // Pricing remains exclusively resolved by the quote endpoint.
+    return candidates.length === 1 ? candidates[0] : undefined;
+  };
 
   /* ------------------------------------------------------------------ */
   /* Sub-renderers                                                      */
@@ -1222,7 +1245,9 @@ export function BusinessExperience({
       {!isPreviewMode && availableMemberships.length ? (
         <Section title={t("experience.availableMemberships")}>
           <View style={{ gap: theme.spacing.md }}>
-            {availableMemberships.map((p) => (
+            {availableMemberships.map((p) => {
+              const membershipOffer = membershipOfferForProduct(p.id);
+              return (
               <Card
                 key={p.id}
                 testID={`experience-available-${p.id}`}
@@ -1261,17 +1286,36 @@ export function BusinessExperience({
                         </Text>
                       </View>
                     ))}
+                    {membershipOffer ? (
+                      <View style={{ gap: 2, marginTop: theme.spacing.xs }}>
+                        <Text variant="label" color="textSecondary">MEMBERSHIP OFFER</Text>
+                        <Text variant="bodySmall" color="primary">{membershipOffer.displayName}</Text>
+                      </View>
+                    ) : null}
                   </View>
 
-                  <Button
-                    label={t("experience.join")}
-                    size="sm"
-                    onPress={() => onJoin(p.id)}
-                    testID={`experience-join-${p.id}`}
-                  />
+                  <View style={{ gap: theme.spacing.xs }}>
+                    <Button
+                      label={membershipOffer ? "Join with Offer" : t("experience.join")}
+                      size="sm"
+                      onPress={() => membershipOffer
+                        ? onUseMembershipPurchaseOffer?.(membershipOffer.offerId, membershipOffer.displayName)
+                        : onJoin(p.id)}
+                      disabled={Boolean(membershipOffer && !onUseMembershipPurchaseOffer)}
+                      testID={`experience-join-${p.id}`}
+                    />
+                    {membershipOffer ? (
+                      <>
+                        <Button label="Show QR at Store" size="sm" variant="outline" disabled
+                          testID={`experience-membership-offer-${membershipOffer.offerId}-qr`} />
+                        <Text variant="caption" color="textMuted">Membership Offer QR is coming next.</Text>
+                      </>
+                    ) : null}
+                  </View>
                 </View>
               </Card>
-            ))}
+              );
+            })}
           </View>
         </Section>
       ) : null}
@@ -1298,7 +1342,9 @@ export function BusinessExperience({
 
         <Section title={t("experience.todaysPerks")}>
           <View style={{ gap: theme.spacing.md }}>
-            {offersTabItems.map(({ offer, itemStatus }) => (
+            {offersTabItems.length ? <View style={{ gap: theme.spacing.sm }}>
+              <Text variant="label" color="textSecondary">OTHER OFFERS</Text>
+              {offersTabItems.map(({ offer, itemStatus }) => (
               <OfferCard
                 key={offer.id}
                 offerId={offer.id}
@@ -1316,7 +1362,8 @@ export function BusinessExperience({
                 )}
                 onPress={isPreviewMode || itemStatus.status !== "AVAILABLE" ? undefined : () => toggleOffer(offer.id)}
               />
-            ))}
+              ))}
+            </View> : null}
 
             {!offersTabItems.length ? (
               <Card
@@ -1372,18 +1419,20 @@ export function BusinessExperience({
                 }}
               >
                 <Text variant="caption" color="textMuted">
-                  {selectedSummary ? `Basket: ${selectedSummary}` : "Basket: No items selected"}
+                  {selectedOfferCount
+                    ? `Basket: ${selectedOfferCount} Offer${selectedOfferCount === 1 ? "" : "s"}`
+                    : "Basket: No offers selected"}
                 </Text>
 
                 <Button
                   label={
                     redemptionLoading
                       ? "Creating redemption…"
-                      : `Redeem Selected${selectedCount ? ` (${selectedCount})` : ""}`
+                      : `Redeem Selected${selectedOfferCount ? ` (${selectedOfferCount})` : ""}`
                   }
-                  disabled={selectedCount === 0 || redemptionLoading}
+                  disabled={selectedOfferCount === 0 || redemptionLoading}
                   onPress={() => {
-                    void createRedemptionTransaction();
+                    void createRedemptionTransaction("OFFERS");
                   }}
                   testID="experience-offers-redeem-selected"
                 />

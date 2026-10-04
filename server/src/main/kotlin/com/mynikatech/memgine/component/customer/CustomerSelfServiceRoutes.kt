@@ -102,6 +102,11 @@ fun Route.customerSelfServiceRoutes(service: CustomerService, redemptionService:
             get("/offers") {
                 call.respond(ApiResponse.success(service.offers(call.organizationId(), call.userId()), call.callId))
             }
+            get("/combined-offers") {
+                call.respond(ApiResponse.success(
+                    service.combinedOffers(call.organizationId(), call.userId()), call.callId
+                ))
+            }
             get("/membership-products") {
                 call.respond(ApiResponse.success(service.memberships(call.organizationId(), null), call.callId))
             }

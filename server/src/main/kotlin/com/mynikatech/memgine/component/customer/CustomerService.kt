@@ -16,6 +16,7 @@ import com.mynikatech.memgine.net.dto.CustomerDiscoveryDetailDto
 import com.mynikatech.memgine.net.dto.CustomerRelationshipDto
 import com.mynikatech.memgine.net.dto.OrgAdminRedemptionDto
 import com.mynikatech.memgine.net.dto.OfferDto
+import com.mynikatech.memgine.net.dto.CustomerCombinedOfferDto
 import com.mynikatech.memgine.net.dto.CustomerRedemptionItemStatusDto
 import com.mynikatech.memgine.net.dto.CustomerRedemptionTransactionStatusDto
 import com.mynikatech.memgine.net.dto.MembershipProductDto
@@ -140,6 +141,41 @@ class CustomerService(
     fun offers(organizationId: String, userId: String): List<OfferDto> {
         authorizeCustomer(organizationId, userId)
         return sql.offers(organizationId, userId)
+    }
+
+    fun combinedOffers(organizationId: String, userId: String): List<CustomerCombinedOfferDto> {
+        validateUserId(userId)
+        if (organizationId.isBlank() || organizationId.length > 40) {
+            throw BadRequestException("Invalid organization id")
+        }
+
+        // Regular redemption offers retain their existing relationship requirement.
+        val regular = if (sql.hasActiveRelationship(organizationId, userId)) {
+            sql.offers(organizationId, userId).map { offer ->
+                CustomerCombinedOfferDto(
+                    offerId = offer.id,
+                    offerType = "REGULAR",
+                    displayName = offer.offerName,
+                    regularOffer = offer,
+                )
+            }
+        } else {
+            emptyList()
+        }
+
+        // Migration 133 evaluates membership-purchase eligibility for an active
+        // global user, including prospective customers without organization_user.
+        val membershipPurchase = sql.membershipPurchaseOffers(organizationId, userId)
+            .groupBy { it.offerId }
+            .map { (offerId, targets) ->
+            CustomerCombinedOfferDto(
+                offerId = offerId,
+                offerType = "MEMBERSHIP_PURCHASE",
+                displayName = targets.first().displayName,
+                applicableMembershipProductIds = targets.map { it.membershipProductId }.distinct(),
+            )
+        }
+        return regular + membershipPurchase
     }
 
     fun memberships(organizationId: String, userId: String?): List<MembershipProductDto> {

@@ -227,6 +227,7 @@ data class AppConfig(
                         "memgine_session"
                     ),
                     secureCookie = enforceHttps,
+                    environment = environment,
                     passwordMinimumLength = value(
                         "memgine.authentication.passwordMinimumLength",
                         "MEMGINE_AUTH_PASSWORD_MIN_LENGTH",
@@ -315,7 +316,8 @@ data class AuthenticationConfig(
     val posPinLockMinutes: Long,
     val cookieName: String,
     val secureCookie: Boolean,
-    val passwordMinimumLength: Int
+    val passwordMinimumLength: Int,
+    val environment: String
 )
 
 data class OtpConfig(

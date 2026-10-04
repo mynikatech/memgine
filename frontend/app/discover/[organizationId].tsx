@@ -2,11 +2,11 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 
-import type { Benefit, MembershipProduct, Redemption, Subscription } from "@/src/core";
+import type { Benefit, MembershipProduct, Offer, Redemption, Subscription } from "@/src/core";
 import { RedemptionMethod, services } from "@/src/core";
 import type { TemplateDefinition } from "@/src/core/template/template-definition";
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
-import type { CustomerDiscoveryDetail, CustomerRedemptionItemStatus } from "@/src/data/api/customer-data-api";
+import type { CustomerCombinedOffer, CustomerDiscoveryDetail, CustomerRedemptionItemStatus } from "@/src/data/api/customer-data-api";
 import type { CounterSubscription } from "@/src/data/api/counter-api";
 import type { OrgAdminRedemption } from "@/src/data/api/org-admin-transaction-api";
 import { APP_ROUTES } from "@/src/constants/navigation";
@@ -54,6 +54,8 @@ export default function DiscoverGateway() {
   const theme = useTheme();
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [detail, setDetail] = useState<CustomerDiscoveryDetail | null>(null);
+  const [regularOffers, setRegularOffers] = useState<Offer[]>([]);
+  const [membershipPurchaseOffers, setMembershipPurchaseOffers] = useState<CustomerCombinedOffer[]>([]);
   const [memberships, setMemberships] = useState<MembershipBundle[]>([]);
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
   const [detailProduct, setDetailProduct] = useState<MembershipProduct | null>(null);
@@ -63,6 +65,9 @@ export default function DiscoverGateway() {
     setStatus("loading");
     try {
       const published = await services.customerData.discoverOrganizationDetail(organizationId);
+      const combinedOffersResult = await Promise.allSettled([
+        services.customerData.combinedOffers(organizationId),
+      ]);
       const protectedReads = await Promise.allSettled([
         services.customerData.subscriptions(organizationId, customerId),
         services.customerData.redemptions(organizationId, customerId),
@@ -88,6 +93,15 @@ export default function DiscoverGateway() {
         }];
       });
       setDetail(published);
+      const combinedOffers = combinedOffersResult[0].status === "fulfilled"
+        ? combinedOffersResult[0].value
+        : [];
+      setRegularOffers(combinedOffers.flatMap((offer) =>
+        offer.offerType === "REGULAR" && offer.regularOffer ? [offer.regularOffer] : [],
+      ));
+      setMembershipPurchaseOffers(combinedOffers.filter(
+        (offer) => offer.offerType === "MEMBERSHIP_PURCHASE",
+      ));
       setMemberships(bundles);
       setSelectedSubId(bundles[0]?.subscription.id ?? null);
       setDetailProduct(productId ? published.membershipProducts.find((product) => product.id === productId) ?? null : null);
@@ -103,6 +117,11 @@ export default function DiscoverGateway() {
   const joinMembership = (id: string) => {
     setDetailProduct(null);
     router.push(APP_ROUTES.join.membership(organizationId, id) as never);
+  };
+  const joinWithMembershipOffer = (offerId: string, displayName: string) => {
+    router.push(
+      `${APP_ROUTES.join.organization(organizationId)}&explicitOfferId=${encodeURIComponent(offerId)}&explicitOfferName=${encodeURIComponent(displayName)}` as never,
+    );
   };
 
   if (status !== "ready" || !detail) {
@@ -137,7 +156,8 @@ export default function DiscoverGateway() {
       benefits={focused?.benefits ?? []}
       benefitUsageRules={detail.benefitUsageRules as never}
       redemptionItemStatuses={focused?.redemptionItemStatuses ?? []}
-      offers={detail.offers}
+      offers={regularOffers}
+      membershipPurchaseOffers={membershipPurchaseOffers}
       offerUsageRules={detail.offerUsageRules as never}
       stores={detail.stores}
       redemptions={focused?.redemptions ?? []}
@@ -146,6 +166,7 @@ export default function DiscoverGateway() {
       onSelectSubscription={(id) => { setSelectedSubId(id); setActiveContext(organizationId, id); }}
       availableMemberships={available}
       onJoin={joinMembership}
+      onUseMembershipPurchaseOffer={joinWithMembershipOffer}
       onExit={exit}
       onRefreshRedemptionState={load}
       customerUserId={customerId}

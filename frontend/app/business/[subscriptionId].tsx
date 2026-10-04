@@ -11,7 +11,7 @@ import { BusinessExperience } from "@/src/experience";
 import { BusinessPreviewScope, useBusiness, useCustomerContext,
   useTheme, useTranslation } from "@/src/providers";
 import { StateView } from "@/src/ui";
-import type { CustomerRedemptionItemStatus } from "@/src/data/api/customer-data-api";
+import type { CustomerCombinedOffer, CustomerRedemptionItemStatus } from "@/src/data/api/customer-data-api";
 
 type MembershipBundle = {
   subscription: Subscription;
@@ -32,6 +32,7 @@ type BusinessData = {
   availableMemberships: MembershipProduct[];
   benefitUsageRules: BenefitUsageRule[];
   offers: Offer[];
+  membershipPurchaseOffers: CustomerCombinedOffer[];
   stores: Store[];
   redemptionItemStatusesBySubscription: Record<string, CustomerRedemptionItemStatus[]>;
 };
@@ -67,7 +68,7 @@ export default function BusinessExperienceRoute() {
       }
       if (!foundOrg) throw new Error("Membership not found for the selected customer.");
       const orgId = foundOrg;
-      const [organization, details, branding, catalog, joinCatalog, allBenefits, offers, stores,
+      const [organization, details, branding, catalog, joinCatalog, allBenefits, combinedOffers, stores,
         allRedemptions, statusLists] = await Promise.all([
         services.organization.getOrganization(orgId),
         services.organization.getOrganizationDetails(orgId),
@@ -75,7 +76,7 @@ export default function BusinessExperienceRoute() {
         services.customerData.membershipProducts(orgId, customerId),
         services.customerData.membershipProducts(orgId),
         services.customerData.benefits(orgId, customerId),
-        services.customerData.offers(orgId, customerId),
+        services.customerData.combinedOffers(orgId),
         services.customerData.stores(orgId, customerId),
         services.customerData.redemptions(orgId, customerId),
         Promise.all(foundSubscriptions.map((row) =>
@@ -125,7 +126,12 @@ export default function BusinessExperienceRoute() {
         tagline: branding?.tagline, heroImageUrl: branding?.heroImageUrl,
         content: templateItem.content, template: templateItem.template,
         memberships: bundles, availableMemberships: joinCatalog.filter((item) => !owned.has(item.id)),
-        offers, stores, benefitUsageRules, redemptionItemStatusesBySubscription });
+        offers: combinedOffers.flatMap((offer) => offer.offerType === "REGULAR" && offer.regularOffer
+          ? [offer.regularOffer] : []),
+        membershipPurchaseOffers: combinedOffers.filter(
+          (offer) => offer.offerType === "MEMBERSHIP_PURCHASE",
+        ),
+        stores, benefitUsageRules, redemptionItemStatusesBySubscription });
       setSelectedSubId(subscriptionId);
       setActiveBusiness(orgId);
       setActiveContext(orgId, subscriptionId);
@@ -147,6 +153,7 @@ export default function BusinessExperienceRoute() {
         <BusinessExperience content={data.content} subscription={current.subscription}
           subscriptionStatus={current.subscriptionStatus} product={current.product}
           benefits={current.benefits} offers={data.offers} stores={data.stores}
+          membershipPurchaseOffers={data.membershipPurchaseOffers}
           benefitUsageRules={data.benefitUsageRules}
           redemptionItemStatuses={data.redemptionItemStatusesBySubscription[current.subscription.id] ?? []}
           redemptions={current.redemptions} memberships={data.memberships.map((item) => ({
@@ -156,6 +163,8 @@ export default function BusinessExperienceRoute() {
           availableMemberships={data.availableMemberships}
           onJoin={(productId) => router.push(
             `${APP_ROUTES.join.membership(orgId, productId)}&customerId=${encodeURIComponent(customerId)}` as never)}
+          onUseMembershipPurchaseOffer={(offerId, displayName) => router.push(
+            `${APP_ROUTES.join.organization(orgId)}&explicitOfferId=${encodeURIComponent(offerId)}&explicitOfferName=${encodeURIComponent(displayName)}` as never)}
           onExit={() => router.replace(APP_ROUTES.customer.cards)}
           onRefreshRedemptionState={load}
           organizationOverride={data.organization} detailsOverride={data.details}

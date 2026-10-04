@@ -36,6 +36,14 @@ export type CustomerDiscoverableOrganization = {
   tagline?: string | null;
 };
 
+export type CustomerCombinedOffer = {
+  offerId: ID;
+  offerType: "REGULAR" | "MEMBERSHIP_PURCHASE";
+  displayName: string;
+  regularOffer?: Offer | null;
+  applicableMembershipProductIds: ID[];
+};
+
 export type CustomerDiscoveryDetail = {
   organization: Pick<
     Organization,
@@ -193,6 +201,10 @@ export class CustomerDataApi {
     return httpClient.get(
       `${base(organizationId)}/purchases/quote?planId=${encodeURIComponent(planId)}${explicitOfferId ? `&explicitOfferId=${encodeURIComponent(explicitOfferId)}` : ""}`,
     );
+  }
+
+  combinedOffers(organizationId: ID): Promise<ApiResult<CustomerCombinedOffer[]>> {
+    return httpClient.get(`${base(organizationId)}/combined-offers`);
   }
 
   confirmTestPayment(

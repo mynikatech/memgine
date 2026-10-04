@@ -87,7 +87,7 @@ private fun io.ktor.server.application.ApplicationCall.setSessionCookie(
             name = config.cookieName, value = token, path = "/",
             maxAge = (durationMinutes * 60).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
             secure = config.secureCookie, httpOnly = true,
-            extensions = mapOf("SameSite" to "Lax")
+            extensions = mapOf("SameSite" to config.sameSiteValue())
         )
     )
 }
@@ -97,7 +97,14 @@ private fun io.ktor.server.application.ApplicationCall.clearSessionCookie(config
         Cookie(
             name = config.cookieName, value = "", path = "/", maxAge = 0,
             secure = config.secureCookie, httpOnly = true,
-            extensions = mapOf("SameSite" to "Lax")
+            extensions = mapOf("SameSite" to config.sameSiteValue())
         )
     )
 }
+
+private fun AuthenticationConfig.sameSiteValue(): String =
+    if (environment == "dev" || environment == "development") {
+        "None"
+    } else {
+        "Lax"
+    }

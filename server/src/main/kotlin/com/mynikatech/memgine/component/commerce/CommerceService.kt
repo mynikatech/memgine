@@ -597,11 +597,12 @@ class CommerceService(
         val row = if (benefit) sql.benefitApplicability(organizationId, entityId, actorUserId)
         else sql.offerApplicability(organizationId, entityId, actorUserId)
         row?.let {
+            val snapshots = sql.snapshots(organizationId, actorUserId)
             CommerceApplicabilityDto(
                 it.adjustmentId, it.organizationId, it.adjustmentType, it.percentage,
                 it.amountMinor, it.currencyCode, it.active,
                 sql.adjustmentMappings(organizationId, it.adjustmentId, actorUserId).map { mapping ->
-                    mappingDto(mapping, emptyList())
+                    mappingDto(mapping, snapshots)
                 },
                 it.versionNo
             )

@@ -9,9 +9,9 @@ import { Screen } from "@/src/layout";
 import { BusinessThemeScope, useBusiness, useCustomerContext, useTranslation } from "@/src/providers";
 import { buildTheme, type Theme } from "@/src/theme/theme";
 import { Badge, Card, Header, Section, StateView, Text } from "@/src/ui";
-import { MembershipCard } from "@/src/ui/domain";
+import { MembershipCard, OfferCard } from "@/src/ui/domain";
 import { CustomerNotificationBell } from "@/src/ui/domain/CustomerNotificationBell";
-import type { CustomerDiscoverableOrganization } from "@/src/data/api/customer-data-api";
+import type { CustomerCombinedOffer, CustomerDiscoverableOrganization } from "@/src/data/api/customer-data-api";
 
 type CardVM = {
   subscription: Subscription;
@@ -28,6 +28,10 @@ type OrgGroup = {
   logoUrl?: string;
   cards: CardVM[];
 };
+type OfferGroup = {
+  organization: CustomerDiscoverableOrganization;
+  offers: CustomerCombinedOffer[];
+};
 
 /** Server-backed wallet for the authenticated customer. */
 export default function MyCards() {
@@ -40,6 +44,7 @@ export default function MyCards() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [discoverable, setDiscoverable] = useState<CustomerDiscoverableOrganization[]>([]);
+  const [offerGroups, setOfferGroups] = useState<OfferGroup[]>([]);
 
   useFocusEffect(useCallback(() => {
     if (!customerId || customersLoading || customersError) {
@@ -51,7 +56,7 @@ export default function MyCards() {
     setError(null);
     (async () => {
       try {
-        const [discoveries] = await Promise.all([services.customerData.discoverOrganizations()]);
+        const discoveries = await services.customerData.discoverOrganizations();
         const relationships = profiles.filter((row) => row.userId === customerId);
         const loaded = await Promise.all(relationships.map(async (relationship): Promise<OrgGroup> => {
           const organizationId = relationship.organizationId;
@@ -100,10 +105,20 @@ export default function MyCards() {
             cards: cards.filter((card): card is CardVM => card !== null),
           };
         }));
-        if (active) { setGroups(loaded); setDiscoverable(discoveries); }
+        const loadedOffers = await Promise.all(discoveries.map(async (organization) => ({
+          organization,
+          offers: await services.customerData.combinedOffers(organization.organizationId),
+        })));
+        if (active) {
+          setGroups(loaded);
+          setDiscoverable(discoveries);
+          setOfferGroups(loadedOffers.filter((group) =>
+            group.offers.some((offer) => offer.offerType === "REGULAR"),
+          ));
+        }
       } catch (failure) {
         if (active) {
-          setGroups([]); setDiscoverable([]);
+          setGroups([]); setDiscoverable([]); setOfferGroups([]);
           setError(failure instanceof Error ? failure.message : "Unable to load memberships.");
         }
       } finally { if (active) setLoading(false); }
@@ -140,6 +155,31 @@ export default function MyCards() {
                 <Badge label="Explore memberships" tone="brand" />
               </Card>
             </Pressable>
+          ))}
+        </Section>
+        <Section title="Offers" testID="customer-offers">
+          {!offerGroups.length ? (
+            <Text variant="body" color="textSecondary">No offers are available right now.</Text>
+          ) : offerGroups.map(({ organization, offers }) => (
+            <View key={organization.organizationId} style={{ gap: 8 }}>
+              <Text variant="bodyStrong" color="text">{organization.displayName || organization.name}</Text>
+              {offers.some((offer) => offer.offerType === "REGULAR") ? (
+                <View style={{ gap: 8 }}>
+                  {offers.filter((offer) => offer.offerType === "REGULAR").map((offer) => offer.regularOffer ? (
+                <OfferCard key={offer.offerId} offerId={offer.regularOffer.id}
+                  title={offer.regularOffer.offerName}
+                  description={offer.regularOffer.description}
+                  imageUrl={offer.regularOffer.promotionImageUrl}
+                  badge={offer.regularOffer.badgeText}
+                  availabilityText={offer.regularOffer.availabilityText}
+                  disclaimerText={offer.regularOffer.disclaimerText}
+                  discountPercentage={offer.regularOffer.discountPercentage}
+                  usageRules={[]}
+                  testID={`regular-offer-${offer.offerId}`} />
+                  ) : null)}
+                </View>
+              ) : null}
+            </View>
           ))}
         </Section>
         <Section title="My Memberships">

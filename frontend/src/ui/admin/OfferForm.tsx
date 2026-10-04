@@ -47,7 +47,8 @@ type OfferFormProps = {
   posProducts: Array<{ id: string; name: string }>;
   commerceConfiguration: OfferCommerceConfiguration | null;
   membershipConfiguration: MembershipOfferApplicabilityWrite | null;
-  targetMode: "POS_PRODUCT" | "MEMBERSHIP_PRODUCT";
+  additionalPosCommerceConfiguration?: OfferCommerceConfiguration | null;
+  targetMode: "POS_PRODUCT" | "MEMBERSHIP_PRODUCT" | null;
   isNewOffer?: boolean;
   readOnly?: boolean;
 
@@ -326,6 +327,7 @@ export function OfferForm({
   posProducts,
   commerceConfiguration,
   membershipConfiguration,
+  additionalPosCommerceConfiguration = null,
   targetMode,
   isNewOffer = false,
   readOnly = false,
@@ -345,7 +347,7 @@ export function OfferForm({
   const [applicability, setApplicability] =
     useState<OfferCommerceConfiguration | null>(commerceConfiguration);
   const [productSearch, setProductSearch] = useState("");
-  const [mode, setMode] = useState<"POS_PRODUCT" | "MEMBERSHIP_PRODUCT">(
+  const [mode, setMode] = useState<"POS_PRODUCT" | "MEMBERSHIP_PRODUCT" | null>(
     targetMode,
   );
   const [membershipApplicability, setMembershipApplicability] =
@@ -370,23 +372,6 @@ export function OfferForm({
       mounted = false;
     };
   }, [offer.organizationId]);
-
-  useEffect(() => {
-    setDraft(offer);
-    setPendingImage(undefined);
-    setRules(cloneRules(usageRules));
-    setValidationError(null);
-    setApplicability(commerceConfiguration);
-    setProductSearch("");
-    setMode(targetMode);
-    setMembershipApplicability(membershipConfiguration);
-  }, [
-    offer,
-    usageRules,
-    commerceConfiguration,
-    membershipConfiguration,
-    targetMode,
-  ]);
 
   const selectedTargetProductId =
     membershipApplicability?.behavior === "PURCHASE_DISCOUNT"
@@ -428,6 +413,156 @@ export function OfferForm({
         )
       : posProducts;
   }, [posProducts, productSearch]);
+  const posProductNames = (configuration: OfferCommerceConfiguration) =>
+    configuration.productMappings?.length
+      ? configuration.productMappings.map(
+          (mapping) =>
+            posProducts.find((product) => product.id === mapping.productId)
+              ?.name ??
+            mapping.snapshot?.productName ??
+            mapping.externalSku ??
+            mapping.externalProductId,
+        )
+      : configuration.productIds.map(
+          (productId) =>
+            posProducts.find((product) => product.id === productId)?.name ??
+            productId,
+        );
+
+  const readOnlyMode: "POS_PRODUCT" | "MEMBERSHIP_PRODUCT" | null = readOnly
+    ? targetMode
+    : mode;
+
+  const displayCommerceConfiguration = readOnly
+    ? commerceConfiguration
+    : applicability;
+
+  const displayMembershipConfiguration = readOnly
+    ? membershipConfiguration
+    : membershipApplicability;
+
+  const adjustmentTypeLabel = (value?: string) => {
+    switch (value) {
+      case "PRODUCT_PERCENT_OFF":
+        return "Percentage Off";
+      case "PRODUCT_FIXED_OFF":
+        return "Fixed Amount Off";
+      case "PRODUCT_SPECIAL_PRICE":
+        return "Special Price";
+      case "PRODUCT_FREE":
+        return "Free Product";
+      case "ORDER_PERCENT_OFF":
+        return "Order Percentage Off";
+      case "ORDER_FIXED_OFF":
+        return "Order Fixed Amount Off";
+      default:
+        return value || "—";
+    }
+  };
+
+  const membershipBehaviorLabel = (value?: string) => {
+    switch (value) {
+      case "PURCHASE_DISCOUNT":
+        return "Purchase Discount";
+      case "UPGRADE":
+        return "Upgrade";
+      default:
+        return value || "—";
+    }
+  };
+
+  const customerApplicabilityLabel = (value?: string) => {
+    switch (value) {
+      case "ALL":
+        return "Everyone";
+      case "NEW_CUSTOMER":
+        return "New Customers";
+      case "EXISTING_CUSTOMER":
+        return "Existing Customers";
+      default:
+        return value || "—";
+    }
+  };
+
+  const membershipTargetModeLabel = (value?: string) => {
+    switch (value) {
+      case "ALL_MEMBERSHIP_PRODUCTS":
+        return "All Membership Products";
+      case "SELECTED_MEMBERSHIP_PRODUCTS":
+        return "Selected Membership Products";
+      default:
+        return value || "—";
+    }
+  };
+
+  const membershipProductNameById = (productId?: string | null) => {
+    if (!productId) {
+      return "—";
+    }
+
+    const product = membershipProducts.find((item) => item.id === productId);
+    return product ? membershipProductLabel(product) : productId;
+  };
+
+  const subscriptionPlanNameById = (planId?: string | null) => {
+    if (!planId) {
+      return "—";
+    }
+
+    for (const product of membershipProducts) {
+      const plan = product.plans.find((item) => item.id === planId);
+      if (plan) {
+        return plan.subscriptionPlanName;
+      }
+    }
+
+    return planId;
+  };
+
+  const adjustmentValueLabel = (
+    configuration:
+      | OfferCommerceConfiguration
+      | MembershipOfferApplicabilityWrite
+      | null
+      | undefined,
+  ) => {
+    if (!configuration) {
+      return "—";
+    }
+
+    if (configuration.adjustmentType === "PRODUCT_PERCENT_OFF") {
+      return configuration.percentage == null
+        ? "—"
+        : `${configuration.percentage}%`;
+    }
+
+    if (
+      configuration.adjustmentType === "PRODUCT_FIXED_OFF" ||
+      configuration.adjustmentType === "PRODUCT_SPECIAL_PRICE"
+    ) {
+      if (configuration.amountMinor == null) {
+        return "—";
+      }
+
+      const currency = configuration.currencyCode ?? defaultCurrency;
+      return `${currency} ${(configuration.amountMinor / 100).toFixed(2)}`;
+    }
+
+    if (configuration.adjustmentType === "PRODUCT_FREE") {
+      return "Free";
+    }
+
+    return "—";
+  };
+
+  const readOnlyField = (label: string, value: string) => (
+    <View style={styles.readOnlyField}>
+      <FieldLabel label={label} />
+      <Text variant="body" color="text">
+        {value || "—"}
+      </Text>
+    </View>
+  );
   const productItems = useMemo(
     () =>
       membershipProducts
@@ -665,8 +800,8 @@ export function OfferForm({
 
     if (mode === "POS_PRODUCT") {
       if (!applicability?.productIds.length)
-        return "Select at least one POS Product.";
-    } else {
+        return "Select at least one Org Product.";
+    } else if (mode === "MEMBERSHIP_PRODUCT") {
       if (!membershipApplicability)
         return "Membership Product configuration is required.";
       if (
@@ -861,7 +996,7 @@ export function OfferForm({
         mode === "MEMBERSHIP_PRODUCT"
           ? (membershipApplicability ?? undefined)
           : undefined,
-        mode,
+        mode ?? undefined,
       );
     } catch (error) {
       Alert.alert(
@@ -971,675 +1106,884 @@ export function OfferForm({
           editable={!readOnly}
         />
       </View>
-      <View style={styles.section}>
-        <Text variant="body" color="text">
-          Offer Targeting
-        </Text>
+      {readOnly ? (
+        <View style={styles.section}>
+          <Text variant="body" color="text">
+            Offer Applicability
+          </Text>
 
-        <ReferenceSelect
-          label="Membership Scope"
-          value={draft.membershipProductId ?? ""}
-          items={productItems}
-          allowClear
-          placeholder="All membership products"
-          onChange={(value) =>
-            update("membershipProductId", value || undefined)
-          }
-          disabled={readOnly}
-        />
+          {readOnlyMode === "POS_PRODUCT" && displayCommerceConfiguration ? (
+            <>
+              {readOnlyField("Offer Type", "Org Product")}
+              {readOnlyField("Applies To", "Org Product")}
+              {readOnlyField(
+                "Adjustment Type",
+                adjustmentTypeLabel(
+                  displayCommerceConfiguration.adjustmentType,
+                ),
+              )}
+              {readOnlyField(
+                displayCommerceConfiguration.adjustmentType ===
+                  "PRODUCT_PERCENT_OFF"
+                  ? "Percentage"
+                  : displayCommerceConfiguration.adjustmentType ===
+                      "PRODUCT_SPECIAL_PRICE"
+                    ? "Special Price"
+                    : displayCommerceConfiguration.adjustmentType ===
+                        "PRODUCT_FIXED_OFF"
+                      ? "Amount Off"
+                      : "Adjustment",
+                adjustmentValueLabel(displayCommerceConfiguration),
+              )}
+              {readOnlyField(
+                "Org Products",
+                posProductNames(displayCommerceConfiguration).length
+                  ? posProductNames(displayCommerceConfiguration).join(", ")
+                  : "No Org Products configured",
+              )}
+            </>
+          ) : null}
 
-        <ReferenceSelect
-          label="Store"
-          value={draft.storeId ?? ""}
-          items={storeItems}
-          allowClear
-          placeholder="All stores"
-          onChange={(value) => update("storeId", value || undefined)}
-          disabled={readOnly}
-        />
-      </View>
-      <View style={styles.section}>
-        <Text variant="body" color="text">
-          Discount
-        </Text>
+          {readOnlyMode === "MEMBERSHIP_PRODUCT" &&
+          displayMembershipConfiguration ? (
+            <>
+              {readOnlyField("Offer Type", "Membership")}
+              {readOnlyField("Applies To", "Membership Product")}
+              {readOnlyField(
+                "Membership Offer Type",
+                membershipBehaviorLabel(
+                  displayMembershipConfiguration.behavior,
+                ),
+              )}
 
-        <Input
-          label="Discount Percentage"
-          value={
-            draft.discountPercentage === undefined
-              ? ""
-              : String(draft.discountPercentage)
-          }
-          onChangeText={(value) => {
-            const cleaned = value.replace(/[^0-9.]/g, "");
+              {displayMembershipConfiguration.behavior ===
+              "PURCHASE_DISCOUNT" ? (
+                <>
+                  {readOnlyField(
+                    "Customer Eligibility",
+                    customerApplicabilityLabel(
+                      displayMembershipConfiguration.customerApplicability,
+                    ),
+                  )}
+                  {readOnlyField(
+                    "Membership Applies To",
+                    membershipTargetModeLabel(
+                      displayMembershipConfiguration.membershipTargetMode,
+                    ),
+                  )}
 
-            const numericValue = cleaned === "" ? undefined : Number(cleaned);
+                  {displayMembershipConfiguration.membershipTargetMode ===
+                  "SELECTED_MEMBERSHIP_PRODUCTS"
+                    ? readOnlyField(
+                        "Membership Products",
+                        displayMembershipConfiguration
+                          .selectedMembershipProductIds.length
+                          ? displayMembershipConfiguration.selectedMembershipProductIds
+                              .map(membershipProductNameById)
+                              .join(", ")
+                          : "No membership products configured",
+                      )
+                    : null}
 
-            update("discountPercentage", numericValue);
-          }}
-          keyboardType="decimal-pad"
-          placeholder="e.g. 10"
-          editable={!readOnly}
-        />
-      </View>
-      <View style={styles.section}>
-        <Text variant="body" color="text">
-          Offer Applies To
-        </Text>
-        <View style={styles.modeRow}>
-          <Pressable
-            disabled={readOnly}
-            onPress={() => setMode("POS_PRODUCT")}
-            style={[
-              styles.modeButton,
-              mode === "POS_PRODUCT" && styles.modeButtonSelected,
-            ]}
-          >
-            <Text
-              variant="body"
-              color={mode === "POS_PRODUCT" ? "background" : "text"}
-            >
-              POS Product
+                  {displayMembershipConfiguration.targetSubscriptionPlanId
+                    ? readOnlyField(
+                        "Target Subscription Plan",
+                        subscriptionPlanNameById(
+                          displayMembershipConfiguration.targetSubscriptionPlanId,
+                        ),
+                      )
+                    : null}
+                </>
+              ) : (
+                <>
+                  {displayMembershipConfiguration.sourceMembershipProductId
+                    ? readOnlyField(
+                        "Current Membership Product",
+                        membershipProductNameById(
+                          displayMembershipConfiguration.sourceMembershipProductId,
+                        ),
+                      )
+                    : null}
+                  {displayMembershipConfiguration.sourceSubscriptionPlanId
+                    ? readOnlyField(
+                        "Current Subscription Plan",
+                        subscriptionPlanNameById(
+                          displayMembershipConfiguration.sourceSubscriptionPlanId,
+                        ),
+                      )
+                    : null}
+                  {readOnlyField(
+                    "Upgrade To Membership Product",
+                    membershipProductNameById(
+                      displayMembershipConfiguration.targetMembershipProductId,
+                    ),
+                  )}
+                  {displayMembershipConfiguration.targetSubscriptionPlanId
+                    ? readOnlyField(
+                        "Upgrade To Subscription Plan",
+                        subscriptionPlanNameById(
+                          displayMembershipConfiguration.targetSubscriptionPlanId,
+                        ),
+                      )
+                    : null}
+                </>
+              )}
+
+              {readOnlyField(
+                "Offer Adjustment",
+                adjustmentTypeLabel(
+                  displayMembershipConfiguration.adjustmentType,
+                ),
+              )}
+              {readOnlyField(
+                displayMembershipConfiguration.adjustmentType ===
+                  "PRODUCT_PERCENT_OFF"
+                  ? "Percentage"
+                  : displayMembershipConfiguration.adjustmentType ===
+                      "PRODUCT_SPECIAL_PRICE"
+                    ? "Special Membership Price"
+                    : "Fixed Discount Amount",
+                adjustmentValueLabel(displayMembershipConfiguration),
+              )}
+
+              {additionalPosCommerceConfiguration ? (
+                <View style={styles.additionalApplicability}>
+                  <Text variant="body" color="text">
+                    Also applies to Org Products
+                  </Text>
+                  <Text variant="bodySmall" color="textMuted">
+                    {posProductNames(additionalPosCommerceConfiguration).length
+                      ? posProductNames(
+                          additionalPosCommerceConfiguration,
+                        ).join(", ")
+                      : "No Org Products configured"}
+                  </Text>
+                </View>
+              ) : null}
+            </>
+          ) : null}
+
+          {readOnlyMode == null ? (
+            <Text variant="bodySmall" color="textMuted">
+              No active product applicability is configured for this offer.
             </Text>
-          </Pressable>
-          <Pressable
-            disabled={readOnly}
-            onPress={() => setMode("MEMBERSHIP_PRODUCT")}
-            style={[
-              styles.modeButton,
-              mode === "MEMBERSHIP_PRODUCT" && styles.modeButtonSelected,
-            ]}
-          >
-            <Text
-              variant="body"
-              color={mode === "MEMBERSHIP_PRODUCT" ? "background" : "text"}
-            >
-              Membership Product
-            </Text>
-          </Pressable>
+          ) : null}
         </View>
-        {mode === "POS_PRODUCT" ? (
-          <>
+      ) : (
+        <>
+          <View style={styles.section}>
             <Text variant="body" color="text">
-              POS Product Adjustment
+              Offer Targeting
             </Text>
+
             <ReferenceSelect
-              label="Adjustment Type"
-              required
-              value={applicability?.adjustmentType ?? "PRODUCT_PERCENT_OFF"}
-              items={[
-                { id: "PRODUCT_PERCENT_OFF", name: "Percent off" },
-                { id: "PRODUCT_FIXED_OFF", name: "Fixed amount off" },
-                { id: "PRODUCT_SPECIAL_PRICE", name: "Special price" },
-                { id: "PRODUCT_FREE", name: "Free product" },
-              ]}
-              onChange={(adjustmentType) =>
-                setApplicability((current) => ({
-                  adjustmentType:
-                    adjustmentType as OfferCommerceConfiguration["adjustmentType"],
-                  active: true,
-                  productIds: current?.productIds ?? [],
-                  percentage:
-                    adjustmentType === "PRODUCT_PERCENT_OFF"
-                      ? current?.percentage
-                      : undefined,
-                  amountMinor: [
-                    "PRODUCT_FIXED_OFF",
-                    "PRODUCT_SPECIAL_PRICE",
-                  ].includes(adjustmentType)
-                    ? current?.amountMinor
-                    : undefined,
-                  currencyCode: [
-                    "PRODUCT_FIXED_OFF",
-                    "PRODUCT_SPECIAL_PRICE",
-                  ].includes(adjustmentType)
-                    ? (current?.currencyCode ?? defaultCurrency)
-                    : undefined,
-                }))
+              label="Membership Scope"
+              value={draft.membershipProductId ?? ""}
+              items={productItems}
+              allowClear
+              placeholder="All membership products"
+              onChange={(value) =>
+                update("membershipProductId", value || undefined)
               }
               disabled={readOnly}
             />
-            {applicability?.adjustmentType === "PRODUCT_PERCENT_OFF" ? (
-              <Input
-                label="Percentage"
-                value={applicability.percentage?.toString() ?? ""}
-                keyboardType="decimal-pad"
-                onChangeText={(value) =>
-                  setApplicability((current) =>
-                    current
-                      ? {
-                          ...current,
-                          percentage:
-                            Number(value.replace(/[^0-9.]/g, "")) || undefined,
-                        }
-                      : current,
-                  )
-                }
-                editable={!readOnly}
-              />
-            ) : null}
-            {["PRODUCT_FIXED_OFF", "PRODUCT_SPECIAL_PRICE"].includes(
-              applicability?.adjustmentType ?? "",
-            ) ? (
-              <Input
-                label={
-                  applicability?.adjustmentType === "PRODUCT_SPECIAL_PRICE"
-                    ? `Special Price (${applicability?.currencyCode ?? defaultCurrency})`
-                    : `Amount Off (${applicability?.currencyCode ?? defaultCurrency})`
-                }
-                value={
-                  applicability?.amountMinor === undefined
-                    ? ""
-                    : (applicability.amountMinor / 100).toFixed(2)
-                }
-                keyboardType="decimal-pad"
-                onChangeText={(value) =>
-                  setApplicability((current) =>
-                    current
-                      ? {
-                          ...current,
-                          amountMinor: value
-                            ? Math.round(
-                                Number(value.replace(/[^0-9.]/g, "")) * 100,
-                              )
-                            : undefined,
-                          currencyCode: current.currencyCode ?? defaultCurrency,
-                        }
-                      : current,
-                  )
-                }
-                editable={!readOnly}
-              />
-            ) : null}
-            <FieldLabel label="POS Products" required />
+
+            <ReferenceSelect
+              label="Store"
+              value={draft.storeId ?? ""}
+              items={storeItems}
+              allowClear
+              placeholder="All stores"
+              onChange={(value) => update("storeId", value || undefined)}
+              disabled={readOnly}
+            />
+          </View>
+          <View style={styles.section}>
+            <Text variant="body" color="text">
+              Discount
+            </Text>
+
             <Input
-              label="Search products"
-              value={productSearch}
-              onChangeText={setProductSearch}
-              placeholder="Search name or code"
+              label="Discount Percentage"
+              value={
+                draft.discountPercentage === undefined
+                  ? ""
+                  : String(draft.discountPercentage)
+              }
+              onChangeText={(value) => {
+                const cleaned = value.replace(/[^0-9.]/g, "");
+
+                const numericValue =
+                  cleaned === "" ? undefined : Number(cleaned);
+
+                update("discountPercentage", numericValue);
+              }}
+              keyboardType="decimal-pad"
+              placeholder="e.g. 10"
               editable={!readOnly}
             />
-            <ScrollView style={styles.productList} nestedScrollEnabled>
-              {filteredPosProducts.map((product) => (
-                <Checkbox
-                  key={product.id}
-                  value={
-                    applicability?.productIds.includes(product.id) ?? false
-                  }
-                  onValueChange={() =>
-                    setApplicability((current) => {
-                      const productIds = current?.productIds ?? [];
-                      return {
-                        adjustmentType:
-                          current?.adjustmentType ?? "PRODUCT_PERCENT_OFF",
-                        active: current?.active ?? true,
-                        percentage: current?.percentage,
-                        amountMinor: current?.amountMinor,
-                        currencyCode: current?.currencyCode,
-                        productIds: productIds.includes(product.id)
-                          ? productIds.filter((id) => id !== product.id)
-                          : [...productIds, product.id],
-                      };
-                    })
-                  }
-                  label={product.name}
-                  disabled={readOnly}
-                />
-              ))}
-            </ScrollView>
-          </>
-        ) : (
-          <>
+          </View>
+          <View style={styles.section}>
             <Text variant="body" color="text">
-              Membership Offer Type
+              Offer Applies To
             </Text>
             <View style={styles.modeRow}>
               <Pressable
                 disabled={readOnly}
-                onPress={() =>
-                  setMembershipApplicability((current) => ({
-                    ...(current ?? {
-                      adjustmentType: "PRODUCT_PERCENT_OFF",
-                      active: true,
-                      customerApplicability: "ALL",
-                      membershipTargetMode: "ALL_MEMBERSHIP_PRODUCTS",
-                      selectedMembershipProductIds: [],
-                    }),
-
-                    behavior: "PURCHASE_DISCOUNT",
-
-                    // Purchase Discount uses selectedMembershipProductIds,
-                    // not targetMembershipProductId.
-                    targetMembershipProductId: undefined,
-
-                    // Clear Upgrade-only source fields.
-                    sourceMembershipProductId: undefined,
-                    sourceSubscriptionPlanId: undefined,
-
-                    // Preserve the selected plan only if we were already
-                    // editing a Purchase Discount.
-                    targetSubscriptionPlanId:
-                      current?.behavior === "PURCHASE_DISCOUNT"
-                        ? current.targetSubscriptionPlanId
-                        : undefined,
-                  }))
-                }
+                onPress={() => setMode("POS_PRODUCT")}
                 style={[
                   styles.modeButton,
-                  membershipApplicability?.behavior === "PURCHASE_DISCOUNT" &&
-                    styles.modeButtonSelected,
+                  mode === "POS_PRODUCT" && styles.modeButtonSelected,
                 ]}
               >
                 <Text
                   variant="body"
-                  color={
-                    membershipApplicability?.behavior === "PURCHASE_DISCOUNT"
-                      ? "background"
-                      : "text"
-                  }
+                  color={mode === "POS_PRODUCT" ? "background" : "text"}
                 >
-                  Purchase Discount
+                  Org Product
                 </Text>
               </Pressable>
               <Pressable
                 disabled={readOnly}
-                onPress={() =>
-                  setMembershipApplicability((current) => ({
-                    ...(current ?? {
-                      adjustmentType: "PRODUCT_PERCENT_OFF",
-                      active: true,
-                      customerApplicability: "ALL",
-                      membershipTargetMode: "ALL_MEMBERSHIP_PRODUCTS",
-                      selectedMembershipProductIds: [],
-                    }),
-
-                    behavior: "UPGRADE",
-
-                    // Upgrade does not use Purchase Discount product targeting.
-                    membershipTargetMode: "ALL_MEMBERSHIP_PRODUCTS",
-                    selectedMembershipProductIds: [],
-
-                    // The target plan must be selected again after choosing
-                    // the Upgrade target Membership Product.
-                    targetSubscriptionPlanId: undefined,
-                  }))
-                }
+                onPress={() => setMode("MEMBERSHIP_PRODUCT")}
                 style={[
                   styles.modeButton,
-                  membershipApplicability?.behavior === "UPGRADE" &&
-                    styles.modeButtonSelected,
+                  mode === "MEMBERSHIP_PRODUCT" && styles.modeButtonSelected,
                 ]}
               >
                 <Text
                   variant="body"
-                  color={
-                    membershipApplicability?.behavior === "UPGRADE"
-                      ? "background"
-                      : "text"
-                  }
+                  color={mode === "MEMBERSHIP_PRODUCT" ? "background" : "text"}
                 >
-                  Upgrade
+                  Membership Product
                 </Text>
               </Pressable>
             </View>
-            {membershipApplicability?.behavior === "PURCHASE_DISCOUNT" ? (
+            {mode === "POS_PRODUCT" ? (
               <>
                 <Text variant="body" color="text">
-                  Customer Eligibility
+                  Org Product Adjustment
                 </Text>
-                <View style={styles.modeRow}>
-                  {(
-                    [
-                      ["ALL", "Everyone"],
-                      ["NEW_CUSTOMER", "New Customers"],
-                      ["EXISTING_CUSTOMER", "Existing Customers"],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <Pressable
-                      key={value}
-                      disabled={readOnly}
-                      onPress={() =>
-                        setMembershipApplicability((current) =>
-                          current
-                            ? { ...current, customerApplicability: value }
-                            : current,
-                        )
-                      }
-                      style={[
-                        styles.modeButton,
-                        membershipApplicability.customerApplicability ===
-                          value && styles.modeButtonSelected,
-                      ]}
-                    >
-                      <Text
-                        variant="bodySmall"
-                        color={
-                          membershipApplicability.customerApplicability ===
-                          value
-                            ? "background"
-                            : "text"
-                        }
-                      >
-                        {label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <Text variant="body" color="text">
-                  Membership Applies To
-                </Text>
-                <View style={styles.modeRow}>
-                  {(
-                    [
-                      ["ALL_MEMBERSHIP_PRODUCTS", "All Membership Products"],
-                      [
-                        "SELECTED_MEMBERSHIP_PRODUCTS",
-                        "Selected Membership Products",
-                      ],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <Pressable
-                      key={value}
-                      disabled={readOnly}
-                      onPress={() =>
-                        setMembershipApplicability((current) =>
-                          current
-                            ? {
-                                ...current,
-                                membershipTargetMode: value,
-                                selectedMembershipProductIds:
-                                  value === "ALL_MEMBERSHIP_PRODUCTS"
-                                    ? []
-                                    : current.selectedMembershipProductIds,
-                                targetSubscriptionPlanId:
-                                  value === "ALL_MEMBERSHIP_PRODUCTS"
-                                    ? undefined
-                                    : current.targetSubscriptionPlanId,
-                              }
-                            : current,
-                        )
-                      }
-                      style={[
-                        styles.modeButton,
-                        membershipApplicability.membershipTargetMode ===
-                          value && styles.modeButtonSelected,
-                      ]}
-                    >
-                      <Text
-                        variant="bodySmall"
-                        color={
-                          membershipApplicability.membershipTargetMode === value
-                            ? "background"
-                            : "text"
-                        }
-                      >
-                        {label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-                {membershipApplicability.membershipTargetMode ===
-                "SELECTED_MEMBERSHIP_PRODUCTS" ? (
-                  <ScrollView style={styles.productList} nestedScrollEnabled>
-                    {productItems.map((product) => (
-                      <Checkbox
-                        key={product.id}
-                        value={membershipApplicability.selectedMembershipProductIds.includes(
-                          product.id,
-                        )}
-                        onValueChange={() =>
-                          setMembershipApplicability((current) =>
-                            current
-                              ? {
-                                  ...current,
-                                  selectedMembershipProductIds:
-                                    current.selectedMembershipProductIds.includes(
-                                      product.id,
-                                    )
-                                      ? current.selectedMembershipProductIds.filter(
-                                          (id) => id !== product.id,
-                                        )
-                                      : [
-                                          ...current.selectedMembershipProductIds,
-                                          product.id,
-                                        ],
-                                  targetSubscriptionPlanId: undefined,
-                                }
-                              : current,
-                          )
-                        }
-                        label={product.name}
-                        disabled={readOnly}
-                      />
-                    ))}
-                  </ScrollView>
-                ) : null}
-                {membershipApplicability.membershipTargetMode ===
-                  "SELECTED_MEMBERSHIP_PRODUCTS" &&
-                membershipApplicability.selectedMembershipProductIds.length ===
-                  1 ? (
-                  <ReferenceSelect
-                    label="Target Subscription Plan"
-                    value={
-                      membershipApplicability.targetSubscriptionPlanId ?? ""
-                    }
-                    items={targetPlans
-                      .filter((plan) => !plan.isDeleted)
-                      .map((plan) => ({
-                        id: plan.id,
-                        name: plan.subscriptionPlanName,
-                      }))}
-                    allowClear
-                    onChange={(value) =>
-                      setMembershipApplicability((current) =>
-                        current
-                          ? {
-                              ...current,
-                              targetSubscriptionPlanId: value || undefined,
-                            }
-                          : current,
-                      )
-                    }
-                    disabled={readOnly}
-                  />
-                ) : null}
-              </>
-            ) : (
-              <>
                 <ReferenceSelect
-                  label="Current Membership Product"
-                  value={
-                    membershipApplicability?.sourceMembershipProductId ?? ""
-                  }
-                  items={productItems}
-                  allowClear
-                  onChange={(value) =>
-                    setMembershipApplicability((current) =>
-                      current
-                        ? {
-                            ...current,
-                            sourceMembershipProductId: value || undefined,
-                            sourceSubscriptionPlanId: undefined,
-                          }
-                        : current,
-                    )
-                  }
-                  disabled={readOnly}
-                />
-                <ReferenceSelect
-                  label="Current Subscription Plan"
-                  value={
-                    membershipApplicability?.sourceSubscriptionPlanId ?? ""
-                  }
-                  items={sourcePlans
-                    .filter((plan) => !plan.isDeleted)
-                    .map((plan) => ({
-                      id: plan.id,
-                      name: plan.subscriptionPlanName,
-                    }))}
-                  allowClear
-                  onChange={(value) =>
-                    setMembershipApplicability((current) =>
-                      current
-                        ? {
-                            ...current,
-                            sourceSubscriptionPlanId: value || undefined,
-                          }
-                        : current,
-                    )
-                  }
-                  disabled={
-                    readOnly ||
-                    !membershipApplicability?.sourceMembershipProductId
-                  }
-                />
-                <ReferenceSelect
-                  label="Upgrade To Membership Product"
+                  label="Adjustment Type"
                   required
-                  value={
-                    membershipApplicability?.targetMembershipProductId ?? ""
-                  }
-                  items={productItems}
-                  onChange={(value) =>
-                    setMembershipApplicability((current) => ({
-                      ...(current ?? {
-                        behavior: "UPGRADE",
-                        adjustmentType: "PRODUCT_PERCENT_OFF",
-                        active: true,
-                        customerApplicability: "ALL",
-                        membershipTargetMode: "ALL_MEMBERSHIP_PRODUCTS",
-                        selectedMembershipProductIds: [],
-                      }),
-                      targetMembershipProductId: value,
-                      targetSubscriptionPlanId: undefined,
+                  value={applicability?.adjustmentType ?? "PRODUCT_PERCENT_OFF"}
+                  items={[
+                    { id: "PRODUCT_PERCENT_OFF", name: "Percent off" },
+                    { id: "PRODUCT_FIXED_OFF", name: "Fixed amount off" },
+                    { id: "PRODUCT_SPECIAL_PRICE", name: "Special price" },
+                    { id: "PRODUCT_FREE", name: "Free product" },
+                  ]}
+                  onChange={(adjustmentType) =>
+                    setApplicability((current) => ({
+                      adjustmentType:
+                        adjustmentType as OfferCommerceConfiguration["adjustmentType"],
+                      active: true,
+                      productIds: current?.productIds ?? [],
+                      percentage:
+                        adjustmentType === "PRODUCT_PERCENT_OFF"
+                          ? current?.percentage
+                          : undefined,
+                      amountMinor: [
+                        "PRODUCT_FIXED_OFF",
+                        "PRODUCT_SPECIAL_PRICE",
+                      ].includes(adjustmentType)
+                        ? current?.amountMinor
+                        : undefined,
+                      currencyCode: [
+                        "PRODUCT_FIXED_OFF",
+                        "PRODUCT_SPECIAL_PRICE",
+                      ].includes(adjustmentType)
+                        ? (current?.currencyCode ?? defaultCurrency)
+                        : undefined,
                     }))
                   }
                   disabled={readOnly}
                 />
+                {applicability?.adjustmentType === "PRODUCT_PERCENT_OFF" ? (
+                  <Input
+                    label="Percentage"
+                    value={applicability.percentage?.toString() ?? ""}
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) =>
+                      setApplicability((current) =>
+                        current
+                          ? {
+                              ...current,
+                              percentage:
+                                Number(value.replace(/[^0-9.]/g, "")) ||
+                                undefined,
+                            }
+                          : current,
+                      )
+                    }
+                    editable={!readOnly}
+                  />
+                ) : null}
+                {["PRODUCT_FIXED_OFF", "PRODUCT_SPECIAL_PRICE"].includes(
+                  applicability?.adjustmentType ?? "",
+                ) ? (
+                  <Input
+                    label={
+                      applicability?.adjustmentType === "PRODUCT_SPECIAL_PRICE"
+                        ? `Special Price (${applicability?.currencyCode ?? defaultCurrency})`
+                        : `Amount Off (${applicability?.currencyCode ?? defaultCurrency})`
+                    }
+                    value={
+                      applicability?.amountMinor === undefined
+                        ? ""
+                        : (applicability.amountMinor / 100).toFixed(2)
+                    }
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) =>
+                      setApplicability((current) =>
+                        current
+                          ? {
+                              ...current,
+                              amountMinor: value
+                                ? Math.round(
+                                    Number(value.replace(/[^0-9.]/g, "")) * 100,
+                                  )
+                                : undefined,
+                              currencyCode:
+                                current.currencyCode ?? defaultCurrency,
+                            }
+                          : current,
+                      )
+                    }
+                    editable={!readOnly}
+                  />
+                ) : null}
+                <FieldLabel label="Org Products" required />
+                {readOnly ? (
+                  <Text variant="bodySmall" color="textMuted">
+                    {applicability && posProductNames(applicability).length
+                      ? posProductNames(applicability).join(", ")
+                      : "No Org Products configured"}
+                  </Text>
+                ) : (
+                  <>
+                    <Input
+                      label="Search products"
+                      value={productSearch}
+                      onChangeText={setProductSearch}
+                      placeholder="Search name or code"
+                    />
+                    <ScrollView style={styles.productList} nestedScrollEnabled>
+                      {filteredPosProducts.map((product) => (
+                        <Checkbox
+                          key={product.id}
+                          value={
+                            applicability?.productIds.includes(product.id) ??
+                            false
+                          }
+                          onValueChange={() =>
+                            setApplicability((current) => {
+                              const productIds = current?.productIds ?? [];
+                              return {
+                                adjustmentType:
+                                  current?.adjustmentType ??
+                                  "PRODUCT_PERCENT_OFF",
+                                active: current?.active ?? true,
+                                percentage: current?.percentage,
+                                amountMinor: current?.amountMinor,
+                                currencyCode: current?.currencyCode,
+                                productIds: productIds.includes(product.id)
+                                  ? productIds.filter((id) => id !== product.id)
+                                  : [...productIds, product.id],
+                              };
+                            })
+                          }
+                          label={product.name}
+                        />
+                      ))}
+                    </ScrollView>
+                  </>
+                )}
+              </>
+            ) : null}
+            {mode === "MEMBERSHIP_PRODUCT" ? (
+              <>
+                <Text variant="body" color="text">
+                  Membership Offer Type
+                </Text>
+                <View style={styles.modeRow}>
+                  <Pressable
+                    disabled={readOnly}
+                    onPress={() =>
+                      setMembershipApplicability((current) => ({
+                        ...(current ?? {
+                          adjustmentType: "PRODUCT_PERCENT_OFF",
+                          active: true,
+                          customerApplicability: "ALL",
+                          membershipTargetMode: "ALL_MEMBERSHIP_PRODUCTS",
+                          selectedMembershipProductIds: [],
+                        }),
+
+                        behavior: "PURCHASE_DISCOUNT",
+
+                        // Purchase Discount uses selectedMembershipProductIds,
+                        // not targetMembershipProductId.
+                        targetMembershipProductId: undefined,
+
+                        // Clear Upgrade-only source fields.
+                        sourceMembershipProductId: undefined,
+                        sourceSubscriptionPlanId: undefined,
+
+                        // Preserve the selected plan only if we were already
+                        // editing a Purchase Discount.
+                        targetSubscriptionPlanId:
+                          current?.behavior === "PURCHASE_DISCOUNT"
+                            ? current.targetSubscriptionPlanId
+                            : undefined,
+                      }))
+                    }
+                    style={[
+                      styles.modeButton,
+                      membershipApplicability?.behavior ===
+                        "PURCHASE_DISCOUNT" && styles.modeButtonSelected,
+                    ]}
+                  >
+                    <Text
+                      variant="body"
+                      color={
+                        membershipApplicability?.behavior ===
+                        "PURCHASE_DISCOUNT"
+                          ? "background"
+                          : "text"
+                      }
+                    >
+                      Purchase Discount
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    disabled={readOnly}
+                    onPress={() =>
+                      setMembershipApplicability((current) => ({
+                        ...(current ?? {
+                          adjustmentType: "PRODUCT_PERCENT_OFF",
+                          active: true,
+                          customerApplicability: "ALL",
+                          membershipTargetMode: "ALL_MEMBERSHIP_PRODUCTS",
+                          selectedMembershipProductIds: [],
+                        }),
+
+                        behavior: "UPGRADE",
+
+                        // Upgrade does not use Purchase Discount product targeting.
+                        membershipTargetMode: "ALL_MEMBERSHIP_PRODUCTS",
+                        selectedMembershipProductIds: [],
+
+                        // The target plan must be selected again after choosing
+                        // the Upgrade target Membership Product.
+                        targetSubscriptionPlanId: undefined,
+                      }))
+                    }
+                    style={[
+                      styles.modeButton,
+                      membershipApplicability?.behavior === "UPGRADE" &&
+                        styles.modeButtonSelected,
+                    ]}
+                  >
+                    <Text
+                      variant="body"
+                      color={
+                        membershipApplicability?.behavior === "UPGRADE"
+                          ? "background"
+                          : "text"
+                      }
+                    >
+                      Upgrade
+                    </Text>
+                  </Pressable>
+                </View>
+                {membershipApplicability?.behavior === "PURCHASE_DISCOUNT" ? (
+                  <>
+                    <Text variant="body" color="text">
+                      Customer Eligibility
+                    </Text>
+                    <View style={styles.modeRow}>
+                      {(
+                        [
+                          ["ALL", "Everyone"],
+                          ["NEW_CUSTOMER", "New Customers"],
+                          ["EXISTING_CUSTOMER", "Existing Customers"],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <Pressable
+                          key={value}
+                          disabled={readOnly}
+                          onPress={() =>
+                            setMembershipApplicability((current) =>
+                              current
+                                ? { ...current, customerApplicability: value }
+                                : current,
+                            )
+                          }
+                          style={[
+                            styles.modeButton,
+                            membershipApplicability.customerApplicability ===
+                              value && styles.modeButtonSelected,
+                          ]}
+                        >
+                          <Text
+                            variant="bodySmall"
+                            color={
+                              membershipApplicability.customerApplicability ===
+                              value
+                                ? "background"
+                                : "text"
+                            }
+                          >
+                            {label}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <Text variant="body" color="text">
+                      Membership Applies To
+                    </Text>
+                    <View style={styles.modeRow}>
+                      {(
+                        [
+                          [
+                            "ALL_MEMBERSHIP_PRODUCTS",
+                            "All Membership Products",
+                          ],
+                          [
+                            "SELECTED_MEMBERSHIP_PRODUCTS",
+                            "Selected Membership Products",
+                          ],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <Pressable
+                          key={value}
+                          disabled={readOnly}
+                          onPress={() =>
+                            setMembershipApplicability((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    membershipTargetMode: value,
+                                    selectedMembershipProductIds:
+                                      value === "ALL_MEMBERSHIP_PRODUCTS"
+                                        ? []
+                                        : current.selectedMembershipProductIds,
+                                    targetSubscriptionPlanId:
+                                      value === "ALL_MEMBERSHIP_PRODUCTS"
+                                        ? undefined
+                                        : current.targetSubscriptionPlanId,
+                                  }
+                                : current,
+                            )
+                          }
+                          style={[
+                            styles.modeButton,
+                            membershipApplicability.membershipTargetMode ===
+                              value && styles.modeButtonSelected,
+                          ]}
+                        >
+                          <Text
+                            variant="bodySmall"
+                            color={
+                              membershipApplicability.membershipTargetMode ===
+                              value
+                                ? "background"
+                                : "text"
+                            }
+                          >
+                            {label}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    {membershipApplicability.membershipTargetMode ===
+                    "SELECTED_MEMBERSHIP_PRODUCTS" ? (
+                      <ScrollView
+                        style={styles.productList}
+                        nestedScrollEnabled
+                      >
+                        {productItems.map((product) => (
+                          <Checkbox
+                            key={product.id}
+                            value={membershipApplicability.selectedMembershipProductIds.includes(
+                              product.id,
+                            )}
+                            onValueChange={() =>
+                              setMembershipApplicability((current) =>
+                                current
+                                  ? {
+                                      ...current,
+                                      selectedMembershipProductIds:
+                                        current.selectedMembershipProductIds.includes(
+                                          product.id,
+                                        )
+                                          ? current.selectedMembershipProductIds.filter(
+                                              (id) => id !== product.id,
+                                            )
+                                          : [
+                                              ...current.selectedMembershipProductIds,
+                                              product.id,
+                                            ],
+                                      targetSubscriptionPlanId: undefined,
+                                    }
+                                  : current,
+                              )
+                            }
+                            label={product.name}
+                            disabled={readOnly}
+                          />
+                        ))}
+                      </ScrollView>
+                    ) : null}
+                    {membershipApplicability.membershipTargetMode ===
+                      "SELECTED_MEMBERSHIP_PRODUCTS" &&
+                    membershipApplicability.selectedMembershipProductIds
+                      .length === 1 ? (
+                      <ReferenceSelect
+                        label="Target Subscription Plan"
+                        value={
+                          membershipApplicability.targetSubscriptionPlanId ?? ""
+                        }
+                        items={targetPlans
+                          .filter((plan) => !plan.isDeleted)
+                          .map((plan) => ({
+                            id: plan.id,
+                            name: plan.subscriptionPlanName,
+                          }))}
+                        allowClear
+                        onChange={(value) =>
+                          setMembershipApplicability((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  targetSubscriptionPlanId: value || undefined,
+                                }
+                              : current,
+                          )
+                        }
+                        disabled={readOnly}
+                      />
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <ReferenceSelect
+                      label="Current Membership Product"
+                      value={
+                        membershipApplicability?.sourceMembershipProductId ?? ""
+                      }
+                      items={productItems}
+                      allowClear
+                      onChange={(value) =>
+                        setMembershipApplicability((current) =>
+                          current
+                            ? {
+                                ...current,
+                                sourceMembershipProductId: value || undefined,
+                                sourceSubscriptionPlanId: undefined,
+                              }
+                            : current,
+                        )
+                      }
+                      disabled={readOnly}
+                    />
+                    <ReferenceSelect
+                      label="Current Subscription Plan"
+                      value={
+                        membershipApplicability?.sourceSubscriptionPlanId ?? ""
+                      }
+                      items={sourcePlans
+                        .filter((plan) => !plan.isDeleted)
+                        .map((plan) => ({
+                          id: plan.id,
+                          name: plan.subscriptionPlanName,
+                        }))}
+                      allowClear
+                      onChange={(value) =>
+                        setMembershipApplicability((current) =>
+                          current
+                            ? {
+                                ...current,
+                                sourceSubscriptionPlanId: value || undefined,
+                              }
+                            : current,
+                        )
+                      }
+                      disabled={
+                        readOnly ||
+                        !membershipApplicability?.sourceMembershipProductId
+                      }
+                    />
+                    <ReferenceSelect
+                      label="Upgrade To Membership Product"
+                      required
+                      value={
+                        membershipApplicability?.targetMembershipProductId ?? ""
+                      }
+                      items={productItems}
+                      onChange={(value) =>
+                        setMembershipApplicability((current) => ({
+                          ...(current ?? {
+                            behavior: "UPGRADE",
+                            adjustmentType: "PRODUCT_PERCENT_OFF",
+                            active: true,
+                            customerApplicability: "ALL",
+                            membershipTargetMode: "ALL_MEMBERSHIP_PRODUCTS",
+                            selectedMembershipProductIds: [],
+                          }),
+                          targetMembershipProductId: value,
+                          targetSubscriptionPlanId: undefined,
+                        }))
+                      }
+                      disabled={readOnly}
+                    />
+                    <ReferenceSelect
+                      label="Upgrade To Subscription Plan"
+                      value={
+                        membershipApplicability?.targetSubscriptionPlanId ?? ""
+                      }
+                      items={targetPlans
+                        .filter((plan) => !plan.isDeleted)
+                        .map((plan) => ({
+                          id: plan.id,
+                          name: plan.subscriptionPlanName,
+                        }))}
+                      allowClear
+                      onChange={(value) =>
+                        setMembershipApplicability((current) =>
+                          current
+                            ? {
+                                ...current,
+                                targetSubscriptionPlanId: value || undefined,
+                              }
+                            : current,
+                        )
+                      }
+                      disabled={
+                        readOnly ||
+                        !membershipApplicability?.targetMembershipProductId
+                      }
+                    />
+                  </>
+                )}
                 <ReferenceSelect
-                  label="Upgrade To Subscription Plan"
+                  label="Offer Adjustment"
+                  required
                   value={
-                    membershipApplicability?.targetSubscriptionPlanId ?? ""
+                    membershipApplicability?.adjustmentType ??
+                    "PRODUCT_PERCENT_OFF"
                   }
-                  items={targetPlans
-                    .filter((plan) => !plan.isDeleted)
-                    .map((plan) => ({
-                      id: plan.id,
-                      name: plan.subscriptionPlanName,
-                    }))}
-                  allowClear
+                  items={[
+                    { id: "PRODUCT_PERCENT_OFF", name: "Percentage Off" },
+                    { id: "PRODUCT_FIXED_OFF", name: "Fixed Amount Off" },
+                    { id: "PRODUCT_SPECIAL_PRICE", name: "Special Price" },
+                  ]}
                   onChange={(value) =>
                     setMembershipApplicability((current) =>
                       current
                         ? {
                             ...current,
-                            targetSubscriptionPlanId: value || undefined,
+                            adjustmentType:
+                              value as MembershipOfferApplicabilityWrite["adjustmentType"],
+                            percentage:
+                              value === "PRODUCT_PERCENT_OFF"
+                                ? current.percentage
+                                : undefined,
+                            amountMinor:
+                              value === "PRODUCT_PERCENT_OFF"
+                                ? undefined
+                                : current.amountMinor,
+                            currencyCode:
+                              value === "PRODUCT_PERCENT_OFF"
+                                ? undefined
+                                : (current.currencyCode ?? defaultCurrency),
                           }
                         : current,
                     )
                   }
-                  disabled={
-                    readOnly ||
-                    !membershipApplicability?.targetMembershipProductId
-                  }
+                  disabled={readOnly}
                 />
+                {membershipApplicability?.adjustmentType ===
+                "PRODUCT_PERCENT_OFF" ? (
+                  <Input
+                    label="Percentage"
+                    value={membershipApplicability.percentage?.toString() ?? ""}
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) =>
+                      setMembershipApplicability((current) =>
+                        current
+                          ? {
+                              ...current,
+                              percentage:
+                                Number(value.replace(/[^0-9.]/g, "")) ||
+                                undefined,
+                            }
+                          : current,
+                      )
+                    }
+                    editable={!readOnly}
+                  />
+                ) : null}
+                {["PRODUCT_FIXED_OFF", "PRODUCT_SPECIAL_PRICE"].includes(
+                  membershipApplicability?.adjustmentType ?? "",
+                ) ? (
+                  <Input
+                    label={
+                      membershipApplicability?.adjustmentType ===
+                      "PRODUCT_SPECIAL_PRICE"
+                        ? `Special Membership Price (${membershipApplicability?.currencyCode ?? defaultCurrency})`
+                        : `Fixed Discount Amount (${membershipApplicability?.currencyCode ?? defaultCurrency})`
+                    }
+                    value={
+                      membershipApplicability?.amountMinor == null
+                        ? ""
+                        : (
+                            (membershipApplicability?.amountMinor ?? 0) / 100
+                          ).toFixed(2)
+                    }
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) =>
+                      setMembershipApplicability((current) =>
+                        current
+                          ? {
+                              ...current,
+                              amountMinor: value
+                                ? Math.round(
+                                    Number(value.replace(/[^0-9.]/g, "")) * 100,
+                                  )
+                                : undefined,
+                              currencyCode:
+                                current.currencyCode ?? defaultCurrency,
+                            }
+                          : current,
+                      )
+                    }
+                    editable={!readOnly}
+                  />
+                ) : null}
+                {additionalPosCommerceConfiguration ? (
+                  <View style={styles.additionalApplicability}>
+                    <Text variant="body" color="text">
+                      Also applies to Org Products
+                    </Text>
+                    <Text variant="bodySmall" color="textMuted">
+                      {posProductNames(additionalPosCommerceConfiguration).join(
+                        ", ",
+                      )}
+                    </Text>
+                  </View>
+                ) : null}
               </>
-            )}
-            <ReferenceSelect
-              label="Offer Adjustment"
-              required
-              value={
-                membershipApplicability?.adjustmentType ?? "PRODUCT_PERCENT_OFF"
-              }
-              items={[
-                { id: "PRODUCT_PERCENT_OFF", name: "Percentage Off" },
-                { id: "PRODUCT_FIXED_OFF", name: "Fixed Amount Off" },
-                { id: "PRODUCT_SPECIAL_PRICE", name: "Special Price" },
-              ]}
-              onChange={(value) =>
-                setMembershipApplicability((current) =>
-                  current
-                    ? {
-                        ...current,
-                        adjustmentType:
-                          value as MembershipOfferApplicabilityWrite["adjustmentType"],
-                        percentage:
-                          value === "PRODUCT_PERCENT_OFF"
-                            ? current.percentage
-                            : undefined,
-                        amountMinor:
-                          value === "PRODUCT_PERCENT_OFF"
-                            ? undefined
-                            : current.amountMinor,
-                        currencyCode:
-                          value === "PRODUCT_PERCENT_OFF"
-                            ? undefined
-                            : (current.currencyCode ?? defaultCurrency),
-                      }
-                    : current,
-                )
-              }
-              disabled={readOnly}
-            />
-            {membershipApplicability?.adjustmentType ===
-            "PRODUCT_PERCENT_OFF" ? (
-              <Input
-                label="Percentage"
-                value={membershipApplicability.percentage?.toString() ?? ""}
-                keyboardType="decimal-pad"
-                onChangeText={(value) =>
-                  setMembershipApplicability((current) =>
-                    current
-                      ? {
-                          ...current,
-                          percentage:
-                            Number(value.replace(/[^0-9.]/g, "")) || undefined,
-                        }
-                      : current,
-                  )
-                }
-                editable={!readOnly}
-              />
             ) : null}
-            {["PRODUCT_FIXED_OFF", "PRODUCT_SPECIAL_PRICE"].includes(
-              membershipApplicability?.adjustmentType ?? "",
-            ) ? (
-              <Input
-                label={
-                  membershipApplicability?.adjustmentType ===
-                  "PRODUCT_SPECIAL_PRICE"
-                    ? `Special Membership Price (${membershipApplicability?.currencyCode ?? defaultCurrency})`
-                    : `Fixed Discount Amount (${membershipApplicability?.currencyCode ?? defaultCurrency})`
-                }
-                value={
-                  membershipApplicability?.amountMinor == null
-                    ? ""
-                    : (
-                        (membershipApplicability?.amountMinor ?? 0) / 100
-                      ).toFixed(2)
-                }
-                keyboardType="decimal-pad"
-                onChangeText={(value) =>
-                  setMembershipApplicability((current) =>
-                    current
-                      ? {
-                          ...current,
-                          amountMinor: value
-                            ? Math.round(
-                                Number(value.replace(/[^0-9.]/g, "")) * 100,
-                              )
-                            : undefined,
-                          currencyCode: current.currencyCode ?? defaultCurrency,
-                        }
-                      : current,
-                  )
-                }
-                editable={!readOnly}
-              />
+            {mode == null ? (
+              <Text variant="bodySmall" color="textMuted">
+                No active product applicability is configured for this offer.
+              </Text>
             ) : null}
-          </>
-        )}
-      </View>{" "}
+          </View>{" "}
+        </>
+      )}
       <View style={styles.section}>
         <Text variant="body" color="text">
           Call to Action
@@ -2119,6 +2463,12 @@ const styles = StyleSheet.create({
     borderColor: "#D1D5DB",
     borderRadius: 8,
     padding: 10,
+  },
+  additionalApplicability: {
+    gap: 4,
+  },
+  readOnlyField: {
+    gap: 4,
   },
   modeRow: { flexDirection: "row", gap: 10 },
   modeButton: {

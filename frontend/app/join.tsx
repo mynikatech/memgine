@@ -1411,10 +1411,11 @@ export default function JoinFlow() {
   ]);
 
   const payAndSubscribe = useCallback(async () => {
+    const customerUserId = session?.userId;
     if (
       !product ||
       !plan ||
-      (!isStaffSale && !session?.userId)
+      (!isStaffSale && !customerUserId)
     ) {
       return;
     }
@@ -1563,7 +1564,7 @@ export default function JoinFlow() {
 
         plan.id,
 
-        `${orgId}:${plan.id}:provider`,
+        `${orgId}:${customerUserId}:${plan.id}:provider`,
 
         product.id,
 
@@ -2397,7 +2398,7 @@ export default function JoinFlow() {
             }
           />
           {/* ADD THIS BLOCK HERE */}
-          {isStaffSale && explicitOfferId ? (
+          {explicitOfferId ? (
             <Card padding="md">
               <View style={{ gap: theme.spacing.sm }}>
                 <Text variant="bodyStrong" color="text">

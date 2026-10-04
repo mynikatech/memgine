@@ -54,5 +54,15 @@ data class OfferUsageRuleWriteDto(
 @Serializable
 data class OfferBundleDto(val offer: OfferDto, val rules: List<OfferUsageRuleDto>)
 
+/** Customer-facing union of the existing redemption offer and membership-purchase offer views. */
+@Serializable
+data class CustomerCombinedOfferDto(
+    val offerId: String,
+    val offerType: String,
+    val displayName: String,
+    val regularOffer: OfferDto? = null,
+    val applicableMembershipProductIds: List<String> = emptyList(),
+)
+
 @Serializable
 data class DeleteOfferDto(val offerId: String, val deleted: Boolean)

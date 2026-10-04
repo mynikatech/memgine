@@ -31,6 +31,13 @@ data class CustomerRedemptionTransactionStatusRow(
     var completedAt: String? = null,
 )
 
+data class CustomerMembershipPurchaseOfferRow(
+    var offerId: String = "",
+    var displayName: String = "",
+    var membershipProductId: String = "",
+    var targetSubscriptionPlanId: String? = null,
+)
+
 interface CustomerSql {
     @SqlQuery("SELECT * FROM get_customer_discoverable_organizations()")
     fun discoverableOrganizations(): List<CustomerDiscoverableOrganizationDto>
@@ -88,6 +95,13 @@ interface CustomerSql {
     @SqlQuery("SELECT * FROM get_customer_offers(:organizationId, :userId)")
     fun offers(@Bind("organizationId") organizationId: String,
                @Bind("userId") userId: String): List<OfferDto>
+
+    @SqlQuery("SELECT * FROM get_customer_membership_purchase_offer_product_targets(:organizationId, :userId)")
+    @RegisterBeanMapper(CustomerMembershipPurchaseOfferRow::class)
+    fun membershipPurchaseOffers(
+        @Bind("organizationId") organizationId: String,
+        @Bind("userId") userId: String,
+    ): List<CustomerMembershipPurchaseOfferRow>
 
     @SqlQuery("SELECT id FROM get_customer_join_membership_ids(:organizationId)")
     fun joinMembershipIds(@Bind("organizationId") organizationId: String): List<String>
