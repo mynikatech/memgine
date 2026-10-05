@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "memgine",
+    "name": "Memgine",
     "slug": "frontend",
     "version": "1.0.0",
     "owner": "mynikatech",
     "orientation": "portrait",
     "icon": "./assets/images/memgine-icon.png",
-    "scheme": "frontend",
+    "scheme": "memgine",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -18,7 +18,7 @@
     },
     "android": {
       "edgeToEdgeEnabled": true,
-      "package": "com.emergent.memgineroutingcore.njtuu4"
+      "package": "com.mynikatech.memgine"
     },
     "web": {
       "bundler": "metro",
