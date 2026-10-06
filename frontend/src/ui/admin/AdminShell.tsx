@@ -172,7 +172,13 @@ export function AdminShell({ title, subtitle, icon, items }: Props) {
       {isWide ? (
         <View style={styles.sidebar} testID="admin-sidebar">
           <Brand />
-          <Nav />
+          <ScrollView
+            style={styles.navScroller}
+            contentContainerStyle={styles.navScrollContent}
+            showsVerticalScrollIndicator
+          >
+            <Nav />
+          </ScrollView>
           <View style={styles.accountActions}>
             <Pressable
               onPress={() => router.push("/profile" as never)}
@@ -286,6 +292,8 @@ const styles = StyleSheet.create({
   brandName: { fontSize: 17, fontWeight: "700", color: COLORS.text },
   brandSub: { fontSize: 12, color: COLORS.textMuted },
   nav: { gap: 4 },
+  navScroller: { flex: 1, minHeight: 0 },
+  navScrollContent: { paddingBottom: SPACING.sm },
   navRow: { flexDirection: "row", gap: 8, paddingBottom: 4 },
   navItem: {
     flexDirection: "row",

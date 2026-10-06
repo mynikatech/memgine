@@ -1,6 +1,7 @@
 package com.mynikatech.memgine.component.organization
 
 import com.mynikatech.memgine.exception.BadRequestException
+import com.mynikatech.memgine.exception.ConflictException
 import com.mynikatech.memgine.net.dto.CreateOrganizationRequestDto
 import com.mynikatech.memgine.net.dto.CreateOrganizationResponseDto
 import com.mynikatech.memgine.net.dto.OrganizationLifecycleResponseDto
@@ -34,10 +35,7 @@ class OrganizationService(
                 actorUserId
             )
         } catch (cause: UnableToExecuteStatementException) {
-            val databaseValidationError = findDatabaseValidationError(cause)
-                ?: throw cause
-
-            throw BadRequestException(databaseValidationError)
+            throw mapDatabaseError(cause) ?: cause
         }
     }
 
@@ -171,20 +169,42 @@ class OrganizationService(
         if (organizationId.length > 64) throw BadRequestException("Organization id must not exceed 64 characters")
     }
 
-    private fun findDatabaseValidationError(cause: Throwable): String? {
-        var current: Throwable? = cause
+    private fun mapDatabaseError(cause: Throwable): RuntimeException? {
+    var current: Throwable? = cause
 
-        while (current != null) {
-            if (current is PSQLException && current.sqlState == "22023") {
-                return current.serverErrorMessage?.message
-                    ?: "The organization request contains invalid data"
+    while (current != null) {
+        if (current is PSQLException) {
+            val sqlState = current.sqlState
+            val constraint = current.serverErrorMessage?.constraint
+
+            if (sqlState == "23505") {
+                return when (constraint) {
+                    "organization_primary_email_key" ->
+                        ConflictException(
+                            "An organization with this primary email already exists.",
+                            "ORGANIZATION_EMAIL_EXISTS"
+                        )
+
+                    else ->
+                        ConflictException(
+                            "An organization with the same information already exists."
+                        )
+                }
             }
 
-            current = current.cause
+            if (sqlState == "22023") {
+                return BadRequestException(
+                    current.serverErrorMessage?.message
+                        ?: "The organization request contains invalid data"
+                )
+            }
         }
 
-        return null
+        current = current.cause
     }
+
+    return null
+}
 
     private companion object {
         val EMAIL_PATTERN = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")

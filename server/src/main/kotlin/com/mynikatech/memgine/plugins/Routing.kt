@@ -3,6 +3,8 @@ package com.mynikatech.memgine.plugins
 import com.mynikatech.memgine.component.asset.BrandingAssetService
 import com.mynikatech.memgine.component.benefit.BenefitService
 import com.mynikatech.memgine.component.benefit.benefitRoutes
+import com.mynikatech.memgine.component.product.OrganizationProductService
+import com.mynikatech.memgine.component.product.organizationProductRoutes
 import com.mynikatech.memgine.component.membership.MembershipProductService
 import com.mynikatech.memgine.component.membership.membershipProductRoutes
 import com.mynikatech.memgine.component.offer.OfferService
@@ -158,6 +160,7 @@ fun Application.configureRouting(
             database.jdbi, phoneNormalizer
         )
     val benefitService = BenefitService(database.jdbi)
+    val organizationProductService = OrganizationProductService(database.jdbi)
     val membershipProductService = MembershipProductService(database.jdbi)
     val offerService = OfferService(database.jdbi)
     val subscriptionService = SubscriptionService(database.jdbi.onDemand(SubscriptionSql::class.java))
@@ -251,6 +254,7 @@ fun Application.configureRouting(
             // Batch 2B
             staffRoutes(staffService)
             benefitRoutes(benefitService)
+            organizationProductRoutes(organizationProductService)
             membershipProductRoutes(membershipProductService)
             offerRoutes(offerService)
             subscriptionRoutes(subscriptionService)

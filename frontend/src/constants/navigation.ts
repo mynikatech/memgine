@@ -77,6 +77,9 @@ export const APP_ROUTES = {
     usersAccess: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/users-access`,
 
+    products: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/products`,
+
     benefits: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/benefits`,
 
@@ -236,6 +239,11 @@ export const createOrgAdminRoutes = (organizationId: string): AdminRoute[] => [
     title: "Users & Access",
     href: APP_ROUTES.orgAdmin.usersAccess(organizationId),
     icon: "people-circle-outline",
+  },
+  {
+    title: "Products",
+    href: APP_ROUTES.orgAdmin.products(organizationId),
+    icon: "cube-outline",
   },
   {
     title: "Benefits",

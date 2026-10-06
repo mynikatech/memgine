@@ -232,30 +232,46 @@ export async function onboardOrganization(
     template,
   );
 
-  const result = await apis.organization.create({
-    organization: materialized.organization,
-    account: materialized.account,
-    details: materialized.details,
-    branding: materialized.branding,
-  }, {
-    firstName: ownerFirstName,
-    lastName: ownerLastName,
-    email: ownerEmail,
-    phone: {
-      countryId: ownerPhoneCountryId,
-      callingCode: ownerPhoneCallingCode,
-      number: ownerPhoneNumber,
+  const result = await apis.organization.create(
+    {
+      organization: materialized.organization,
+      account: materialized.account,
+      details: materialized.details,
+      branding: materialized.branding,
     },
-  });
+    {
+      firstName: ownerFirstName,
+      lastName: ownerLastName,
+      email: ownerEmail,
+      phone: {
+        countryId: ownerPhoneCountryId,
+        callingCode: ownerPhoneCallingCode,
+        number: ownerPhoneNumber,
+      },
+    },
+  );
 
   if (!result.success) {
     throw new Error(result.error.message);
   }
 
+  const canonicalOrganization = result.data;
+
+  const canonicalAccount = {
+    ...materialized.account,
+    organizationId: canonicalOrganization.id,
+  };
+
+  const canonicalContext = {
+    ...materialized.context,
+    organization: canonicalOrganization,
+    account: canonicalAccount,
+  };
+
   return {
-    organization: materialized.organization,
-    account: materialized.account,
-    context: materialized.context,
+    organization: canonicalOrganization,
+    account: canonicalAccount,
+    context: canonicalContext,
   };
 }
 

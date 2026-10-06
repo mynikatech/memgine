@@ -1,5 +1,5 @@
 import { httpClient } from "./http-client";
-import type { ApiResult } from "./result";
+import { apiSuccess, type ApiResult } from "./result";
 
 export type AdministrativeRoleCode = "BUSINESS_OWNER" | "ORG_ADMIN";
 
@@ -77,14 +77,20 @@ export class OrganizationMaintenanceApi {
     );
   }
 
-  lookupByPhone(
+  async lookupByPhone(
     organizationId: string,
     phone: string,
   ): Promise<ApiResult<ExistingOrganizationUserLookup | null>> {
-    return httpClient.get(
+    const result = await httpClient.get<ExistingOrganizationUserLookup>(
       `/api/v1/platform/organizations/${encodeURIComponent(
         organizationId,
       )}/administrative-users/lookup?phone=${encodeURIComponent(phone)}`,
     );
+
+    if (!result.success && result.error.code === "EMPTY_SERVER_RESPONSE") {
+      return apiSuccess(null);
+    }
+
+    return result;
   }
 }
