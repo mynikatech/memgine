@@ -69,6 +69,16 @@ fun Route.commerceRoutes(service: CommerceService) {
             get("/product-mappings") {
                 call.respond(ApiResponse.success(service.mappings(orgId(call), call.authenticatedPrincipal().userId), call.callId))
             }
+            delete("/product-mappings/{mappingId}") {
+                call.respond(ApiResponse.success(
+                    service.deactivateMapping(
+                        orgId(call),
+                        required(call.parameters["mappingId"]),
+                        call.authenticatedPrincipal().userId
+                    ),
+                    call.callId
+                ))
+            }
             post("/product-mappings") {
                 call.respond(HttpStatusCode.Created, ApiResponse.success(
                     service.saveMapping(orgId(call), call.receive<CommerceProductMappingWriteDto>(), call.authenticatedPrincipal().userId), call.callId))

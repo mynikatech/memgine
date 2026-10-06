@@ -123,6 +123,14 @@ class CommerceService(
         sql.mappings(organizationId, actorUserId).map { mappingDto(it, snapshots) }
     }
 
+    fun deactivateMapping(
+        organizationId: String,
+        mappingId: String,
+        actorUserId: String
+    ): Boolean = translate {
+        sql.deactivateMapping(validId(organizationId), validId(mappingId), actorUserId)
+    }
+
     fun saveSnapshot(
         organizationId: String,
         request: CommerceProductSnapshotWriteDto,

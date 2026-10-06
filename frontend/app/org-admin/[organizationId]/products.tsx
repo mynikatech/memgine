@@ -11,6 +11,7 @@ import {
   organizationProductApi,
   type OrganizationProduct,
   type OrganizationProductCatalog,
+  type OrganizationCommerceProductMapping,
   type ProductImportPreview,
   type ProductImportRow,
 } from "@/src/data/api/organization-product-api";
@@ -50,6 +51,7 @@ export default function OrgAdminProducts() {
   const [catalogs, setCatalogs] = useState<OrganizationProductCatalog[]>([]);
   const [integrations, setIntegrations] = useState<IntegrationConfiguration[]>([]);
   const [products, setProducts] = useState<OrganizationProduct[]>([]);
+  const [mappings, setMappings] = useState<OrganizationCommerceProductMapping[]>([]);
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState<any>(emptyProduct);
@@ -62,16 +64,22 @@ export default function OrgAdminProducts() {
     useState<OrganizationProductCatalog | null>(null);
   const [catalog, setCatalog] = useState<any>(emptyCatalog);
   const [savingCatalog, setSavingCatalog] = useState(false);
+  const [mappingProduct, setMappingProduct] =
+    useState<OrganizationProduct | null>(null);
+  const [mappingToDeactivate, setMappingToDeactivate] =
+    useState<OrganizationCommerceProductMapping | null>(null);
+  const [deactivatingMapping, setDeactivatingMapping] = useState(false);
   const [importRows, setImportRows] = useState<ProductImportRow[]>([]);
   const [preview, setPreview] = useState<ProductImportPreview[]>([]);
   const [fileName, setFileName] = useState("");
   const load = useCallback(async () => {
     if (!org) return;
     setLoading(true);
-    const [c, p, i] = await Promise.all([
+    const [c, p, i, m] = await Promise.all([
       organizationProductApi.catalogs(org),
       organizationProductApi.products(org),
       apis.integrationConfiguration.list(org),
+      organizationProductApi.mappings(org),
     ]);
     if (!c.success) setError(c.error?.message);
     else {
@@ -82,6 +90,8 @@ export default function OrgAdminProducts() {
     else setProducts(p.data);
     if (!i.success) setError(i.error?.message);
     else setIntegrations(i.data);
+    if (!m.success) setError(m.error?.message);
+    else setMappings(m.data);
     setLoading(false);
   }, [org]);
   useFocusEffect(
@@ -90,6 +100,52 @@ export default function OrgAdminProducts() {
     }, [load]),
   );
   const activeCatalog = catalogs.find((c) => c.productCatalogId === catalogId);
+  const mappingHealth = (item: OrganizationProduct) => {
+    if (!item.integrationConfigurationId) return { label: "—" };
+    const activeCount = mappings.filter(
+      (mapping) =>
+        mapping.active &&
+        mapping.productId === item.productId &&
+        mapping.integrationConfigurationId === item.integrationConfigurationId &&
+        !mapping.storeId,
+    ).length;
+    if (activeCount === 1) return { label: "Mapped" };
+    return {
+      label: "Needs attention",
+      detail:
+        activeCount === 0 ? "No active mapping" : `${activeCount} active mappings`,
+    };
+  };
+  const activeMappingsForProduct = (item: OrganizationProduct) =>
+    mappings.filter(
+      (mapping) =>
+        mapping.active &&
+        mapping.productId === item.productId &&
+        mapping.integrationConfigurationId === item.integrationConfigurationId,
+    );
+  const deactivateMapping = async () => {
+    if (!mappingToDeactivate) return;
+    setDeactivatingMapping(true);
+    const result = await organizationProductApi.deactivateMapping(
+      org,
+      mappingToDeactivate.mappingId,
+    );
+    setDeactivatingMapping(false);
+    if (!result.success) {
+      setError(result.error?.message);
+      return;
+    }
+    setMappingToDeactivate(null);
+    if (
+      mappingProduct &&
+      activeMappingsForProduct(mappingProduct).filter(
+        (mapping) => mapping.mappingId !== mappingToDeactivate.mappingId,
+      ).length === 0
+    ) {
+      setMappingProduct(null);
+    }
+    await load();
+  };
   const saveCatalog = async () => {
     if (!catalog.catalogName?.trim()) {
       setError("Catalog Name is required.");
@@ -361,6 +417,38 @@ export default function OrgAdminProducts() {
             title: "External ID",
             render: (p) => <Text>{p.externalProductIds ?? "—"}</Text>,
           },
+          {
+            key: "mapping",
+            title: "Mapping",
+            render: (p) => {
+              const health = mappingHealth(p);
+              const activeMappings = activeMappingsForProduct(p);
+              return (
+                <View>
+                  {activeMappings.length ? (
+                    <Pressable onPress={() => setMappingProduct(p)}>
+                      <Text
+                        variant={health.label === "Needs attention" ? "bodyStrong" : "body"}
+                        color={health.label === "Needs attention" ? "danger" : "text"}
+                      >
+                        {health.label}
+                      </Text>
+                    </Pressable>
+                  ) : (
+                    <Text
+                      variant={health.label === "Needs attention" ? "bodyStrong" : "body"}
+                      color={health.label === "Needs attention" ? "danger" : "text"}
+                    >
+                      {health.label}
+                    </Text>
+                  )}
+                  {health.detail ? (
+                    <Text color="textMuted">{health.detail}</Text>
+                  ) : null}
+                </View>
+              );
+            },
+          },
         ]}
         actions={[
           {
@@ -379,6 +467,76 @@ export default function OrgAdminProducts() {
         ]}
         emptyMessage="No products yet. Add products manually or import an Excel workbook."
       />
+      <Modal
+        visible={mappingProduct !== null}
+        onClose={() => setMappingProduct(null)}
+        title="Product mappings"
+        scrollable
+      >
+        <View style={{ gap: theme.spacing.md }}>
+          {mappingProduct ? (
+            <>
+              <View style={{ gap: theme.spacing.xs }}>
+                <Text variant="bodyStrong">{mappingProduct.productName}</Text>
+                <Text color="textMuted">
+                  {mappingProduct.integrationName ?? "Integration"}
+                </Text>
+              </View>
+              {activeMappingsForProduct(mappingProduct).map((mapping) => (
+                <View
+                  key={mapping.mappingId}
+                  style={{
+                    gap: theme.spacing.xs,
+                    padding: theme.spacing.md,
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                    borderRadius: theme.radius.md,
+                  }}
+                >
+                  <Text variant="bodyStrong">{mapping.externalProductId}</Text>
+                  {mapping.externalSku ? (
+                    <Text color="textMuted">SKU: {mapping.externalSku}</Text>
+                  ) : null}
+                  {mapping.storeId ? (
+                    <Text color="textMuted">Store: {mapping.storeId}</Text>
+                  ) : null}
+                  <Text color="textMuted">Active</Text>
+                  <Button
+                    label="Deactivate"
+                    size="sm"
+                    variant="outline"
+                    onPress={() => setMappingToDeactivate(mapping)}
+                  />
+                </View>
+              ))}
+            </>
+          ) : null}
+        </View>
+      </Modal>
+      <Modal
+        visible={mappingToDeactivate !== null}
+        onClose={() => setMappingToDeactivate(null)}
+        title="Deactivate mapping?"
+      >
+        <View style={{ gap: theme.spacing.md }}>
+          <Text>
+            Deactivate {mappingToDeactivate?.externalProductId}? This keeps the
+            mapping history but removes it from active use.
+          </Text>
+          <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+            <Button
+              label="Cancel"
+              variant="outline"
+              onPress={() => setMappingToDeactivate(null)}
+            />
+            <Button
+              label={deactivatingMapping ? "Deactivating…" : "Deactivate"}
+              disabled={deactivatingMapping}
+              onPress={() => void deactivateMapping()}
+            />
+          </View>
+        </View>
+      </Modal>
       <Modal
         visible={showCatalog}
         onClose={() => setShowCatalog(false)}

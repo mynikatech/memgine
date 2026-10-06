@@ -530,6 +530,47 @@ BEGIN
 END;
 $function$;
 
+CREATE OR REPLACE FUNCTION "${schemaName}".deactivate_commerce_product_mapping(
+    p_organization_id varchar,
+    p_commerce_product_mapping_id varchar,
+    p_actor_user_id varchar
+) RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, "${schemaName}"
+AS $function$
+DECLARE
+    v_actor_organization_user_id varchar(64);
+BEGIN
+    v_actor_organization_user_id := organization_product_actor(
+        p_organization_id,
+        p_actor_user_id
+    );
+
+    PERFORM 1
+      FROM commerce_product_mappings
+     WHERE commerce_product_mapping_id = p_commerce_product_mapping_id
+       AND organization_id = p_organization_id
+       AND NOT is_deleted
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Commerce product mapping not found'
+            USING ERRCODE = '23503';
+    END IF;
+
+    UPDATE commerce_product_mappings
+       SET is_active = false,
+           is_deleted = true,
+           updated_at = CURRENT_TIMESTAMP,
+           updated_by = v_actor_organization_user_id,
+           version_no = version_no + 1
+     WHERE commerce_product_mapping_id = p_commerce_product_mapping_id
+       AND organization_id = p_organization_id
+       AND NOT is_deleted;
+
+    RETURN true;
+END;
+$function$;
+
 REVOKE ALL ON TABLE "${schemaName}".product_import_batch FROM PUBLIC;
-REVOKE ALL ON FUNCTION "${schemaName}".organization_product_actor(varchar,varchar), "${schemaName}".get_organization_product_catalogs_admin(varchar,varchar), "${schemaName}".save_organization_product_catalog(varchar,varchar,varchar,varchar,varchar,varchar,boolean,integer,varchar), "${schemaName}".get_organization_products_admin(varchar,varchar,varchar), "${schemaName}".save_organization_product(varchar,varchar,varchar,varchar,varchar,varchar,varchar,varchar,varchar,varchar,bigint,varchar,boolean,varchar,integer,varchar), "${schemaName}".preview_organization_product_import(varchar,varchar,jsonb,varchar), "${schemaName}".commit_organization_product_import(varchar,varchar,varchar,jsonb,varchar) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION "${schemaName}".get_organization_product_catalogs_admin(varchar,varchar), "${schemaName}".save_organization_product_catalog(varchar,varchar,varchar,varchar,varchar,varchar,boolean,integer,varchar), "${schemaName}".get_organization_products_admin(varchar,varchar,varchar), "${schemaName}".save_organization_product(varchar,varchar,varchar,varchar,varchar,varchar,varchar,varchar,varchar,varchar,bigint,varchar,boolean,varchar,integer,varchar), "${schemaName}".preview_organization_product_import(varchar,varchar,jsonb,varchar), "${schemaName}".commit_organization_product_import(varchar,varchar,varchar,jsonb,varchar) TO "${appRole}";
+REVOKE ALL ON FUNCTION "${schemaName}".organization_product_actor(varchar,varchar), "${schemaName}".get_organization_product_catalogs_admin(varchar,varchar), "${schemaName}".save_organization_product_catalog(varchar,varchar,varchar,varchar,varchar,varchar,boolean,integer,varchar), "${schemaName}".get_organization_products_admin(varchar,varchar,varchar), "${schemaName}".save_organization_product(varchar,varchar,varchar,varchar,varchar,varchar,varchar,varchar,varchar,varchar,bigint,varchar,boolean,varchar,integer,varchar), "${schemaName}".preview_organization_product_import(varchar,varchar,jsonb,varchar), "${schemaName}".commit_organization_product_import(varchar,varchar,varchar,jsonb,varchar), "${schemaName}".deactivate_commerce_product_mapping(varchar,varchar,varchar) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION "${schemaName}".get_organization_product_catalogs_admin(varchar,varchar), "${schemaName}".save_organization_product_catalog(varchar,varchar,varchar,varchar,varchar,varchar,boolean,integer,varchar), "${schemaName}".get_organization_products_admin(varchar,varchar,varchar), "${schemaName}".save_organization_product(varchar,varchar,varchar,varchar,varchar,varchar,varchar,varchar,varchar,varchar,bigint,varchar,boolean,varchar,integer,varchar), "${schemaName}".preview_organization_product_import(varchar,varchar,jsonb,varchar), "${schemaName}".commit_organization_product_import(varchar,varchar,varchar,jsonb,varchar), "${schemaName}".deactivate_commerce_product_mapping(varchar,varchar,varchar) TO "${appRole}";
