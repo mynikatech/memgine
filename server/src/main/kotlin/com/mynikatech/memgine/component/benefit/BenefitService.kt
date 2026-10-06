@@ -16,7 +16,16 @@ class BenefitService(private val jdbi: Jdbi) {
 
     fun products(organizationId: String): List<CatalogProductDto> {
         validateId(organizationId)
-        return jdbi.onDemand(BenefitSql::class.java).products(organizationId)
+
+        val result =
+            jdbi.onDemand(BenefitSql::class.java)
+                .products(organizationId)
+
+        println(
+            "CATALOG_PRODUCTS org=$organizationId count=${result.size}"
+        )
+
+        return result
     }
 
     fun list(organizationId: String): List<BenefitDto> {

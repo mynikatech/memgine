@@ -12,7 +12,7 @@ import {
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 
-import { useBusiness, useTheme } from "@/src/providers";
+import { useActiveBusinessControl, useTheme } from "@/src/providers";
 
 import { Checkbox, Input, PhoneField, ReferenceSelect, Text } from "@/src/ui";
 
@@ -20,7 +20,7 @@ import type { PhoneValue } from "@/src/ui/PhoneField";
 
 export default function OrganizationNew() {
   const theme = useTheme();
-  const { setActiveBusiness } = useBusiness();
+  const { setActiveBusiness } = useActiveBusinessControl();
 
   const { organizationId } = useLocalSearchParams<{
     organizationId?: string;
@@ -687,7 +687,9 @@ export default function OrganizationNew() {
                 Business Owner
               </Text>
               <Text variant="bodySmall" color="textMuted">
-                Enter the owner identity separately from the organization contact details. An existing user with the same phone will be reused without replacing their profile.
+                Enter the owner identity separately from the organization
+                contact details. An existing user with the same phone will be
+                reused without replacing their profile.
               </Text>
             </View>
 

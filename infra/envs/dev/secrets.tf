@@ -27,3 +27,9 @@ resource "aws_secretsmanager_secret" "otp_pepper" {
   description = "Memgine DEV OTP pepper"
   tags        = local.lambda_tags
 }
+
+resource "aws_secretsmanager_secret" "poynt_cloud_app" {
+  name        = "memgine/dev/poynt/cloud-app"
+  description = "Poynt Cloud Application private key for Memgine DEV"
+  tags        = local.lambda_tags
+}

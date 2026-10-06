@@ -18,7 +18,7 @@ import {
 
 import { resetLocalOrganizations } from "@/src/data/persistence/local/reset";
 
-import { useBusiness } from "@/src/providers";
+import { useActiveBusinessControl, useOptionalBusiness } from "@/src/providers";
 
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
 
@@ -35,8 +35,9 @@ export default function PlatformOrganizations() {
    *
    * It does NOT control the Platform Admin theme.
    */
-  const { organization: currentOrganization, setActiveBusiness } =
-    useBusiness();
+  const business = useOptionalBusiness();
+  const currentOrganization = business?.organization ?? null;
+  const { setActiveBusiness } = useActiveBusinessControl();
 
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [organizationTypes, setOrganizationTypes] = useState<
@@ -285,7 +286,7 @@ export default function PlatformOrganizations() {
        * If the deleted organization is currently active, move the
        * application context back to the default organization.
        */
-      if (organization.id === currentOrganization.id) {
+      if (organization.id === currentOrganization?.id) {
         setActiveBusiness(DEFAULT_ACTIVE_ORG_ID);
       }
 
@@ -303,7 +304,7 @@ export default function PlatformOrganizations() {
     }
   }, [
     busyOrganizationId,
-    currentOrganization.id,
+    currentOrganization?.id,
     loadOrganizations,
     pendingAction,
     setActiveBusiness,
@@ -319,18 +320,18 @@ export default function PlatformOrganizations() {
    */
   const displayedCurrentOrganization =
     organizations.find(
-      (organization) => organization.id === currentOrganization.id,
+      (organization) => organization.id === currentOrganization?.id,
     ) ?? currentOrganization;
 
   /*
    * The active organization is deliberately shown first.
    */
   const sortedOrganizations = [...organizations].sort((a, b) => {
-    if (a.id === currentOrganization.id) {
+    if (a.id === currentOrganization?.id) {
       return -1;
     }
 
-    if (b.id === currentOrganization.id) {
+    if (b.id === currentOrganization?.id) {
       return 1;
     }
 
@@ -338,7 +339,7 @@ export default function PlatformOrganizations() {
   });
 
   const otherOrganizations = sortedOrganizations.filter(
-    (organization) => organization.id !== currentOrganization.id,
+    (organization) => organization.id !== currentOrganization?.id,
   );
 
   return (
@@ -481,24 +482,26 @@ export default function PlatformOrganizations() {
               </Text>
             </View>
 
-            <OrganizationCard
-              organization={displayedCurrentOrganization}
-              organizationStatus={getOrganizationStatus(
-                displayedCurrentOrganization,
-              )}
-              isCurrent
-              busy={busyOrganizationId === displayedCurrentOrganization.id}
-              organizationTypeName={getOrganizationTypeName(
-                displayedCurrentOrganization,
-              )}
-              onOpen={() => openOrganization(displayedCurrentOrganization.id)}
-              onEdit={() => editOrganization(displayedCurrentOrganization.id)}
-              onActivate={() => requestActivate(displayedCurrentOrganization)}
-              onDeactivate={() =>
-                requestDeactivate(displayedCurrentOrganization)
-              }
-              onDelete={() => requestDelete(displayedCurrentOrganization)}
-            />
+            {displayedCurrentOrganization ? (
+              <OrganizationCard
+                organization={displayedCurrentOrganization}
+                organizationStatus={getOrganizationStatus(
+                  displayedCurrentOrganization,
+                )}
+                isCurrent
+                busy={busyOrganizationId === displayedCurrentOrganization.id}
+                organizationTypeName={getOrganizationTypeName(
+                  displayedCurrentOrganization,
+                )}
+                onOpen={() => openOrganization(displayedCurrentOrganization.id)}
+                onEdit={() => editOrganization(displayedCurrentOrganization.id)}
+                onActivate={() => requestActivate(displayedCurrentOrganization)}
+                onDeactivate={() =>
+                  requestDeactivate(displayedCurrentOrganization)
+                }
+                onDelete={() => requestDelete(displayedCurrentOrganization)}
+              />
+            ) : null}
           </View>
 
           <View style={styles.section}>

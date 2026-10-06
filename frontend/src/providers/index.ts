@@ -2,6 +2,7 @@ export {
   BusinessProvider,
   BusinessPreviewScope,
   BusinessThemeScope,
+  useOptionalBusiness,
   useBusiness,
   useCan,
   useTheme,

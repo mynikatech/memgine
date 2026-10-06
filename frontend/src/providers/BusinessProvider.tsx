@@ -106,9 +106,11 @@ export function BusinessProvider({
     session?.posContext?.organizationId ??
     session?.access.find((context) => context.organizationId)?.organizationId ??
     null;
+
   const [activeOrgId, setActiveOrgId] = useState<ID | null>(
     organizationId ?? null,
   );
+
   const activeBusinessControl = useMemo<ActiveBusinessControlValue>(
     () => ({
       setActiveBusiness: (nextOrganizationId) => {
@@ -125,25 +127,12 @@ export function BusinessProvider({
     [],
   );
 
-  const hasBusinessAccess =
-    session?.access.some((context) =>
-      context.capabilities.some((capability) =>
-        [
-          "PLATFORM_ADMIN_ACCESS",
-          "BUSINESS_OWNER_ACCESS",
-          "ORG_ADMIN_ACCESS",
-          "COUNTER_ACCESS",
-        ].includes(capability),
-      ),
-    ) ?? false;
-
-  const platformCustomerWithoutBusinessContext =
+  const authenticatedWithoutOrganizationContext =
     !sessionLoading &&
     !!session &&
     !organizationId &&
     !activeOrgId &&
-    !sessionOrganizationId &&
-    !hasBusinessAccess;
+    !sessionOrganizationId;
 
   const [resolvedContext, setResolvedContext] =
     useState<BusinessContext | null>(null);
@@ -369,7 +358,7 @@ export function BusinessProvider({
     return <>{children}</>;
   }
 
-  if (platformCustomerWithoutBusinessContext) {
+  if (authenticatedWithoutOrganizationContext) {
     return (
       <ActiveBusinessControlCtx.Provider value={activeBusinessControl}>
         {children}
@@ -384,6 +373,7 @@ export function BusinessProvider({
       </View>
     );
   }
+
   return (
     <ActiveBusinessControlCtx.Provider value={activeBusinessControl}>
       <BusinessCtx.Provider value={value}>{children}</BusinessCtx.Provider>
