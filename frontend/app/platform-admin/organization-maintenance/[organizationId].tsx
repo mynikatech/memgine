@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
+import { addDays, format, parseISO } from "date-fns";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 import {
@@ -12,6 +13,7 @@ import {
 import { useTheme } from "@/src/providers";
 import {
   Button,
+  DateInput,
   Input,
   PhoneField,
   ReferenceSelect,
@@ -47,8 +49,50 @@ const blankDraft = (roleCode: AdministrativeRoleCode): Draft => ({
   effectiveTo: "",
 });
 
-const dateTimeInput = (value?: string) =>
-  value ? value.replace(" ", "T").replace(/\.\d+$/, "") : "";
+const dateInputValue = (value?: string): string => {
+  if (!value) return "";
+
+  return value.replace(" ", "T").slice(0, 10);
+};
+
+/*
+ * effective_to is exclusive in the DB:
+ *
+ *   effective_to > CURRENT_TIMESTAMP
+ *
+ * The UI treats the selected "Effective to" date as inclusive.
+ */
+const effectiveToDateInputValue = (value?: string): string => {
+  if (!value) return "";
+
+  const normalized = value.replace(" ", "T");
+  const [datePart, timePart = ""] = normalized.split("T");
+
+  if (timePart.startsWith("00:00")) {
+    return format(addDays(parseISO(datePart), -1), "yyyy-MM-dd");
+  }
+
+  return datePart;
+};
+
+const effectiveFromTimestamp = (value: string): string | undefined =>
+  value ? `${value}T00:00:00` : undefined;
+
+const effectiveToTimestamp = (value: string): string | undefined => {
+  if (!value) return undefined;
+
+  const nextDate = addDays(parseISO(value), 1);
+
+  return `${format(nextDate, "yyyy-MM-dd")}T00:00:00`;
+};
+
+const displayDate = (value?: string): string =>
+  value ? format(parseISO(dateInputValue(value)), "dd MMM yyyy") : "—";
+
+const displayEffectiveToDate = (value?: string): string =>
+  value
+    ? format(parseISO(effectiveToDateInputValue(value)), "dd MMM yyyy")
+    : "No end date";
 
 export default function OrganizationMaintenance() {
   const theme = useTheme();
@@ -120,8 +164,8 @@ export default function OrganizationMaintenance() {
       primaryPhone: user.primaryPhone,
       phone: { countryId: "", callingCode: "", number: "" },
       roleCode: user.roleCode,
-      effectiveFrom: dateTimeInput(user.effectiveFrom),
-      effectiveTo: dateTimeInput(user.effectiveTo),
+      effectiveFrom: dateInputValue(user.effectiveFrom),
+      effectiveTo: effectiveToDateInputValue(user.effectiveTo),
     });
     setError("");
   };
@@ -144,8 +188,8 @@ export default function OrganizationMaintenance() {
         primaryEmail: draft.primaryEmail.trim() || undefined,
         primaryPhone: phone,
         roleCode: draft.roleCode,
-        effectiveFrom: draft.effectiveFrom.trim() || undefined,
-        effectiveTo: draft.effectiveTo.trim() || undefined,
+        effectiveFrom: effectiveFromTimestamp(draft.effectiveFrom.trim()),
+        effectiveTo: effectiveToTimestamp(draft.effectiveTo.trim()),
       };
       if (draft.userId) {
         await services.organizationMaintenance.update(
@@ -178,8 +222,12 @@ export default function OrganizationMaintenance() {
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerText}>
-          <Text variant="title" color="text">Organization Maintenance</Text>
-          <Text variant="h2" color="text">{title}</Text>
+          <Text variant="title" color="text">
+            Organization Maintenance
+          </Text>
+          <Text variant="h2" color="text">
+            {title}
+          </Text>
           <Text variant="bodySmall" color="textMuted">
             Maintain effective Business Owner and Org Admin assignments.
           </Text>
@@ -188,74 +236,205 @@ export default function OrganizationMaintenance() {
           label="Change organization"
           variant="outline"
           onPress={() =>
-            router.push(APP_ROUTES.platformAdmin.organizationMaintenance as never)
+            router.push(
+              APP_ROUTES.platformAdmin.organizationMaintenance as never,
+            )
           }
         />
       </View>
 
       <View style={styles.actions}>
-        <Button label="Add Business Owner" onPress={() => startAdd("BUSINESS_OWNER")} />
-        <Button label="Add Org Admin" variant="secondary" onPress={() => startAdd("ORG_ADMIN")} />
+        <Button
+          label="Add Business Owner"
+          onPress={() => startAdd("BUSINESS_OWNER")}
+        />
+        <Button
+          label="Add Org Admin"
+          variant="secondary"
+          onPress={() => startAdd("ORG_ADMIN")}
+        />
       </View>
 
-      {loading ? <Text color="textMuted">Loading administrative users...</Text> : null}
+      {loading ? (
+        <Text color="textMuted">Loading administrative users...</Text>
+      ) : null}
       {error ? <Text color="danger">{error}</Text> : null}
 
       {draft ? (
         <View
           style={[
             styles.form,
-            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+            },
           ]}
         >
           <Text variant="h2" color="text">
-            {draft.userId ? "Edit administrative user" : "Add administrative user"}
+            {draft.userId
+              ? "Edit administrative user"
+              : "Add administrative user"}
           </Text>
           <View style={styles.formGrid}>
-            <View style={styles.field}><Input label="First name" required value={draft.firstName} onChangeText={(value) => setDraft({ ...draft, firstName: value })} /></View>
-            <View style={styles.field}><Input label="Last name" value={draft.lastName} onChangeText={(value) => setDraft({ ...draft, lastName: value })} /></View>
-            <View style={styles.field}><Input label="Email" value={draft.primaryEmail} keyboardType="email-address" autoCapitalize="none" onChangeText={(value) => setDraft({ ...draft, primaryEmail: value })} /></View>
+            <View style={styles.field}>
+              <Input
+                label="First name"
+                required
+                value={draft.firstName}
+                onChangeText={(value) =>
+                  setDraft({ ...draft, firstName: value })
+                }
+              />
+            </View>
+            <View style={styles.field}>
+              <Input
+                label="Last name"
+                value={draft.lastName}
+                onChangeText={(value) =>
+                  setDraft({ ...draft, lastName: value })
+                }
+              />
+            </View>
+            <View style={styles.field}>
+              <Input
+                label="Email"
+                value={draft.primaryEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                onChangeText={(value) =>
+                  setDraft({ ...draft, primaryEmail: value })
+                }
+              />
+            </View>
             <View style={styles.field}>
               {draft.userId ? (
-                <Input label="Phone" required value={draft.primaryPhone} editable={false} onChangeText={() => undefined} />
+                <Input
+                  label="Phone"
+                  required
+                  value={draft.primaryPhone}
+                  editable={false}
+                  onChangeText={() => undefined}
+                />
               ) : (
-                <PhoneField label="Phone" required value={draft.phone} countries={countries} onChange={(value) => setDraft({ ...draft, phone: value })} maxDigits={15} />
+                <PhoneField
+                  label="Phone"
+                  required
+                  value={draft.phone}
+                  countries={countries}
+                  onChange={(value) => setDraft({ ...draft, phone: value })}
+                  maxDigits={10}
+                />
               )}
             </View>
-            <View style={styles.field}><ReferenceSelect label="Role" required value={draft.roleCode} items={roles} onChange={(value) => setDraft({ ...draft, roleCode: value as AdministrativeRoleCode })} /></View>
-            <View style={styles.field}><Input label="Effective from" value={draft.effectiveFrom} placeholder="YYYY-MM-DDTHH:mm:ss (optional)" onChangeText={(value) => setDraft({ ...draft, effectiveFrom: value })} /></View>
-            <View style={styles.field}><Input label="Effective to" value={draft.effectiveTo} placeholder="YYYY-MM-DDTHH:mm:ss (optional)" onChangeText={(value) => setDraft({ ...draft, effectiveTo: value })} /></View>
+            <View style={styles.field}>
+              <ReferenceSelect
+                label="Role"
+                required
+                value={draft.roleCode}
+                items={roles}
+                onChange={(value) =>
+                  setDraft({
+                    ...draft,
+                    roleCode: value as AdministrativeRoleCode,
+                  })
+                }
+              />
+            </View>
+            <View style={styles.field}>
+              <DateInput
+                label="Effective from"
+                value={draft.effectiveFrom}
+                placeholder="Select effective date"
+                onChange={(value) =>
+                  setDraft({
+                    ...draft,
+                    effectiveFrom: value ?? "",
+                  })
+                }
+              />
+            </View>
+
+            <View style={styles.field}>
+              <DateInput
+                label="Effective to"
+                value={draft.effectiveTo}
+                minimumDate={draft.effectiveFrom || undefined}
+                placeholder="No end date"
+                onChange={(value) =>
+                  setDraft({
+                    ...draft,
+                    effectiveTo: value ?? "",
+                  })
+                }
+              />
+            </View>
           </View>
           <View style={styles.actions}>
-            <Button label={saving ? "Saving..." : "Save"} disabled={saving} onPress={() => void save()} />
-            <Button label="Cancel" variant="outline" disabled={saving} onPress={() => setDraft(null)} />
+            <Button
+              label={saving ? "Saving..." : "Save"}
+              disabled={saving}
+              onPress={() => void save()}
+            />
+            <Button
+              label="Cancel"
+              variant="outline"
+              disabled={saving}
+              onPress={() => setDraft(null)}
+            />
           </View>
         </View>
       ) : null}
 
       <View style={styles.list}>
         {users.map((user) => (
-          <View key={user.assignmentId} style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <View
+            key={user.assignmentId}
+            style={[
+              styles.card,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+              },
+            ]}
+          >
             <View style={styles.cardTop}>
               <View style={styles.cardName}>
-                <Text variant="h2" color="text">{user.displayName}</Text>
+                <Text variant="h2" color="text">
+                  {user.displayName}
+                </Text>
                 <Text variant="bodyStrong" color="primary">
-                  {user.roleCode === "BUSINESS_OWNER" ? "Business Owner" : "Org Admin"}
+                  {user.roleCode === "BUSINESS_OWNER"
+                    ? "Business Owner"
+                    : "Org Admin"}
                 </Text>
               </View>
-              <Button label="Edit" size="sm" variant="outline" onPress={() => startEdit(user)} />
+              <Button
+                label="Edit"
+                size="sm"
+                variant="outline"
+                onPress={() => startEdit(user)}
+              />
             </View>
             <View style={styles.details}>
               <Detail label="Phone" value={user.primaryPhone} />
               <Detail label="Email" value={user.primaryEmail || "—"} />
               <Detail label="Status" value="Active" />
-              <Detail label="Effective From" value={user.effectiveFrom} />
-              <Detail label="Effective To" value={user.effectiveTo || "No end date"} />
+              <Detail
+                label="Effective From"
+                value={displayDate(user.effectiveFrom)}
+              />
+
+              <Detail
+                label="Effective To"
+                value={displayEffectiveToDate(user.effectiveTo)}
+              />
             </View>
           </View>
         ))}
         {!loading && !error && users.length === 0 ? (
-          <Text color="textMuted">No effective Business Owner or Org Admin assignments.</Text>
+          <Text color="textMuted">
+            No effective Business Owner or Org Admin assignments.
+          </Text>
         ) : null}
       </View>
     </ScrollView>
@@ -265,15 +444,25 @@ export default function OrganizationMaintenance() {
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.detail}>
-      <Text variant="caption" color="textMuted">{label}</Text>
-      <Text variant="bodySmall" color="text">{value}</Text>
+      <Text variant="caption" color="textMuted">
+        {label}
+      </Text>
+      <Text variant="bodySmall" color="text">
+        {value}
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { padding: 24, gap: 20 },
-  header: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: 16 },
+  header: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 16,
+  },
   headerText: { gap: 5, flex: 1, minWidth: 260 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   form: { borderWidth: 1, borderRadius: 12, padding: 20, gap: 18 },
@@ -281,7 +470,12 @@ const styles = StyleSheet.create({
   field: { flexGrow: 1, flexBasis: 300, minWidth: 240 },
   list: { gap: 12 },
   card: { borderWidth: 1, borderRadius: 12, padding: 20, gap: 18 },
-  cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
+  cardTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+  },
   cardName: { gap: 4 },
   details: { flexDirection: "row", flexWrap: "wrap", gap: 20 },
   detail: { minWidth: 150, flexGrow: 1, gap: 3 },
