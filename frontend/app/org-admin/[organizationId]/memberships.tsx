@@ -617,18 +617,15 @@ export default function OrgAdminMemberships() {
   /* ---------------------------------------------------------------------- */
 
   const handlePreview = () => {
+    if (saving || hasChanges || products.length === 0) {
+      return;
+    }
+
     router.push({
       pathname: APP_ROUTES.orgAdmin.customerExperienceSection(
         organization.id,
         "membership",
       ) as never,
-      params: {
-        currentProduct:
-          committedProducts.length > 0
-            ? JSON.stringify(committedProducts[0])
-            : "",
-        proposedProduct: products.length > 0 ? JSON.stringify(products[0]) : "",
-      },
     });
   };
 
@@ -753,11 +750,33 @@ export default function OrgAdminMemberships() {
 
         <View style={styles.headerActions}>
           {!isEditing ? (
-            <Button
-              label="Edit"
-              onPress={handleStartEditing}
-              disabled={saving}
-            />
+            <>
+              <Pressable
+                onPress={handlePreview}
+                disabled={saving || products.length === 0}
+                style={({ pressed }) => [
+                  styles.secondaryButton,
+                  {
+                    opacity:
+                      saving || products.length === 0
+                        ? 0.5
+                        : pressed
+                          ? 0.8
+                          : 1,
+                  },
+                ]}
+              >
+                <Text variant="body" color="text">
+                  Preview
+                </Text>
+              </Pressable>
+
+              <Button
+                label="Edit"
+                onPress={handleStartEditing}
+                disabled={saving}
+              />
+            </>
           ) : (
             <>
               <Pressable
@@ -772,22 +791,6 @@ export default function OrgAdminMemberships() {
               >
                 <Text variant="body" color="text">
                   Cancel
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={handlePreview}
-                disabled={saving || products.length === 0}
-                style={({ pressed }) => [
-                  styles.secondaryButton,
-                  {
-                    opacity:
-                      saving || products.length === 0 ? 0.5 : pressed ? 0.8 : 1,
-                  },
-                ]}
-              >
-                <Text variant="body" color="text">
-                  Preview
                 </Text>
               </Pressable>
 

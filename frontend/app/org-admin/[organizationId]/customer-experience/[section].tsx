@@ -3,20 +3,24 @@ import React, { useCallback, useEffect, useState } from "react";
 
 import { ScrollView, StyleSheet, View } from "react-native";
 
-import type { Benefit, CustomerExperience, Store } from "@/src/core";
+import type {
+  CustomerExperience,
+  CustomerExperienceReleaseSnapshot,
+} from "@/src/core";
 
-import { services } from "@/src/core";
-
-import type { PreviewDomainData, PreviewMembership } from "@/src/experience";
-
-import { loadPreviewData } from "@/src/experience";
+import {
+  loadCustomerExperiencePreviewStates,
+  resolvePreviewConfiguration,
+  type PreviewDomainData,
+  type PreviewMembership,
+} from "@/src/experience";
 
 import {
   BusinessExperience,
   type CustomerExperiencePreviewSection,
 } from "@/src/experience/BusinessExperience";
 
-import { useBusiness } from "@/src/providers";
+import { BusinessPreviewScope, useBusiness } from "@/src/providers";
 
 import { Badge, Button, Card, Header, StateView, Text } from "@/src/ui";
 
@@ -40,139 +44,61 @@ function isSectionKey(value: string | undefined): value is SectionKey {
   );
 }
 
-function cloneBenefits(benefits: Benefit[]): Benefit[] {
-  return benefits.map((benefit) => ({
-    ...benefit,
-    retailPrice: benefit.retailPrice
-      ? {
-          ...benefit.retailPrice,
-        }
-      : undefined,
-    cost: benefit.cost
-      ? {
-          ...benefit.cost,
-        }
-      : undefined,
-  }));
-}
-
-function parseArray<T>(value: string | undefined, fallback: T[]): T[] {
-  if (!value) {
-    return fallback;
-  }
-
-  try {
-    const parsed = JSON.parse(value);
-
-    return Array.isArray(parsed) ? parsed : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
 export default function CustomerExperienceSectionPreview() {
   const router = useRouter();
 
-  const {
-    section,
-    currentStores: currentStoresParam,
-    proposedStores: proposedStoresParam,
-    currentBenefits: currentBenefitsParam,
-    proposedBenefits: proposedBenefitsParam,
-  } = useLocalSearchParams<{
-    section?: string;
-    currentStores?: string;
-    proposedStores?: string;
-    currentBenefits?: string;
-    proposedBenefits?: string;
-  }>();
+  const { section } = useLocalSearchParams<{ section?: string }>();
 
-  const { organization } = useBusiness();
+  const { organization, configuration, template } = useBusiness();
 
   const [status, setStatus] = useState<StatusState>("loading");
 
-  const [experience, setExperience] = useState<CustomerExperience | null>(null);
-
-  const [publishedExperience, setPublishedExperience] =
+  const [proposedExperience, setProposedExperience] =
     useState<CustomerExperience | null>(null);
 
-  const [previewData, setPreviewData] = useState<PreviewDomainData | null>(
-    null,
-  );
+  const [currentExperience, setCurrentExperience] =
+    useState<CustomerExperience | null>(null);
 
-  const [currentStores, setCurrentStores] = useState<Store[]>([]);
+  const [currentSnapshot, setCurrentSnapshot] =
+    useState<CustomerExperienceReleaseSnapshot | null>(null);
 
-  const [proposedStores, setProposedStores] = useState<Store[]>([]);
+  const [proposedSnapshot, setProposedSnapshot] =
+    useState<CustomerExperienceReleaseSnapshot | null>(null);
 
-  const [currentBenefits, setCurrentBenefits] = useState<Benefit[]>([]);
+  const [currentPreviewData, setCurrentPreviewData] =
+    useState<PreviewDomainData | null>(null);
 
-  const [proposedBenefits, setProposedBenefits] = useState<Benefit[]>([]);
+  const [proposedPreviewData, setProposedPreviewData] =
+    useState<PreviewDomainData | null>(null);
 
-  const [selectedMembershipId, setSelectedMembershipId] = useState("");
+  const [currentSelectedMembershipId, setCurrentSelectedMembershipId] =
+    useState("");
+
+  const [proposedSelectedMembershipId, setProposedSelectedMembershipId] =
+    useState("");
 
   const load = useCallback(async () => {
     setStatus("loading");
 
     try {
-      const draft = await services.customerExperience.getCustomerExperience(
+      const previewStates = await loadCustomerExperiencePreviewStates(
         organization.id,
+        { configuration, template },
       );
-
-      if (!draft) {
-        setStatus("error");
-        return;
-      }
-
-      const published =
-        await services.customerExperience.getPublishedCustomerExperience(
-          organization.id,
-        );
-
-      const data = await loadPreviewData(organization.id);
-
-      const parsedCurrentStores = parseArray<Store>(
-        currentStoresParam,
-        data.stores,
+      setProposedExperience(previewStates.draft);
+      setCurrentExperience(
+        previewStates.currentSnapshot?.customerExperience ?? null,
       );
-
-      const parsedProposedStores = parseArray<Store>(
-        proposedStoresParam,
-        data.stores,
+      setCurrentSnapshot(previewStates.currentSnapshot);
+      setProposedSnapshot(previewStates.proposedSnapshot);
+      setCurrentPreviewData(previewStates.currentDomainData);
+      setProposedPreviewData(previewStates.proposedDomainData);
+      setCurrentSelectedMembershipId(
+        previewStates.currentDomainData.memberships[0]?.product.id ?? "",
       );
-
-      /*
-       * Benefits preview is organization-level. Normal previewData.benefits
-       * is membership-specific; organizationBenefits contains the complete
-       * organization-level collection.
-       */
-      const persistedBenefits =
-        section === "benefits"
-          ? (data.organizationBenefits ?? [])
-          : (data.benefits ?? []);
-
-      const parsedCurrentBenefits = cloneBenefits(
-        parseArray<Benefit>(currentBenefitsParam, persistedBenefits),
+      setProposedSelectedMembershipId(
+        previewStates.proposedDomainData.memberships[0]?.product.id ?? "",
       );
-
-      const parsedProposedBenefits = cloneBenefits(
-        parseArray<Benefit>(proposedBenefitsParam, persistedBenefits),
-      );
-
-      setExperience(draft);
-
-      setPublishedExperience(published);
-
-      setPreviewData(data);
-
-      setCurrentStores(parsedCurrentStores);
-
-      setProposedStores(parsedProposedStores);
-
-      setCurrentBenefits(parsedCurrentBenefits);
-
-      setProposedBenefits(parsedProposedBenefits);
-
-      setSelectedMembershipId(data.selectedSubscriptionId);
 
       setStatus("ready");
     } catch (error) {
@@ -182,11 +108,8 @@ export default function CustomerExperienceSectionPreview() {
     }
   }, [
     organization.id,
-    section,
-    currentStoresParam,
-    proposedStoresParam,
-    currentBenefitsParam,
-    proposedBenefitsParam,
+    configuration,
+    template,
   ]);
 
   useEffect(() => {
@@ -215,7 +138,13 @@ export default function CustomerExperienceSectionPreview() {
     );
   }
 
-  if (status === "error" || !experience || !previewData) {
+  if (
+    status === "error" ||
+    !proposedExperience ||
+    !currentPreviewData ||
+    !proposedPreviewData ||
+    !proposedSnapshot
+  ) {
     return (
       <Screen edges={["top"]}>
         <StateView
@@ -229,31 +158,90 @@ export default function CustomerExperienceSectionPreview() {
     );
   }
 
-  const selectedMembership: PreviewMembership | undefined =
-    previewData.memberships.find(
+  const currentSelectedMembership: PreviewMembership | undefined =
+    currentPreviewData.memberships.find(
       (membership: PreviewMembership) =>
-        membership.subscription.id === selectedMembershipId,
-    ) ?? previewData.memberships[0];
+        membership.product.id === currentSelectedMembershipId,
+    ) ?? currentPreviewData.memberships[0];
 
-  const membershipList = previewData.memberships.map(
-    (membership: PreviewMembership) => ({
+  const proposedSelectedMembership: PreviewMembership | undefined =
+    proposedPreviewData.memberships.find(
+      (membership: PreviewMembership) =>
+        membership.product.id === proposedSelectedMembershipId,
+    ) ?? proposedPreviewData.memberships[0];
+
+  const renderMemberships = (domainData: PreviewDomainData) =>
+    domainData.memberships.map((membership) => ({
       subscription: membership.subscription,
       product: membership.product,
-    }),
-  );
+    }));
 
-  const selectedSubscriptionId = selectedMembership?.subscription.id ?? "";
+  const renderSectionPreview = (
+    mode: "current" | "proposed",
+    domainData: PreviewDomainData,
+    snapshot: CustomerExperienceReleaseSnapshot | null,
+    experience: CustomerExperience | null,
+    selectedMembership: PreviewMembership | undefined,
+    onSelectMembership: (membershipId: string) => void,
+  ) => {
+    const isProposed = mode === "proposed";
+    const branding = snapshot?.organizationBranding ?? null;
+    const previewConfiguration = resolvePreviewConfiguration(
+      snapshot?.configuration,
+      branding,
+      isProposed ? experience?.experienceDefinition.theme : undefined,
+    );
 
-  const currentDomainData = {
-    ...previewData,
-    stores: currentStores,
-    benefits: currentBenefits,
-  };
+    return (
+      <BusinessPreviewScope
+        organizationId={snapshot?.organization.id ?? organization.id}
+        configuration={previewConfiguration}
+        template={snapshot?.template ?? template}
+      >
+        <BusinessExperience
+          content={
+            experience?.experienceDefinition.content ??
+            proposedExperience.experienceDefinition.content
+          }
+          subscription={selectedMembership?.subscription}
+          subscriptionStatus={selectedMembership?.subscriptionStatus}
+          product={selectedMembership?.product}
+          benefits={selectedMembership?.benefits ?? []}
+          offers={domainData.offers}
+          stores={domainData.stores}
+          redemptions={selectedMembership?.redemptions ?? []}
+          benefitUsageRules={domainData.benefitUsageRules}
+          offerUsageRules={domainData.offerUsageRules}
+          memberships={renderMemberships(domainData)}
+          selectedSubscriptionId={selectedMembership?.subscription.id ?? ""}
+          onSelectSubscription={(subscriptionId) => {
+            const membership = domainData.memberships.find(
+              (candidate) => candidate.subscription.id === subscriptionId,
+            );
 
-  const proposedDomainData = {
-    ...previewData,
-    stores: proposedStores,
-    benefits: proposedBenefits,
+            if (membership) {
+              onSelectMembership(membership.product.id);
+            }
+          }}
+          availableMemberships={domainData.availableMemberships}
+          onJoin={() => {}}
+          onExit={() => router.back()}
+          previewDefinition={
+            isProposed ? experience?.experienceDefinition : undefined
+          }
+          initialTab="card"
+          organizationOverride={snapshot?.organization ?? organization}
+          detailsOverride={snapshot?.organizationDetails ?? null}
+          brandingOverride={branding}
+          membershipLogoUrl={branding?.logoUrl ?? undefined}
+          tagline={branding?.tagline ?? undefined}
+          heroImageUrl={branding?.heroImageUrl ?? undefined}
+          referralProgramOverride={snapshot?.referralProgram ?? null}
+          renderMode={isProposed ? "proposed-preview" : "current-preview"}
+          previewSection={section}
+        />
+      </BusinessPreviewScope>
+    );
   };
 
   return (
@@ -299,7 +287,7 @@ export default function CustomerExperienceSectionPreview() {
                 </Text>
 
                 <Text variant="bodySmall" color="textMuted">
-                  {publishedExperience
+                  {currentSnapshot
                     ? "Currently live"
                     : "No published experience yet"}
                 </Text>
@@ -309,29 +297,14 @@ export default function CustomerExperienceSectionPreview() {
             </View>
 
             <View style={styles.customerExperienceFrame}>
-              <BusinessExperience
-                content={
-                  publishedExperience?.experienceDefinition.content ??
-                  experience.experienceDefinition.content
-                }
-                subscription={selectedMembership?.subscription}
-                subscriptionStatus={selectedMembership?.subscriptionStatus}
-                product={selectedMembership?.product}
-                benefits={currentDomainData.benefits}
-                offers={currentDomainData.offers}
-                stores={currentDomainData.stores}
-                redemptions={selectedMembership?.redemptions ?? []}
-                memberships={membershipList}
-                selectedSubscriptionId={selectedSubscriptionId}
-                onSelectSubscription={setSelectedMembershipId}
-                availableMemberships={currentDomainData.availableMemberships}
-                onJoin={() => {}}
-                onExit={() => router.back()}
-                previewDefinition={publishedExperience?.experienceDefinition}
-                initialTab="card"
-                renderMode="current-preview"
-                previewSection={section}
-              />
+              {renderSectionPreview(
+                "current",
+                currentPreviewData,
+                currentSnapshot,
+                currentExperience,
+                currentSelectedMembership,
+                setCurrentSelectedMembershipId,
+              )}
             </View>
           </View>
 
@@ -351,26 +324,14 @@ export default function CustomerExperienceSectionPreview() {
             </View>
 
             <View style={styles.customerExperienceFrame}>
-              <BusinessExperience
-                content={experience.experienceDefinition.content}
-                subscription={selectedMembership?.subscription}
-                subscriptionStatus={selectedMembership?.subscriptionStatus}
-                product={selectedMembership?.product}
-                benefits={proposedDomainData.benefits}
-                offers={proposedDomainData.offers}
-                stores={proposedDomainData.stores}
-                redemptions={selectedMembership?.redemptions ?? []}
-                memberships={membershipList}
-                selectedSubscriptionId={selectedSubscriptionId}
-                onSelectSubscription={setSelectedMembershipId}
-                availableMemberships={proposedDomainData.availableMemberships}
-                onJoin={() => {}}
-                onExit={() => router.back()}
-                previewDefinition={experience.experienceDefinition}
-                initialTab="card"
-                renderMode="proposed-preview"
-                previewSection={section}
-              />
+              {renderSectionPreview(
+                "proposed",
+                proposedPreviewData,
+                proposedSnapshot,
+                proposedExperience,
+                proposedSelectedMembership,
+                setProposedSelectedMembershipId,
+              )}
             </View>
           </View>
         </View>

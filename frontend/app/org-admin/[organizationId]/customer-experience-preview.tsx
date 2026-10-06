@@ -20,8 +20,9 @@ import { resolveAssetUrl } from "@/src/data/api/asset-url";
 import type { PreviewDomainData } from "@/src/experience/customer-experience-preview-data";
 import type { ExperienceTabKey } from "@/src/experience/resolve-experience";
 import {
-  loadPreviewData,
+  loadCustomerExperiencePreviewStates,
   loadPreviewDataFromRelease,
+  resolvePreviewConfiguration,
 } from "@/src/experience/customer-experience-preview-data";
 import type {
   CustomerExperienceRelease,
@@ -161,44 +162,18 @@ export default function CustomerExperiencePreview() {
        *
        * This is the Proposed customer experience.
        */
-      const draft = await services.customerExperience.getCustomerExperience(
+      const previewStates = await loadCustomerExperiencePreviewStates(
         organization.id,
+        { configuration, template },
       );
-
-      if (!draft) {
-        throw new Error(
-          `Customer Experience could not be initialized for organization '${organization.id}'.`,
-        );
-      }
-
-      /*
-       * --------------------------------------------------------------------
-       * 2. Load the published experience
-       * --------------------------------------------------------------------
-       *
-       * This is the Current customer experience.
-       *
-       * IMPORTANT:
-       *
-       * Never use getBusinessContent() here because that can represent
-       * mutable/local organization configuration and therefore cause the
-       * Current side to change together with Proposed.
-       */
-      const publishedRelease =
-        await services.customerExperienceRelease.getPublishedRelease(
-          organization.id,
-        );
-
-      const proposedReleaseSnapshot =
-        await services.customerExperienceRelease.createProposedSnapshot(draft, {
-          configuration,
-          template,
-        });
-
-      const currentReleaseSnapshot = publishedRelease?.snapshot ?? null;
-      const currentDomainData = currentReleaseSnapshot
-        ? await loadPreviewDataFromRelease(currentReleaseSnapshot)
-        : await loadPreviewData(organization.id);
+      const {
+        draft,
+        publishedRelease,
+        currentSnapshot: currentReleaseSnapshot,
+        proposedSnapshot: proposedReleaseSnapshot,
+        currentDomainData,
+        proposedDomainData,
+      } = previewStates;
 
       setProposedExperience(draft);
       setPublishedRelease(publishedRelease);
@@ -206,7 +181,7 @@ export default function CustomerExperiencePreview() {
       setPublishedSnapshot(currentReleaseSnapshot);
       setProposedSnapshot(proposedReleaseSnapshot);
       setCurrentPreviewData(currentDomainData);
-      setPreviewData(await loadPreviewDataFromRelease(proposedReleaseSnapshot));
+      setPreviewData(proposedDomainData);
 
       setCurrentSelectedPreviewMembershipId((current) => {
         if (
@@ -1029,58 +1004,6 @@ function PreviewPanel({
       </View>
     </View>
   );
-}
-
-function resolvePreviewConfiguration(
-  configuration: BusinessConfiguration | undefined,
-  branding: OrganizationBranding | null | undefined,
-  definitionTheme:
-    | CustomerExperience["experienceDefinition"]["theme"]
-    | undefined,
-): BusinessConfiguration | undefined {
-  if (!configuration) {
-    return undefined;
-  }
-
-  return {
-    ...configuration,
-    branding: {
-      ...configuration.branding,
-
-      logoUrl: branding?.logoUrl ?? configuration.branding.logoUrl,
-
-      darkThemeLogoUrl:
-        branding?.darkThemeLogoUrl ?? configuration.branding.darkThemeLogoUrl,
-
-      faviconUrl: branding?.faviconUrl ?? configuration.branding.faviconUrl,
-
-      splashScreenImageUrl:
-        branding?.splashScreenImageUrl ??
-        configuration.branding.splashScreenImageUrl,
-
-      /*
-       * OrganizationBranding is authoritative for customer brand colours.
-       *
-       * This matches the real customer experience and Brand Preview.
-       * CustomerExperience.theme is only a fallback for older snapshots that
-       * do not contain an organization branding colour.
-       */
-      primaryColor:
-        branding?.primaryColor ??
-        definitionTheme?.primaryColor ??
-        configuration.branding.primaryColor,
-
-      secondaryColor:
-        branding?.secondaryColor ??
-        definitionTheme?.secondaryColor ??
-        configuration.branding.secondaryColor,
-
-      accentColor:
-        branding?.accentColor ??
-        definitionTheme?.accentColor ??
-        configuration.branding.accentColor,
-    },
-  };
 }
 
 /* ========================================================================== */

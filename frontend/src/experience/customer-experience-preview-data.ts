@@ -2,6 +2,7 @@ import type {
   Benefit,
   MembershipProduct,
   Offer,
+  OrganizationBranding,
   Redemption,
   Status,
   Store,
@@ -11,7 +12,22 @@ import type {
 } from "@/src/core";
 
 import { services } from "@/src/core";
-import type { CustomerExperienceReleaseSnapshot } from "@/src/core";
+import type {
+  BusinessConfiguration,
+  CustomerExperience,
+  CustomerExperienceRelease,
+  CustomerExperienceReleaseSnapshot,
+} from "@/src/core";
+import type { TemplateDefinition } from "@/src/core/template/template-definition";
+
+export type CustomerExperiencePreviewStates = {
+  draft: CustomerExperience;
+  publishedRelease: CustomerExperienceRelease | null;
+  currentSnapshot: CustomerExperienceReleaseSnapshot | null;
+  proposedSnapshot: CustomerExperienceReleaseSnapshot;
+  currentDomainData: PreviewDomainData;
+  proposedDomainData: PreviewDomainData;
+};
 
 export type PreviewMembership = {
   product: MembershipProduct;
@@ -36,6 +52,84 @@ export type PreviewDomainData = {
   benefitUsageRules: BenefitUsageRule[];
   offerUsageRules: OfferUsageRule[];
 };
+
+/**
+ * Resolves the exact Current and Proposed data states used by Org Admin
+ * customer-experience previews. Current is the immutable published release;
+ * Proposed is a snapshot of the editable draft plus its current configuration.
+ */
+export async function loadCustomerExperiencePreviewStates(
+  organizationId: string,
+  context: {
+    configuration: BusinessConfiguration;
+    template: TemplateDefinition;
+  },
+): Promise<CustomerExperiencePreviewStates> {
+  const draft = await services.customerExperience.getCustomerExperience(
+    organizationId,
+  );
+
+  if (!draft) {
+    throw new Error(
+      `Customer Experience could not be initialized for organization '${organizationId}'.`,
+    );
+  }
+
+  const publishedRelease =
+    await services.customerExperienceRelease.getPublishedRelease(organizationId);
+  const proposedSnapshot =
+    await services.customerExperienceRelease.createProposedSnapshot(draft, context);
+  const currentSnapshot = publishedRelease?.snapshot ?? null;
+
+  return {
+    draft,
+    publishedRelease,
+    currentSnapshot,
+    proposedSnapshot,
+    currentDomainData: currentSnapshot
+      ? await loadPreviewDataFromRelease(currentSnapshot)
+      : await loadPreviewData(organizationId),
+    proposedDomainData: await loadPreviewDataFromRelease(proposedSnapshot),
+  };
+}
+
+export function resolvePreviewConfiguration(
+  configuration: BusinessConfiguration | undefined,
+  branding: OrganizationBranding | null | undefined,
+  definitionTheme:
+    | CustomerExperience["experienceDefinition"]["theme"]
+    | undefined,
+): BusinessConfiguration | undefined {
+  if (!configuration) {
+    return undefined;
+  }
+
+  return {
+    ...configuration,
+    branding: {
+      ...configuration.branding,
+      logoUrl: branding?.logoUrl ?? configuration.branding.logoUrl,
+      darkThemeLogoUrl:
+        branding?.darkThemeLogoUrl ?? configuration.branding.darkThemeLogoUrl,
+      faviconUrl: branding?.faviconUrl ?? configuration.branding.faviconUrl,
+      splashScreenImageUrl:
+        branding?.splashScreenImageUrl ??
+        configuration.branding.splashScreenImageUrl,
+      primaryColor:
+        branding?.primaryColor ??
+        definitionTheme?.primaryColor ??
+        configuration.branding.primaryColor,
+      secondaryColor:
+        branding?.secondaryColor ??
+        definitionTheme?.secondaryColor ??
+        configuration.branding.secondaryColor,
+      accentColor:
+        branding?.accentColor ??
+        definitionTheme?.accentColor ??
+        configuration.branding.accentColor,
+    },
+  };
+}
 
 /**
  * Loads the organization-level customer-facing data for the Proposed preview.

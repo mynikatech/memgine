@@ -1255,6 +1255,19 @@ export default function OrgAdminOffers() {
     setIsEditing(true);
   };
 
+  const handlePreview = () => {
+    if (saving || hasChanges) {
+      return;
+    }
+
+    router.push(
+      APP_ROUTES.orgAdmin.customerExperienceSection(
+        organization.id,
+        "offers",
+      ) as never,
+    );
+  };
+
   const editingOfferRules = useMemo(
     () =>
       editingOffer
@@ -1332,30 +1345,6 @@ export default function OrgAdminOffers() {
             </Pressable>
 
             <Pressable
-              onPress={() =>
-                router.push(
-                  APP_ROUTES.orgAdmin.customerExperienceSection(
-                    organization.id,
-
-                    "offers",
-                  ) as never,
-                )
-              }
-              disabled={saving}
-              style={({ pressed }) => [
-                styles.secondaryButton,
-
-                {
-                  opacity: saving ? 0.5 : pressed ? 0.8 : 1,
-                },
-              ]}
-            >
-              <Text variant="body" color="text">
-                Preview
-              </Text>
-            </Pressable>
-
-            <Pressable
               onPress={handleAdd}
               disabled={saving}
               style={({ pressed }) => [
@@ -1422,28 +1411,23 @@ export default function OrgAdminOffers() {
             }
           />
 
-          <Pressable
-            onPress={() =>
-              router.push(
-                APP_ROUTES.orgAdmin.customerExperienceSection(
-                  organization.id,
+          {!isEditing ? (
+            <Pressable
+              onPress={handlePreview}
+              disabled={saving}
+              style={({ pressed }) => [
+                styles.previewLink,
 
-                  "offers",
-                ) as never,
-              )
-            }
-            style={({ pressed }) => [
-              styles.previewLink,
-
-              {
-                opacity: pressed ? 0.6 : 1,
-              },
-            ]}
-          >
-            <Text variant="body" color="primary">
-              Preview
-            </Text>
-          </Pressable>
+                {
+                  opacity: saving ? 0.5 : pressed ? 0.6 : 1,
+                },
+              ]}
+            >
+              <Text variant="body" color="primary">
+                Preview
+              </Text>
+            </Pressable>
+          ) : null}
         </>
       )}
 

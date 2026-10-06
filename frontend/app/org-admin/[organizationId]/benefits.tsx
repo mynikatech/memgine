@@ -640,8 +640,8 @@ export default function OrgAdminBenefits() {
       }
 
       /*
-       * Keep draft available for Preview
-       * and navigation away from this screen.
+       * Keep the draft available while the admin continues editing on this
+       * screen. Preview is available only after the draft is persisted.
        */
       benefitDraftStore.set(organization.id, next);
 
@@ -1005,7 +1005,7 @@ export default function OrgAdminBenefits() {
   /* ---------------------------------------------------------------------- */
 
   const handlePreview = () => {
-    if (saving) {
+    if (saving || hasChanges) {
       return;
     }
 
@@ -1014,12 +1014,6 @@ export default function OrgAdminBenefits() {
         organization.id,
         "benefits",
       ) as never,
-
-      params: {
-        currentBenefits: JSON.stringify(committedBenefits),
-
-        proposedBenefits: JSON.stringify(benefits),
-      },
     });
   };
 
@@ -1181,21 +1175,39 @@ export default function OrgAdminBenefits() {
             /*
              * VIEW MODE
              */
-            <Pressable
-              onPress={handleStartEditing}
-              disabled={saving}
-              style={({ pressed }) => [
-                styles.primaryButton,
+            <>
+              <Pressable
+                onPress={handlePreview}
+                disabled={saving}
+                style={({ pressed }) => [
+                  styles.secondaryButton,
 
-                {
-                  opacity: saving ? 0.5 : pressed ? 0.8 : 1,
-                },
-              ]}
-            >
-              <Text variant="body" color="background">
-                Edit
-              </Text>
-            </Pressable>
+                  {
+                    opacity: saving ? 0.5 : pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <Text variant="body" color="text">
+                  Preview
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={handleStartEditing}
+                disabled={saving}
+                style={({ pressed }) => [
+                  styles.primaryButton,
+
+                  {
+                    opacity: saving ? 0.5 : pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <Text variant="body" color="background">
+                  Edit
+                </Text>
+              </Pressable>
+            </>
           ) : (
             /*
              * EDIT MODE
@@ -1224,22 +1236,6 @@ export default function OrgAdminBenefits() {
                 }}
                 disabled={saving}
               />
-
-              <Pressable
-                onPress={handlePreview}
-                disabled={saving}
-                style={({ pressed }) => [
-                  styles.secondaryButton,
-
-                  {
-                    opacity: saving ? 0.5 : pressed ? 0.8 : 1,
-                  },
-                ]}
-              >
-                <Text variant="body" color="text">
-                  Preview
-                </Text>
-              </Pressable>
 
               <Pressable
                 onPress={handleAdd}
