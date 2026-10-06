@@ -9,6 +9,7 @@ import {
   type AdministrativeRoleCode,
   type Organization,
   type OrganizationAdministrativeUser,
+  type ExistingOrganizationUserLookup,
 } from "@/src/core";
 import { useTheme } from "@/src/providers";
 import {
@@ -109,6 +110,8 @@ export default function OrganizationMaintenance() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [existingMatch, setExistingMatch] =
+    useState<ExistingOrganizationUserLookup | null>(null);
 
   const load = useCallback(async () => {
     if (!organizationId) return;
@@ -152,6 +155,7 @@ export default function OrganizationMaintenance() {
       };
     }
     setDraft(next);
+    setExistingMatch(null);
     setError("");
   };
 
@@ -167,22 +171,46 @@ export default function OrganizationMaintenance() {
       effectiveFrom: dateInputValue(user.effectiveFrom),
       effectiveTo: effectiveToDateInputValue(user.effectiveTo),
     });
+    setExistingMatch(null);
     setError("");
   };
 
-  const save = async () => {
+  const save = async (confirmedExistingUserId?: string) => {
     if (!organizationId || !draft) return;
+
     const phone = draft.userId
       ? draft.primaryPhone
       : `${draft.phone.callingCode}${draft.phone.number}`;
+
     if (!draft.firstName.trim() || !phone) {
       setError("First name and phone are required.");
       return;
     }
+
     setSaving(true);
     setError("");
+
     try {
+      /*
+       * When adding a new administrative user, first check whether
+       * this phone already belongs to a global Memgine user.
+       *
+       * Do not silently associate that user.
+       */
+      if (!draft.userId && !confirmedExistingUserId) {
+        const match = await services.organizationMaintenance.lookupByPhone(
+          organizationId,
+          phone,
+        );
+
+        if (match) {
+          setExistingMatch(match);
+          return;
+        }
+      }
+
       const request = {
+        existingUserId: confirmedExistingUserId,
         firstName: draft.firstName.trim(),
         lastName: draft.lastName.trim() || undefined,
         primaryEmail: draft.primaryEmail.trim() || undefined,
@@ -191,6 +219,7 @@ export default function OrganizationMaintenance() {
         effectiveFrom: effectiveFromTimestamp(draft.effectiveFrom.trim()),
         effectiveTo: effectiveToTimestamp(draft.effectiveTo.trim()),
       };
+
       if (draft.userId) {
         await services.organizationMaintenance.update(
           organizationId,
@@ -200,7 +229,10 @@ export default function OrganizationMaintenance() {
       } else {
         await services.organizationMaintenance.create(organizationId, request);
       }
+
       setDraft(null);
+      setExistingMatch(null);
+
       await load();
     } catch (cause) {
       setError(
@@ -281,6 +313,7 @@ export default function OrganizationMaintenance() {
                 label="First name"
                 required
                 value={draft.firstName}
+                editable={!draft.userId}
                 onChangeText={(value) =>
                   setDraft({ ...draft, firstName: value })
                 }
@@ -290,6 +323,7 @@ export default function OrganizationMaintenance() {
               <Input
                 label="Last name"
                 value={draft.lastName}
+                editable={!draft.userId}
                 onChangeText={(value) =>
                   setDraft({ ...draft, lastName: value })
                 }
@@ -301,6 +335,7 @@ export default function OrganizationMaintenance() {
                 value={draft.primaryEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
+                editable={!draft.userId}
                 onChangeText={(value) =>
                   setDraft({ ...draft, primaryEmail: value })
                 }
@@ -321,7 +356,13 @@ export default function OrganizationMaintenance() {
                   required
                   value={draft.phone}
                   countries={countries}
-                  onChange={(value) => setDraft({ ...draft, phone: value })}
+                  onChange={(value) => {
+                    setExistingMatch(null);
+                    setDraft({
+                      ...draft,
+                      phone: value,
+                    });
+                  }}
                   maxDigits={10}
                 />
               )}
@@ -369,17 +410,110 @@ export default function OrganizationMaintenance() {
               />
             </View>
           </View>
+
+          {draft.userId ? (
+            <Text variant="bodySmall" color="textMuted">
+              Name, email, and phone belong to the global Memgine user and are
+              read-only here. This screen changes only the organization role and
+              its effective dates.
+            </Text>
+          ) : null}
+
+          {existingMatch ? (
+            <View
+              style={[
+                styles.existingUserNotice,
+                {
+                  backgroundColor: theme.colors.surfaceAlt,
+                  borderColor: theme.colors.border,
+                },
+              ]}
+            >
+              <Text variant="bodyStrong" color="text">
+                Existing Memgine user found
+              </Text>
+
+              <Text variant="bodySmall" color="textMuted">
+                {existingMatch.primaryPhone} already belongs to{" "}
+                {existingMatch.displayName}. Their global profile will not be
+                changed.
+              </Text>
+
+              {existingMatch.primaryEmail ? (
+                <Text variant="bodySmall" color="text">
+                  Email: {existingMatch.primaryEmail}
+                </Text>
+              ) : null}
+
+              {existingMatch.organizations.length > 0 ? (
+                <View style={styles.existingAssociations}>
+                  <Text variant="bodySmall" color="textMuted">
+                    Existing organization associations
+                  </Text>
+
+                  {existingMatch.organizations.map((association) => (
+                    <Text
+                      key={association.organizationId}
+                      variant="bodySmall"
+                      color="text"
+                    >
+                      {association.organizationName}:{" "}
+                      {association.roles.length > 0
+                        ? association.roles.join(", ")
+                        : "Organization user"}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+
+              {existingMatch.alreadyInTargetOrganization ? (
+                <Text variant="bodySmall" color="textMuted">
+                  This user already has a relationship with this organization.
+                  Confirming will add or update only the selected administrative
+                  role.
+                </Text>
+              ) : null}
+
+              <Text variant="bodySmall" color="text">
+                Associate this user as{" "}
+                {draft.roleCode === "BUSINESS_OWNER"
+                  ? "Business Owner"
+                  : "Org Admin"}
+                ?
+              </Text>
+
+              <View style={styles.actions}>
+                <Button
+                  label={saving ? "Saving..." : "Use Existing User"}
+                  disabled={saving}
+                  onPress={() => void save(existingMatch.userId)}
+                />
+
+                <Button
+                  label="Cancel"
+                  variant="outline"
+                  disabled={saving}
+                  onPress={() => setExistingMatch(null)}
+                />
+              </View>
+            </View>
+          ) : null}
+
           <View style={styles.actions}>
             <Button
               label={saving ? "Saving..." : "Save"}
-              disabled={saving}
+              disabled={saving || existingMatch !== null}
               onPress={() => void save()}
             />
+
             <Button
               label="Cancel"
               variant="outline"
               disabled={saving}
-              onPress={() => setDraft(null)}
+              onPress={() => {
+                setExistingMatch(null);
+                setDraft(null);
+              }}
             />
           </View>
         </View>
@@ -479,4 +613,14 @@ const styles = StyleSheet.create({
   cardName: { gap: 4 },
   details: { flexDirection: "row", flexWrap: "wrap", gap: 20 },
   detail: { minWidth: 150, flexGrow: 1, gap: 3 },
+  existingUserNotice: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 16,
+    gap: 10,
+  },
+
+  existingAssociations: {
+    gap: 4,
+  },
 });

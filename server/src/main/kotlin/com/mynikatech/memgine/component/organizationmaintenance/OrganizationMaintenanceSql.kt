@@ -19,6 +19,17 @@ data class OrganizationAdministrativeUserRow(
     var effectiveFrom: String = "",
     var effectiveTo: String? = null
 )
+data class ExistingOrganizationUserLookupRow(
+    var userId: String = "",
+    var firstName: String = "",
+    var lastName: String? = null,
+    var displayName: String = "",
+    var primaryEmail: String? = null,
+    var primaryPhone: String = "",
+    var associationOrganizationId: String? = null,
+    var associationOrganizationName: String? = null,
+    var associationRoleCode: String? = null
+)
 
 interface OrganizationMaintenanceSql {
     @SqlQuery("SELECT * FROM platform_list_organization_administrative_users(:organizationId, :actorUserId)")
@@ -48,4 +59,16 @@ interface OrganizationMaintenanceSql {
         @Bind("effectiveTo") effectiveTo: String?,
         @Bind("actorUserId") actorUserId: String
     ): OrganizationAdministrativeUserRow
+    
+    @SqlQuery(
+        """SELECT * FROM platform_find_organization_user_by_phone(
+            :organizationId, :phone, :actorUserId
+        )"""
+    )
+    @RegisterBeanMapper(ExistingOrganizationUserLookupRow::class)
+    fun findByPhone(
+        @Bind("organizationId") organizationId: String,
+        @Bind("phone") phone: String,
+        @Bind("actorUserId") actorUserId: String
+    ): List<ExistingOrganizationUserLookupRow>
 }

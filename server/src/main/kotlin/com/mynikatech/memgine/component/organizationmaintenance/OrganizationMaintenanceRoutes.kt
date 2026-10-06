@@ -16,6 +16,22 @@ import com.mynikatech.memgine.security.authenticatedPrincipal
 
 fun Route.organizationMaintenanceRoutes(service: OrganizationMaintenanceService) {
     route("/platform/organizations/{organizationId}/administrative-users") {
+        
+        get("/lookup") {
+            val phone = call.request.queryParameters["phone"]
+                ?: throw BadRequestException("Phone is required")
+
+            call.respond(
+                ApiResponse.success(
+                    service.lookupByPhone(
+                        call.organizationId(),
+                        phone,
+                        call.authenticatedPrincipal().userId
+                    ),
+                    call.callId
+                )
+            )
+        }
         get {
             call.respond(ApiResponse.success(service.list(call.organizationId(), call.authenticatedPrincipal().userId), call.callId))
         }

@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 144-explicit-existing-admin-association
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/144-explicit-existing-admin-association.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

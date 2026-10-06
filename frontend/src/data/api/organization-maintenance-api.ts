@@ -19,7 +19,25 @@ export type OrganizationAdministrativeUser = {
   effectiveTo?: string;
 };
 
+export type ExistingUserOrganizationAssociation = {
+  organizationId: string;
+  organizationName: string;
+  roles: string[];
+};
+
+export type ExistingOrganizationUserLookup = {
+  userId: string;
+  firstName: string;
+  lastName?: string;
+  displayName: string;
+  primaryEmail?: string;
+  primaryPhone: string;
+  alreadyInTargetOrganization: boolean;
+  organizations: ExistingUserOrganizationAssociation[];
+};
+
 export type SaveOrganizationAdministrativeUser = {
+  existingUserId?: string;
   firstName: string;
   lastName?: string;
   primaryEmail?: string;
@@ -56,6 +74,17 @@ export class OrganizationMaintenanceApi {
     return httpClient.put(
       `/api/v1/platform/organizations/${encodeURIComponent(organizationId)}/administrative-users/${encodeURIComponent(userId)}`,
       request,
+    );
+  }
+
+  lookupByPhone(
+    organizationId: string,
+    phone: string,
+  ): Promise<ApiResult<ExistingOrganizationUserLookup | null>> {
+    return httpClient.get(
+      `/api/v1/platform/organizations/${encodeURIComponent(
+        organizationId,
+      )}/administrative-users/lookup?phone=${encodeURIComponent(phone)}`,
     );
   }
 }

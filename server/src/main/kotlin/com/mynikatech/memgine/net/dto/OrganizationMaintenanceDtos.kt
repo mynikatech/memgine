@@ -21,6 +21,7 @@ data class OrganizationAdministrativeUserDto(
 
 @Serializable
 data class SaveOrganizationAdministrativeUserRequest(
+    val existingUserId: String? = null,
     val firstName: String,
     val lastName: String? = null,
     val primaryEmail: String? = null,
@@ -28,4 +29,23 @@ data class SaveOrganizationAdministrativeUserRequest(
     val roleCode: String,
     val effectiveFrom: String? = null,
     val effectiveTo: String? = null
+)
+
+@Serializable
+data class ExistingUserOrganizationAssociationDto(
+    val organizationId: String,
+    val organizationName: String,
+    val roles: List<String>
+)
+
+@Serializable
+data class ExistingOrganizationUserLookupDto(
+    val userId: String,
+    val firstName: String,
+    val lastName: String? = null,
+    val displayName: String,
+    val primaryEmail: String? = null,
+    val primaryPhone: String,
+    val alreadyInTargetOrganization: Boolean,
+    val organizations: List<ExistingUserOrganizationAssociationDto>
 )
