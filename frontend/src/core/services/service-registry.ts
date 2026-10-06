@@ -1,9 +1,8 @@
 import { mockServices } from "../mocks/mock-services";
-import { mockReferenceDataService } from "../mocks/mock-reference-data";
 import { mockTemplateService } from "../mocks/mock-template";
 import { InMemoryCustomerExperienceService } from "../mocks/mock-customer-experience";
 import { mockNotificationService } from "../mocks/mock-notification";
-
+import { ServerReferenceDataService } from "./reference-data-service.server";
 import { LocalOrganizationService } from "./organization-service.local";
 import { LocalCustomerExperienceService } from "./customer-experience.local";
 import { LocalCustomerExperienceReleaseService } from "./customer-experience-release.local";
@@ -18,7 +17,10 @@ import { CachedStatusService } from "./status-cache";
 import { ServerStatusService } from "./status-service.server";
 import { LocalRedemptionService } from "./redemption-service.local";
 import { OrgAdminTransactionReadService } from "./org-admin-transaction-read-service";
-import { OrgAdminRedemptionApi, OrgAdminSubscriptionApi } from "@/src/data/api/org-admin-transaction-api";
+import {
+  OrgAdminRedemptionApi,
+  OrgAdminSubscriptionApi,
+} from "@/src/data/api/org-admin-transaction-api";
 import { OrgAdminCustomerApi } from "@/src/data/api/org-admin-customer-api";
 import { OrgAdminCustomerService } from "./org-admin-customer-service";
 import { CounterApi } from "@/src/data/api/counter-api";
@@ -78,7 +80,8 @@ const offerService: OfferService = new LocalOfferService();
 const userAcquisitionService: UserAcquisitionService =
   new LocalUserAcquisitionService(mockServices.userAcquisition);
 const serverStatusService = new ServerStatusService();
-
+const referenceDataService: ReferenceDataService =
+  new ServerReferenceDataService();
 const statusService: StatusService = new CachedStatusService(
   serverStatusService,
 );
@@ -143,9 +146,12 @@ const paymentService: PaymentService = new LocalPaymentService(
 );
 const redemptionService: RedemptionService = new LocalRedemptionService();
 const orgAdminTransactions = new OrgAdminTransactionReadService(
-  new OrgAdminSubscriptionApi(), new OrgAdminRedemptionApi(),
+  new OrgAdminSubscriptionApi(),
+  new OrgAdminRedemptionApi(),
 );
-const orgAdminCustomers = new OrgAdminCustomerService(new OrgAdminCustomerApi());
+const orgAdminCustomers = new OrgAdminCustomerService(
+  new OrgAdminCustomerApi(),
+);
 const counter = new CounterService(new CounterApi());
 const customerData = new CustomerDataService(new CustomerDataApi());
 const organizationMaintenance = new OrganizationMaintenanceService(
@@ -217,7 +223,7 @@ export const services: MemgineServices = {
   status: statusService,
   auth: mockServices.auth,
   payment: paymentService,
-  referenceData: mockReferenceDataService,
+  referenceData: referenceDataService,
   template: mockTemplateService,
   customerExperience: customerExperienceService,
   customerExperienceRelease: customerExperienceReleaseService,
