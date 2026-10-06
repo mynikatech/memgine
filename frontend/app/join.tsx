@@ -27,8 +27,11 @@ import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
 
 import {
+  BusinessProvider,
+  LocalizationProvider,
   useBusiness,
   useCustomerContext,
+  useOptionalBusiness,
   useAuth,
   useTranslation,
 } from "@/src/providers";
@@ -126,24 +129,18 @@ type Step =
 
 type CountryOption = {
   country: string;
-
-  code: string;
+  regionCode: string;
+  callingCode: string;
 };
 
 const COUNTRY_OPTIONS: CountryOption[] = [
-  { country: "Canada", code: "+1" },
-
-  { country: "United States", code: "+1" },
-
-  { country: "India", code: "+91" },
-
-  { country: "United Kingdom", code: "+44" },
-
-  { country: "Australia", code: "+61" },
-
-  { country: "United Arab Emirates", code: "+971" },
-
-  { country: "Singapore", code: "+65" },
+  { country: "Canada", regionCode: "CA", callingCode: "+1" },
+  { country: "United States", regionCode: "US", callingCode: "+1" },
+  { country: "India", regionCode: "IN", callingCode: "+91" },
+  { country: "United Kingdom", regionCode: "GB", callingCode: "+44" },
+  { country: "Australia", regionCode: "AU", callingCode: "+61" },
+  { country: "United Arab Emirates", regionCode: "AE", callingCode: "+971" },
+  { country: "Singapore", regionCode: "SG", callingCode: "+65" },
 ];
 
 const DEFAULT_COUNTRY = COUNTRY_OPTIONS[0];
@@ -160,7 +157,55 @@ const normalizePhone = (value: string): string =>
 const normalizeOtp = (value: string): string =>
   value.replace(/\D/g, "").slice(0, OTP_LENGTH);
 
-export default function JoinFlow() {
+export default function JoinRoute() {
+  const params = useLocalSearchParams<{
+    organizationId?: string | string[];
+  }>();
+
+  const currentBusiness = useOptionalBusiness();
+
+  const requestedOrganizationId = Array.isArray(params.organizationId)
+    ? params.organizationId[0]?.trim()
+    : params.organizationId?.trim();
+
+  /*
+   * Authenticated business/counter journeys may already have the
+   * correct BusinessProvider context.
+   */
+  if (
+    currentBusiness &&
+    (!requestedOrganizationId ||
+      currentBusiness.organization.id === requestedOrganizationId)
+  ) {
+    return <JoinFlow />;
+  }
+
+  /*
+   * Public customer / QR membership journeys identify the business
+   * through the URL. Resolve that organization explicitly rather than
+   * depending on an authenticated staff business context.
+   */
+  if (requestedOrganizationId) {
+    return (
+      <BusinessProvider organizationId={requestedOrganizationId}>
+        <LocalizationProvider>
+          <JoinFlow />
+        </LocalizationProvider>
+      </BusinessProvider>
+    );
+  }
+
+  return (
+    <Screen>
+      <StateView
+        kind="error"
+        message="A business is required to open this membership."
+      />
+    </Screen>
+  );
+}
+
+function JoinFlow() {
   const router = useRouter();
 
   const params = useLocalSearchParams<{
@@ -186,7 +231,8 @@ export default function JoinFlow() {
 
   const { organization, configuration, theme } = useBusiness();
 
-  const { session } = useAuth();
+  const auth = useAuth();
+  const { session } = auth;
 
   const { setActiveContext } = useCustomerContext();
 
@@ -243,7 +289,8 @@ export default function JoinFlow() {
 
    */
 
-  const [countryCode, setCountryCode] = useState(DEFAULT_COUNTRY.code);
+  const [regionCode, setRegionCode] = useState(DEFAULT_COUNTRY.regionCode);
+  const [callingCode, setCallingCode] = useState(DEFAULT_COUNTRY.callingCode);
 
   const [selectedCountry, setSelectedCountry] =
     useState<CountryOption>(DEFAULT_COUNTRY);
@@ -723,9 +770,8 @@ export default function JoinFlow() {
 
   const selectCountry = (country: CountryOption) => {
     setSelectedCountry(country);
-
-    setCountryCode(country.code);
-
+    setRegionCode(country.regionCode);
+    setCallingCode(country.callingCode);
     setCountryPickerVisible(false);
   };
 
@@ -751,17 +797,13 @@ export default function JoinFlow() {
         return;
       }
 
-      const normalizedCountryCode = countryCode.trim() || DEFAULT_COUNTRY.code;
+      const res = await auth.requestRegistrationOtp(
+        normalizedMobile,
+        regionCode,
+      );
 
-      const fullMobile = `${normalizedCountryCode}${normalizedMobile}`;
-
-      const res = await services.auth.sendOtp({
-        mobile: fullMobile,
-      });
-
-      setRequestId(String(res.requestId));
-
-      setDevCode(String(res.devCode ?? ""));
+      setRequestId(res.challengeId);
+      setDevCode(res.devCode ?? "");
 
       setCode("");
 
@@ -773,7 +815,7 @@ export default function JoinFlow() {
           : "Unable to send verification code.",
       );
     }
-  }, [countryCode, mobile]);
+  }, [auth, regionCode, mobile]);
 
   /*
 
@@ -827,32 +869,20 @@ export default function JoinFlow() {
         return;
       }
 
-      const res = await services.auth.verifyOtp({
+      const verifiedSession = await auth.verifyRegistrationOtp(
         requestId,
+        normalizedCode,
+        firstName.trim(),
+        lastName.trim(),
+        email.trim() || undefined,
+      );
 
-        code: normalizedCode,
-      });
-
-      /*
-
-       * Do NOT check res.customerId here.
-
-       */
-
-      if (!res.verified) {
-        setOtpError("Incorrect code. Please enter the OTP shown above.");
-
-        return;
-      }
-
-      const fullMobile = `${
-        countryCode.trim() || DEFAULT_COUNTRY.code
-      }${normalizePhone(mobile)}`;
+      const fullMobile = `${callingCode}${normalizePhone(mobile)}`;
 
       // Keep verified details in memory until the server purchase succeeds.
 
       setCustomer({
-        id: "",
+        id: verifiedSession.userId,
 
         fullName: `${firstName.trim()} ${lastName.trim()}`.trim(),
 
@@ -871,7 +901,7 @@ export default function JoinFlow() {
         error instanceof Error ? error.message : "Unable to verify the phone.",
       );
     }
-  }, [requestId, code, firstName, lastName, countryCode, mobile, email]);
+  }, [auth, requestId, code, firstName, lastName, callingCode, mobile, email]);
 
   const counterPurchasePayload = useCallback(() => {
     if (!isStaffSale || !plan || !params.staffId || !params.storeId) {
@@ -2237,7 +2267,7 @@ export default function JoinFlow() {
                 }}
               >
                 <Text variant="body" color="text">
-                  {selectedCountry.code}
+                  {selectedCountry.callingCode}
                 </Text>
 
                 <Text
@@ -2285,6 +2315,11 @@ export default function JoinFlow() {
             onPress={sendOtp}
             testID="join-send-otp"
           />
+          {otpError ? (
+            <Text variant="bodySmall" color="danger">
+              {otpError}
+            </Text>
+          ) : null}
 
           <Modal
             visible={countryPickerVisible}
@@ -2329,7 +2364,7 @@ export default function JoinFlow() {
                 >
                   {COUNTRY_OPTIONS.map((country) => (
                     <Pressable
-                      key={`${country.country}-${country.code}`}
+                      key={`${country.country}-${country.callingCode}`}
                       testID={`join-country-${country.country
 
                         .toLowerCase()
@@ -2356,7 +2391,7 @@ export default function JoinFlow() {
                       </Text>
 
                       <Text variant="bodySmall" color="textMuted">
-                        {country.code}
+                        {country.callingCode}
                       </Text>
                     </Pressable>
                   ))}
@@ -2382,19 +2417,17 @@ export default function JoinFlow() {
 
           <Text variant="bodySmall" color="textMuted">
             {t("join.otpSentTo", {
-              mobile: `${
-                countryCode.trim() || DEFAULT_COUNTRY.code
-              }${normalizePhone(mobile)}`,
+              mobile: `${callingCode}${normalizePhone(mobile)}`,
             })}
           </Text>
 
-          <Badge
-            label={t("join.devOtp", {
-              code: devCode,
-            })}
-            tone="info"
-            testID="join-dev-otp"
-          />
+          {devCode ? (
+            <Badge
+              label={t("join.devOtp", { code: devCode })}
+              tone="info"
+              testID="join-dev-otp"
+            />
+          ) : null}
 
           <Input
             label={t("join.otpLabel")}

@@ -113,6 +113,14 @@ class OtpService(
                 )
             }
         } catch (error: Exception) {
+                    println(
+                "OTP DELIVERY FAILED " +
+                "destination=${canonical.e164} " +
+                "region=${canonical.regionCode} " +
+                "mode=$deliveryMode " +
+                "channel=$actualChannel " + 
+                "error=${error::class.simpleName}: ${error.message}"
+    )
             sql.markDeliveryFailed(challengeId)
             if (error is IllegalStateException) {
                 throw ConflictException(error.message ?: "Live SMS is not configured for this destination")
