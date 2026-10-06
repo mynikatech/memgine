@@ -631,6 +631,8 @@ export interface Benefit {
   benefitStatusId: ID;
 
   productId?: ID;
+  productIds?: ID[];
+  products?: { productId: ID; productName: string; productCode: string }[];
   retailPrice?: Money;
   cost?: Money;
 
@@ -714,6 +716,8 @@ export interface Offer {
   disclaimerText?: string;
 
   membershipProductId?: ID;
+  productIds?: ID[];
+  products?: { productId: ID; productName: string; productCode: string }[];
   storeId?: ID;
 
   discountPercentage?: number;

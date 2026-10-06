@@ -44,6 +44,7 @@ type BenefitItemProps = {
   title: string;
   subtitle?: string;
   disclaimerText?: string;
+  eligibleProducts?: string[];
   icon?: IoniconName;
   usageRules?: BenefitUsageRule[];
   testID?: string;
@@ -247,6 +248,7 @@ export function BenefitItem({
   title,
   subtitle,
   disclaimerText,
+  eligibleProducts,
   icon = "gift-outline",
   usageRules: usageRulesOverride,
   testID,
@@ -352,6 +354,12 @@ export function BenefitItem({
           {disclaimerText?.trim() ? (
             <Text variant="caption" color="textMuted">
               Terms: {disclaimerText.trim()}
+            </Text>
+          ) : null}
+
+          {eligibleProducts?.length ? (
+            <Text variant="caption" color="textSecondary">
+              Choose from: {eligibleProducts.join(", ")}
             </Text>
           ) : null}
 

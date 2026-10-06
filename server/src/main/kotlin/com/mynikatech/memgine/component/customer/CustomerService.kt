@@ -145,7 +145,7 @@ class CustomerService(
 
     fun offers(organizationId: String, userId: String): List<OfferDto> {
         authorizeCustomer(organizationId, userId)
-        return sql.offers(organizationId, userId)
+        return withOfferProducts(organizationId, sql.offers(organizationId, userId))
     }
 
     fun combinedOffers(organizationId: String, userId: String): List<CustomerCombinedOfferDto> {
@@ -156,7 +156,7 @@ class CustomerService(
 
         // Regular redemption offers retain their existing relationship requirement.
         val regular = if (sql.hasActiveRelationship(organizationId, userId)) {
-            sql.offers(organizationId, userId).map { offer ->
+            withOfferProducts(organizationId, sql.offers(organizationId, userId)).map { offer ->
                 CustomerCombinedOfferDto(
                     offerId = offer.id,
                     offerType = "REGULAR",
@@ -256,6 +256,15 @@ class CustomerService(
         if (userId != null) return rows.map { it.copy(cost = null) }
         val ids = sql.joinBenefitIds(organizationId).toSet()
         return rows.filter { it.id in ids }.map { it.copy(cost = null) }
+    }
+
+    private fun withOfferProducts(organizationId: String, rows: List<OfferDto>): List<OfferDto> {
+        if (rows.isEmpty()) return rows
+        val products = sql.offerProducts(organizationId).groupBy { it.parentId }
+        return rows.map { offer ->
+            val choices = products[offer.id].orEmpty().map { it.product() }
+            offer.copy(productIds = choices.map { it.productId }, products = choices)
+        }
     }
 
     fun benefitRules(organizationId: String, userId: String,

@@ -11,7 +11,9 @@ class BenefitService(private val jdbi: Jdbi) {
 
     fun byMembershipProduct(membershipProductId: String): List<BenefitDto> {
         validateId(membershipProductId)
-        return jdbi.onDemand(BenefitSql::class.java).byMembershipProduct(membershipProductId)
+        val sql = jdbi.onDemand(BenefitSql::class.java)
+        val rows = sql.byMembershipProduct(membershipProductId)
+        return if (rows.isEmpty()) rows else withProducts(rows, sql.canonicalProducts(rows.first().organizationId))
     }
 
     fun products(organizationId: String): List<CatalogProductDto> {
@@ -30,14 +32,16 @@ class BenefitService(private val jdbi: Jdbi) {
 
     fun list(organizationId: String): List<BenefitDto> {
         validateId(organizationId)
-        return jdbi.onDemand(BenefitSql::class.java).list(organizationId)
+        val sql = jdbi.onDemand(BenefitSql::class.java)
+        return withProducts(sql.list(organizationId), sql.canonicalProducts(organizationId))
     }
 
     fun get(organizationId: String, benefitId: String): BenefitDto {
         validateId(organizationId)
         validateId(benefitId)
-        return jdbi.onDemand(BenefitSql::class.java).get(organizationId, benefitId)
-            ?: throw NotFoundException("Benefit not found")
+        val sql = jdbi.onDemand(BenefitSql::class.java)
+        val row = sql.get(organizationId, benefitId) ?: throw NotFoundException("Benefit not found")
+        return withProducts(listOf(row), sql.canonicalProducts(organizationId)).single()
     }
 
     fun rules(organizationId: String, benefitId: String): List<BenefitUsageRuleDto> {
@@ -74,9 +78,9 @@ class BenefitService(private val jdbi: Jdbi) {
         if (lookup.codeInUse(request.benefitCode, request.id)) {
             throw ConflictException("Benefit code already exists")
         }
-        if (request.productId != null &&
-            lookup.products(organizationId)
-                .none { it.id == request.productId }) {
+        val selectedProductIds = (request.productIds ?: request.productId?.let(::listOf) ?: emptyList()).distinct()
+        if (selectedProductIds.any { it.isBlank() || it.length > 40 } ||
+            !lookup.products(organizationId).map { it.id }.containsAll(selectedProductIds)) {
             throw BadRequestException("Product does not belong to organization")
         }
         if (request.rules.map { it.id }.distinct().size != request.rules.size) {
@@ -106,7 +110,7 @@ class BenefitService(private val jdbi: Jdbi) {
             sql.save(BenefitSqlParams(
                 organizationId, request.id, request.benefitCode, request.benefitName,
                 request.displayName, request.benefitCategoryId, request.benefitTypeId,
-                request.description, request.disclaimerText, request.benefitStatusId, request.productId,
+                request.description, request.disclaimerText, request.benefitStatusId, selectedProductIds.minOrNull(),
                 request.retailPrice, request.cost, request.effectiveDate,
                 request.expiryDate, actorUserId, create
             ))
@@ -123,9 +127,11 @@ class BenefitService(private val jdbi: Jdbi) {
             }
             existing.filter { old -> request.rules.none { it.id == old.id } }
                 .forEach { sql.deleteRule(organizationId, request.id, it.id, actorUserId) }
+            sql.saveCanonicalProducts(organizationId, request.id, selectedProductIds.toTypedArray(), actorUserId)
             BenefitBundleDto(
-                sql.get(organizationId, request.id)
-                    ?: throw NotFoundException("Benefit not found after save"),
+                withProducts(listOf(sql.get(organizationId, request.id)
+                    ?: throw NotFoundException("Benefit not found after save")),
+                    sql.canonicalProducts(organizationId)).single(),
                 sql.rules(organizationId, request.id)
             )
         }
@@ -140,6 +146,14 @@ class BenefitService(private val jdbi: Jdbi) {
 
     private fun validateId(id: String) {
         if (id.isBlank() || id.length > 64) throw BadRequestException("Invalid id")
+    }
+
+    private fun withProducts(rows: List<BenefitDto>, products: List<CanonicalProductRow>): List<BenefitDto> {
+        val byBenefit = products.groupBy { it.parentId }
+        return rows.map { benefit ->
+            val choices = byBenefit[benefit.id].orEmpty().map { it.product() }
+            benefit.copy(productIds = choices.map { it.productId }, products = choices)
+        }
     }
 
     private fun validateDates(effective: String, expiry: String?) {

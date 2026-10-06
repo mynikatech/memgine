@@ -208,6 +208,7 @@ export class BenefitApi {
           benefit.benefitStatusId,
         ),
         productId: benefit.productId,
+        productIds: benefit.productIds ?? (benefit.productId ? [benefit.productId] : []),
         retailPrice: benefit.retailPrice
           ? benefit.retailPrice.amountMinor / 100
           : null,

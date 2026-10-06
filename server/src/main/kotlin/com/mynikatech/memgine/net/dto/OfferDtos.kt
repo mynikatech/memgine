@@ -7,6 +7,8 @@ data class OfferDto(
     val id: String, val organizationId: String, val offerCode: String,
     val offerName: String, val description: String? = null,
     val membershipProductId: String? = null, val storeId: String? = null,
+    val productIds: List<String> = emptyList(),
+    val products: List<CanonicalProductDto> = emptyList(),
     val promotionImageUrl: String, val badgeText: String? = null,
     val availabilityText: String? = null, val disclaimerText: String? = null, val ctaLabel: String,
     val ctaType: String, val ctaTarget: String? = null,
@@ -32,6 +34,7 @@ data class OfferUsageRuleDto(
 data class OfferWriteDto(
     val id: String, val offerCode: String, val offerName: String,
     val description: String? = null, val membershipProductId: String? = null,
+    val productIds: List<String>? = null,
     val storeId: String? = null, val promotionImageUrl: String,
     val badgeText: String? = null, val availabilityText: String? = null,
     val disclaimerText: String? = null,

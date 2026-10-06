@@ -414,20 +414,10 @@ export function OfferForm({
       : posProducts;
   }, [posProducts, productSearch]);
   const posProductNames = (configuration: OfferCommerceConfiguration) =>
-    configuration.productMappings?.length
-      ? configuration.productMappings.map(
-          (mapping) =>
-            posProducts.find((product) => product.id === mapping.productId)
-              ?.name ??
-            mapping.snapshot?.productName ??
-            mapping.externalSku ??
-            mapping.externalProductId,
-        )
-      : configuration.productIds.map(
-          (productId) =>
-            posProducts.find((product) => product.id === productId)?.name ??
-            productId,
-        );
+    configuration.productIds.map(
+      (productId) =>
+        posProducts.find((product) => product.id === productId)?.name ?? productId,
+    );
 
   const readOnlyMode: "POS_PRODUCT" | "MEMBERSHIP_PRODUCT" | null = readOnly
     ? targetMode
@@ -989,7 +979,12 @@ export function OfferForm({
       }));
 
       await onSave(
-        normalizedOffer,
+        {
+          ...normalizedOffer,
+          productIds: mode === "POS_PRODUCT"
+            ? (applicability?.productIds ?? [])
+            : additionalPosCommerceConfiguration ? (offer.productIds ?? []) : [],
+        },
         normalizedRules,
         pendingImage,
         mode === "POS_PRODUCT" ? (applicability ?? undefined) : undefined,

@@ -321,25 +321,7 @@ export default function OrgAdminBenefits() {
           ),
         );
 
-        // Legacy Product remains authoritative when present. For a legacy
-        // record without it, render the product represented by the saved
-        // Commerce mapping so reopening the form keeps the current selection.
-        const persistedSnapshot = cloneBenefits(
-          persistedBenefits.map((benefit) => {
-            if (benefit.productId) return benefit;
-
-            const mappedProduct = applicabilityByBenefitId
-              .get(benefit.id)
-              ?.productMappings.map((mapping) =>
-                productList.find((product) => product.id === mapping.productId),
-              )
-              .find((product): product is Product => Boolean(product));
-
-            return mappedProduct
-              ? { ...benefit, productId: mappedProduct.id }
-              : benefit;
-          }),
-        );
+        const persistedSnapshot = cloneBenefits(persistedBenefits);
 
         /*
          * PostgreSQL is authoritative on every fresh load.
@@ -365,11 +347,7 @@ export default function OrgAdminBenefits() {
               ([benefitId, applicability]) => [
                 benefitId,
                 {
-                  productIds: applicability.productMappings
-                    .map((mapping) => mapping.productId)
-                    .filter((productId): productId is string =>
-                      Boolean(productId),
-                    ),
+                  productIds: persistedSnapshot.find((benefit) => benefit.id === benefitId)?.productIds ?? [],
                   adjustmentType:
                     applicability.adjustmentType as BenefitCommerceConfiguration["adjustmentType"],
                   percentage: applicability.percentage ?? undefined,
@@ -419,7 +397,9 @@ export default function OrgAdminBenefits() {
     if (!adjustmentType) return false;
     const configuration = commerceConfigurations[benefit.id];
     const existing = commerceApplicability[benefit.id];
-    if (!configuration || !existing) return true;
+    if (!configuration) return false;
+    const uniquelyMapped = configuration.productIds.every((id) => mappingsForProduct(id, commerceMappings).length === 1);
+    if (!existing) return true;
     const existingProductIds = existing.productMappings
       .map((mapping) => mapping.productId)
       .filter((id): id is string => Boolean(id))
@@ -429,9 +409,10 @@ export default function OrgAdminBenefits() {
       configuration.percentage !== (existing.percentage ?? undefined) ||
       configuration.amountMinor !== (existing.amountMinor ?? undefined) ||
       configuration.currencyCode !== (existing.currencyCode ?? undefined) ||
-      configuration.active !== existing.active ||
-      JSON.stringify([...configuration.productIds].sort()) !==
-        JSON.stringify(existingProductIds)
+      (uniquelyMapped && !existing.active) ||
+      (!uniquelyMapped && existing.active) ||
+      (uniquelyMapped && JSON.stringify([...configuration.productIds].sort()) !==
+        JSON.stringify(existingProductIds))
     );
   };
   const hasChanges = useMemo(
@@ -491,25 +472,23 @@ export default function OrgAdminBenefits() {
     const configuration = commerceConfigurations[benefit.id];
     if (!configuration) return null;
     const mappingIds: string[] = [];
-    const unmapped: string[] = [];
-    const ambiguous: string[] = [];
     for (const productId of configuration.productIds) {
       const matches = mappingsForProduct(productId, commerceMappings);
-      const productName = getProductName(productId);
-      if (matches.length === 0) unmapped.push(productName);
-      else if (matches.length > 1) ambiguous.push(productName);
-      else mappingIds.push(matches[0].mappingId);
+      if (matches.length !== 1) {
+        return {
+          adjustmentType: configuration.adjustmentType,
+          percentage: configuration.percentage,
+          amountMinor: configuration.amountMinor,
+          currencyCode: configuration.currencyCode,
+          active: false,
+          productMappingIds: [],
+        };
+      }
+      mappingIds.push(matches[0].mappingId);
     }
-    if (unmapped.length)
-      throw new Error(
-        `These selected Products have no active Commerce mapping: ${unmapped.join(", ")}. Sync or reconcile them before saving.`,
-      );
-    if (ambiguous.length)
-      throw new Error(
-        `These selected Products have more than one active Commerce mapping and require an explicit Commerce context: ${ambiguous.join(", ")}.`,
-      );
-    if (!mappingIds.length)
-      throw new Error("Select at least one mapped POS Product.");
+    if (!mappingIds.length) return { adjustmentType: configuration.adjustmentType,
+      percentage: configuration.percentage, amountMinor: configuration.amountMinor,
+      currencyCode: configuration.currencyCode, active: false, productMappingIds: [] };
     return {
       adjustmentType: configuration.adjustmentType,
       percentage: configuration.percentage,
@@ -768,9 +747,8 @@ export default function OrgAdminBenefits() {
         (benefit) => !benefit.isDeleted && requiresCommerceSave(benefit),
       );
 
-      // Validate all Commerce applicability before changing any legacy Benefit.
-      // This prevents an invalid selected product from being persisted without
-      // the corresponding product-level adjustment.
+      // Canonical Product choices are persisted with Benefit and Usage Rules.
+      // POS applicability is optional when no unique mapping exists.
       const applicabilityByBenefitId = new Map(
         benefitsRequiringCommerceSave.map((benefit) => [
           benefit.id,
@@ -910,11 +888,7 @@ export default function OrgAdminBenefits() {
             ([benefitId, applicability]) => [
               benefitId,
               {
-                productIds: applicability.productMappings
-                  .map((mapping) => mapping.productId)
-                  .filter((productId): productId is string =>
-                    Boolean(productId),
-                  ),
+                productIds: refreshed.find((benefit) => benefit.id === benefitId)?.productIds ?? [],
                 adjustmentType:
                   applicability.adjustmentType as BenefitCommerceConfiguration["adjustmentType"],
                 percentage: applicability.percentage ?? undefined,
@@ -1114,7 +1088,7 @@ export default function OrgAdminBenefits() {
 
         render: (item) => (
           <Text variant="body" color="text">
-            {getProductName(item.productId)}
+            {(item.productIds?.length ? item.productIds : item.productId ? [item.productId] : []).map((id) => getProductName(id)).join(", ") || "—"}
           </Text>
         ),
       },
@@ -1346,7 +1320,7 @@ export default function OrgAdminBenefits() {
                 ["Benefit Name", getDisplayName(viewingBenefit)],
                 ["Category", getCategoryName(viewingBenefit.benefitCategoryId)],
                 ["Type", getTypeName(viewingBenefit.benefitTypeId)],
-                ["Product", getProductName(viewingBenefit.productId)],
+                ["Products", (viewingBenefit.productIds?.length ? viewingBenefit.productIds : viewingBenefit.productId ? [viewingBenefit.productId] : []).map((id) => getProductName(id)).join(", ") || "—"],
                 ["Status", getStatusName(viewingBenefit.benefitStatusId)],
                 ["Effective Date", viewingBenefit.effectiveDate],
                 ["Expiry Date", viewingBenefit.expiryDate ?? "—"],

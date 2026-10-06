@@ -169,6 +169,29 @@ function resolveBusinessInformation(
   };
 }
 
+function labelAlreadyContainsPlan(
+  productLabel: string,
+  planName: string,
+): boolean {
+  const normalizedProduct = productLabel
+    .trim()
+    .toUpperCase()
+    .split(/[^A-Z0-9]+/)
+    .filter(Boolean);
+
+  const normalizedPlan = planName
+    .trim()
+    .toUpperCase()
+    .split(/[^A-Z0-9]+/)
+    .filter(Boolean);
+
+  if (!normalizedPlan.length) {
+    return false;
+  }
+
+  return normalizedPlan.every((word) => normalizedProduct.includes(word));
+}
+
 export function resolveExperience(
   input: ResolveExperienceInput,
 ): ResolvedExperience {
@@ -232,11 +255,16 @@ export function resolveExperience(
       (plan) => plan.id === subscription.subscriptionPlanId,
     );
 
-    const productLabel = product.displayName ?? product.membershipProductName;
+    const productLabel = (
+      product.displayName ?? product.membershipProductName
+    ).trim();
 
-    const membershipLabel = selectedPlan?.subscriptionPlanName
-      ? `${productLabel} · ${selectedPlan.subscriptionPlanName}`
-      : productLabel;
+    const planName = selectedPlan?.subscriptionPlanName?.trim();
+
+    const membershipLabel =
+      planName && !labelAlreadyContainsPlan(productLabel, planName)
+        ? `${productLabel} · ${planName}`
+        : productLabel;
 
     const daysRemaining = subscription.endDate
       ? Math.max(

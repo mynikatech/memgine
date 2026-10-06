@@ -389,7 +389,7 @@ export function BenefitForm({
   const [costInput, setCostInput] = useState(moneyToInput(benefit.cost));
   const [commerceProductIds, setCommerceProductIds] = useState<string[]>(
     () =>
-      commerceConfiguration?.productIds ??
+      benefit.productIds ?? commerceConfiguration?.productIds ??
       (benefit.productId ? [benefit.productId] : []),
   );
   const [percentageInput, setPercentageInput] = useState(
@@ -420,7 +420,7 @@ export function BenefitForm({
     setRetailPriceInput(moneyToInput(benefit.retailPrice));
     setCostInput(moneyToInput(benefit.cost));
     setCommerceProductIds(
-      commerceConfiguration?.productIds ??
+      benefit.productIds ?? commerceConfiguration?.productIds ??
         (benefit.productId ? [benefit.productId] : []),
     );
     setPercentageInput(commerceConfiguration?.percentage?.toString() ?? "");
@@ -714,7 +714,7 @@ export function BenefitForm({
         return;
       }
       await onSave(
-        { ...form, disclaimerText: form.disclaimerText?.trim() || undefined },
+        { ...form, productIds: commerceProductIds, productId: [...commerceProductIds].sort()[0], disclaimerText: form.disclaimerText?.trim() || undefined },
         rules.map((rule) => ({
           ...rule,
           ruleName:

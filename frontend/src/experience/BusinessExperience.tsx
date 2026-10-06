@@ -1268,6 +1268,7 @@ export function BusinessExperience({
                   title={b.displayName ?? b.benefitName}
                   subtitle={b.description}
                   disclaimerText={b.disclaimerText}
+                  eligibleProducts={b.products?.map((product) => product.productName || product.productCode)}
                   icon={benefitIconForType(b.benefitTypeId)}
                   usageRules={benefitUsageRules?.filter(
                     (rule) => rule.benefitId === b.id,
@@ -1339,6 +1340,11 @@ export function BusinessExperience({
                               {b.description}
                             </Text>
                           ) : null}
+                          {b.products?.length ? (
+                            <Text variant="bodySmall" color="textSecondary">
+                              Choose from: {b.products.map((product) => product.productName || product.productCode).join(", ")}
+                            </Text>
+                          ) : null}
                         </View>
 
                         {!selectable ? (
@@ -1372,6 +1378,7 @@ export function BusinessExperience({
                       badge={offer.badgeText}
                       availabilityText={offer.availabilityText}
                       disclaimerText={offer.disclaimerText}
+                      applicableProducts={offer.products?.map((product) => product.productName || product.productCode)}
                       discountPercentage={offer.discountPercentage}
                       ctaLabel={
                         isPreviewMode
@@ -1584,6 +1591,7 @@ export function BusinessExperience({
                     badge={offer.badgeText}
                     availabilityText={offer.availabilityText}
                     disclaimerText={offer.disclaimerText}
+                    applicableProducts={offer.products?.map((product) => product.productName || product.productCode)}
                     discountPercentage={offer.discountPercentage}
                     ctaLabel={
                       isPreviewMode
@@ -2606,6 +2614,7 @@ export function BusinessExperience({
                         title={b.displayName ?? b.benefitName}
                         subtitle={b.description}
                         disclaimerText={b.disclaimerText}
+                        eligibleProducts={b.products?.map((product) => product.productName || product.productCode)}
                         icon={benefitIconForType(b.benefitTypeId)}
                         usageRules={benefitUsageRules?.filter(
                           (rule) => rule.benefitId === b.id,

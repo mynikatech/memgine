@@ -3,9 +3,11 @@ package com.mynikatech.memgine.component.benefit
 import com.mynikatech.memgine.net.dto.BenefitDto
 import com.mynikatech.memgine.net.dto.BenefitUsageRuleDto
 import com.mynikatech.memgine.net.dto.CatalogProductDto
+import com.mynikatech.memgine.net.dto.CanonicalProductRow
 import org.jdbi.v3.sqlobject.customizer.Bind
 import org.jdbi.v3.sqlobject.customizer.BindBean
 import org.jdbi.v3.sqlobject.statement.SqlQuery
+import org.jdbi.v3.sqlobject.kotlin.RegisterKotlinMapper
 
 data class BenefitSqlParams(
     val organizationId: String, val id: String, val benefitCode: String,
@@ -26,6 +28,15 @@ data class RuleSqlParams(
 )
 
 interface BenefitSql {
+    @SqlQuery("SELECT * FROM get_benefit_products(:organizationId)")
+    @RegisterKotlinMapper(CanonicalProductRow::class)
+    fun canonicalProducts(@Bind("organizationId") organizationId: String): List<CanonicalProductRow>
+
+    @SqlQuery("SELECT save_benefit_products(:organizationId, :benefitId, :productIds, :actorUserId)")
+    fun saveCanonicalProducts(@Bind("organizationId") organizationId: String,
+                              @Bind("benefitId") benefitId: String,
+                              @Bind("productIds") productIds: Array<String>,
+                              @Bind("actorUserId") actorUserId: String): Boolean
     @SqlQuery("SELECT EXISTS(SELECT 1 FROM benefit_categories WHERE benefit_category_id = :id AND is_active = true)")
     fun categoryExists(@Bind("id") id: String): Boolean
 
@@ -46,14 +57,17 @@ interface BenefitSql {
     @SqlQuery("SELECT EXISTS(SELECT 1 FROM benefits WHERE benefit_code = :code AND benefit_id <> :id)")
     fun codeInUse(@Bind("code") code: String, @Bind("id") id: String): Boolean
     @SqlQuery("SELECT * FROM get_membership_product_benefits(:membershipProductId)")
+    @RegisterKotlinMapper(BenefitDto::class)
     fun byMembershipProduct(@Bind("membershipProductId") membershipProductId: String): List<BenefitDto>
     @SqlQuery("SELECT * FROM get_organization_products(:organizationId)")
     fun products(@Bind("organizationId") organizationId: String): List<CatalogProductDto>
 
     @SqlQuery("SELECT * FROM get_organization_benefits(:organizationId)")
+    @RegisterKotlinMapper(BenefitDto::class)
     fun list(@Bind("organizationId") organizationId: String): List<BenefitDto>
 
     @SqlQuery("SELECT * FROM get_organization_benefits(:organizationId) WHERE id = :benefitId")
+    @RegisterKotlinMapper(BenefitDto::class)
     fun get(@Bind("organizationId") organizationId: String,
             @Bind("benefitId") benefitId: String): BenefitDto?
 

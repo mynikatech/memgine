@@ -237,19 +237,13 @@ export default function OrgAdminOffers() {
           const posConfigurations = Object.fromEntries(
             posApplicability
 
-              .filter(([, value]) => value?.active)
+              .filter(([id, value]) => value && (value.active || Boolean(activeOffers.find((offer) => offer.id === id)?.productIds?.length)))
 
               .map(([id, value]) => [
                 id,
 
                 {
-                  productIds: value!.productMappings
-
-                    .map((mapping) => mapping.productId)
-
-                    .filter((productId): productId is string =>
-                      Boolean(productId),
-                    ),
+                  productIds: activeOffers.find((offer) => offer.id === id)?.productIds ?? [],
 
                   productMappings: value!.productMappings,
 
@@ -431,7 +425,7 @@ export default function OrgAdminOffers() {
 
   const commerceApplicabilityFor = (
     offer: Offer,
-  ): OfferCommerceApplicabilityWrite => {
+  ): OfferCommerceApplicabilityWrite | null => {
     const configuration = commerceConfigurations[offer.id];
 
     if (!configuration)
@@ -439,36 +433,21 @@ export default function OrgAdminOffers() {
 
     const mappingIds: string[] = [];
 
-    const unmapped: string[] = [];
-
-    const ambiguous: string[] = [];
-
     for (const productId of configuration.productIds) {
       const mappings = commerceMappings.filter(
         (mapping) => mapping.productId === productId,
       );
 
-      const productName =
-        posProducts.find((product) => product.id === productId)?.productName ??
-        productId;
-
-      if (!mappings.length) unmapped.push(productName);
-      else if (mappings.length > 1) ambiguous.push(productName);
-      else mappingIds.push(mappings[0].mappingId);
+      if (mappings.length !== 1) {
+        return { adjustmentType: configuration.adjustmentType,
+          percentage: configuration.percentage, amountMinor: configuration.amountMinor,
+          currencyCode: configuration.currencyCode, active: false, productMappingIds: [] };
+      }
+      mappingIds.push(mappings[0].mappingId);
     }
-
-    if (unmapped.length)
-      throw new Error(
-        `These selected Products have no active Commerce mapping: ${unmapped.join(", ")}. Sync or reconcile them before saving.`,
-      );
-
-    if (ambiguous.length)
-      throw new Error(
-        `These selected Products have multiple active Org Product mappings and cannot be resolved automatically: ${ambiguous.join(", ")}.`,
-      );
-
-    if (!mappingIds.length)
-      throw new Error("Select at least one mapped Org Product.");
+    if (!mappingIds.length) return { adjustmentType: configuration.adjustmentType,
+      percentage: configuration.percentage, amountMinor: configuration.amountMinor,
+      currencyCode: configuration.currencyCode, active: false, productMappingIds: [] };
 
     return {
       adjustmentType: configuration.adjustmentType,
@@ -552,23 +531,6 @@ export default function OrgAdminOffers() {
 
     if (!configuration) {
       return [];
-    }
-
-    if (configuration.productMappings?.length) {
-      return configuration.productMappings.map((mapping) => {
-        const catalogProduct = posProducts.find(
-          (product) => product.id === mapping.productId,
-        );
-
-        return (
-          catalogProduct?.productName ??
-          mapping.snapshot?.productName ??
-          mapping.externalSku ??
-          mapping.externalProductId ??
-          mapping.productId ??
-          "Unknown Product"
-        );
-      });
     }
 
     return configuration.productIds.map((productId) => {
@@ -1096,14 +1058,11 @@ export default function OrgAdminOffers() {
             }
 
             const applicability = commerceApplicabilityFor(offer);
-
-            await offerCommerceApi.save(
-              organization.id,
-
-              savedOffer.id,
-
-              applicability,
-            );
+            if (applicability) {
+              await offerCommerceApi.save(organization.id, savedOffer.id, applicability);
+            } else if (hadPosApplicability) {
+              await offerCommerceApi.deactivateApplicability(organization.id, savedOffer.id);
+            }
           } else if (mode === "MEMBERSHIP_PRODUCT") {
             if (
               hadPosApplicability &&

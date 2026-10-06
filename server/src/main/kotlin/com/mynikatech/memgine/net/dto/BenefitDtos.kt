@@ -15,6 +15,8 @@ data class BenefitDto(
     val disclaimerText: String? = null,
     val benefitStatusId: String,
     val productId: String? = null,
+    val productIds: List<String> = emptyList(),
+    val products: List<CanonicalProductDto> = emptyList(),
     val retailPrice: Double? = null,
     val cost: Double? = null,
     val effectiveDate: String,
@@ -78,6 +80,7 @@ data class BenefitWriteDto(
     val disclaimerText: String? = null,
     val benefitStatusId: String,
     val productId: String? = null,
+    val productIds: List<String>? = null,
     val retailPrice: Double? = null,
     val cost: Double? = null,
     val effectiveDate: String,
@@ -109,3 +112,10 @@ data class BenefitBundleDto(
 
 @Serializable
 data class DeleteBenefitDto(val benefitId: String, val deleted: Boolean)
+
+@Serializable
+data class CanonicalProductDto(
+    val productId: String,
+    val productName: String,
+    val productCode: String,
+)

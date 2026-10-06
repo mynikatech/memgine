@@ -9,9 +9,11 @@ import com.mynikatech.memgine.net.dto.CustomerChoiceDto
 import com.mynikatech.memgine.net.dto.CustomerRelationshipDto
 import com.mynikatech.memgine.net.dto.OrgAdminRedemptionDto
 import com.mynikatech.memgine.net.dto.OfferDto
+import com.mynikatech.memgine.net.dto.CanonicalProductRow
 import org.jdbi.v3.sqlobject.config.RegisterBeanMapper
 import org.jdbi.v3.sqlobject.customizer.Bind
 import org.jdbi.v3.sqlobject.statement.SqlQuery
+import org.jdbi.v3.sqlobject.kotlin.RegisterKotlinMapper
 
 data class CustomerDiscoveryDetailRow(
     var organizationId: String = "",
@@ -94,8 +96,13 @@ interface CustomerSql {
     ): CustomerRedemptionTransactionStatusRow?
 
     @SqlQuery("SELECT * FROM get_customer_offers(:organizationId, :userId)")
+    @RegisterKotlinMapper(OfferDto::class)
     fun offers(@Bind("organizationId") organizationId: String,
                @Bind("userId") userId: String): List<OfferDto>
+
+    @SqlQuery("SELECT * FROM get_offer_products(:organizationId)")
+    @RegisterKotlinMapper(CanonicalProductRow::class)
+    fun offerProducts(@Bind("organizationId") organizationId: String): List<CanonicalProductRow>
 
     @SqlQuery("SELECT * FROM get_customer_membership_purchase_offer_product_targets(:organizationId, :userId)")
     @RegisterBeanMapper(CustomerMembershipPurchaseOfferRow::class)

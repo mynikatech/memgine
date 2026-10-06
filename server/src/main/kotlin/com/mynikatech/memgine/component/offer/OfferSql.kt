@@ -2,9 +2,11 @@ package com.mynikatech.memgine.component.offer
 
 import com.mynikatech.memgine.net.dto.OfferDto
 import com.mynikatech.memgine.net.dto.OfferUsageRuleDto
+import com.mynikatech.memgine.net.dto.CanonicalProductRow
 import org.jdbi.v3.sqlobject.customizer.Bind
 import org.jdbi.v3.sqlobject.customizer.BindBean
 import org.jdbi.v3.sqlobject.statement.SqlQuery
+import org.jdbi.v3.sqlobject.kotlin.RegisterKotlinMapper
 
 data class OfferSqlParams(
     val organizationId: String, val id: String, val offerCode: String,
@@ -26,15 +28,26 @@ data class OfferRuleSqlParams(
 )
 
 interface OfferSql {
+    @SqlQuery("SELECT * FROM get_offer_products(:organizationId)")
+    @RegisterKotlinMapper(CanonicalProductRow::class)
+    fun canonicalProducts(@Bind("organizationId") organizationId: String): List<CanonicalProductRow>
+
+    @SqlQuery("SELECT save_offer_products(:organizationId, :offerId, :productIds, :actorUserId)")
+    fun saveCanonicalProducts(@Bind("organizationId") organizationId: String,
+                              @Bind("offerId") offerId: String,
+                              @Bind("productIds") productIds: Array<String>,
+                              @Bind("actorUserId") actorUserId: String): Boolean
     @SqlQuery("SELECT can_administer_organization(:organizationId, :actorUserId)")
     fun canAdminister(@Bind("organizationId") organizationId: String,
                       @Bind("actorUserId") actorUserId: String): Boolean
 
     @SqlQuery("SELECT * FROM get_organization_offers(:organizationId, :actorUserId)")
+    @RegisterKotlinMapper(OfferDto::class)
     fun list(@Bind("organizationId") organizationId: String,
              @Bind("actorUserId") actorUserId: String): List<OfferDto>
 
     @SqlQuery("SELECT * FROM get_organization_offers(:organizationId, :actorUserId) WHERE id = :offerId")
+    @RegisterKotlinMapper(OfferDto::class)
     fun get(@Bind("organizationId") organizationId: String,
             @Bind("offerId") offerId: String,
             @Bind("actorUserId") actorUserId: String): OfferDto?

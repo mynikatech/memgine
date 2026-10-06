@@ -1,0 +1,21 @@
+databaseChangeLog:
+  - changeSet:
+      id: 146-canonical-benefit-offer-products
+      author: mynikatech
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/146-canonical-benefit-offer-products.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+        - sqlFile:
+            path: ../sql/146-canonical-benefit-offer-commerce-bridge.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+        - sqlFile:
+            path: ../sql/146-canonical-customer-discovery-products.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

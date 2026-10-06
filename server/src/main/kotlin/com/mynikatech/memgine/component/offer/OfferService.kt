@@ -16,15 +16,17 @@ class OfferService(private val jdbi: Jdbi) {
     fun list(organizationId: String, actorUserId: String): List<OfferDto> {
         validateId(organizationId, 40)
         requireOrganizationAdmin(organizationId, actorUserId)
-        return jdbi.onDemand(OfferSql::class.java).list(organizationId, actorUserId)
+        val sql = jdbi.onDemand(OfferSql::class.java)
+        return withProducts(sql.list(organizationId, actorUserId), sql.canonicalProducts(organizationId))
     }
 
     fun get(organizationId: String, offerId: String, actorUserId: String): OfferDto {
         validateId(organizationId, 40)
         validateId(offerId, 40)
         requireOrganizationAdmin(organizationId, actorUserId)
-        return jdbi.onDemand(OfferSql::class.java).get(organizationId, offerId, actorUserId)
-            ?: throw NotFoundException("Offer not found")
+        val sql = jdbi.onDemand(OfferSql::class.java)
+        val row = sql.get(organizationId, offerId, actorUserId) ?: throw NotFoundException("Offer not found")
+        return withProducts(listOf(row), sql.canonicalProducts(organizationId)).single()
     }
 
     fun rules(organizationId: String, offerId: String, actorUserId: String): List<OfferUsageRuleDto> {
@@ -59,6 +61,10 @@ class OfferService(private val jdbi: Jdbi) {
         }
         request.membershipProductId?.let { validateId(it, 40) }
         request.storeId?.let { validateId(it, 40) }
+        val selectedProductIds = request.productIds?.distinct()
+        if (selectedProductIds?.any { it.isBlank() || it.length > 40 } == true) {
+            throw BadRequestException("Invalid Product id")
+        }
         if (request.rules.map { it.id }.distinct().size != request.rules.size) {
             throw BadRequestException("Duplicate Offer Usage Rule id")
         }
@@ -107,9 +113,13 @@ class OfferService(private val jdbi: Jdbi) {
                 }
                 oldRules.filter { old -> request.rules.none { it.id == old.id } }
                     .forEach { sql.deleteRule(organizationId, request.id, it.id, it.versionNo, actorUserId) }
+                if (selectedProductIds != null) {
+                    sql.saveCanonicalProducts(organizationId, request.id, selectedProductIds.toTypedArray(), actorUserId)
+                }
                 OfferBundleDto(
-                    sql.get(organizationId, request.id, actorUserId)
-                        ?: throw NotFoundException("Offer not found after save"),
+                    withProducts(listOf(sql.get(organizationId, request.id, actorUserId)
+                        ?: throw NotFoundException("Offer not found after save")),
+                        sql.canonicalProducts(organizationId)).single(),
                     sql.rules(organizationId, request.id, actorUserId)
                 )
             }
@@ -131,6 +141,14 @@ class OfferService(private val jdbi: Jdbi) {
 
     private fun validateId(id: String, maxLength: Int) {
         if (id.isBlank() || id.length > maxLength) throw BadRequestException("Invalid id")
+    }
+
+    private fun withProducts(rows: List<OfferDto>, products: List<CanonicalProductRow>): List<OfferDto> {
+        val byOffer = products.groupBy { it.parentId }
+        return rows.map { offer ->
+            val choices = byOffer[offer.id].orEmpty().map { it.product() }
+            offer.copy(productIds = choices.map { it.productId }, products = choices)
+        }
     }
 
     private fun requireOrganizationAdmin(organizationId: String, actorUserId: String) {
