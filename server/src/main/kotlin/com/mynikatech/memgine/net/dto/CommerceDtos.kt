@@ -112,6 +112,11 @@ data class CommerceProductMappingWriteDto(
 )
 
 @Serializable
+data class CommerceProductMappingResolutionDto(
+    val selectedMappingId: String
+)
+
+@Serializable
 data class CommerceApplicabilityDto(
     val adjustmentId: String,
     val organizationId: String,

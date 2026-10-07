@@ -160,6 +160,14 @@ interface CommerceSql {
         @Bind("actorUserId") actorUserId: String
     ): Boolean
 
+    @SqlQuery("SELECT resolve_organization_product_mapping(:organizationId, :productId, :selectedMappingId, :actorUserId)")
+    fun resolveProductMapping(
+        @Bind("organizationId") organizationId: String,
+        @Bind("productId") productId: String,
+        @Bind("selectedMappingId") selectedMappingId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): Boolean
+
     @SqlQuery("SELECT * FROM get_commerce_adjustment_mappings(:organizationId, :adjustmentId, :actorUserId)")
     @RegisterBeanMapper(CommerceProductMappingRow::class)
     fun adjustmentMappings(

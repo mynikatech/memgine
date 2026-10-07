@@ -345,9 +345,11 @@ DECLARE
     v_integration varchar(64);
     v_count integer;
     v_category varchar(64);
-    v_mapping_product varchar(64);
-    v_mapping_count integer;
-    v_effective_external_product_id varchar(160);
+    v_external_mapping_product varchar(64);
+    v_external_mapping_count integer;
+    v_sku_mapping_product varchar(64);
+    v_sku_mapping_count integer;
+    v_existing_product_sku varchar(160);
 BEGIN
     PERFORM organization_product_actor(p_organization_id, p_actor_user_id);
     SELECT integration_configuration_id INTO v_integration FROM product_catalog WHERE product_catalog_id=p_product_catalog_id AND organization_id=p_organization_id AND NOT is_deleted;
@@ -361,10 +363,11 @@ BEGIN
     LOOP
       v_product := NULL;
       v_category := NULL;
-      v_effective_external_product_id := COALESCE(
-          NULLIF(btrim(r."externalProductId"), ''),
-          NULLIF(btrim(r.sku), '')
-      );
+      v_external_mapping_product := NULL;
+      v_external_mapping_count := 0;
+      v_sku_mapping_product := NULL;
+      v_sku_mapping_count := 0;
+      v_existing_product_sku := NULL;
       IF NULLIF(btrim(r."productName"),'') IS NULL OR NULLIF(btrim(r."productCode"),'') IS NULL OR r."basePriceMinor" IS NULL OR r."basePriceMinor" < 0 OR COALESCE(length(NULLIF(btrim(r."currencyCode"),'')),0) <> 3 THEN
         "rowNumber" := r."rowNumber"; classification := 'ERROR'; "productId" := NULL; reason := 'Required product fields are invalid'; RETURN NEXT; CONTINUE;
       END IF;
@@ -380,32 +383,64 @@ BEGIN
       ) > 1 THEN
         "rowNumber":=r."rowNumber"; classification:='ERROR'; "productId":=NULL; reason:='Duplicate POS SKU in import'; RETURN NEXT; CONTINUE;
       END IF;
+      IF v_integration IS NOT NULL AND (
+          SELECT count(*) FROM jsonb_to_recordset(COALESCE(p_rows,'[]'::jsonb)) AS d("productCode" varchar)
+           WHERE NULLIF(btrim(d."productCode"),'') = btrim(r."productCode")
+      ) > 1 THEN
+        "rowNumber":=r."rowNumber"; classification:='ERROR'; "productId":=NULL; reason:='Duplicate Product Code in import; use unique Product Codes'; RETURN NEXT; CONTINUE;
+      END IF;
       -- Explicit canonical identity is authoritative. Each following matching
       -- strategy is attempted only if the previous strategy did not find a row.
       IF NULLIF(btrim(r."productId"),'') IS NOT NULL THEN
         SELECT product_id INTO v_product FROM product WHERE product_id=r."productId" AND organization_id=p_organization_id AND NOT is_deleted;
         IF v_product IS NULL THEN "rowNumber":=r."rowNumber"; classification:='ERROR'; "productId":=NULL; reason:='Product ID is not in this organization'; RETURN NEXT; CONTINUE; END IF;
       END IF;
-      IF v_product IS NULL AND v_integration IS NOT NULL AND NULLIF(btrim(r."externalProductId"),'') IS NOT NULL THEN
-        SELECT count(*), min(product_id) INTO v_count,v_product FROM commerce_product_mappings WHERE organization_id=p_organization_id AND integration_configuration_id=v_integration AND store_id IS NULL AND external_product_id=btrim(r."externalProductId") AND NOT is_deleted;
-        IF v_count > 1 THEN "rowNumber":=r."rowNumber"; classification:='ERROR'; "productId":=NULL; reason:='External Product ID is ambiguous'; RETURN NEXT; CONTINUE; END IF;
-      END IF;
-      IF v_product IS NULL AND v_integration IS NOT NULL
-         AND NULLIF(btrim(r."externalProductId"),'') IS NULL
-         AND NULLIF(btrim(r.sku),'') IS NOT NULL THEN
-        SELECT count(*), min(product_id) INTO v_count,v_product
+      IF v_integration IS NOT NULL AND NULLIF(btrim(r."externalProductId"),'') IS NOT NULL THEN
+        SELECT count(DISTINCT product_id), min(product_id)
+          INTO v_external_mapping_count,v_external_mapping_product
           FROM commerce_product_mappings
          WHERE organization_id=p_organization_id AND integration_configuration_id=v_integration AND store_id IS NULL
-           AND (external_product_id=btrim(r.sku) OR external_sku=btrim(r.sku)) AND NOT is_deleted;
-        IF v_count > 1 THEN "rowNumber":=r."rowNumber"; classification:='ERROR'; "productId":=NULL; reason:='POS SKU is ambiguous'; RETURN NEXT; CONTINUE; END IF;
+           AND external_product_id=btrim(r."externalProductId") AND is_active AND NOT is_deleted;
+        IF v_external_mapping_count > 1 THEN "rowNumber":=r."rowNumber"; classification:='ERROR'; "productId":=NULL; reason:='External Product ID is ambiguous'; RETURN NEXT; CONTINUE; END IF;
       END IF;
-      IF v_product IS NULL AND NULLIF(btrim(r."productCode"),'') IS NOT NULL THEN
-        SELECT count(*), min(product_id) INTO v_count,v_product FROM product WHERE organization_id=p_organization_id AND product_code=btrim(r."productCode") AND NOT is_deleted;
-        IF v_count > 1 THEN "rowNumber":=r."rowNumber"; classification:='ERROR'; "productId":=NULL; reason:='Product Code is ambiguous'; RETURN NEXT; CONTINUE; END IF;
+      IF v_integration IS NOT NULL AND NULLIF(btrim(r.sku),'') IS NOT NULL THEN
+        SELECT count(DISTINCT product_id), min(product_id)
+          INTO v_sku_mapping_count,v_sku_mapping_product
+          FROM commerce_product_mappings
+         WHERE organization_id=p_organization_id AND integration_configuration_id=v_integration AND store_id IS NULL
+           AND (external_sku=btrim(r.sku) OR external_product_id=btrim(r.sku))
+           AND is_active AND NOT is_deleted;
+        IF v_sku_mapping_count > 1 THEN "rowNumber":=r."rowNumber"; classification:='ERROR'; "productId":=NULL; reason:='POS SKU is ambiguous'; RETURN NEXT; CONTINUE; END IF;
+      END IF;
+      IF v_external_mapping_product IS NOT NULL AND v_sku_mapping_product IS NOT NULL
+         AND v_external_mapping_product IS DISTINCT FROM v_sku_mapping_product THEN
+        "rowNumber":=r."rowNumber"; classification:='ERROR'; "productId":=NULL; reason:='External Product ID conflicts with POS SKU mapping'; RETURN NEXT; CONTINUE;
+      END IF;
+      IF v_product IS NULL THEN
+        v_product := COALESCE(v_external_mapping_product, v_sku_mapping_product);
+      ELSIF (v_external_mapping_product IS NOT NULL AND v_external_mapping_product IS DISTINCT FROM v_product)
+         OR (v_sku_mapping_product IS NOT NULL AND v_sku_mapping_product IS DISTINCT FROM v_product) THEN
+        "rowNumber":=r."rowNumber"; classification:='ERROR'; "productId":=NULL; reason:='Supplied Product ID conflicts with existing POS mapping'; RETURN NEXT; CONTINUE;
       END IF;
       IF v_product IS NULL AND NULLIF(btrim(r.sku),'') IS NOT NULL THEN
-        SELECT count(*), min(product_id) INTO v_count,v_product FROM product WHERE organization_id=p_organization_id AND sku=btrim(r.sku) AND NOT is_deleted;
+        SELECT count(*), min(product_id) INTO v_count,v_product
+          FROM product
+         WHERE organization_id=p_organization_id AND product_catalog_id=p_product_catalog_id
+           AND sku=btrim(r.sku) AND NOT is_deleted;
         IF v_count > 1 THEN "rowNumber":=r."rowNumber"; classification:='ERROR'; "productId":=NULL; reason:='SKU is ambiguous'; RETURN NEXT; CONTINUE; END IF;
+      END IF;
+      IF v_product IS NULL AND NULLIF(btrim(r."productCode"),'') IS NOT NULL THEN
+        SELECT count(*), min(product_id), min(sku) INTO v_count,v_product,v_existing_product_sku
+          FROM product
+         WHERE organization_id=p_organization_id AND product_code=btrim(r."productCode") AND NOT is_deleted;
+        IF v_count > 1 THEN "rowNumber":=r."rowNumber"; classification:='ERROR'; "productId":=NULL; reason:='Product Code is ambiguous'; RETURN NEXT; CONTINUE; END IF;
+        IF v_count = 1 AND NULLIF(btrim(r.sku),'') IS NOT NULL
+           AND NULLIF(btrim(v_existing_product_sku),'') IS NOT NULL
+           AND btrim(v_existing_product_sku) IS DISTINCT FROM btrim(r.sku) THEN
+          "rowNumber":=r."rowNumber"; classification:='ERROR'; "productId":=NULL;
+          reason:=format('Product Code %s is already used by another Product with SKU %s. Incoming SKU %s represents a different Product. Use a unique Product Code.', btrim(r."productCode"), btrim(v_existing_product_sku), btrim(r.sku));
+          RETURN NEXT; CONTINUE;
+        END IF;
       END IF;
       IF NULLIF(btrim(r."categoryExternalId"),'') IS NOT NULL THEN
         SELECT count(*), min(product_catalog_category_id) INTO v_count,v_category
@@ -422,20 +457,12 @@ BEGIN
       END IF;
       -- A pre-existing provider identity may never be silently rebound to a
       -- different canonical Product. Missing mappings are handled at commit.
-      IF v_product IS NOT NULL AND v_integration IS NOT NULL AND v_effective_external_product_id IS NOT NULL THEN
-        SELECT count(*), min(product_id) INTO v_mapping_count,v_mapping_product
-          FROM commerce_product_mappings
-         WHERE organization_id=p_organization_id AND integration_configuration_id=v_integration
-           AND store_id IS NULL AND external_product_id=v_effective_external_product_id AND NOT is_deleted;
-        IF v_mapping_count = 1 AND v_mapping_product IS DISTINCT FROM v_product THEN
-          "rowNumber":=r."rowNumber"; classification:='ERROR'; "productId":=NULL; reason:='External Product ID belongs to a different product'; RETURN NEXT; CONTINUE;
-        END IF;
+      IF v_product IS NOT NULL AND v_external_mapping_product IS NOT NULL
+         AND v_external_mapping_product IS DISTINCT FROM v_product THEN
+        "rowNumber":=r."rowNumber"; classification:='ERROR'; "productId":=NULL; reason:='External Product ID belongs to a different product'; RETURN NEXT; CONTINUE;
       END IF;
-      IF v_product IS NOT NULL AND v_integration IS NOT NULL AND NULLIF(btrim(r.sku),'') IS NOT NULL AND EXISTS (
-          SELECT 1 FROM commerce_product_mappings
-           WHERE organization_id=p_organization_id AND integration_configuration_id=v_integration AND store_id IS NULL
-             AND external_sku=btrim(r.sku) AND product_id IS DISTINCT FROM v_product AND NOT is_deleted
-      ) THEN
+      IF v_product IS NOT NULL AND v_sku_mapping_product IS NOT NULL
+         AND v_sku_mapping_product IS DISTINCT FROM v_product THEN
         "rowNumber":=r."rowNumber"; classification:='ERROR'; "productId":=NULL; reason:='POS SKU is already mapped to another product'; RETURN NEXT; CONTINUE;
       END IF;
       "rowNumber":=r."rowNumber"; "productId":=v_product;

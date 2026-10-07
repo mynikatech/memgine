@@ -131,6 +131,20 @@ class CommerceService(
         sql.deactivateMapping(validId(organizationId), validId(mappingId), actorUserId)
     }
 
+    fun resolveProductMapping(
+        organizationId: String,
+        productId: String,
+        selectedMappingId: String,
+        actorUserId: String
+    ): Boolean = translate {
+        sql.resolveProductMapping(
+            validId(organizationId),
+            validId(productId),
+            validId(selectedMappingId),
+            actorUserId
+        )
+    }
+
     fun saveSnapshot(
         organizationId: String,
         request: CommerceProductSnapshotWriteDto,
@@ -820,7 +834,7 @@ class CommerceService(
             .filterIsInstance<PSQLException>().firstOrNull()
         when (postgres?.sqlState) {
             "42501" -> throw ForbiddenException("Organization administration is not permitted")
-            "40001" -> throw ConflictException("Commerce payment-provider route was changed")
+            "40001" -> throw ConflictException("Commerce configuration changed; refresh and retry")
             "23503", "23505", "22023", "22001", "23514", "22P02" -> throw BadRequestException("Invalid commerce configuration")
             else -> throw error
         }

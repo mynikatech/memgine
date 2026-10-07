@@ -79,6 +79,17 @@ fun Route.commerceRoutes(service: CommerceService) {
                     call.callId
                 ))
             }
+            post("/products/{productId}/resolve-mapping") {
+                call.respond(ApiResponse.success(
+                    service.resolveProductMapping(
+                        orgId(call),
+                        required(call.parameters["productId"]),
+                        call.receive<CommerceProductMappingResolutionDto>().selectedMappingId,
+                        call.authenticatedPrincipal().userId
+                    ),
+                    call.callId
+                ))
+            }
             post("/product-mappings") {
                 call.respond(HttpStatusCode.Created, ApiResponse.success(
                     service.saveMapping(orgId(call), call.receive<CommerceProductMappingWriteDto>(), call.authenticatedPrincipal().userId), call.callId))
