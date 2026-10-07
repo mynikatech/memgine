@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 151-poynt-terminal-store-id-optional
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/151-poynt-terminal-store-id-optional.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

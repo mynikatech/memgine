@@ -22,6 +22,7 @@ export type DataTableColumn<T> = {
 export type DataTableAction<T> = {
   label: string;
   onPress: (item: T) => void;
+  visible?: (item: T) => boolean;
 };
 
 export type DataTableProps<T> = {
@@ -45,6 +46,7 @@ export type DataTableProps<T> = {
    * The Actions column is never expanded.
    */
   minTableWidth?: number;
+  actionsWidth?: number;
 };
 
 export function DataTable<T>({
@@ -55,6 +57,7 @@ export function DataTable<T>({
   emptyMessage = "No records found.",
   onRowPress,
   minTableWidth = 720,
+  actionsWidth: requestedActionsWidth = 150,
 }: DataTableProps<T>) {
   const theme = useTheme();
   const { width } = useWindowDimensions();
@@ -94,6 +97,7 @@ export function DataTable<T>({
     return (
       <View style={{ gap: theme.spacing.md }}>
         {data.map((item) => {
+          const rowActions = actions.filter((action) => action.visible?.(item) ?? true);
           const content = (
             <View
               key={keyExtractor(item)}
@@ -136,7 +140,7 @@ export function DataTable<T>({
                   </View>
                 ))}
 
-                {actions.length > 0 ? (
+                {rowActions.length > 0 ? (
                   <View
                     style={[
                       styles.mobileActions,
@@ -145,7 +149,7 @@ export function DataTable<T>({
                       },
                     ]}
                   >
-                    {actions.map((action) => (
+                    {rowActions.map((action) => (
                       <Pressable
                         key={action.label}
                         onPress={() => action.onPress(item)}
@@ -198,10 +202,10 @@ export function DataTable<T>({
    * Then, if minTableWidth is larger, distribute the additional
    * width across DATA columns only.
    *
-   * Actions remains fixed at 150px.
+   * Actions remains fixed at the requested actions width.
    * --------------------------------------------------------------- */
 
-  const actionsWidth = actions.length > 0 ? 150 : 0;
+  const actionsWidth = actions.length > 0 ? requestedActionsWidth : 0;
 
   const baseColumnWidths = columns.map((column) => column.width ?? 180);
 
@@ -299,6 +303,7 @@ export function DataTable<T>({
             ========================================================= */}
 
         {data.map((item) => {
+          const rowActions = actions.filter((action) => action.visible?.(item) ?? true);
           const rowContent = (
             <>
               {columns.map((column, index) => (
@@ -335,7 +340,7 @@ export function DataTable<T>({
                     },
                   ]}
                 >
-                  {actions.map((action) => (
+                  {rowActions.map((action) => (
                     <Pressable
                       key={action.label}
                       onPress={() => action.onPress(item)}

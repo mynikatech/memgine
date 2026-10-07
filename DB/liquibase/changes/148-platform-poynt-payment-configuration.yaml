@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 148-platform-poynt-payment-configuration
+      author: mynikatech
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/148-platform-poynt-payment-configuration.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

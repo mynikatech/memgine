@@ -79,6 +79,26 @@ data class CommerceApplicabilityRow(
 )
 
 interface CommerceSql {
+    @SqlQuery("""
+        SELECT EXISTS(
+            SELECT 1
+            FROM integration_configurations i
+            JOIN commerce_provider_catalog_configurations c
+              ON c.integration_configuration_id = i.integration_configuration_id
+             AND c.organization_id = i.organization_id
+             AND NOT c.is_deleted
+            WHERE i.organization_id = :organizationId
+              AND i.integration_configuration_id = :integrationId
+              AND upper(i.provider) = 'POYNT'
+              AND NOT i.is_deleted
+              AND c.connection_status = 'VERIFIED'
+        )
+    """)
+    fun verifiedPoyntIntegration(
+        @Bind("organizationId") organizationId: String,
+        @Bind("integrationId") integrationId: String
+    ): Boolean
+
     @SqlQuery("""SELECT * FROM commerce_prepare_internal_membership_order(
         :organizationId, :storeId, :staffId, :customerUserId, :subscriptionPlanId,
         :idempotencyKey, :actorUserId)""")

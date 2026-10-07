@@ -8,6 +8,19 @@ databaseChangeLog:
       name: appRole
       value: memgine_app_prod
 
+  - property:
+      name: poyntCredentialProfileSeedEnabled
+      value: "false"
+  - property:
+      name: poyntCredentialProfileSeedId
+      value: POYNT-CRED-UNCONFIGURED
+  - property:
+      name: poyntCredentialProfileSeedDisplayName
+      value: Unconfigured
+  - property:
+      name: poyntCredentialProfileSeedSecretReference
+      value: UNCONFIGURED
+
   - include:
       file: ../../liquibase/baseline/000-initial-baseline.yaml
       relativeToChangelogFile: true

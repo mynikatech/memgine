@@ -43,6 +43,16 @@ import com.mynikatech.memgine.component.commerce.poyntPaymentBridgeCallbackRoute
 import com.mynikatech.memgine.component.commerce.CommerceProviderRegistry
 import com.mynikatech.memgine.component.commerce.CommercePaymentProviderPolicy
 import com.mynikatech.memgine.component.commerce.CommerceRemotePaymentConfiguration
+import com.mynikatech.memgine.component.commerce.PlatformPoyntPaymentService
+import com.mynikatech.memgine.component.commerce.PlatformPoyntPaymentSql
+import com.mynikatech.memgine.component.commerce.PlatformPoyntTerminalBindingService
+import com.mynikatech.memgine.component.commerce.PlatformPoyntTerminalBindingSql
+import com.mynikatech.memgine.component.commerce.OrganizationPoyntTerminalBindingService
+import com.mynikatech.memgine.component.commerce.OrganizationPoyntTerminalBindingSql
+import com.mynikatech.memgine.component.commerce.PoyntTerminalBindingLookup
+import com.mynikatech.memgine.component.commerce.SqlPoyntTerminalBindingResolver
+import com.mynikatech.memgine.component.commerce.platformPoyntPaymentRoutes
+import com.mynikatech.memgine.component.commerce.organizationPoyntPaymentSummaryRoutes
 import com.mynikatech.memgine.component.commerce.provider.poynt.*
 import com.mynikatech.memgine.component.asset.brandingAssetRoutes
 import com.mynikatech.memgine.component.customerexperience.customerExperienceReleaseRoutes
@@ -167,8 +177,9 @@ fun Application.configureRouting(
     val redemptionService = RedemptionService(database.jdbi.onDemand(RedemptionSql::class.java))
     val notificationConfigurationService = NotificationConfigurationService(database.jdbi)
     val integrationConfigurationService = IntegrationConfigurationService(database.jdbi)
+    val poyntCredentials = AwsSecretsManagerPoyntCredentialResolver(config.poynt.secretsRegion)
     val poyntTokens = PoyntTokenService(
-        AwsSecretsManagerPoyntCredentialResolver(config.poynt.secretsRegion),
+        poyntCredentials,
         PoyntCloudTokenTransport(config.poynt.cloudBaseUrl, config.poynt.apiVersion),
         config.poynt.jwtAudience
     )
@@ -202,10 +213,14 @@ fun Application.configureRouting(
         config.poynt.paymentBridgeCallbackHeaderValue,
         config.poynt.paymentBridgeTtlSeconds
     )
+    val poyntTerminalBindingResolver = SqlPoyntTerminalBindingResolver(
+        database.jdbi.onDemand(PoyntTerminalBindingLookup::class.java)
+    )
     val counterCommercePaymentService = CounterCommercePaymentService(
         database.jdbi,
         commerceProviders,
         remotePaymentConfiguration,
+        poyntTerminalBindingResolver,
         testProviderEnabled =
             config.server.environment in setOf("local", "dev", "development")
     )
@@ -221,7 +236,19 @@ fun Application.configureRouting(
         database.jdbi.onDemand(CommerceSql::class.java),
         commerceProviders,
         remotePaymentConfiguration,
-        CommercePaymentProviderPolicy(config.server.environment)
+        CommercePaymentProviderPolicy(config.server.environment),
+        poyntTerminalBindingResolver
+    )
+    val platformPoyntPaymentService = PlatformPoyntPaymentService(
+        database.jdbi.onDemand(PlatformPoyntPaymentSql::class.java),
+        poyntCredentials,
+        poyntTokens
+    )
+    val platformPoyntTerminalBindingService = PlatformPoyntTerminalBindingService(
+        database.jdbi.onDemand(PlatformPoyntTerminalBindingSql::class.java)
+    )
+    val organizationPoyntTerminalBindingService = OrganizationPoyntTerminalBindingService(
+        database.jdbi.onDemand(OrganizationPoyntTerminalBindingSql::class.java)
     )
     val customerExperienceReleaseService =
     CustomerExperienceReleaseService(database.jdbi.onDemand(CustomerExperienceReleaseSql::class.java)
@@ -246,6 +273,8 @@ fun Application.configureRouting(
             organizationUserRoutes(organizationUserService)
             organizationAccessRoutes(organizationAccessService)
             organizationMaintenanceRoutes(organizationMaintenanceService)
+            platformPoyntPaymentRoutes(platformPoyntPaymentService, platformPoyntTerminalBindingService)
+            organizationPoyntPaymentSummaryRoutes(platformPoyntPaymentService, organizationPoyntTerminalBindingService)
 
             // Batch 2A
             storeRoutes(storeService)

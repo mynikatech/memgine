@@ -115,6 +115,90 @@ data class CommerceProductMappingWriteDto(
 data class CommerceProductMappingResolutionDto(
     val selectedMappingId: String
 )
+@Serializable
+data class PlatformPoyntPaymentWriteDto(
+    val applicationId: String,
+    val providerBusinessId: String,
+    val providerStoreId: String? = null,
+    val credentialProfileId: String,
+    val merchantCurrencyCode: String,
+    val versionNo: Int = 1
+)
+
+@Serializable
+data class PlatformPoyntPaymentDto(
+    val organizationId: String,
+    val organizationName: String,
+    val integrationConfigurationId: String,
+    val integrationName: String,
+    val provider: String,
+    val integrationTypeId: String,
+    val integrationStatusId: String,
+    val integrationStatus: String,
+    val integrationVersionNo: Int,
+    val applicationId: String? = null,
+    val providerBusinessId: String? = null,
+    val providerStoreId: String? = null,
+    val merchantCurrencyCode: String? = null,
+    val credentialProfileId: String? = null,
+    val credentialStatus: String,
+    val connectionStatus: String,
+    val lastVerifiedAt: String? = null,
+    val versionNo: Int = 1
+)
+
+@Serializable
+data class PoyntCredentialProfileDto(
+    val credentialProfileId: String,
+    val displayName: String
+)
+
+@Serializable
+data class PlatformPoyntTerminalBindingWriteDto(
+    val storeId: String,
+    val deviceName: String,
+    val poyntBusinessId: String,
+    val poyntStoreId: String,
+    val poyntTerminalId: String,
+    val active: Boolean = true
+)
+
+@Serializable
+data class OrganizationPoyntTerminalBindingWriteDto(
+    val storeId: String,
+    val deviceName: String,
+    val poyntStoreId: String? = null,
+    val poyntTerminalId: String,
+    val active: Boolean = true
+)
+
+@Serializable
+data class PlatformPoyntTerminalBindingDto(
+    val bindingId: String,
+    val posDeviceId: String,
+    val organizationId: String,
+    val storeId: String,
+    val storeName: String,
+    val deviceName: String,
+    val poyntBusinessId: String,
+    val poyntStoreId: String,
+    val poyntTerminalId: String,
+    val active: Boolean,
+    val createdAt: String
+)
+
+@Serializable
+data class OrganizationPoyntPaymentSummaryDto(
+    val integrationConfigurationId: String,
+    val integrationName: String,
+    val integrationStatus: String,
+    val providerBusinessId: String? = null,
+    val providerStoreId: String? = null,
+    val merchantCurrencyCode: String? = null,
+    val credentialStatus: String,
+    val connectionStatus: String,
+    val lastVerifiedAt: String? = null
+)
 
 @Serializable
 data class CommerceApplicabilityDto(

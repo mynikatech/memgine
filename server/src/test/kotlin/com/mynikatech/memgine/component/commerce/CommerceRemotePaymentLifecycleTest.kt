@@ -30,7 +30,14 @@ class CommerceRemotePaymentLifecycleTest {
         service.recordRemoteTerminalPaymentCallback(PoyntPaymentBridgeCallback("ref","PROCESSED",emptyList()))
         assertEquals("FAILED", state.callbackStatus)
     }
-    private fun service(state: State, provider: Provider) = CommerceService(state.sql(), CommerceProviderRegistry(listOf(provider)), CommerceRemotePaymentConfiguration("https://callback","X-Test","secret",45))
+    private fun service(state: State, provider: Provider) = CommerceService(
+        state.sql(),
+        CommerceProviderRegistry(listOf(provider)),
+        CommerceRemotePaymentConfiguration("https://callback","X-Test","secret",45),
+        terminalBindingResolver = PoyntTerminalBindingResolver { _, _, _ ->
+            CommerceRemoteTerminalTarget("business", "store", "terminal")
+        }
+    )
     private class State(private val alreadyDispatched:Boolean=false) {
         var dispatchedReference:String?=null; var callbackStatus:String?=null
         private val tx=CommerceTransactionRow(transactionId="tx",organizationId="org",storeId="store",integrationConfigurationId="integration",providerOrderId="order",totalMinor=600,currencyCode="CAD",status="ORDER_CREATED")

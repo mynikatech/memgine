@@ -20,8 +20,14 @@ import type {
 
 import { createEmptyIntegrationConfiguration, services } from "@/src/core";
 import { CommercePaymentProviderRouteApi } from "@/src/data/api/commerce-payment-provider-route-api";
+import {
+  organizationPoyntPaymentApi,
+  type OrganizationPoyntPaymentSummary,
+  type OrganizationPoyntTerminalBinding,
+  type OrganizationPoyntTerminalBindingWrite,
+} from "@/src/data/api/platform-poynt-payment-api";
 import { useBusiness } from "@/src/providers";
-import { DataTable, DataTableColumn, Modal, Text } from "@/src/ui";
+import { DataTable, DataTableColumn, Input, Modal, ReferenceSelect, Text } from "@/src/ui";
 import { CommercePaymentProviderRouteForm } from "@/src/ui/admin/CommercePaymentProviderRouteForm";
 import { IntegrationConfigurationForm } from "@/src/ui/admin/IntegrationConfigurationForm";
 
@@ -43,6 +49,11 @@ export default function Integrations() {
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [paymentRoutes, setPaymentRoutes] = useState<CommercePaymentProviderRoute[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
+  const [poyntSummaries, setPoyntSummaries] = useState<OrganizationPoyntPaymentSummary[]>([]);
+  const [terminalSummary, setTerminalSummary] = useState<OrganizationPoyntPaymentSummary | null>(null);
+  const [terminals, setTerminals] = useState<OrganizationPoyntTerminalBinding[]>([]);
+  const [terminalDraft, setTerminalDraft] = useState<(OrganizationPoyntTerminalBindingWrite & { bindingId?: string }) | null>(null);
+  const [savingTerminal, setSavingTerminal] = useState(false);
   const [paymentRouteVisible, setPaymentRouteVisible] = useState(false);
   const [editingPaymentRoute, setEditingPaymentRoute] = useState<CommercePaymentProviderRoute | null>(null);
   const [viewingPaymentRoute, setViewingPaymentRoute] = useState(false);
@@ -85,15 +96,17 @@ export default function Integrations() {
       setError(null);
 
       try {
-        const [integrationList, typeList, statusList, routeResult, storeList] = await Promise.all([
+        const [integrationList, typeList, statusList, routeResult, storeList, poyntResult] = await Promise.all([
           services.organization.listIntegrationConfigurations(organization.id),
           services.referenceData.listIntegrationTypes(),
           services.status.listIntegrationConfigurationStatuses(),
           paymentRouteApi.list(organization.id),
           services.organization.listStores(organization.id),
+          organizationPoyntPaymentApi.summaries(organization.id),
         ]);
 
         if (!routeResult.success) throw new Error(routeResult.error.message);
+        if (!poyntResult.success) throw new Error(poyntResult.error.message);
 
         if (!mounted) {
           return;
@@ -109,6 +122,7 @@ export default function Integrations() {
         setStatuses(statusList);
         setPaymentRoutes(routeResult.data.filter((route) => !route.isDeleted));
         setStores(storeList.filter((store) => !store.isDeleted));
+        setPoyntSummaries(poyntResult.data);
       } catch (loadError) {
         if (!mounted) {
           return;
@@ -175,6 +189,15 @@ export default function Integrations() {
     [integrationTypes, statuses],
   );
 
+  const routeIntegrations = useMemo(
+    () => integrations.filter((integration) =>
+      integration.provider.trim().toUpperCase() !== "POYNT" ||
+      poyntSummaries.some((summary) =>
+        summary.integrationConfigurationId === integration.id && summary.connectionStatus === "VERIFIED"),
+    ),
+    [integrations, poyntSummaries],
+  );
+
   const paymentRouteColumns = useMemo<DataTableColumn<CommercePaymentProviderRoute>[]>(
     () => [
       { key: "sourceChannel", title: "Channel", width: 130,
@@ -229,7 +252,15 @@ export default function Integrations() {
     setFormVisible(true);
   };
 
+  const isPlatformManagedPayment = (configuration: IntegrationConfiguration) =>
+    ["POYNT", "TEST"].includes(configuration.provider.trim().toUpperCase());
+
   const handleEdit = (configuration: IntegrationConfiguration) => {
+    if (isPlatformManagedPayment(configuration)) {
+      Alert.alert("Platform managed", "Payment integrations are managed by Memgine Platform Admin.");
+      handleView(configuration);
+      return;
+    }
     setEditingIntegration({
       ...configuration,
     });
@@ -250,6 +281,10 @@ export default function Integrations() {
   };
 
   const handleSaveDraft = (configuration: IntegrationConfiguration) => {
+    if (isPlatformManagedPayment(configuration)) {
+      Alert.alert("Platform managed", "Payment integrations are managed by Memgine Platform Admin.");
+      return;
+    }
     setIntegrations((current) => {
       const existing = current.some((item) => item.id === configuration.id);
 
@@ -268,6 +303,10 @@ export default function Integrations() {
   };
 
   const handleDelete = (configuration: IntegrationConfiguration) => {
+    if (isPlatformManagedPayment(configuration)) {
+      Alert.alert("Platform managed", "Payment integrations cannot be removed by Org Admin.");
+      return;
+    }
     setIntegrations((current) =>
       current.filter((item) => item.id !== configuration.id),
     );
@@ -313,6 +352,65 @@ export default function Integrations() {
         if (!result.success) throw new Error(result.error.message);
         await reloadPaymentRoutes();
       })().catch((error: unknown) => Alert.alert("Unable to delete payment route", error instanceof Error ? error.message : "Unable to delete the payment provider route.")) },
+    ]);
+  };
+
+  const loadTerminals = async (summary: OrganizationPoyntPaymentSummary) => {
+    const result = await organizationPoyntPaymentApi.terminals(organization.id, summary.integrationConfigurationId);
+    if (!result.success) throw new Error(result.error.message);
+    setTerminals(result.data);
+  };
+
+  const openTerminals = async (summary: OrganizationPoyntPaymentSummary) => {
+    if (summary.connectionStatus !== "VERIFIED") {
+      Alert.alert("Poynt verification required", "Poynt integration has not been verified by Platform Admin.");
+      return;
+    }
+    setTerminalSummary(summary);
+    try {
+      await loadTerminals(summary);
+    } catch (loadError) {
+      setTerminalSummary(null);
+      Alert.alert("Unable to load terminals", loadError instanceof Error ? loadError.message : "Unable to load Poynt terminals.");
+    }
+  };
+
+  const saveTerminal = async () => {
+    if (!terminalSummary || !terminalDraft || !terminalDraft.storeId || !terminalDraft.deviceName.trim() || !terminalDraft.poyntTerminalId.trim()) {
+      Alert.alert("Missing information", "Memgine Store, terminal friendly name, and Poynt Terminal / Device ID are required.");
+      return;
+    }
+    setSavingTerminal(true);
+    try {
+      const body: OrganizationPoyntTerminalBindingWrite = {
+        storeId: terminalDraft.storeId,
+        deviceName: terminalDraft.deviceName.trim(),
+        poyntStoreId: terminalDraft.poyntStoreId?.trim() || null,
+        poyntTerminalId: terminalDraft.poyntTerminalId.trim(),
+        active: terminalDraft.active,
+      };
+      const result = terminalDraft.bindingId
+        ? await organizationPoyntPaymentApi.updateTerminal(organization.id, terminalSummary.integrationConfigurationId, terminalDraft.bindingId, body)
+        : await organizationPoyntPaymentApi.createTerminal(organization.id, terminalSummary.integrationConfigurationId, body);
+      if (!result.success) throw new Error(result.error.message);
+      setTerminalDraft(null);
+      await loadTerminals(terminalSummary);
+    } catch (saveError) {
+      Alert.alert("Unable to save terminal", saveError instanceof Error ? saveError.message : "Unable to save Poynt terminal binding.");
+    } finally {
+      setSavingTerminal(false);
+    }
+  };
+
+  const deactivateTerminal = (terminal: OrganizationPoyntTerminalBinding) => {
+    if (!terminalSummary) return;
+    Alert.alert("Deactivate terminal", `Deactivate ${terminal.deviceName}? Payment Bridge will no longer target this terminal.`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Deactivate", style: "destructive", onPress: () => void (async () => {
+        const result = await organizationPoyntPaymentApi.deactivateTerminal(organization.id, terminalSummary.integrationConfigurationId, terminal.bindingId);
+        if (!result.success) throw new Error(result.error.message);
+        await loadTerminals(terminalSummary);
+      })().catch((deactivateError: unknown) => Alert.alert("Unable to deactivate terminal", deactivateError instanceof Error ? deactivateError.message : "Unable to deactivate Poynt terminal.")) },
     ]);
   };
 
@@ -518,6 +616,31 @@ export default function Integrations() {
         }
       />
 
+      {poyntSummaries.length > 0 ? (
+        <View style={styles.poyntSection}>
+          <Text variant="h2" color="text">Poynt Payment Integration</Text>
+          {poyntSummaries.map((summary) => (
+            <View key={summary.integrationConfigurationId} style={styles.poyntCard}>
+              <Text variant="body" color="text">Provider: Poynt</Text>
+              <Text variant="bodySmall" color="textMuted">Integration: {summary.integrationName} · {summary.integrationStatus}</Text>
+              <Text variant="bodySmall" color="textMuted">Credential status: {credentialStatusLabel(summary.credentialStatus)}</Text>
+              <Text variant="bodySmall" color="textMuted">Connection status: {connectionStatusLabel(summary.connectionStatus)}</Text>
+              <Text variant="bodySmall" color="textMuted">Merchant / Business ID: {summary.providerBusinessId || "Not configured"}</Text>
+              <Text variant="bodySmall" color="textMuted">Poynt Store ID: {summary.providerStoreId || "Not configured"}</Text>
+              <Text variant="bodySmall" color="textMuted">Currency: {summary.merchantCurrencyCode || "Not configured"}</Text>
+              {summary.lastVerifiedAt ? <Text variant="bodySmall" color="textMuted">Last verified: {summary.lastVerifiedAt}</Text> : null}
+              <Text variant="bodySmall" color="textMuted">{poyntSupportMessage(summary)}</Text>
+              <Pressable
+                onPress={() => void openTerminals(summary)}
+                style={({ pressed }) => [styles.secondaryButton, { alignSelf: "flex-start", opacity: summary.connectionStatus === "VERIFIED" ? (pressed ? 0.8 : 1) : 0.5 }]}
+                disabled={summary.connectionStatus !== "VERIFIED"}
+              >
+                <Text variant="body" color="text">Manage Terminals</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      ) : null}
       <View style={styles.routeHeader}>
         <View style={styles.headerText}>
           <Text variant="h2" color="text">Payment Provider Routes</Text>
@@ -585,15 +708,103 @@ export default function Integrations() {
         <CommercePaymentProviderRouteForm
           route={editingPaymentRoute}
           stores={stores}
-          integrations={integrations}
+          integrations={routeIntegrations}
           mode={viewingPaymentRoute ? "view" : editingPaymentRoute ? "edit" : "add"}
           allowTest={allowTestPaymentProvider}
           onSave={(route) => void savePaymentRoute(route)}
           onCancel={() => { setPaymentRouteVisible(false); setEditingPaymentRoute(null); setViewingPaymentRoute(false); }}
         />
       </Modal>
+
+      <Modal
+        visible={!!terminalSummary && !terminalDraft}
+        onClose={() => setTerminalSummary(null)}
+        title="Poynt Terminals"
+        scrollable
+      >
+        <View style={{ gap: 12 }}>
+          <Text variant="body" color="text">{terminalSummary?.integrationName}</Text>
+          <Text variant="bodySmall" color="textMuted">Each terminal is bound to a Memgine store and is used as an exact Payment Bridge target.</Text>
+          <Pressable
+            onPress={() => setTerminalDraft({ storeId: "", deviceName: "", poyntStoreId: terminalSummary?.providerStoreId ?? null, poyntTerminalId: "", active: true })}
+            style={styles.addButton}
+          ><Text variant="body" color="background">+ Add Terminal</Text></Pressable>
+          <DataTable
+            data={terminals}
+            keyExtractor={(item) => item.bindingId}
+            columns={[
+              { key: "deviceName", title: "Terminal" },
+              { key: "storeName", title: "Memgine Store" },
+              { key: "poyntTerminalId", title: "Poynt Device ID" },
+              { key: "active", title: "Status", render: (item) => <Text variant="body" color="text">{item.active ? "Active" : "Inactive"}</Text> },
+            ]}
+            actions={[
+              { label: "Edit", onPress: (item) => setTerminalDraft({ bindingId: item.bindingId, storeId: item.storeId, deviceName: item.deviceName, poyntStoreId: item.poyntStoreId || null, poyntTerminalId: item.poyntTerminalId, active: item.active }) },
+              { label: "Deactivate", onPress: deactivateTerminal },
+            ]}
+            emptyMessage="No Poynt terminals are configured. Add a terminal to enable targeted Payment Bridge payments."
+          />
+        </View>
+      </Modal>
+
+      <Modal
+        visible={!!terminalDraft}
+        onClose={() => !savingTerminal && setTerminalDraft(null)}
+        title={terminalDraft?.bindingId ? "Edit Poynt Terminal" : "Add Poynt Terminal"}
+        scrollable
+      >
+        <View style={{ gap: 12 }}>
+          <ReferenceSelect
+            label="Memgine Store"
+            required
+            value={terminalDraft?.storeId ?? ""}
+            items={stores}
+            getItemId={(store) => store.id}
+            renderItemLabel={(store) => `${store.name} (${store.storeCode})`}
+            onChange={(value) => setTerminalDraft((current) => current ? { ...current, storeId: value } : current)}
+          />
+          <Input label="Terminal Friendly Name" required value={terminalDraft?.deviceName ?? ""} onChangeText={(value) => setTerminalDraft((current) => current ? { ...current, deviceName: value } : current)} />
+          <Input label="Poynt Store ID" value={terminalDraft?.poyntStoreId ?? ""} onChangeText={(value) => setTerminalDraft((current) => current ? { ...current, poyntStoreId: value } : current)} />
+          <Input label="Poynt Terminal / Device ID" required value={terminalDraft?.poyntTerminalId ?? ""} onChangeText={(value) => setTerminalDraft((current) => current ? { ...current, poyntTerminalId: value } : current)} />
+          <ReferenceSelect
+            label="State"
+            value={terminalDraft?.active ? "ACTIVE" : "INACTIVE"}
+            items={[{ id: "ACTIVE", name: "Active" }, { id: "INACTIVE", name: "Inactive" }]}
+            onChange={(value) => setTerminalDraft((current) => current ? { ...current, active: value === "ACTIVE" } : current)}
+          />
+          <Text variant="bodySmall" color="textMuted">Use the Poynt Terminal / Device ID used by Payment Bridge. Serial ID is not used for routing.</Text>
+          <Pressable disabled={savingTerminal} onPress={() => void saveTerminal()} style={[styles.primaryButton, { opacity: savingTerminal ? 0.5 : 1 }]}>
+            <Text variant="body" color="background">{savingTerminal ? "Saving..." : "Save Terminal"}</Text>
+          </Pressable>
+        </View>
+      </Modal>
     </ScrollView>
   );
+}
+
+function credentialStatusLabel(status: OrganizationPoyntPaymentSummary["credentialStatus"]) {
+  if (status === "CONFIGURED") return "Configured";
+  if (status === "VERIFICATION_UNAVAILABLE") return "Unable to verify";
+  return "Not configured";
+}
+
+function connectionStatusLabel(status: OrganizationPoyntPaymentSummary["connectionStatus"]) {
+  if (status === "VERIFIED") return "Verified";
+  if (status === "FAILED") return "Failed";
+  return "Not tested";
+}
+
+function poyntSupportMessage(summary: OrganizationPoyntPaymentSummary) {
+  if (summary.credentialStatus === "NOT_CONFIGURED") {
+    return "Poynt payment integration has not been configured for this organization. Please contact Memgine Support.";
+  }
+  if (summary.connectionStatus === "FAILED") {
+    return "Poynt payment integration requires attention. Please contact Memgine Support.";
+  }
+  if (summary.connectionStatus !== "VERIFIED") {
+    return "Poynt payment integration is awaiting verification by Memgine.";
+  }
+  return "Poynt payment integration is verified by Memgine.";
 }
 
 const styles = StyleSheet.create({
@@ -632,6 +843,17 @@ const styles = StyleSheet.create({
   headerActionsMobile: {
     width: "100%",
     flexWrap: "wrap",
+  },
+
+  poyntSection: {
+    gap: 12,
+  },
+
+  poyntCard: {
+    gap: 6,
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: "#F8FAFC",
   },
 
   routeHeader: {

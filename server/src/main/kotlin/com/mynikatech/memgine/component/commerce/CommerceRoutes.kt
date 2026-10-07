@@ -1,6 +1,7 @@
 package com.mynikatech.memgine.component.commerce
 
 import com.mynikatech.memgine.exception.BadRequestException
+import com.mynikatech.memgine.exception.ForbiddenException
 import com.mynikatech.memgine.model.common.ApiResponse
 import com.mynikatech.memgine.net.dto.*
 import com.mynikatech.memgine.security.authenticatedPrincipal
@@ -96,7 +97,9 @@ fun Route.commerceRoutes(service: CommerceService) {
             }
         }
         route("/commerce/integrations/{integrationConfigurationId}/catalog") {
-            put("/configuration") { call.respond(ApiResponse.success(service.saveCatalogConfiguration(orgId(call), required(call.parameters["integrationConfigurationId"]), call.receive<CommerceCatalogConfigurationWriteDto>(), call.authenticatedPrincipal().userId), call.callId)) }
+            put("/configuration") {
+                throw ForbiddenException("Poynt technical configuration is managed by Platform Admin")
+            }
             post("/sync") { call.respond(ApiResponse.success(service.syncCatalog(orgId(call), required(call.parameters["integrationConfigurationId"]), call.request.queryParameters["storeId"], false, call.authenticatedPrincipal().userId), call.callId)) }
             post("/sync-incremental") { call.respond(ApiResponse.success(service.syncCatalog(orgId(call), required(call.parameters["integrationConfigurationId"]), call.request.queryParameters["storeId"], true, call.authenticatedPrincipal().userId), call.callId)) }
         }

@@ -44,6 +44,7 @@ class CounterCommercePaymentService(
     private val jdbi: Jdbi,
     private val providers: CommerceProviderRegistry,
     private val remotePaymentConfiguration: CommerceRemotePaymentConfiguration,
+    private val terminalBindingResolver: PoyntTerminalBindingResolver,
     private val testProviderEnabled: Boolean = false
 ) {
     private fun sql(): CounterCommercePaymentSql =
@@ -232,6 +233,9 @@ class CounterCommercePaymentService(
             ?: throw BadRequestException("Commerce provider does not support remote terminal payment")
 
         val posDeviceId = sql().resolvePosDevice(organizationId, storeId, staffId, actorUserId)
+        val integrationId = transaction.integrationConfigurationId
+            ?: throw BadRequestException("Commerce transaction integration is unavailable")
+        val terminalTarget = terminalBindingResolver.resolve(organizationId, integrationId, posDeviceId)
         val reference = "MRP-${UUID.randomUUID()}"
         val row = sql().beginRemoteTerminalPayment(
             organizationId,
@@ -247,7 +251,8 @@ class CounterCommercePaymentService(
                 organizationId,
                 actorUserId,
                 transaction.transactionId,
-                row
+                row,
+                terminalTarget
             )
         }
 
@@ -421,6 +426,9 @@ class CounterCommercePaymentService(
             staffId,
             actorUserId
         )
+        val integrationId = checkout.integrationConfigurationId
+            ?: throw BadRequestException("Commerce transaction integration is unavailable")
+        val terminalTarget = terminalBindingResolver.resolve(organizationId, integrationId, posDeviceId)
         val reference = "RDP-${UUID.randomUUID()}"
         val row = sql().beginRedemptionRemoteTerminalPayment(
             organizationId,
@@ -436,7 +444,8 @@ class CounterCommercePaymentService(
                 organizationId,
                 actorUserId,
                 checkout.commerceTransactionId,
-                row
+                row,
+                terminalTarget
             )
         }
 
@@ -963,7 +972,8 @@ class CounterCommercePaymentService(
         organizationId: String,
         actorUserId: String,
         transactionId: String,
-        row: CounterCommerceRemotePaymentStartRow
+        row: CounterCommerceRemotePaymentStartRow,
+        terminalTarget: CommerceRemoteTerminalTarget
     ) {
         provider.dispatchRemoteTerminalPayment(
             CommerceRemoteTerminalPaymentRequest(
@@ -974,11 +984,7 @@ class CounterCommercePaymentService(
                 amountMinor = row.amountMinor,
                 currencyCode = row.currencyCode,
                 referenceId = row.providerReferenceId,
-                target = CommerceRemoteTerminalTarget(
-                    row.providerBusinessId,
-                    row.providerStoreId,
-                    row.providerDeviceId
-                ),
+                target = terminalTarget,
                 callbackUrl = remotePaymentConfiguration.callbackUrl,
                 callbackHeaderName = remotePaymentConfiguration.callbackHeaderName,
                 callbackHeaderValue = remotePaymentConfiguration.callbackHeaderValue,

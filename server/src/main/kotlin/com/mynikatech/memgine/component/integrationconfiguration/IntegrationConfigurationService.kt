@@ -35,6 +35,10 @@ class IntegrationConfigurationService(private val jdbi: Jdbi) {
         val existing = list(organizationId, actorUserId).find { it.id == request.id }
         if (create && existing != null) throw ConflictException("Integration Configuration already exists")
         if (!create && existing == null) throw NotFoundException("Integration Configuration not found")
+        if (isPlatformManagedPaymentProvider(request.provider) ||
+            existing?.provider?.let(::isPlatformManagedPaymentProvider) == true) {
+            throw ForbiddenException("Payment integrations are managed by Platform Admin")
+        }
         try {
             sql.save(IntegrationConfigurationSqlParams(
                 organizationId, request.id, request.integrationName.trim(),
@@ -49,6 +53,9 @@ class IntegrationConfigurationService(private val jdbi: Jdbi) {
 
     fun delete(organizationId: String, id: String, actorUserId: String): DeleteIntegrationConfigurationDto {
         val current = get(organizationId, id, actorUserId)
+        if (isPlatformManagedPaymentProvider(current.provider)) {
+            throw ForbiddenException("Payment integrations are managed by Platform Admin")
+        }
         try {
             jdbi.onDemand(IntegrationConfigurationSql::class.java)
                 .delete(organizationId, id, current.versionNo, actorUserId)
@@ -69,6 +76,9 @@ class IntegrationConfigurationService(private val jdbi: Jdbi) {
     private fun validateId(id: String) {
         if (id.isBlank() || id.length > 40) throw BadRequestException("Invalid id")
     }
+
+    private fun isPlatformManagedPaymentProvider(provider: String): Boolean =
+        provider.trim().uppercase() in setOf("POYNT", "TEST")
 
     private fun translate(error: Exception): Nothing {
         if (error is ApiException) throw error
