@@ -94,6 +94,28 @@ class CounterCommercePaymentService(
             ?: throw BadRequestException("Commerce payment currency is unavailable")
         val subtotal = transaction.subtotalMinor
             ?: throw BadRequestException("Commerce subtotal is unavailable")
+        val adjustmentTotal = transaction.adjustmentTotalMinor
+            ?: throw BadRequestException("Commerce adjustment total is unavailable")
+
+        if (adjustmentTotal < 0 || adjustmentTotal > subtotal) {
+            throw BadRequestException("Commerce adjustment total is invalid")
+        }
+
+        val materializedAdjustments =
+            if (adjustmentTotal > 0L) {
+                listOf(
+                    CommerceCheckoutAdjustment(
+                        adjustmentId = "ADJ-${transaction.transactionId}",
+                        targetLineId = lines.single().lineId,
+                        sourceType = "MEMBERSHIP_OFFER",
+                        sourceId = transaction.transactionId,
+                        adjustmentType = "MEMBERSHIP_OFFER",
+                        appliedAmountMinor = adjustmentTotal
+                    )
+                )
+            } else {
+                emptyList()
+            }    
         val tax = transaction.taxTotalMinor
             ?: throw BadRequestException("Commerce tax is unavailable")
         val total = transaction.totalMinor
@@ -112,7 +134,8 @@ class CounterCommercePaymentService(
             integrationConfigurationId = route.integrationConfigurationId,
             actorUserId = actorUserId,
             authoritativeTaxTotalMinor = tax,
-            authoritativeTotalMinor = total
+            authoritativeTotalMinor = total,
+            materializedAdjustments = materializedAdjustments
         )
 
         provider.prepareCheckout(request)
@@ -121,11 +144,19 @@ class CounterCommercePaymentService(
         val providerOrderId = result.providerOrderId?.trim()?.takeIf { it.isNotEmpty() }
             ?: throw BadRequestException("Poynt order response did not include an order ID")
         if (result.subtotalMinor != subtotal ||
-            result.adjustmentTotalMinor != 0L ||
+            result.adjustmentTotalMinor != adjustmentTotal ||
             result.taxTotalMinor != tax ||
             result.totalMinor != total ||
             result.currencyCode?.uppercase() != currency) {
-            throw ConflictException("Poynt membership order totals do not match the Commerce transaction")
+                throw ConflictException(
+                "Poynt membership order totals do not match Commerce: " +
+                    "commerce(subtotal=$subtotal,tax=$tax,total=$total,currency=$currency) " +
+                    "poynt(subtotal=${result.subtotalMinor}," +
+                    "adjustment=${result.adjustmentTotalMinor}," +
+                    "tax=${result.taxTotalMinor}," +
+                    "total=${result.totalMinor}," +
+                    "currency=${result.currencyCode})"
+    )
         }
 
         if (!sql().persistProviderOrder(

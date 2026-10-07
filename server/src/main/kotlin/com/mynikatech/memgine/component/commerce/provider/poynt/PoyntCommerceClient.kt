@@ -16,6 +16,8 @@ interface PoyntHttpTransport {
     fun productsUri(businessId: String, offset: Int): URI
     fun orderUri(businessId: String, orderId: String): URI
     fun ordersUri(businessId: String): URI
+    /** Operational diagnostic endpoint; provider configuration supplies the business ID. */
+    fun storesUri(businessId: String): URI = throw UnsupportedOperationException("Poynt stores URI is unavailable")
     fun cloudMessagesUri(): URI = URI.create("https://services.poynt.net/cloudMessages")
 }
 
@@ -67,6 +69,7 @@ class PoyntCloudHttpTransport(private val baseUrl: String, private val apiVersio
     override fun productsUri(businessId: String, offset: Int) = URI.create("$baseUrl/businesses/$businessId/products?limit=100&startOffset=$offset")
     override fun orderUri(businessId: String, orderId: String) = URI.create("$baseUrl/businesses/$businessId/orders/$orderId")
     override fun ordersUri(businessId: String) = URI.create("$baseUrl/businesses/$businessId/orders")
+    override fun storesUri(businessId: String) = URI.create("$baseUrl/businesses/$businessId/stores")
     override fun cloudMessagesUri() = URI.create("$baseUrl/cloudMessages")
 }
 
@@ -115,7 +118,9 @@ class PoyntAuthenticatedOrderClient(
                 tokens.invalidate(configuration.integrationConfigurationId)
                 return@repeat
             }
-            throw providerFailure(response.statusCode)
+            throw BadRequestException(
+                "Poynt order request failed (HTTP ${response.statusCode}): ${response.body.take(1500)}"
+            )
         }
         throw BadRequestException("Poynt order request was not authorized")
     }

@@ -154,6 +154,15 @@ data class PoyntCredentialProfileDto(
 )
 
 @Serializable
+data class PoyntStoreDiagnosticDto(
+    val id: String,
+    val name: String? = null,
+    val displayName: String? = null,
+    val status: String? = null,
+    val address: String? = null
+)
+
+@Serializable
 data class PlatformPoyntTerminalBindingWriteDto(
     val storeId: String,
     val deviceName: String,

@@ -65,6 +65,12 @@ fun Route.platformPoyntPaymentRoutes(
             post("/{integrationId}/test-connection") {
                 call.respond(ApiResponse.success(service.verify(requiredPoyntId(call.parameters["integrationId"]), call.authenticatedPrincipal().userId), call.callId))
             }
+            get("/{integrationId}/stores-test") {
+                call.respond(ApiResponse.success(
+                    service.storesDiagnostic(requiredPoyntId(call.parameters["integrationId"]), call.authenticatedPrincipal().userId),
+                    call.callId
+                ))
+            }
             get("/{integrationId}/terminals") {
                 call.respond(ApiResponse.success(
                     terminalBindings.list(requiredPoyntId(call.parameters["integrationId"]), call.authenticatedPrincipal().userId),

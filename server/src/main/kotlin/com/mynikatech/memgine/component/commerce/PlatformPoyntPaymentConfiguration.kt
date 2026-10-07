@@ -3,12 +3,22 @@ package com.mynikatech.memgine.component.commerce
 import com.mynikatech.memgine.component.commerce.provider.poynt.PoyntCatalogConfiguration
 import com.mynikatech.memgine.component.commerce.provider.poynt.PoyntCredentialResolver
 import com.mynikatech.memgine.component.commerce.provider.poynt.PoyntTokenService
+import com.mynikatech.memgine.component.commerce.provider.poynt.PoyntHttpTransport
 import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.net.dto.IntegrationConfigurationWriteDto
 import com.mynikatech.memgine.net.dto.OrganizationPoyntPaymentSummaryDto
 import com.mynikatech.memgine.net.dto.PlatformPoyntPaymentDto
 import com.mynikatech.memgine.net.dto.PlatformPoyntPaymentWriteDto
 import com.mynikatech.memgine.net.dto.PoyntCredentialProfileDto
+import com.mynikatech.memgine.net.dto.PoyntStoreDiagnosticDto
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.jdbi.v3.sqlobject.config.RegisterBeanMapper
 import org.jdbi.v3.sqlobject.customizer.Bind
 import org.jdbi.v3.sqlobject.statement.SqlQuery
@@ -80,7 +90,9 @@ interface PlatformPoyntPaymentSql {
 class PlatformPoyntPaymentService(
     private val sql: PlatformPoyntPaymentSql,
     private val credentials: PoyntCredentialResolver,
-    private val tokens: PoyntTokenService
+    private val tokens: PoyntTokenService,
+    private val transport: PoyntHttpTransport,
+    private val environment: String
 ) {
     private val integrationPolicy = PlatformPaymentIntegrationPolicy()
 
@@ -147,6 +159,35 @@ class PlatformPoyntPaymentService(
             OrganizationPoyntPaymentSummaryDto(it.integrationConfigurationId, it.integrationName, it.integrationStatus, it.providerBusinessId, it.providerStoreId, it.merchantCurrencyCode, it.credentialStatus, it.connectionStatus, it.lastVerifiedAt)
         }
 
+    /** Temporary LOCAL/DEV operational diagnostic. It never persists or returns sensitive provider data. */
+    fun storesDiagnostic(integrationId: String, actorUserId: String): List<PoyntStoreDiagnosticDto> {
+        if (environment.lowercase() !in setOf("local", "dev", "development")) {
+            throw BadRequestException("Poynt stores diagnostic is unavailable in this environment")
+        }
+        val row = sql.get(integrationId, actorUserId)
+            ?: throw BadRequestException("Poynt payment configuration not found")
+        val businessId = row.providerBusinessId?.trim()?.takeIf { it.isNotEmpty() }
+           ?: throw BadRequestException("Poynt Business ID is not configured")
+        //val businessId = "41413bb9-379c-45a7-aad4-f9ab128b6e26"
+        val credentialReference = sql.credentialReference(integrationId, actorUserId)
+        val configuration = PoyntCatalogConfiguration(
+            row.integrationConfigurationId, row.organizationId, row.applicationId.orEmpty(), businessId,
+            row.providerStoreId, credentialReference, row.merchantCurrencyCode.orEmpty(), null
+        )
+        repeat(2) { attempt ->
+            val token = tokens.token(configuration)
+            val response = transport.get(transport.storesUri(businessId), "${token.tokenType} ${token.value}")
+            if (response.statusCode in 200..299) return parseStores(response.body)
+            if (response.statusCode == 401 && attempt == 0) {
+                tokens.invalidate(configuration.integrationConfigurationId)
+                return@repeat
+            }
+            throw BadRequestException("Poynt stores request failed (HTTP ${response.statusCode})")
+           
+        }
+        throw BadRequestException("Poynt stores request was not authorized")
+    }
+
     private fun refreshed(integrationId: String, actorUserId: String): PlatformPoyntPaymentDto =
         list(actorUserId).firstOrNull { it.integrationConfigurationId == integrationId }
             ?: throw BadRequestException("Payment integration was not saved")
@@ -168,6 +209,38 @@ class PlatformPoyntPaymentService(
             row.lastVerifiedAt,
             row.versionNo
         )
+    }
+
+    private fun parseStores(body: String): List<PoyntStoreDiagnosticDto> = try {
+        val root = Json.parseToJsonElement(body)
+        val stores = when (root) {
+            is JsonArray -> root
+            is JsonObject -> (root["stores"] ?: root["items"] ?: root["data"])?.jsonArray
+                ?: throw IllegalArgumentException()
+            else -> throw IllegalArgumentException()
+        }
+        stores.mapNotNull { element ->
+            val store = element as? JsonObject ?: return@mapNotNull null
+            val id = store.string("id") ?: return@mapNotNull null
+            PoyntStoreDiagnosticDto(
+                id = id,
+                name = store.string("name"),
+                displayName = store.string("displayName"),
+                status = store.string("status"),
+                address = store.address()
+            )
+        }
+    } catch (_: Exception) {
+        throw BadRequestException("Poynt stores response was invalid")
+    }
+
+    private fun JsonObject.string(name: String): String? =
+        (this[name] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+
+    private fun JsonObject.address(): String? {
+        val value = this["address"] as? JsonObject ?: return null
+        return listOfNotNull(value.string("line1"), value.string("line2"), value.string("city"), value.string("state"), value.string("postalCode"), value.string("country"))
+            .joinToString(", ").takeIf { it.isNotEmpty() }
     }
 }
 

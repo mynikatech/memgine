@@ -103,7 +103,15 @@ class PoyntCommerceProvider(
         val calculatedTotal = subtotal - discountTotal + taxTotal
         val netTotal = request.authoritativeTotalMinor ?: calculatedTotal
         if (netTotal != calculatedTotal) {
-            throw BadRequestException("Poynt order total does not match authoritative Commerce totals")
+            throw BadRequestException(
+                "Poynt order total mismatch: " +
+                    "subtotal=$subtotal, " +
+                    "discountTotal=$discountTotal, " +
+                    "taxTotal=$taxTotal, " +
+                    "calculatedTotal=$calculatedTotal, " +
+                    "authoritativeTotal=$netTotal, " +
+                    "currency=$currency"
+            )
         }
         val orderDiscounts = request.materializedAdjustments.filter { it.targetLineId == null }.map(::discount)
         return PreparedPoyntOrder(
@@ -113,14 +121,18 @@ class PoyntCommerceProvider(
                 amounts = PoyntOrderAmounts(
                     subTotal = subtotal,
                     taxTotal = taxTotal,
-                    discountTotal = discountTotal,
+                    discountTotal = -discountTotal,
                     feeTotal = 0,
                     netTotal = netTotal,
                     currency = currency
                 ),
                 discounts = orderDiscounts,
                 context = PoyntOrderContext(
-                    source = request.sourceChannel,
+                    source = when (request.sourceChannel.uppercase()) {
+                        "COUNTER", "COUNTER_MEMBERSHIP", "COUNTER_REDEMPTION" -> "INSTORE"
+                        "CUSTOMER_MEMBERSHIP" -> "WEB"
+                        else -> "WEB"
+                    },
                     transactionInstruction = "EXTERNALLY_PROCESSED",
                     businessId = configuration.businessId,
                     storeId = providerStoreId
@@ -160,7 +172,6 @@ class PoyntCommerceProvider(
             "MEMBERSHIP" -> PoyntOrderItem(
                 sku = line.subscriptionPlanId ?: line.lineId,
                 name = line.description,
-                details = "Memgine membership",
                 unitPrice = unitPrice,
                 quantity = line.quantity.toDouble(),
                 unitOfMeasure = "EACH",
@@ -175,7 +186,7 @@ class PoyntCommerceProvider(
     private fun discount(adjustment: com.mynikatech.memgine.net.dto.CommerceCheckoutAdjustment) = PoyntDiscount(
         customName = adjustment.adjustmentType,
         externalId = adjustment.adjustmentId,
-        amount = adjustment.appliedAmountMinor
+        amount = -adjustment.appliedAmountMinor
     )
 
     private fun result(order: PoyntOrder): CommerceCheckoutResult {
@@ -186,7 +197,7 @@ class PoyntCommerceProvider(
             providerOrderId = id,
             providerStatus = order.statuses?.status ?: "UNKNOWN",
             subtotalMinor = amounts?.subTotal,
-            adjustmentTotalMinor = amounts?.discountTotal,
+            adjustmentTotalMinor = amounts?.discountTotal?.let { kotlin.math.abs(it) },
             taxTotalMinor = amounts?.taxTotal,
             totalMinor = amounts?.netTotal,
             currencyCode = amounts?.currency

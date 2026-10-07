@@ -242,7 +242,9 @@ fun Application.configureRouting(
     val platformPoyntPaymentService = PlatformPoyntPaymentService(
         database.jdbi.onDemand(PlatformPoyntPaymentSql::class.java),
         poyntCredentials,
-        poyntTokens
+        poyntTokens,
+        poyntHttpTransport,
+        config.server.environment
     )
     val platformPoyntTerminalBindingService = PlatformPoyntTerminalBindingService(
         database.jdbi.onDemand(PlatformPoyntTerminalBindingSql::class.java)
