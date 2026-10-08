@@ -1268,7 +1268,9 @@ export function BusinessExperience({
                   title={b.displayName ?? b.benefitName}
                   subtitle={b.description}
                   disclaimerText={b.disclaimerText}
-                  eligibleProducts={b.products?.map((product) => product.productName || product.productCode)}
+                  eligibleProducts={b.products?.map(
+                    (product) => product.productName || product.productCode,
+                  )}
                   icon={benefitIconForType(b.benefitTypeId)}
                   usageRules={benefitUsageRules?.filter(
                     (rule) => rule.benefitId === b.id,
@@ -1342,7 +1344,13 @@ export function BusinessExperience({
                           ) : null}
                           {b.products?.length ? (
                             <Text variant="bodySmall" color="textSecondary">
-                              Choose from: {b.products.map((product) => product.productName || product.productCode).join(", ")}
+                              Choose from:{" "}
+                              {b.products
+                                .map(
+                                  (product) =>
+                                    product.productName || product.productCode,
+                                )
+                                .join(", ")}
                             </Text>
                           ) : null}
                         </View>
@@ -1378,7 +1386,9 @@ export function BusinessExperience({
                       badge={offer.badgeText}
                       availabilityText={offer.availabilityText}
                       disclaimerText={offer.disclaimerText}
-                      applicableProducts={offer.products?.map((product) => product.productName || product.productCode)}
+                      applicableProducts={offer.products?.map(
+                        (product) => product.productName || product.productCode,
+                      )}
                       discountPercentage={offer.discountPercentage}
                       ctaLabel={
                         isPreviewMode
@@ -1591,7 +1601,9 @@ export function BusinessExperience({
                     badge={offer.badgeText}
                     availabilityText={offer.availabilityText}
                     disclaimerText={offer.disclaimerText}
-                    applicableProducts={offer.products?.map((product) => product.productName || product.productCode)}
+                    applicableProducts={offer.products?.map(
+                      (product) => product.productName || product.productCode,
+                    )}
                     discountPercentage={offer.discountPercentage}
                     ctaLabel={
                       isPreviewMode
@@ -2500,6 +2512,7 @@ export function BusinessExperience({
       <Section title={t("experience.preferences")}>
         <Card padding="lg">
           <View style={{ gap: theme.spacing.md }}>
+            {/*
             <PrefRow
               label={t("experience.notifications")}
               on={notificationsEnabled}
@@ -2508,6 +2521,7 @@ export function BusinessExperience({
               onPress={() => void handlePreferenceToggle("NOTIFICATIONS")}
               disabled={savingPreference === "NOTIFICATIONS"}
             />
+          */}
 
             <PrefRow
               label={t("experience.marketingEmails")}
@@ -2614,7 +2628,10 @@ export function BusinessExperience({
                         title={b.displayName ?? b.benefitName}
                         subtitle={b.description}
                         disclaimerText={b.disclaimerText}
-                        eligibleProducts={b.products?.map((product) => product.productName || product.productCode)}
+                        eligibleProducts={b.products?.map(
+                          (product) =>
+                            product.productName || product.productCode,
+                        )}
                         icon={benefitIconForType(b.benefitTypeId)}
                         usageRules={benefitUsageRules?.filter(
                           (rule) => rule.benefitId === b.id,
@@ -2801,37 +2818,35 @@ export function BusinessExperience({
           paddingTop: insets.top,
         }}
       >
-        {isPreviewMode ? (
-          <View
-            style={{
-              paddingHorizontal: theme.spacing.lg,
-              paddingTop: theme.spacing.sm,
-            }}
+        <View
+          style={{
+            paddingHorizontal: theme.spacing.lg,
+            paddingTop: theme.spacing.sm,
+          }}
+        >
+          <Pressable
+            onPress={onExit}
+            testID="experience-back"
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 4,
+              alignSelf: "flex-start",
+              paddingVertical: 6,
+              opacity: pressed ? theme.states.pressedOpacity : 1,
+            })}
           >
-            <Pressable
-              onPress={onExit}
-              testID="experience-back"
-              style={({ pressed }) => ({
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 4,
-                alignSelf: "flex-start",
-                paddingVertical: 6,
-                opacity: pressed ? theme.states.pressedOpacity : 1,
-              })}
-            >
-              <Ionicons
-                name="chevron-back"
-                size={18}
-                color={theme.colors.primary}
-              />
+            <Ionicons
+              name="chevron-back"
+              size={18}
+              color={theme.colors.primary}
+            />
 
-              <Text variant="label" color="primary">
-                {t("experience.back")}
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
+            <Text variant="label" color="primary">
+              {t("experience.back")}
+            </Text>
+          </Pressable>
+        </View>
 
         <View
           style={{

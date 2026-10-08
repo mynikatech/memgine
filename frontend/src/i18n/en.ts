@@ -104,7 +104,7 @@ export const en = {
     languageEnglish: "English",
   },
   experience: {
-    back: "Your Memberships",
+    back: "Memgine",
     poweredBy: "Powered by Memgine",
     tabCard: "Card",
     tabOffers: "Offers",
@@ -121,7 +121,8 @@ export const en = {
     benefitUsed: "Used",
     noRedeemable: "No benefits available to redeem right now.",
     redemptionCode: "Redemption code",
-    redeemTokenHint: "Show this one code at the counter to redeem all selected benefits.",
+    redeemTokenHint:
+      "Show this one code at the counter to redeem all selected benefits.",
     benefitsCount: "{{count}} benefit(s)",
     todaysPerks: "Today's Perks",
     memberId: "Member ID",

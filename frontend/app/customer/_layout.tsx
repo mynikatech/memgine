@@ -72,6 +72,7 @@ export default function CustomerLayout() {
         name="notifications"
         options={{ href: null, title: "Notifications" }}
       />
+      <Tabs.Screen name="branding-preview" options={{ href: null }} />
     </Tabs>
   );
 }
