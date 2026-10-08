@@ -189,13 +189,36 @@ export default function MyCards() {
               .filter((group) => group.cards.length > 0)
               .map((group) => group.organizationId),
           );
+          const relationshipOrganizationIds = new Set(
+            relationships.map((relationship) => relationship.organizationId),
+          );
+
+          const sortedDiscoverable = discoveries
+            .filter(
+              (business) => !memberOrganizationIds.has(business.organizationId),
+            )
+            .sort((a, b) => {
+              const aHasRelationship = relationshipOrganizationIds.has(
+                a.organizationId,
+              );
+              const bHasRelationship = relationshipOrganizationIds.has(
+                b.organizationId,
+              );
+
+              if (aHasRelationship !== bHasRelationship) {
+                return aHasRelationship ? -1 : 1;
+              }
+
+              const aName = (a.displayName || a.name || "").trim();
+              const bName = (b.displayName || b.name || "").trim();
+
+              return aName.localeCompare(bName, undefined, {
+                sensitivity: "base",
+              });
+            });
 
           setGroups(loaded);
-          setDiscoverable(
-            discoveries.filter(
-              (business) => !memberOrganizationIds.has(business.organizationId),
-            ),
-          );
+          setDiscoverable(sortedDiscoverable);
         } catch (failure) {
           if (active) {
             setGroups([]);

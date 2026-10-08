@@ -174,32 +174,16 @@ export default function Profile() {
         </View>
       </Card>
 
-      {/* BUSINESSES */}
-      {relationships.length > 0 ? (
-        <Section title="Businesses" testID="profile-businesses">
-          <Card padding="md">
-            {relationships.map((row) => (
-              <ListRow
-                key={row.organizationUserId}
-                label={row.organizationName}
-                value={row.relationshipStatusName}
-                showChevron={false}
-              />
-            ))}
-          </Card>
-        </Section>
-      ) : null}
-
       {/* PREFERENCES */}
       <Section title={t("profile.preferences")} testID="profile-preferences">
         <Card padding="md">
-          <ListRow
+          {/* <ListRow
             label={t("profile.language")}
             value={languageLabel}
             icon="language-outline"
             showChevron={false}
             testID="profile-language"
-          />
+          />*/}
 
           <ListRow
             label={t("profile.region")}
@@ -476,7 +460,7 @@ export default function Profile() {
       >
         <View style={{ gap: theme.spacing.lg }}>
           <LegalHero
-            icon="headset-outline"
+            icon="mail-outline"
             title="We're here to help"
             description="If you need assistance with Memgine, your account or a technical issue, contact our support team."
             theme={theme}
@@ -546,13 +530,13 @@ export default function Profile() {
             onPress={() => void openUrl(SUPPORT_URL)}
           />
 
-          <Text
+          {/*<Text
             variant="caption"
             color="textMuted"
             style={{ textAlign: "center" }}
           >
             No phone support is currently provided.
-          </Text>
+          </Text>*/}
         </View>
       </Modal>
 
