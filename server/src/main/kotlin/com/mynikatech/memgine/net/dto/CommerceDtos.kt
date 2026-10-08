@@ -163,6 +163,18 @@ data class PoyntStoreDiagnosticDto(
 )
 
 @Serializable
+data class PoyntDeviceDiagnosticDto(
+    val deviceId: String,
+    val name: String? = null,
+    val serialNumber: String? = null,
+    val externalTerminalId: String? = null,
+    val storeId: String? = null,
+    val status: String? = null,
+    val type: String? = null,
+    val lastSeenAt: String? = null
+)
+
+@Serializable
 data class PlatformPoyntTerminalBindingWriteDto(
     val storeId: String,
     val deviceName: String,

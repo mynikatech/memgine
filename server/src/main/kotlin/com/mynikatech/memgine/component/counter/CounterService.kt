@@ -444,23 +444,36 @@ class CounterService(
     )
 
     fun startRemoteTerminalPayment(
-        org: String,
-        request: CounterCommercePaymentRequest,
-        principal: AuthenticatedPrincipal
-    ): CommerceRemoteTerminalPaymentDispatchDto {
-        val posContext = principal.posContext
-            ?: throw ForbiddenException("Counter terminal context is required")
-        if (posContext.organizationId != org) {
-            throw ForbiddenException("Counter terminal does not belong to this organization")
+            org: String,
+            request: CounterCommercePaymentRequest,
+            principal: AuthenticatedPrincipal
+        ): CommerceRemoteTerminalPaymentDispatchDto {
+            val (storeId, staffId) = principal.posContext?.let { posContext ->
+                if (posContext.organizationId != org) {
+                    throw ForbiddenException("Counter terminal does not belong to this organization")
+                }
+
+                posContext.storeId to posContext.staffId
+            } ?: run {
+                val storeId = request.storeId?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: throw BadRequestException("Store id is required")
+
+                val staffId = request.staffId?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: throw BadRequestException("Staff id is required")
+
+                storeId to staffId
+            }
+
+            authorize(org, storeId, staffId, principal)
+
+            return counterCommercePayments.startRemoteTerminalPayment(
+                org,
+                request.commerceTransactionId,
+                storeId,
+                staffId,
+                principal.userId
+            )
         }
-        return counterCommercePayments.startRemoteTerminalPayment(
-            org,
-            request.commerceTransactionId,
-            posContext.storeId,
-            posContext.staffId,
-            principal.userId
-        )
-    }
 
     fun startCashPayment(
         org: String,

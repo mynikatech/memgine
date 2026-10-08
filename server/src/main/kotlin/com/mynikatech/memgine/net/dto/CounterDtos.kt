@@ -137,7 +137,9 @@ data class CounterBusinessOtpFinalizeRequest(
 /** Counter-scoped continuation of a verified membership Commerce purchase. */
 @Serializable
 data class CounterCommercePaymentRequest(
-    val commerceTransactionId: String
+    val commerceTransactionId: String,
+    val storeId: String? = null,
+    val staffId: String? = null
 )
 
 @Serializable

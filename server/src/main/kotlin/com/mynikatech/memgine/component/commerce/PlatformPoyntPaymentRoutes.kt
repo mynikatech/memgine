@@ -77,6 +77,26 @@ fun Route.platformPoyntPaymentRoutes(
                     call.callId
                 ))
             }
+            get("/{integrationId}/devices-test") {
+                val storeId =
+                    call.request.queryParameters["storeId"]
+                        ?: throw BadRequestException(
+                            "Poynt Store ID is required"
+                        )
+
+                call.respond(
+                    ApiResponse.success(
+                        service.devicesDiagnostic(
+                            requiredPoyntId(
+                                call.parameters["integrationId"]
+                            ),
+                            storeId,
+                            call.authenticatedPrincipal().userId
+                        ),
+                        call.callId
+                    )
+                )
+            }
             post("/{integrationId}/terminals") {
                 call.respond(HttpStatusCode.Created, ApiResponse.success(
                     terminalBindings.save(

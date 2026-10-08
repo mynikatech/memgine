@@ -16,7 +16,12 @@ class PoyntPaymentBridgeClient(private val transport: PoyntHttpTransport, privat
         val message = PoyntCloudMessage(request.ttlSeconds, request.target.providerBusinessId, request.target.providerStoreId, request.target.providerDeviceId, json.encodeToString(data))
         val token = tokens.token(configuration)
         val response = transport.post(transport.cloudMessagesUri(), "${token.tokenType} ${token.value}", request.referenceId, json.encodeToString(message))
-        if (response.statusCode !in 200..299) throw BadRequestException("Poynt Payment Bridge dispatch failed (HTTP ${response.statusCode})")
+       if (response.statusCode !in 200..299) {
+            throw BadRequestException(
+                "Poynt Payment Bridge dispatch failed " +
+                "(HTTP ${response.statusCode}): ${response.body.take(1500)}"
+            )
+        }
     }
 }
 

@@ -18,7 +18,12 @@ interface PoyntHttpTransport {
     fun ordersUri(businessId: String): URI
     /** Operational diagnostic endpoint; provider configuration supplies the business ID. */
     fun storesUri(businessId: String): URI = throw UnsupportedOperationException("Poynt stores URI is unavailable")
+    fun storeUri(
+        businessId: String,
+        storeId: String
+    ): URI = throw UnsupportedOperationException("Poynt store URI is unavailable")
     fun cloudMessagesUri(): URI = URI.create("https://services.poynt.net/cloudMessages")
+    
 }
 
 interface PoyntOrderClient {
@@ -70,6 +75,11 @@ class PoyntCloudHttpTransport(private val baseUrl: String, private val apiVersio
     override fun orderUri(businessId: String, orderId: String) = URI.create("$baseUrl/businesses/$businessId/orders/$orderId")
     override fun ordersUri(businessId: String) = URI.create("$baseUrl/businesses/$businessId/orders")
     override fun storesUri(businessId: String) = URI.create("$baseUrl/businesses/$businessId/stores")
+    override fun storeUri(
+        businessId: String,
+        storeId: String
+    ): URI =
+        URI.create("$baseUrl/businesses/$businessId/stores/$storeId")
     override fun cloudMessagesUri() = URI.create("$baseUrl/cloudMessages")
 }
 

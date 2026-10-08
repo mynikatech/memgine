@@ -11,6 +11,7 @@ import com.mynikatech.memgine.net.dto.PlatformPoyntPaymentDto
 import com.mynikatech.memgine.net.dto.PlatformPoyntPaymentWriteDto
 import com.mynikatech.memgine.net.dto.PoyntCredentialProfileDto
 import com.mynikatech.memgine.net.dto.PoyntStoreDiagnosticDto
+import com.mynikatech.memgine.net.dto.PoyntDeviceDiagnosticDto
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -126,6 +127,42 @@ class PlatformPoyntPaymentService(
         )
         return refreshed(request.id, actorUserId)
     }
+    private fun parseDevices(
+        body: String
+    ): List<PoyntDeviceDiagnosticDto> = try {
+
+        val root = Json.parseToJsonElement(body).jsonObject
+
+        val devices =
+            (root["storeDevices"] as? JsonArray)
+                ?: return emptyList()
+
+        devices.mapNotNull { element ->
+            val device =
+                element as? JsonObject
+                    ?: return@mapNotNull null
+
+            val deviceId =
+                device.string("deviceId")
+                    ?: return@mapNotNull null
+
+            PoyntDeviceDiagnosticDto(
+                deviceId = deviceId,
+                name = device.string("name"),
+                serialNumber = device.string("serialNumber"),
+                externalTerminalId =
+                    device.string("externalTerminalId"),
+                storeId = device.string("storeId"),
+                status = device.string("status"),
+                type = device.string("type"),
+                lastSeenAt = device.string("lastSeenAt")
+            )
+        }
+    } catch (_: Exception) {
+        throw BadRequestException(
+            "Poynt devices response was invalid"
+        )
+    }
 
     fun save(integrationId: String, request: PlatformPoyntPaymentWriteDto, actorUserId: String): PlatformPoyntPaymentDto {
         if (request.credentialProfileId.isBlank()) throw BadRequestException("Poynt credential profile is required")
@@ -187,6 +224,83 @@ class PlatformPoyntPaymentService(
         }
         throw BadRequestException("Poynt stores request was not authorized")
     }
+    
+    /** Temporary LOCAL/DEV operational diagnostic. Returns only non-sensitive terminal identity fields. */
+        fun devicesDiagnostic(
+            integrationId: String,
+            storeId: String,
+            actorUserId: String
+        ): List<PoyntDeviceDiagnosticDto> {
+            if (environment.lowercase() !in setOf("local", "dev", "development")) {
+                throw BadRequestException(
+                    "Poynt devices diagnostic is unavailable in this environment"
+                )
+            }
+
+            val row = sql.get(integrationId, actorUserId)
+                ?: throw BadRequestException(
+                    "Poynt payment configuration not found"
+                )
+
+            val businessId = row.providerBusinessId
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: throw BadRequestException(
+                    "Poynt Business ID is not configured"
+                )
+
+            val providerStoreId = storeId.trim().takeIf { it.isNotEmpty() }
+                ?: throw BadRequestException(
+                    "Poynt Store ID is required"
+                )
+
+            val credentialReference =
+                sql.credentialReference(integrationId, actorUserId)
+
+            val configuration = PoyntCatalogConfiguration(
+                row.integrationConfigurationId,
+                row.organizationId,
+                row.applicationId.orEmpty(),
+                businessId,
+                providerStoreId,
+                credentialReference,
+                row.merchantCurrencyCode.orEmpty(),
+                null
+            )
+
+            repeat(2) { attempt ->
+                val token = tokens.token(configuration)
+
+                val response = transport.get(
+                    transport.storeUri(
+                        businessId,
+                        providerStoreId
+                    ),
+                    "${token.tokenType} ${token.value}"
+                )
+
+                if (response.statusCode in 200..299) {
+                    return parseDevices(response.body)
+                }
+
+                if (response.statusCode == 401 && attempt == 0) {
+                    tokens.invalidate(
+                        configuration.integrationConfigurationId
+                    )
+                    return@repeat
+                }
+
+                throw BadRequestException(
+                    "Poynt devices request failed " +
+                        "(HTTP ${response.statusCode}): " +
+                        response.body.take(1500)
+                )
+            }
+
+            throw BadRequestException(
+                "Poynt devices request was not authorized"
+            )
+        }
 
     private fun refreshed(integrationId: String, actorUserId: String): PlatformPoyntPaymentDto =
         list(actorUserId).firstOrNull { it.integrationConfigurationId == integrationId }

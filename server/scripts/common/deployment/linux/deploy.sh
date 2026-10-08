@@ -8,13 +8,19 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$script_dir/../../env/linux/load-environment.sh"
 
 deployment_file="$environment_dir/deployment.properties"
+runtime_env_file="$environment_dir/memgine.env"
 
 [[ -f "$deployment_file" ]] || {
   echo "Deployment properties not found: $deployment_file" >&2
   exit 1
 }
+[[ -f "$runtime_env_file" ]] || {
+  echo "Runtime environment file not found: $runtime_env_file" >&2
+  exit 1
+}
 
 load_memgine_environment_file "$deployment_file"
+load_memgine_environment_file "$runtime_env_file"
 
 : "${MEMGINE_DEPLOY_BUCKET:?MEMGINE_DEPLOY_BUCKET is required}"
 : "${MEMGINE_ENVIRONMENT:?MEMGINE_ENVIRONMENT is required}"
@@ -332,7 +338,11 @@ for runtime_key in \
   MEMGINE_OTP_AWS_ORIGINATION_IDENTITY_CA \
   MEMGINE_ASSET_STORAGE_PROVIDER \
   MEMGINE_APP_DATA_BUCKET \
-  MEMGINE_AWS_REGION
+  MEMGINE_AWS_REGION \
+  MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_URL \
+  MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_NAME \
+  MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_VALUE \
+  MEMGINE_POYNT_PAYMENT_BRIDGE_TTL_SECONDS
 do
   runtime_value="${!runtime_key:-}"
 

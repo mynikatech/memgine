@@ -592,6 +592,8 @@ export class CounterApi {
 
       {
         commerceTransactionId,
+        storeId: ctx.storeId,
+        staffId: ctx.staffId,
       },
     );
   }
