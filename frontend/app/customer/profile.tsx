@@ -26,10 +26,10 @@ import {
 } from "@/src/ui";
 import { CustomerNotificationBell } from "@/src/ui/domain/CustomerNotificationBell";
 
-const MEMGINE_WEBSITE = "https://mynikatech.in";
-const PRIVACY_URL = "https://mynikatech.in/memgine/privacy";
-const TERMS_URL = "https://mynikatech.in/memgine/terms";
-const SUPPORT_URL = "https://mynikatech.in/memgine/support";
+const MEMGINE_WEBSITE = "https://mynikatech.in/memgine";
+const PRIVACY_URL = "https://mynikatech.in/memgine/privacy.html";
+const TERMS_URL = "https://mynikatech.in/memgine/terms.html";
+const SUPPORT_URL = "https://mynikatech.in/memgine/support.html";
 const SUPPORT_EMAIL = "support@mynikatech.in";
 
 export default function Profile() {
