@@ -204,9 +204,10 @@ export class CustomerDataApi {
   }
 
   profiles(_userId?: ID): Promise<ApiResult<CustomerProfile[]>> {
-    return httpClient.get("/api/v1/customer/relationships");
+    return httpClient.get(
+      `/api/v1/customer/relationships?refresh=${Date.now()}`,
+    );
   }
-
   purchase(
     organizationId: ID,
     input: {
@@ -281,7 +282,9 @@ export class CustomerDataApi {
     organizationId: ID,
     paymentIntentId: ID,
   ): Promise<ApiResult<PoyntCollectBootstrap>> {
-    return httpClient.get(`${collectPaymentPath(organizationId, paymentIntentId)}/poynt-collect/config`);
+    return httpClient.get(
+      `${collectPaymentPath(organizationId, paymentIntentId)}/poynt-collect/config`,
+    );
   }
 
   confirmCollectPayment(
@@ -289,7 +292,10 @@ export class CustomerDataApi {
     paymentIntentId: ID,
     nonce: string,
   ): Promise<ApiResult<PaymentConfirmation>> {
-    return httpClient.post(`${collectPaymentPath(organizationId, paymentIntentId)}/poynt-collect/confirm`, { nonce });
+    return httpClient.post(
+      `${collectPaymentPath(organizationId, paymentIntentId)}/poynt-collect/confirm`,
+      { nonce },
+    );
   }
 
   paymentStatus(

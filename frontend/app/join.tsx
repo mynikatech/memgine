@@ -234,7 +234,7 @@ function JoinFlow() {
   const auth = useAuth();
   const { session } = auth;
 
-  const { setActiveContext } = useCustomerContext();
+  const { setActiveContext, refreshCustomers } = useCustomerContext();
 
   const { t, formatMoney, formatDate } = useTranslation();
 
@@ -1957,6 +1957,15 @@ function JoinFlow() {
    */
 
   const close = () => {
+    if (step === "success") {
+      if (isStaffSale) {
+        goToCounter();
+      } else {
+        router.replace(APP_ROUTES.customer.cards as never);
+      }
+      return;
+    }
+
     if (isStaffSale) {
       setCounterPurchaseId("");
     }
@@ -1964,7 +1973,7 @@ function JoinFlow() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace(APP_ROUTES.customer.cards);
+      router.replace(APP_ROUTES.customer.cards as never);
     }
   };
 
@@ -1981,6 +1990,12 @@ function JoinFlow() {
    * actual subscription experience to the client.
 
    */
+
+  const goToMemberships = async () => {
+    await refreshCustomers();
+
+    router.replace(APP_ROUTES.customer.cards as never);
+  };
 
   const goToCustomerExperience = () => {
     if (!subscription) {
@@ -2018,14 +2033,15 @@ function JoinFlow() {
     });
   };
 
-  const headerRight = (
-    <IconButton
-      icon="close"
-      color="textMuted"
-      onPress={close}
-      testID="join-close"
-    />
-  );
+  const headerRight =
+    step === "success" && !isStaffSale ? null : (
+      <IconButton
+        icon="close"
+        color="textMuted"
+        onPress={close}
+        testID="join-close"
+      />
+    );
 
   /*
 
@@ -2673,6 +2689,13 @@ function JoinFlow() {
             onPress={payAndSubscribe}
             testID="join-pay"
           />
+          <Button
+            label="Cancel"
+            variant="secondary"
+            fullWidth
+            onPress={close}
+            testID="join-cancel"
+          />
 
           {isStaffSale && purchaseOtpVerified ? (
             <Button
@@ -3040,10 +3063,10 @@ function JoinFlow() {
           {/* The customer preview remains part of the separate customer journey. */}
 
           <Button
-            label="View Customer Experience"
+            label="Go to My Memberships"
             fullWidth
-            onPress={goToCustomerExperience}
-            testID="join-view-customer-experience"
+            onPress={() => router.replace(APP_ROUTES.customer.cards as never)}
+            testID="join-go-to-memberships"
           />
 
           {isStaffSale ? (

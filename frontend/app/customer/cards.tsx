@@ -47,7 +47,6 @@ export default function MyCards() {
   const { setActiveBusiness } = useActiveBusinessControl();
   const {
     customerId,
-    profiles,
     customersLoading,
     customersError,
     refreshCustomers,
@@ -79,10 +78,12 @@ export default function MyCards() {
           const discoveries =
             await services.customerData.discoverOrganizations();
 
-          const relationships = profiles.filter(
+          const freshProfiles =
+            await services.customerData.profiles(customerId);
+
+          const relationships = freshProfiles.filter(
             (row) => row.userId === customerId,
           );
-
           const loaded = await Promise.all(
             relationships.map(async (relationship): Promise<OrgGroup> => {
               const organizationId = relationship.organizationId;
@@ -239,7 +240,7 @@ export default function MyCards() {
       return () => {
         active = false;
       };
-    }, [customerId, customersLoading, customersError, profiles]),
+    }, [customerId, customersLoading, customersError]),
   );
 
   const openBusiness = (card: CardVM) => {
