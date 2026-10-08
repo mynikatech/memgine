@@ -5,6 +5,8 @@ import com.mynikatech.memgine.component.otp.OtpService
 import com.mynikatech.memgine.config.AuthenticationConfig
 import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.exception.ForbiddenException
+import com.mynikatech.memgine.exception.ConflictException
+import com.mynikatech.memgine.exception.NotFoundException
 import com.mynikatech.memgine.exception.UnauthorizedException
 import com.mynikatech.memgine.net.dto.*
 import com.mynikatech.memgine.security.AuthenticatedPrincipal
@@ -89,7 +91,10 @@ class AuthenticationService(
         val identity = sql.identity(verification.destination)
        
         if (identity == null || !identity.userActive) {
-            throw UnauthorizedException("Login could not be completed", "INVALID_LOGIN")
+            throw NotFoundException(
+                "No active Memgine account was found for this mobile number.",
+                "CUSTOMER_ACCOUNT_NOT_FOUND"
+            )
         }
         return createSession(
             identity.userId, identity.displayName, clientIp, userAgent,
@@ -114,6 +119,41 @@ class AuthenticationService(
 
     fun logout(token: String?, principal: AuthenticatedPrincipal): Boolean =
         !token.isNullOrBlank() && sql.revokeSession(hashToken(token), principal.userId)
+
+    fun customerAccountDeletionPreview(principal: AuthenticatedPrincipal): CustomerAccountDeletionPreviewDto {
+        val preview = sql.customerAccountDeletionPreview(principal.userId)
+        return CustomerAccountDeletionPreviewDto(
+            preview.hasActiveSubscriptions,
+            preview.activeSubscriptionCount
+        )
+    }
+
+    fun deleteCustomerAccount(
+        principal: AuthenticatedPrincipal,
+        request: DeleteCustomerAccountRequest
+    ): Boolean {
+        val preview = customerAccountDeletionPreview(principal)
+        if (preview.hasActiveSubscriptions && !request.acknowledgeActiveSubscriptions) {
+            throw ConflictException(
+                "Active memberships must be acknowledged before account deletion.",
+                "ACTIVE_SUBSCRIPTIONS_ACK_REQUIRED"
+            )
+        }
+        return try {
+            sql.deleteCustomerAccount(principal.userId)
+        } catch (error: Exception) {
+            val postgres = generateSequence<Throwable>(error) { it.cause }
+                .filterIsInstance<org.postgresql.util.PSQLException>()
+                .firstOrNull()
+            when (postgres?.sqlState) {
+                "42501" -> throw ForbiddenException(
+                    "This account must be managed through business or platform administration"
+                )
+                "P0002" -> throw UnauthorizedException("Authentication is required")
+                else -> throw error
+            }
+        }
+    }
 
     fun setPassword(principal: AuthenticatedPrincipal, request: SetPasswordRequest): Boolean {
         validatePassword(request.password)

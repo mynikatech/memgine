@@ -38,6 +38,11 @@ data class AuthPosContextRow(
     var storeId: String? = null, var staffId: String? = null
 )
 
+data class CustomerAccountDeletionPreviewRow(
+    var hasActiveSubscriptions: Boolean = false,
+    var activeSubscriptionCount: Int = 0
+)
+
 interface AuthenticationSql {
 
     @SqlQuery("SELECT * FROM auth_find_identity(:phone)")
@@ -93,6 +98,17 @@ interface AuthenticationSql {
         @Bind("tokenHash") tokenHash: String,
         @Bind("userId") userId: String
     ): Boolean
+
+    @SqlQuery("SELECT auth_delete_customer_account(:userId)")
+    fun deleteCustomerAccount(
+        @Bind("userId") userId: String
+    ): Boolean
+
+    @SqlQuery("SELECT * FROM auth_customer_account_deletion_preview(:userId)")
+    @RegisterBeanMapper(CustomerAccountDeletionPreviewRow::class)
+    fun customerAccountDeletionPreview(
+        @Bind("userId") userId: String
+    ): CustomerAccountDeletionPreviewRow
 
     @SqlQuery("SELECT * FROM auth_effective_access(:userId)")
     @RegisterBeanMapper(AuthAccessRow::class)

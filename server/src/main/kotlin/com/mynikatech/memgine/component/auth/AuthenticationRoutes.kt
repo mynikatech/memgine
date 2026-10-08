@@ -12,6 +12,7 @@ import io.ktor.server.plugins.callid.callId
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
@@ -66,6 +67,20 @@ fun Route.authenticationRoutes(service: AuthenticationService, config: Authentic
             val loggedOut = service.logout(call.authenticationToken(config), principal)
             call.clearSessionCookie(config)
             call.respond(ApiResponse.success(LogoutResponse(loggedOut), call.callId))
+        }
+        get("/customer/account/deletion-preview") {
+            call.respond(ApiResponse.success(
+                service.customerAccountDeletionPreview(call.authenticatedPrincipal()),
+                call.callId
+            ))
+        }
+        delete("/customer/account") {
+            val deleted = service.deleteCustomerAccount(
+                call.authenticatedPrincipal(),
+                call.receive<DeleteCustomerAccountRequest>()
+            )
+            call.clearSessionCookie(config)
+            call.respond(ApiResponse.success(DeleteCustomerAccountResponse(deleted), call.callId))
         }
         post("/password") {
             val updated = service.setPassword(call.authenticatedPrincipal(), call.receive())

@@ -31,6 +31,11 @@ export type OtpChallenge = {
   devCode?: string | null;
 };
 
+export type CustomerAccountDeletionPreview = {
+  hasActiveSubscriptions: boolean;
+  activeSubscriptionCount: number;
+};
+
 export class AuthApi {
   session(): Promise<ApiResult<AuthSession>> {
     return httpClient.get("/api/v1/auth/session");
@@ -76,6 +81,19 @@ export class AuthApi {
       "/api/v1/auth/logout",
       {},
     );
+  }
+
+  customerAccountDeletionPreview() {
+    return httpClient.get<CustomerAccountDeletionPreview>(
+      "/api/v1/auth/customer/account/deletion-preview",
+    );
+  }
+
+  deleteCustomerAccount(acknowledgeActiveSubscriptions: boolean) {
+    return httpClient.delete<
+      { acknowledgeActiveSubscriptions: boolean },
+      { deleted: boolean }
+    >("/api/v1/auth/customer/account", { acknowledgeActiveSubscriptions });
   }
 
   setPassword(password: string) {

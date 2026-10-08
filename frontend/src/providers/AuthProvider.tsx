@@ -11,6 +11,7 @@ import { Platform } from "react-native";
 
 import {
   authApi,
+  type CustomerAccountDeletionPreview,
   type AuthSession,
   type OtpChallenge,
 } from "@/src/data/api/auth-api";
@@ -19,6 +20,16 @@ import { saveNativeSessionToken } from "@/src/data/api/http-client";
 import { storage } from "@/src/utils/storage";
 
 export type MobileSessionMode = "customer" | "business";
+
+export class AuthRequestError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "AuthRequestError";
+  }
+}
 
 const NATIVE_SESSION_MODE_KEY = "memgine.native.session-mode";
 
@@ -41,6 +52,8 @@ type AuthContextValue = {
   verifyCustomerOtp: (challengeId: string, otp: string) => Promise<AuthSession>;
   unlockPos: (staffId: string, pin: string) => Promise<AuthSession>;
   setPassword: (password: string) => Promise<void>;
+  customerAccountDeletionPreview: () => Promise<CustomerAccountDeletionPreview>;
+  deleteCustomerAccount: (acknowledgeActiveSubscriptions: boolean) => Promise<void>;
   logout: () => Promise<void>;
   requestRegistrationOtp: (
     phone: string,
@@ -60,7 +73,7 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function unwrap<T>(result: ApiResult<T>): T {
-  if (!result.success) throw new Error(result.error.message);
+  if (!result.success) throw new AuthRequestError(result.error.code, result.error.message);
   return result.data as T;
 }
 
@@ -170,6 +183,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPassword: async (password) => {
         unwrap(await authApi.setPassword(password));
         await refresh();
+      },
+      customerAccountDeletionPreview: async () =>
+        unwrap<CustomerAccountDeletionPreview>(
+          await authApi.customerAccountDeletionPreview(),
+        ),
+      deleteCustomerAccount: async (acknowledgeActiveSubscriptions) => {
+        const result = await authApi.deleteCustomerAccount(
+          acknowledgeActiveSubscriptions,
+        );
+        if (!result.success) {
+          throw new AuthRequestError(result.error.code, result.error.message);
+        }
+        await saveNativeSessionToken(null);
+        await saveMobileSessionMode(null);
+        setSession(null);
       },
       logout: async () => {
         const result = await authApi.logout();

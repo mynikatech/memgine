@@ -72,8 +72,16 @@ export class HttpClient {
     return this.request<TRequest, TResponse>("PUT", path, body);
   }
 
-  async delete<TResponse>(path: string): Promise<ApiResult<TResponse>> {
-    return this.request<never, TResponse>("DELETE", path);
+  delete<TResponse>(path: string): Promise<ApiResult<TResponse>>;
+  delete<TRequest, TResponse>(
+    path: string,
+    body: TRequest,
+  ): Promise<ApiResult<TResponse>>;
+  async delete<TRequest, TResponse>(
+    path: string,
+    body?: TRequest,
+  ): Promise<ApiResult<TResponse>> {
+    return this.request<TRequest, TResponse>("DELETE", path, body);
   }
 
   private async request<TRequest, TResponse>(

@@ -35,6 +35,14 @@ import kotlinx.serialization.Serializable
     val deviceId: String, val organizationId: String, val storeId: String, val staffId: String
 )
 @Serializable data class LogoutResponse(val loggedOut: Boolean)
+@Serializable data class DeleteCustomerAccountResponse(val deleted: Boolean)
+@Serializable data class DeleteCustomerAccountRequest(
+    val acknowledgeActiveSubscriptions: Boolean = false
+)
+@Serializable data class CustomerAccountDeletionPreviewDto(
+    val hasActiveSubscriptions: Boolean,
+    val activeSubscriptionCount: Int
+)
 @Serializable data class SetPasswordResponse(val updated: Boolean)
 
 @Serializable
@@ -45,4 +53,3 @@ data class CustomerRegistrationVerifyRequest(
     val lastName: String,
     val primaryEmail: String? = null
 )
-

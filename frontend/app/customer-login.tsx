@@ -4,7 +4,7 @@ import { Platform, Pressable, StyleSheet, View } from "react-native";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { services, type CountryReference } from "@/src/core";
-import { useAuth } from "@/src/providers";
+import { AuthRequestError, useAuth } from "@/src/providers";
 import { Button, Input, PhoneField, Text, type PhoneValue } from "@/src/ui";
 
 export default function CustomerLoginScreen() {
@@ -22,6 +22,7 @@ export default function CustomerLoginScreen() {
   const [devCode, setDevCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [customerAccountNotFound, setCustomerAccountNotFound] = useState(false);
 
   useEffect(() => {
     void services.referenceData.listCountries().then((items) => {
@@ -83,6 +84,7 @@ export default function CustomerLoginScreen() {
   const requestOtp = async () => {
     setBusy(true);
     setError(null);
+    setCustomerAccountNotFound(false);
     try {
       const challenge = await auth.requestCustomerOtp(phone.number, regionCode);
       setChallengeId(challenge.challengeId);
@@ -101,11 +103,20 @@ export default function CustomerLoginScreen() {
     if (!challengeId) return;
     setBusy(true);
     setError(null);
+    setCustomerAccountNotFound(false);
     try {
       await auth.verifyCustomerOtp(challengeId, otp);
       if (Platform.OS !== "web") await auth.setMobileSessionMode("customer");
       router.replace(returnTo as never);
     } catch (cause) {
+      if (
+        cause instanceof AuthRequestError &&
+        cause.code === "CUSTOMER_ACCOUNT_NOT_FOUND"
+      ) {
+        setCustomerAccountNotFound(true);
+        setError("No active Memgine account was found for this mobile number.");
+        return;
+      }
       setError(
         cause instanceof Error
           ? cause.message
@@ -159,6 +170,8 @@ export default function CustomerLoginScreen() {
                 setChallengeId(null);
                 setOtp("");
                 setDevCode(null);
+                setCustomerAccountNotFound(false);
+                setError(null);
               }}
             />
           </>
@@ -171,6 +184,13 @@ export default function CustomerLoginScreen() {
           />
         )}
         {error ? <Text color="danger">{error}</Text> : null}
+        {customerAccountNotFound ? (
+          <Button
+            label="Join Memgine"
+            onPress={() => router.push(APP_ROUTES.register as never)}
+            fullWidth
+          />
+        ) : null}
         <View style={styles.joinRow}>
           <Text color="textMuted">New to Memgine?</Text>
 

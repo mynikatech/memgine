@@ -28,7 +28,12 @@ fun Application.installAuthenticationGate(
         if (principal != null) call.attributes.put(AuthenticatedPrincipalKey, principal)
 
         if (path.startsWith("/api/v1/auth/")) {
-            if (path.endsWith("/logout") || path.endsWith("/password")) {
+            if (
+                path.endsWith("/logout") ||
+                path.endsWith("/password") ||
+                path.endsWith("/customer/account/deletion-preview") ||
+                (path.endsWith("/customer/account") && call.request.httpMethod == HttpMethod.Delete)
+            ) {
                 if (principal == null) throw UnauthorizedException("Authentication is required")
             }
             return@intercept

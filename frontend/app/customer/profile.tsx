@@ -6,6 +6,7 @@ import { Image, Linking, Pressable, View } from "react-native";
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
 import {
+  AuthRequestError,
   useAuth,
   useCustomerContext,
   useTheme,
@@ -14,6 +15,7 @@ import {
 import {
   Button,
   Card,
+  Checkbox,
   Header,
   ListRow,
   Modal,
@@ -42,13 +44,30 @@ export default function Profile() {
     refreshCustomers,
   } = useCustomerContext();
 
-  const { session, logout } = useAuth();
+  const {
+    session,
+    logout,
+    customerAccountDeletionPreview,
+    deleteCustomerAccount,
+  } = useAuth();
 
   const [aboutVisible, setAboutVisible] = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
   const [termsVisible, setTermsVisible] = useState(false);
   const [supportVisible, setSupportVisible] = useState(false);
   const [deleteAccountVisible, setDeleteAccountVisible] = useState(false);
+  const [deleteAccountStep, setDeleteAccountStep] = useState<
+    "impact" | "identity" | "final"
+  >("impact");
+  const [deleteAccountSubmitting, setDeleteAccountSubmitting] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(
+    null,
+  );
+  const [activeSubscriptionCount, setActiveSubscriptionCount] = useState(0);
+  const [deleteAccountPreviewLoaded, setDeleteAccountPreviewLoaded] =
+    useState(false);
+  const [acknowledgeActiveSubscriptions, setAcknowledgeActiveSubscriptions] =
+    useState(false);
   const [signOutVisible, setSignOutVisible] = useState(false);
 
   const relationships = profiles.filter((row) => row.userId === customerId);
@@ -87,6 +106,75 @@ export default function Profile() {
     setSignOutVisible(false);
     await logout();
     router.replace(APP_ROUTES.customerLogin as never);
+  };
+
+  const closeDeleteAccount = () => {
+    if (deleteAccountSubmitting) return;
+    setDeleteAccountVisible(false);
+    setDeleteAccountStep("impact");
+    setDeleteAccountError(null);
+    setActiveSubscriptionCount(0);
+    setDeleteAccountPreviewLoaded(false);
+    setAcknowledgeActiveSubscriptions(false);
+  };
+
+  const openDeleteAccount = async () => {
+    setDeleteAccountStep("impact");
+    setDeleteAccountError(null);
+    setActiveSubscriptionCount(0);
+    setDeleteAccountPreviewLoaded(false);
+    setAcknowledgeActiveSubscriptions(false);
+    setDeleteAccountVisible(true);
+    try {
+      const preview = await customerAccountDeletionPreview();
+      setActiveSubscriptionCount(preview.activeSubscriptionCount);
+      setDeleteAccountPreviewLoaded(true);
+    } catch (error) {
+      setDeleteAccountError(
+        error instanceof Error
+          ? error.message
+          : "Your account details could not be checked. Please try again.",
+      );
+    }
+  };
+
+  const confirmDeleteAccount = async () => {
+    setDeleteAccountSubmitting(true);
+    setDeleteAccountError(null);
+    try {
+      await deleteCustomerAccount(acknowledgeActiveSubscriptions);
+      setDeleteAccountVisible(false);
+      setDeleteAccountStep("impact");
+      router.replace(APP_ROUTES.customerLogin as never);
+    } catch (error) {
+      if (
+        error instanceof AuthRequestError &&
+        error.code === "ACTIVE_SUBSCRIPTIONS_ACK_REQUIRED"
+      ) {
+        try {
+          const preview = await customerAccountDeletionPreview();
+          setActiveSubscriptionCount(preview.activeSubscriptionCount);
+          setDeleteAccountPreviewLoaded(true);
+          setAcknowledgeActiveSubscriptions(false);
+          setDeleteAccountStep("final");
+          setDeleteAccountError(null);
+        } catch (previewError) {
+          setDeleteAccountError(
+            previewError instanceof Error
+              ? previewError.message
+              : "Your active memberships could not be checked. Please try again.",
+          );
+        }
+        return;
+      }
+      setDeleteAccountError(
+        error instanceof Error
+          ? error.message
+          : "Your account could not be deleted. Please try again.",
+      );
+    } finally {
+      setDeleteAccountSubmitting(false);
+    }
   };
 
   return (
@@ -234,7 +322,7 @@ export default function Profile() {
           <ListRow
             label="Delete Account"
             icon="trash-outline"
-            onPress={() => setDeleteAccountVisible(true)}
+            onPress={() => void openDeleteAccount()}
             testID="profile-delete-account"
           />
 
@@ -288,6 +376,23 @@ export default function Profile() {
               in one place.
             </Text>
           </Card>
+
+          {activeSubscriptionCount > 0 ? (
+            <Card padding="lg">
+              <View style={{ gap: theme.spacing.sm }}>
+                <Text variant="bodyStrong" color="danger">
+                  You currently have {activeSubscriptionCount} active membership
+                  {activeSubscriptionCount === 1 ? "" : "s"}.
+                </Text>
+                <Text variant="bodySmall" color="textMuted">
+                  Deleting your Memgine account will remove your access to
+                  Memgine, but it will not cancel, refund, or erase your active
+                  memberships. Membership and transaction records will remain
+                  with the participating business.
+                </Text>
+              </View>
+            </Card>
+          ) : null}
 
           <View style={{ gap: theme.spacing.md }}>
             <FeatureRow
@@ -543,7 +648,7 @@ export default function Profile() {
       {/* DELETE ACCOUNT */}
       <Modal
         visible={deleteAccountVisible}
-        onClose={() => setDeleteAccountVisible(false)}
+        onClose={closeDeleteAccount}
         title="Delete Account"
         testID="profile-delete-account-modal"
       >
@@ -607,28 +712,77 @@ export default function Profile() {
             </View>
           </Card>
 
-          <Text
-            variant="bodySmall"
-            color="textMuted"
-            style={{ textAlign: "center" }}
-          >
-            You will be asked to verify your identity before the account is
-            permanently deleted.
-          </Text>
+          {deleteAccountStep === "impact" ? (
+            <>
+              <Text
+                variant="bodySmall"
+                color="textMuted"
+                style={{ textAlign: "center" }}
+              >
+                Continue to confirm that you are deleting this signed-in
+                Memgine account.
+              </Text>
+              <Button
+                label="Continue to Account Deletion"
+                onPress={() => setDeleteAccountStep("identity")}
+                disabled={!deleteAccountPreviewLoaded}
+              />
+            </>
+          ) : null}
 
-          {/*
-            Wire this when the backend account-deletion flow is implemented.
+          {deleteAccountStep === "identity" ? (
+            <>
+              <Card padding="md">
+                <Text variant="bodySmall" color="textMuted">
+                  You are signed in as {name || session?.displayName || "this account"}.
+                  Your active session confirms your identity for this request.
+                </Text>
+              </Card>
+              <Button label="Continue" onPress={() => setDeleteAccountStep("final")} />
+            </>
+          ) : null}
 
-            <Button
-              label="Continue to Account Deletion"
-              onPress={handleDeleteAccount}
-            />
-          */}
+          {deleteAccountStep === "final" ? (
+            <>
+              <Text
+                variant="bodySmall"
+                color="danger"
+                style={{ textAlign: "center" }}
+              >
+                This permanently removes your account access. This action cannot
+                be undone.
+              </Text>
+              {deleteAccountError ? (
+                <Text variant="bodySmall" color="danger">
+                  {deleteAccountError}
+                </Text>
+              ) : null}
+              {activeSubscriptionCount > 0 ? (
+                <Checkbox
+                  value={acknowledgeActiveSubscriptions}
+                  onValueChange={setAcknowledgeActiveSubscriptions}
+                  label="I understand that deleting my Memgine account does not cancel my active memberships."
+                  disabled={deleteAccountSubmitting}
+                  testID="profile-delete-account-active-subscriptions-acknowledgement"
+                />
+              ) : null}
+              <Button
+                label={deleteAccountSubmitting ? "Deleting..." : "Delete My Account"}
+                variant="primary"
+                disabled={
+                  deleteAccountSubmitting ||
+                  (activeSubscriptionCount > 0 && !acknowledgeActiveSubscriptions)
+                }
+                onPress={() => void confirmDeleteAccount()}
+              />
+            </>
+          ) : null}
 
           <Button
             label="Keep My Account"
             variant="secondary"
-            onPress={() => setDeleteAccountVisible(false)}
+            disabled={deleteAccountSubmitting}
+            onPress={closeDeleteAccount}
           />
         </View>
       </Modal>
