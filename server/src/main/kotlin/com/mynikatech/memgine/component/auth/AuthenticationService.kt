@@ -120,14 +120,29 @@ class AuthenticationService(
     fun logout(token: String?, principal: AuthenticatedPrincipal): Boolean =
         !token.isNullOrBlank() && sql.revokeSession(hashToken(token), principal.userId)
 
-    fun customerAccountDeletionPreview(principal: AuthenticatedPrincipal): CustomerAccountDeletionPreviewDto {
+    fun customerAccountDeletionPreview(
+        principal: AuthenticatedPrincipal
+    ): CustomerAccountDeletionPreviewDto {
         val preview = sql.customerAccountDeletionPreview(principal.userId)
+
+        val activeSubscriptions =
+            sql.customerAccountDeletionActiveSubscriptions(principal.userId)
+
         return CustomerAccountDeletionPreviewDto(
-            preview.hasActiveSubscriptions,
-            preview.activeSubscriptionCount
+            hasActiveSubscriptions = preview.hasActiveSubscriptions,
+            activeSubscriptionCount = preview.activeSubscriptionCount,
+            activeSubscriptions = activeSubscriptions.map { row ->
+                CustomerAccountDeletionActiveSubscriptionDto(
+                    subscriptionId = row.subscriptionId,
+                    organizationName = row.organizationName,
+                    membershipProductName = row.membershipProductName,
+                    subscriptionPlanName = row.subscriptionPlanName,
+                    startDate = row.startDate,
+                    endDate = row.endDate
+                )
+            }
         )
     }
-
     fun deleteCustomerAccount(
         principal: AuthenticatedPrincipal,
         request: DeleteCustomerAccountRequest

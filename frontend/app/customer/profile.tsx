@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Image, Linking, Pressable, View } from "react-native";
+import type { CustomerAccountDeletionActiveSubscription } from "@/src/data/api/auth-api";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
@@ -34,7 +35,7 @@ const SUPPORT_EMAIL = "support@mynikatech.in";
 export default function Profile() {
   const router = useRouter();
   const theme = useTheme();
-  const { t, locale, currency, timezone } = useTranslation();
+  const { t, locale, currency, timezone, formatDate } = useTranslation();
 
   const {
     customerId,
@@ -64,6 +65,9 @@ export default function Profile() {
     null,
   );
   const [activeSubscriptionCount, setActiveSubscriptionCount] = useState(0);
+  const [activeSubscriptions, setActiveSubscriptions] = useState<
+    CustomerAccountDeletionActiveSubscription[]
+  >([]);
   const [deleteAccountPreviewLoaded, setDeleteAccountPreviewLoaded] =
     useState(false);
   const [acknowledgeActiveSubscriptions, setAcknowledgeActiveSubscriptions] =
@@ -114,6 +118,7 @@ export default function Profile() {
     setDeleteAccountStep("impact");
     setDeleteAccountError(null);
     setActiveSubscriptionCount(0);
+    setActiveSubscriptions([]);
     setDeleteAccountPreviewLoaded(false);
     setAcknowledgeActiveSubscriptions(false);
   };
@@ -122,12 +127,15 @@ export default function Profile() {
     setDeleteAccountStep("impact");
     setDeleteAccountError(null);
     setActiveSubscriptionCount(0);
+    setActiveSubscriptions([]);
     setDeleteAccountPreviewLoaded(false);
     setAcknowledgeActiveSubscriptions(false);
     setDeleteAccountVisible(true);
     try {
       const preview = await customerAccountDeletionPreview();
+
       setActiveSubscriptionCount(preview.activeSubscriptionCount);
+      setActiveSubscriptions(preview.activeSubscriptions ?? []);
       setDeleteAccountPreviewLoaded(true);
     } catch (error) {
       setDeleteAccountError(
@@ -153,7 +161,9 @@ export default function Profile() {
       ) {
         try {
           const preview = await customerAccountDeletionPreview();
+
           setActiveSubscriptionCount(preview.activeSubscriptionCount);
+          setActiveSubscriptions(preview.activeSubscriptions ?? []);
           setDeleteAccountPreviewLoaded(true);
           setAcknowledgeActiveSubscriptions(false);
           setDeleteAccountStep("final");
@@ -376,23 +386,6 @@ export default function Profile() {
               in one place.
             </Text>
           </Card>
-
-          {activeSubscriptionCount > 0 ? (
-            <Card padding="lg">
-              <View style={{ gap: theme.spacing.sm }}>
-                <Text variant="bodyStrong" color="danger">
-                  You currently have {activeSubscriptionCount} active membership
-                  {activeSubscriptionCount === 1 ? "" : "s"}.
-                </Text>
-                <Text variant="bodySmall" color="textMuted">
-                  Deleting your Memgine account will remove your access to
-                  Memgine, but it will not cancel, refund, or erase your active
-                  memberships. Membership and transaction records will remain
-                  with the participating business.
-                </Text>
-              </View>
-            </Card>
-          ) : null}
 
           <View style={{ gap: theme.spacing.md }}>
             <FeatureRow
@@ -622,7 +615,7 @@ export default function Profile() {
               </Text>
 
               <Text variant="bodySmall" color="textMuted">
-                For questions about a particular business's membership,
+                For questions about a particular business’s membership,
                 benefits, offer conditions or redemption eligibility, please
                 contact that business directly.
               </Text>
@@ -650,6 +643,7 @@ export default function Profile() {
         visible={deleteAccountVisible}
         onClose={closeDeleteAccount}
         title="Delete Account"
+        scrollable
         testID="profile-delete-account-modal"
       >
         <View style={{ gap: theme.spacing.lg }}>
@@ -719,8 +713,8 @@ export default function Profile() {
                 color="textMuted"
                 style={{ textAlign: "center" }}
               >
-                Continue to confirm that you are deleting this signed-in
-                Memgine account.
+                Continue to confirm that you are deleting this signed-in Memgine
+                account.
               </Text>
               <Button
                 label="Continue to Account Deletion"
@@ -734,11 +728,15 @@ export default function Profile() {
             <>
               <Card padding="md">
                 <Text variant="bodySmall" color="textMuted">
-                  You are signed in as {name || session?.displayName || "this account"}.
-                  Your active session confirms your identity for this request.
+                  You are signed in as{" "}
+                  {name || session?.displayName || "this account"}. Your active
+                  session confirms your identity for this request.
                 </Text>
               </Card>
-              <Button label="Continue" onPress={() => setDeleteAccountStep("final")} />
+              <Button
+                label="Continue"
+                onPress={() => setDeleteAccountStep("final")}
+              />
             </>
           ) : null}
 
@@ -758,20 +756,89 @@ export default function Profile() {
                 </Text>
               ) : null}
               {activeSubscriptionCount > 0 ? (
-                <Checkbox
-                  value={acknowledgeActiveSubscriptions}
-                  onValueChange={setAcknowledgeActiveSubscriptions}
-                  label="I understand that deleting my Memgine account does not cancel my active memberships."
-                  disabled={deleteAccountSubmitting}
-                  testID="profile-delete-account-active-subscriptions-acknowledgement"
-                />
+                <>
+                  <Card padding="lg">
+                    <View style={{ gap: theme.spacing.md }}>
+                      <View style={{ gap: 4 }}>
+                        <Text variant="bodyStrong" color="danger">
+                          Active membership
+                          {activeSubscriptionCount === 1 ? "" : "s"}
+                        </Text>
+
+                        <Text variant="bodySmall" color="textMuted">
+                          You currently have {activeSubscriptionCount} active
+                          membership
+                          {activeSubscriptionCount === 1 ? "" : "s"}.
+                        </Text>
+                      </View>
+
+                      {activeSubscriptions.map((subscription, index) => (
+                        <View
+                          key={subscription.subscriptionId}
+                          style={{
+                            gap: 3,
+                            paddingTop: index === 0 ? 0 : theme.spacing.md,
+                            borderTopWidth: index === 0 ? 0 : 1,
+                            borderTopColor: theme.colors.border,
+                          }}
+                        >
+                          <Text variant="bodyStrong" color="text">
+                            {subscription.organizationName}
+                          </Text>
+
+                          <Text variant="bodySmall" color="text">
+                            {subscription.membershipProductName}
+                          </Text>
+
+                          {subscription.subscriptionPlanName &&
+                          subscription.subscriptionPlanName !==
+                            subscription.membershipProductName ? (
+                            <Text variant="caption" color="textMuted">
+                              {subscription.subscriptionPlanName}
+                            </Text>
+                          ) : null}
+
+                          <Text variant="caption" color="textMuted">
+                            Valid until {formatDate(subscription.endDate)}
+                          </Text>
+                        </View>
+                      ))}
+
+                      <View
+                        style={{
+                          borderTopWidth: 1,
+                          borderTopColor: theme.colors.border,
+                          paddingTop: theme.spacing.md,
+                        }}
+                      >
+                        <Text variant="bodySmall" color="textMuted">
+                          Deleting your Memgine account will remove your access
+                          to these memberships in Memgine. It will not cancel,
+                          refund, or erase the memberships or their transaction
+                          history.
+                        </Text>
+                      </View>
+                    </View>
+                  </Card>
+
+                  <Checkbox
+                    value={acknowledgeActiveSubscriptions}
+                    onValueChange={setAcknowledgeActiveSubscriptions}
+                    label="I understand that deleting my Memgine account does not cancel my active memberships."
+                    disabled={deleteAccountSubmitting}
+                    testID="profile-delete-account-active-subscriptions-acknowledgement"
+                  />
+                </>
               ) : null}
               <Button
-                label={deleteAccountSubmitting ? "Deleting..." : "Delete My Account"}
+                label={
+                  deleteAccountSubmitting ? "Deleting..." : "Delete My Account"
+                }
                 variant="primary"
                 disabled={
                   deleteAccountSubmitting ||
-                  (activeSubscriptionCount > 0 && !acknowledgeActiveSubscriptions)
+                  (activeSubscriptionCount > 0 &&
+                    !acknowledgeActiveSubscriptions)
                 }
                 onPress={() => void confirmDeleteAccount()}
               />

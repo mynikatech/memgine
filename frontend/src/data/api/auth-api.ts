@@ -34,6 +34,16 @@ export type OtpChallenge = {
 export type CustomerAccountDeletionPreview = {
   hasActiveSubscriptions: boolean;
   activeSubscriptionCount: number;
+  activeSubscriptions: CustomerAccountDeletionActiveSubscription[];
+};
+
+export type CustomerAccountDeletionActiveSubscription = {
+  subscriptionId: string;
+  organizationName: string;
+  membershipProductName: string;
+  subscriptionPlanName: string;
+  startDate: string;
+  endDate: string;
 };
 
 export class AuthApi {

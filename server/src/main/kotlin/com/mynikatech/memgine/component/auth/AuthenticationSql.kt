@@ -43,6 +43,15 @@ data class CustomerAccountDeletionPreviewRow(
     var activeSubscriptionCount: Int = 0
 )
 
+data class CustomerAccountDeletionActiveSubscriptionRow(
+    var subscriptionId: String = "",
+    var organizationName: String = "",
+    var membershipProductName: String = "",
+    var subscriptionPlanName: String = "",
+    var startDate: String = "",
+    var endDate: String = ""
+)
+
 interface AuthenticationSql {
 
     @SqlQuery("SELECT * FROM auth_find_identity(:phone)")
@@ -109,6 +118,14 @@ interface AuthenticationSql {
     fun customerAccountDeletionPreview(
         @Bind("userId") userId: String
     ): CustomerAccountDeletionPreviewRow
+    
+    @SqlQuery(
+        "SELECT * FROM auth_customer_account_deletion_active_subscriptions(:userId)"
+    )
+    @RegisterBeanMapper(CustomerAccountDeletionActiveSubscriptionRow::class)
+    fun customerAccountDeletionActiveSubscriptions(
+        @Bind("userId") userId: String
+    ): List<CustomerAccountDeletionActiveSubscriptionRow>
 
     @SqlQuery("SELECT * FROM auth_effective_access(:userId)")
     @RegisterBeanMapper(AuthAccessRow::class)

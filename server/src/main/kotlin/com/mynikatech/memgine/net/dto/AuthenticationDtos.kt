@@ -39,9 +39,21 @@ import kotlinx.serialization.Serializable
 @Serializable data class DeleteCustomerAccountRequest(
     val acknowledgeActiveSubscriptions: Boolean = false
 )
-@Serializable data class CustomerAccountDeletionPreviewDto(
+@Serializable
+data class CustomerAccountDeletionPreviewDto(
     val hasActiveSubscriptions: Boolean,
-    val activeSubscriptionCount: Int
+    val activeSubscriptionCount: Int,
+    val activeSubscriptions: List<CustomerAccountDeletionActiveSubscriptionDto>
+)
+
+@Serializable
+data class CustomerAccountDeletionActiveSubscriptionDto(
+    val subscriptionId: String,
+    val organizationName: String,
+    val membershipProductName: String,
+    val subscriptionPlanName: String,
+    val startDate: String,
+    val endDate: String
 )
 @Serializable data class SetPasswordResponse(val updated: Boolean)
 

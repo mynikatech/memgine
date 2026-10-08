@@ -243,3 +243,5 @@ DB/hs_err_pid43112.log
 server/build/libs/memgine-server.jar
 BEGIN.docx
 docs/Memgine DEV environment set UP.docx
+frontend/dist-web/_expo/static/js/web/entry-71bac22b57184ef9ed2bdcbb2aeef22a.js
+server/build/libs/memgine-server.jar

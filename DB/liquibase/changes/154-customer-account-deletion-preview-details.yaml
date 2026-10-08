@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 154-customer-account-deletion-preview-details
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/154-customer-account-deletion-preview-details.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
