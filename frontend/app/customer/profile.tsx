@@ -350,6 +350,7 @@ export default function Profile() {
         visible={aboutVisible}
         onClose={() => setAboutVisible(false)}
         title="About Memgine"
+        scrollable
         testID="profile-about-modal"
       >
         <View style={{ gap: theme.spacing.lg }}>
@@ -449,6 +450,7 @@ export default function Profile() {
       <Modal
         visible={privacyVisible}
         onClose={() => setPrivacyVisible(false)}
+        scrollable
         title="Privacy Policy"
         testID="profile-privacy-modal"
       >
@@ -501,6 +503,7 @@ export default function Profile() {
       <Modal
         visible={termsVisible}
         onClose={() => setTermsVisible(false)}
+        scrollable
         title="Terms of Use"
         testID="profile-terms-modal"
       >
@@ -553,6 +556,7 @@ export default function Profile() {
       <Modal
         visible={supportVisible}
         onClose={() => setSupportVisible(false)}
+        scrollable
         title="Help & Support"
         testID="profile-support-modal"
       >

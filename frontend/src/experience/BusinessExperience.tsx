@@ -2883,6 +2883,7 @@ export function BusinessExperience({
           contentContainerStyle={{
             padding: theme.spacing.lg,
             paddingTop: theme.spacing.sm,
+            paddingBottom: insets.bottom + 90,
             gap: theme.spacing.lg,
           }}
           showsVerticalScrollIndicator={false}

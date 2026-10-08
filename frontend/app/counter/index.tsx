@@ -1237,7 +1237,21 @@ export default function StaffCounter() {
         transaction.transactionId,
       );
 
-      await applyRedemptionCheckoutState(checkout, true);
+      if (
+        checkout.providerCode === "TEST" &&
+        checkout.commerceStatus === "ORDER_CREATED" &&
+        checkout.paymentRequired
+      ) {
+        const completed = await services.counter.confirmRedemptionTestPayment(
+          counterContext(),
+          checkout.redemptionTransactionId,
+          "SUCCEEDED",
+        );
+
+        await applyRedemptionCheckoutState(completed, false);
+      } else {
+        await applyRedemptionCheckoutState(checkout, true);
+      }
     } catch (failure) {
       setRedemptionCheckoutStage("failed");
       throw failure;

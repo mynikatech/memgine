@@ -18,6 +18,7 @@
     },
     "android": {
       "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize",
       "package": "com.mynikatech.memgine"
     },
     "web": {

@@ -173,7 +173,7 @@ export default function LoginScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator
       >
         <View style={styles.card}>
           <Text variant="title">Sign in to Memgine</Text>
@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
     paddingHorizontal: 24,
     paddingTop: 40,
-    paddingBottom: 64,
+    paddingBottom: 180,
   },
 
   page: {
