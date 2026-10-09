@@ -55,6 +55,7 @@ import {
 } from "@/src/ui/domain";
 
 import { counterCheckout } from "@/src/core/services/counter-checkout";
+import { storage } from "@/src/utils/storage";
 
 /**
 
@@ -116,6 +117,24 @@ type Step =
   | "collectCard"
   | "processing"
   | "success";
+
+type PendingCounterTerminalPayment = {
+  paymentIntentId: string;
+  commerceTransactionId: string;
+  organizationId: string;
+  storeId: string;
+  staffId: string;
+  membershipProductId: string;
+  subscriptionPlanId: string;
+  counterPurchaseId: string | null;
+  purchaseOtpChallengeId: string | null;
+  pollingWindowStartedAt: number;
+};
+
+const COUNTER_TERMINAL_PAYMENT_STORAGE_PREFIX =
+  "counter-terminal-payment";
+const COUNTER_TERMINAL_PAYMENT_POLL_INTERVAL_MS = 2_000;
+const COUNTER_TERMINAL_PAYMENT_AUTO_POLL_WINDOW_MS = 120_000;
 
 /*
 
@@ -386,6 +405,28 @@ function JoinFlow() {
     string | null
   >(null);
   const collectPolling = useRef(false);
+
+  const [pendingCounterTerminalPayment, setPendingCounterTerminalPayment] =
+    useState<PendingCounterTerminalPayment | null>(null);
+  const [counterTerminalPaymentTimedOut, setCounterTerminalPaymentTimedOut] =
+    useState(false);
+  const [restoringCounterTerminalPayment, setRestoringCounterTerminalPayment] =
+    useState(isStaffSale);
+  const counterTerminalPaymentPolling = useRef(false);
+  const counterTerminalPaymentDispatching = useRef(false);
+
+  const counterTerminalPaymentStorageKey = isStaffSale
+    ? `${COUNTER_TERMINAL_PAYMENT_STORAGE_PREFIX}:${orgId}:${params.storeId ?? ""}:${params.staffId ?? ""}`
+    : "";
+
+  const clearPendingCounterTerminalPayment = useCallback(() => {
+    counterTerminalPaymentDispatching.current = false;
+    setPendingCounterTerminalPayment(null);
+    setCounterTerminalPaymentTimedOut(false);
+    if (counterTerminalPaymentStorageKey) {
+      void storage.removeItem(counterTerminalPaymentStorageKey);
+    }
+  }, [counterTerminalPaymentStorageKey]);
 
   const monerisFrameRef = useRef<any>(null);
 
@@ -1186,6 +1227,8 @@ function JoinFlow() {
       paymentReference: string,
     ) => {
       if (isStaffSale) {
+        clearPendingCounterTerminalPayment();
+
         counterCheckout.clear();
 
         setCounterPurchaseId("");
@@ -1234,8 +1277,187 @@ function JoinFlow() {
       setStep("success");
     },
 
-    [isStaffSale, orgId, setActiveContext],
+    [
+      clearPendingCounterTerminalPayment,
+      isStaffSale,
+      orgId,
+      setActiveContext,
+    ],
   );
+
+  useEffect(() => {
+    if (!isStaffSale || !product || !plan || !counterTerminalPaymentStorageKey) {
+      setRestoringCounterTerminalPayment(false);
+      return;
+    }
+
+    let active = true;
+
+    void storage
+      .getItem<PendingCounterTerminalPayment | null>(
+        counterTerminalPaymentStorageKey,
+        null,
+      )
+      .then((saved) => {
+        if (!active || !saved) return;
+
+        const matchesCurrentPurchase =
+          saved.organizationId === orgId &&
+          saved.storeId === params.storeId &&
+          saved.staffId === params.staffId &&
+          saved.membershipProductId === product.id &&
+          saved.subscriptionPlanId === plan.id;
+
+        if (!matchesCurrentPurchase) return;
+
+        if (saved.counterPurchaseId) {
+          setCounterPurchaseId(saved.counterPurchaseId);
+        }
+        if (saved.purchaseOtpChallengeId) {
+          setPurchaseOtpChallengeId(saved.purchaseOtpChallengeId);
+          setPurchaseOtpVerified(true);
+        }
+        setPendingCounterTerminalPayment(saved);
+        setCounterTerminalPaymentTimedOut(
+          Date.now() - saved.pollingWindowStartedAt >=
+            COUNTER_TERMINAL_PAYMENT_AUTO_POLL_WINDOW_MS,
+        );
+        setStep("processing");
+      })
+      .finally(() => {
+        if (active) setRestoringCounterTerminalPayment(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    counterTerminalPaymentStorageKey,
+    isStaffSale,
+    orgId,
+    params.staffId,
+    params.storeId,
+    plan,
+    product,
+  ]);
+
+  useEffect(() => {
+    if (!pendingCounterTerminalPayment || counterTerminalPaymentTimedOut) {
+      return;
+    }
+
+    let active = true;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const timeout = () => {
+      if (!active) return;
+      setCounterTerminalPaymentTimedOut(true);
+      setOtpError("Payment confirmation is taking longer than expected.");
+      setStep("processing");
+    };
+
+    const remainingAutoPollMs = Math.max(
+      0,
+      COUNTER_TERMINAL_PAYMENT_AUTO_POLL_WINDOW_MS -
+        (Date.now() - pendingCounterTerminalPayment.pollingWindowStartedAt),
+    );
+    const timeoutTimer = setTimeout(timeout, remainingAutoPollMs);
+
+    const poll = async () => {
+      if (!active) return;
+
+      if (
+        Date.now() - pendingCounterTerminalPayment.pollingWindowStartedAt >=
+        COUNTER_TERMINAL_PAYMENT_AUTO_POLL_WINDOW_MS
+      ) {
+        timeout();
+        return;
+      }
+
+      if (counterTerminalPaymentPolling.current) {
+        retryTimer = setTimeout(poll, 100);
+        return;
+      }
+
+      counterTerminalPaymentPolling.current = true;
+
+      try {
+        const confirmed = await services.counter.payment(
+          pendingCounterTerminalPayment.organizationId,
+          pendingCounterTerminalPayment.paymentIntentId,
+        );
+
+        if (!active) return;
+
+        if (
+          confirmed.payment.status === "SUCCEEDED" &&
+          confirmed.subscription
+        ) {
+          clearPendingCounterTerminalPayment();
+          finishSubscription(
+            confirmed.subscription,
+            confirmed.payment.providerReferenceId ??
+              confirmed.payment.paymentIntentId,
+          );
+          return;
+        }
+
+        if (
+          ["FAILED", "CANCELED", "CANCELLED"].includes(
+            confirmed.payment.status,
+          )
+        ) {
+          clearPendingCounterTerminalPayment();
+          setOtpError("Payment was not completed. No membership was created.");
+          setStep("review");
+          return;
+        }
+
+        if (
+          Date.now() - pendingCounterTerminalPayment.pollingWindowStartedAt >=
+          COUNTER_TERMINAL_PAYMENT_AUTO_POLL_WINDOW_MS
+        ) {
+          timeout();
+          return;
+        }
+
+        retryTimer = setTimeout(
+          poll,
+          COUNTER_TERMINAL_PAYMENT_POLL_INTERVAL_MS,
+        );
+      } catch {
+        if (!active) return;
+
+        if (
+          Date.now() - pendingCounterTerminalPayment.pollingWindowStartedAt >=
+          COUNTER_TERMINAL_PAYMENT_AUTO_POLL_WINDOW_MS
+        ) {
+          timeout();
+          return;
+        }
+
+        retryTimer = setTimeout(
+          poll,
+          COUNTER_TERMINAL_PAYMENT_POLL_INTERVAL_MS,
+        );
+      } finally {
+        counterTerminalPaymentPolling.current = false;
+      }
+    };
+
+    void poll();
+
+    return () => {
+      active = false;
+      if (retryTimer) clearTimeout(retryTimer);
+      clearTimeout(timeoutTimer);
+    };
+  }, [
+    clearPendingCounterTerminalPayment,
+    counterTerminalPaymentTimedOut,
+    finishSubscription,
+    pendingCounterTerminalPayment,
+  ]);
 
   const checkCollectPayment = useCallback(
     async (intentId: string) => {
@@ -1572,6 +1794,11 @@ function JoinFlow() {
       return;
     }
 
+    if (isStaffSale && (restoringCounterTerminalPayment || pendingCounterTerminalPayment)) {
+      setStep("processing");
+      return;
+    }
+
     // Counter sale has exactly one Memgine OTP. Request it before payment.
 
     if (isStaffSale && !purchaseOtpVerified) {
@@ -1640,48 +1867,44 @@ function JoinFlow() {
             );
           }
 
-          await services.counter.startRemoteTerminalPayment(
-            context,
-            intent.commerceTransactionId,
-          );
+          if (counterTerminalPaymentDispatching.current) return;
+          counterTerminalPaymentDispatching.current = true;
 
-          for (let attempts = 0; attempts < 10; attempts += 1) {
-            const confirmed = await services.counter.payment(
-              orgId,
-              intent.paymentIntentId,
+          try {
+            await services.counter.startRemoteTerminalPayment(
+              context,
+              intent.commerceTransactionId,
             );
-
-            if (
-              confirmed.payment.status === "SUCCEEDED" &&
-              confirmed.subscription
-            ) {
-              finishSubscription(
-                confirmed.subscription,
-                confirmed.payment.providerReferenceId ??
-                  confirmed.payment.paymentIntentId,
-              );
-
-              return;
-            }
-
-            if (
-              confirmed.payment.status === "FAILED" ||
-              confirmed.payment.status === "CANCELED" ||
-              confirmed.payment.status === "CANCELLED"
-            ) {
-              throw new Error(
-                "Payment was not completed. No membership was created.",
-              );
-            }
-
-            await new Promise<void>((resolve) => {
-              setTimeout(resolve, 2_000);
-            });
+          } catch (error) {
+            counterTerminalPaymentDispatching.current = false;
+            throw error;
           }
 
-          throw new Error(
-            "Payment confirmation is still processing. Please wait and try again.",
-          );
+          const pendingPayment: PendingCounterTerminalPayment = {
+            paymentIntentId: intent.paymentIntentId,
+            commerceTransactionId: intent.commerceTransactionId,
+            organizationId: context.organizationId,
+            storeId: context.storeId,
+            staffId: context.staffId,
+            membershipProductId: product.id,
+            subscriptionPlanId: plan.id,
+            counterPurchaseId: counterPurchaseId || null,
+            purchaseOtpChallengeId: purchaseOtpChallengeId || null,
+            pollingWindowStartedAt: Date.now(),
+          };
+
+          if (counterTerminalPaymentStorageKey) {
+            await storage.setItem(
+              counterTerminalPaymentStorageKey,
+              pendingPayment,
+            );
+          }
+
+          setOtpError(undefined);
+          setCounterTerminalPaymentTimedOut(false);
+          setPendingCounterTerminalPayment(pendingPayment);
+          setStep("processing");
+          return;
         }
 
         if (intent.providerCode !== "TEST") {
@@ -1838,6 +2061,10 @@ function JoinFlow() {
 
     isStaffSale,
 
+    pendingCounterTerminalPayment,
+
+    restoringCounterTerminalPayment,
+
     purchaseOtpVerified,
 
     requestCounterPurchaseOtp,
@@ -1853,6 +2080,10 @@ function JoinFlow() {
     redirectToStripeCheckout,
 
     checkCollectPayment,
+
+    counterPurchaseId,
+
+    counterTerminalPaymentStorageKey,
 
     explicitOfferId,
 
@@ -2875,14 +3106,43 @@ function JoinFlow() {
           <StateView
             kind="loading"
             message={
-              collectPendingIntentId
-                ? "Checking payment status..."
-                : returnedPaymentIntentId
-                  ? "Payment confirmation is processing..."
-                  : t("join.processing")
+              pendingCounterTerminalPayment
+                ? "Waiting for POS payment. Please complete the payment on the terminal."
+                : collectPendingIntentId
+                  ? "Checking payment status..."
+                  : returnedPaymentIntentId
+                    ? "Payment confirmation is processing..."
+                    : t("join.processing")
             }
             testID="join-processing"
           />
+          {pendingCounterTerminalPayment && counterTerminalPaymentTimedOut ? (
+            <>
+              <Text variant="bodySmall" color="textMuted">
+                {otpError}
+              </Text>
+              <Button
+                label="Check Payment Status"
+                fullWidth
+                onPress={() => {
+                  const resumedPayment = {
+                    ...pendingCounterTerminalPayment,
+                    pollingWindowStartedAt: Date.now(),
+                  };
+                  setOtpError(undefined);
+                  setCounterTerminalPaymentTimedOut(false);
+                  setPendingCounterTerminalPayment(resumedPayment);
+                  if (counterTerminalPaymentStorageKey) {
+                    void storage.setItem(
+                      counterTerminalPaymentStorageKey,
+                      resumedPayment,
+                    );
+                  }
+                }}
+                testID="join-counter-terminal-check-status"
+              />
+            </>
+          ) : null}
           {collectPendingIntentId && otpError ? (
             <>
               <Text variant="bodySmall" color="textMuted">

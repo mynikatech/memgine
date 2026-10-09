@@ -135,7 +135,32 @@ data class CounterRedemptionCheckoutDto(
     val providerTransactionId: String? = null,
     val failureCode: String? = null,
     val failureMessage: String? = null,
+    val pricingReconciliationRequired: Boolean = false,
+    val pricingReconciliationHash: String? = null,
+    val pricingAcknowledged: Boolean = false,
+    val pricingDiscrepancies: List<CounterRedemptionPriceDiscrepancyDto> = emptyList(),
     val paymentRequired: Boolean
+)
+
+/** Persisted provider-vs-snapshot product price difference for Counter staff review. */
+@Serializable
+data class CounterRedemptionPriceDiscrepancyDto(
+    val lineId: String,
+    val productMappingId: String? = null,
+    val externalProductId: String? = null,
+    val externalVariantId: String? = null,
+    val productName: String,
+    val storedPriceMinor: Long,
+    val storedCurrencyCode: String,
+    val poyntPriceMinor: Long,
+    val poyntCurrencyCode: String
+)
+
+@Serializable
+data class CounterRedemptionPricingAcknowledgementRequest(
+    val storeId: String,
+    val staffId: String,
+    val pricingReconciliationHash: String
 )
 
 /**

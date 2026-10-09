@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 155-counter-redemption-price-reconciliation
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/155-counter-redemption-price-reconciliation.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

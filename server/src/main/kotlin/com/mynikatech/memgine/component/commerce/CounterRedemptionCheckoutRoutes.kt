@@ -3,6 +3,7 @@ package com.mynikatech.memgine.component.commerce
 import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.model.common.ApiResponse
 import com.mynikatech.memgine.net.dto.CounterRedemptionCheckoutRequest
+import com.mynikatech.memgine.net.dto.CounterRedemptionPricingAcknowledgementRequest
 import com.mynikatech.memgine.net.dto.CounterRedemptionTestPaymentRequest
 import com.mynikatech.memgine.security.authenticatedPrincipal
 import io.ktor.server.application.call
@@ -67,6 +68,25 @@ fun Route.counterRedemptionCheckoutRoutes(
             )
         }
 
+        post("/checkout/pricing/acknowledge") {
+            val organizationId = required(call.parameters["organizationId"], "Organization id")
+            val transactionId = required(call.parameters["transactionId"], "Redemption transaction id")
+            val request = call.receive<CounterRedemptionPricingAcknowledgementRequest>()
+
+            call.respond(
+                ApiResponse.success(
+                    service.acknowledgeRedemptionPricing(
+                        organizationId = organizationId,
+                        redemptionTransactionId = transactionId,
+                        storeId = request.storeId,
+                        staffId = request.staffId,
+                        actorUserId = call.authenticatedPrincipal().userId,
+                        request = request
+                    ),
+                    call.callId
+                )
+            )
+        }
         post("/payment/remote-terminal/start") {
             val organizationId = required(call.parameters["organizationId"], "Organization id")
             val transactionId = required(call.parameters["transactionId"], "Redemption transaction id")

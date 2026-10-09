@@ -15,9 +15,12 @@ import com.mynikatech.memgine.net.dto.CommerceTerminalPaymentResultRequest
 import com.mynikatech.memgine.net.dto.CommerceTransactionAdjustmentDto
 import com.mynikatech.memgine.net.dto.CommerceTransactionLineDto
 import com.mynikatech.memgine.net.dto.CounterRedemptionCheckoutDto
+import com.mynikatech.memgine.net.dto.CounterRedemptionPriceDiscrepancyDto
+import com.mynikatech.memgine.net.dto.CounterRedemptionPricingAcknowledgementRequest
 import com.mynikatech.memgine.net.dto.CounterRedemptionTestPaymentRequest
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.jdbi.v3.core.Jdbi
@@ -25,6 +28,7 @@ import org.jdbi.v3.sqlobject.config.RegisterBeanMapper
 import org.jdbi.v3.sqlobject.customizer.Bind
 import org.jdbi.v3.sqlobject.statement.SqlQuery
 import org.postgresql.util.PSQLException
+import java.security.MessageDigest
 import java.util.UUID
 
 /**
@@ -389,7 +393,7 @@ class CounterCommercePaymentService(
             )
         }
 
-        redemptionCheckoutDto(checkout)
+        redemptionCheckoutDto(checkout, actorUserId)
     }
 
     fun redemptionCheckoutStatus(
@@ -418,7 +422,45 @@ class CounterCommercePaymentService(
             )
         }
 
-        redemptionCheckoutDto(checkout)
+        redemptionCheckoutDto(checkout, actorUserId)
+    }
+
+    fun acknowledgeRedemptionPricing(
+        organizationId: String,
+        redemptionTransactionId: String,
+        storeId: String,
+        staffId: String,
+        actorUserId: String,
+        request: CounterRedemptionPricingAcknowledgementRequest
+    ): CounterRedemptionCheckoutDto = translate {
+        val checkout = redemptionCheckout(
+            organizationId,
+            redemptionTransactionId,
+            storeId,
+            staffId,
+            actorUserId
+        )
+        if (checkout.commerceStatus != "ORDER_CREATED") {
+            throw ConflictException("Counter redemption price is no longer awaiting acknowledgement")
+        }
+        if (!sql().acknowledgeRedemptionPricing(
+                organizationId,
+                checkout.commerceTransactionId,
+                request.pricingReconciliationHash.trim(),
+                actorUserId
+            )) {
+            throw ConflictException("Counter redemption pricing acknowledgement was not saved")
+        }
+        redemptionCheckoutDto(
+            redemptionCheckout(
+                organizationId,
+                redemptionTransactionId,
+                storeId,
+                staffId,
+                actorUserId
+            ),
+            actorUserId
+        )
     }
 
     fun startRedemptionRemoteTerminalPayment(
@@ -446,6 +488,9 @@ class CounterCommercePaymentService(
         }
         if ((checkout.totalMinor ?: 0L) <= 0L) {
             throw BadRequestException("Counter redemption does not require terminal payment")
+        }
+        if (!sql().isRedemptionPricingAcknowledged(checkout.commerceTransactionId, actorUserId)) {
+            throw ConflictException("Counter redemption price reconciliation is incomplete")
         }
 
         val provider = providers.remoteTerminalPaymentProvider("POYNT")
@@ -539,7 +584,8 @@ class CounterCommercePaymentService(
                 storeId,
                 staffId,
                 actorUserId
-            )
+            ),
+            actorUserId
         )
     }
 
@@ -580,6 +626,7 @@ class CounterCommercePaymentService(
             throw BadRequestException("Counter redemption requires POS product lines")
         }
 
+        val discrepancies = mutableListOf<CounterRedemptionPriceDiscrepancyDto>()
         val pricedLines = baseLines.map { line ->
             val externalProductId = line.externalProductId
                 ?.takeIf { it.isNotBlank() }
@@ -607,6 +654,25 @@ class CounterCommercePaymentService(
                 throw BadRequestException("Current POS product is invalid")
             }
 
+            val storedPrice = line.unitPriceMinorSnapshot
+                ?: throw BadRequestException("Stored POS product price is unavailable")
+            val storedCurrency = line.currencyCode?.uppercase()
+                ?.takeIf { it.matches(CURRENCY_CODE) }
+                ?: throw BadRequestException("Stored POS product currency is unavailable")
+            if (storedPrice != current.unitPriceMinorSnapshot || storedCurrency != currentCurrency) {
+                discrepancies += CounterRedemptionPriceDiscrepancyDto(
+                    lineId = line.lineId,
+                    productMappingId = line.productMappingId,
+                    externalProductId = externalProductId,
+                    externalVariantId = line.externalVariantId,
+                    productName = line.description,
+                    storedPriceMinor = storedPrice,
+                    storedCurrencyCode = storedCurrency,
+                    poyntPriceMinor = current.unitPriceMinorSnapshot,
+                    poyntCurrencyCode = currentCurrency
+                )
+            }
+
             line.copy(
                 unitPriceMinorAuthoritative = current.unitPriceMinorSnapshot,
                 lineSubtotalMinor = current.unitPriceMinorSnapshot * line.quantity.toLong(),
@@ -619,7 +685,8 @@ class CounterCommercePaymentService(
             checkout = checkout,
             actorUserId = actorUserId,
             pricedLines = pricedLines,
-            checkoutProvider = checkoutProvider
+            checkoutProvider = checkoutProvider,
+            pricingDiscrepancies = discrepancies
         )
     }
 
@@ -687,7 +754,8 @@ class CounterCommercePaymentService(
         checkout: CounterRedemptionCheckoutRow,
         actorUserId: String,
         pricedLines: List<CommerceTransactionLineDto>,
-        checkoutProvider: CommerceCheckoutProvider
+        checkoutProvider: CommerceCheckoutProvider,
+        pricingDiscrepancies: List<CounterRedemptionPriceDiscrepancyDto>
     ) {
         val currency = pricedLines.mapNotNull { it.currencyCode?.uppercase() }
             .distinct()
@@ -731,6 +799,38 @@ class CounterCommercePaymentService(
             currency,
             actorUserId
         )
+
+        val reconciliationSnapshot = CounterRedemptionPricingSnapshot(
+            commerceTransactionId = checkout.commerceTransactionId,
+            storeId = checkout.storeId,
+            providerOrderId = requireNotNull(result.providerOrderId).trim(),
+            currencyCode = currency,
+            lines = pricedLines.sortedBy { it.lineId }.map {
+                CounterRedemptionPricingLineSnapshot(
+                    lineId = it.lineId,
+                    productMappingId = it.productMappingId,
+                    externalProductId = it.externalProductId,
+                    externalVariantId = it.externalVariantId,
+                    quantity = it.quantity,
+                    unitPriceMinor = requireNotNull(it.unitPriceMinorAuthoritative),
+                    lineSubtotalMinor = requireNotNull(it.lineSubtotalMinor),
+                    currencyCode = currency
+                )
+            },
+            subtotalMinor = requireNotNull(result.subtotalMinor),
+            adjustmentTotalMinor = requireNotNull(result.adjustmentTotalMinor),
+            taxTotalMinor = requireNotNull(result.taxTotalMinor),
+            totalMinor = requireNotNull(result.totalMinor),
+            discrepancies = pricingDiscrepancies.sortedBy { it.lineId }
+        )
+        if (!sql().setRedemptionPricingReconciliation(
+                checkout.commerceTransactionId,
+                Json.encodeToString(pricingDiscrepancies),
+                sha256(Json.encodeToString(reconciliationSnapshot)),
+                actorUserId
+            )) {
+            throw ConflictException("Counter redemption price reconciliation was not persisted")
+        }
     }
 
     private fun persistRedemptionProviderOrder(
@@ -804,8 +904,19 @@ class CounterCommercePaymentService(
         ) ?: throw NotFoundException("Counter redemption checkout was not found")
 
     private fun redemptionCheckoutDto(
-        row: CounterRedemptionCheckoutRow
-    ) = CounterRedemptionCheckoutDto(
+        row: CounterRedemptionCheckoutRow,
+        actorUserId: String
+    ): CounterRedemptionCheckoutDto {
+        val pricing = sql().redemptionPricingReconciliation(
+            row.commerceTransactionId,
+            actorUserId
+        )
+        val discrepancies = pricing?.pricingReconciliationJson
+            ?.takeIf { it.isNotBlank() }
+            ?.let { Json.decodeFromString<List<CounterRedemptionPriceDiscrepancyDto>>(it) }
+            ?: emptyList()
+
+        return CounterRedemptionCheckoutDto(
         redemptionTransactionId = row.redemptionTransactionId,
         transactionNumber = row.transactionNumber,
         redemptionStatus = row.redemptionStatus,
@@ -822,9 +933,20 @@ class CounterCommercePaymentService(
         providerTransactionId = row.providerTransactionId,
         failureCode = row.failureCode,
         failureMessage = row.failureMessage,
+        pricingReconciliationRequired = discrepancies.isNotEmpty(),
+        pricingReconciliationHash = pricing?.pricingReconciliationHash,
+        pricingAcknowledged = pricing?.pricingReconciliationHash != null &&
+            pricing.pricingReconciliationHash == pricing.pricingAcknowledgedHash,
+        pricingDiscrepancies = discrepancies,
         paymentRequired = (row.totalMinor ?: 0L) > 0L &&
             row.commerceStatus !in setOf("COMPLETED", "PROVIDER_SUCCEEDED")
-    )
+        )
+    }
+
+    private fun sha256(value: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
     private fun redemptionLineDto(row: CounterRedemptionLineRow) =
         CommerceTransactionLineDto(
@@ -1163,6 +1285,38 @@ class CounterRedemptionCheckoutRow {
     var organizationId: String = ""
 }
 
+@Serializable
+private data class CounterRedemptionPricingSnapshot(
+    val commerceTransactionId: String,
+    val storeId: String,
+    val providerOrderId: String,
+    val currencyCode: String,
+    val lines: List<CounterRedemptionPricingLineSnapshot>,
+    val subtotalMinor: Long,
+    val adjustmentTotalMinor: Long,
+    val taxTotalMinor: Long,
+    val totalMinor: Long,
+    val discrepancies: List<CounterRedemptionPriceDiscrepancyDto>
+)
+
+@Serializable
+private data class CounterRedemptionPricingLineSnapshot(
+    val lineId: String,
+    val productMappingId: String?,
+    val externalProductId: String?,
+    val externalVariantId: String?,
+    val quantity: Int,
+    val unitPriceMinor: Long,
+    val lineSubtotalMinor: Long,
+    val currencyCode: String
+)
+
+class CounterRedemptionPricingReconciliationRow {
+    var pricingReconciliationJson: String? = null
+    var pricingReconciliationHash: String? = null
+    var pricingAcknowledgedHash: String? = null
+}
+
 class CounterRedemptionLineRow {
     var lineId: String = ""
     var transactionId: String = ""
@@ -1348,6 +1502,35 @@ interface CounterCommercePaymentSql {
         @Bind("taxTotalMinor") taxTotalMinor: Long,
         @Bind("totalMinor") totalMinor: Long,
         @Bind("currencyCode") currencyCode: String,
+        @Bind("actorUserId") actorUserId: String
+    ): Boolean
+
+    @SqlQuery("SELECT commerce_set_counter_redemption_pricing_reconciliation(:transactionId, CAST(:reconciliationJson AS jsonb), :reconciliationHash, :actorUserId)")
+    fun setRedemptionPricingReconciliation(
+        @Bind("transactionId") transactionId: String,
+        @Bind("reconciliationJson") reconciliationJson: String,
+        @Bind("reconciliationHash") reconciliationHash: String,
+        @Bind("actorUserId") actorUserId: String
+    ): Boolean
+
+    @SqlQuery("SELECT * FROM commerce_get_counter_redemption_pricing_reconciliation(:transactionId, :actorUserId)")
+    @RegisterBeanMapper(CounterRedemptionPricingReconciliationRow::class)
+    fun redemptionPricingReconciliation(
+        @Bind("transactionId") transactionId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): CounterRedemptionPricingReconciliationRow?
+
+    @SqlQuery("SELECT commerce_acknowledge_counter_redemption_pricing(:organizationId, :transactionId, :pricingReconciliationHash, :actorUserId)")
+    fun acknowledgeRedemptionPricing(
+        @Bind("organizationId") organizationId: String,
+        @Bind("transactionId") transactionId: String,
+        @Bind("pricingReconciliationHash") pricingReconciliationHash: String,
+        @Bind("actorUserId") actorUserId: String
+    ): Boolean
+
+    @SqlQuery("SELECT commerce_counter_redemption_pricing_is_acknowledged(:transactionId, :actorUserId)")
+    fun isRedemptionPricingAcknowledged(
+        @Bind("transactionId") transactionId: String,
         @Bind("actorUserId") actorUserId: String
     ): Boolean
 

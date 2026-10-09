@@ -127,6 +127,15 @@ export class CounterService {
       .then((result) => this.unwrap(result));
   }
 
+  acknowledgeRedemptionPricing(
+    ctx: CounterContext,
+    transactionId: ID,
+    pricingReconciliationHash: string,
+  ): Promise<CounterRedemptionCheckout> {
+    return this.api
+      .acknowledgeRedemptionPricing(ctx, transactionId, pricingReconciliationHash)
+      .then((result) => this.unwrap(result));
+  }
   startRedemptionRemoteTerminalPayment(ctx: CounterContext, transactionId: ID) {
     return this.api
       .startRedemptionRemoteTerminalPayment(ctx, transactionId)

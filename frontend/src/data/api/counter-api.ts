@@ -101,6 +101,18 @@ export type PaymentConfirmation = {
   subscription?: CounterPurchaseResult | null;
 };
 
+export type CounterRedemptionPriceDiscrepancy = {
+  lineId: ID;
+  productMappingId?: ID | null;
+  externalProductId?: string | null;
+  externalVariantId?: string | null;
+  productName: string;
+  storedPriceMinor: number;
+  storedCurrencyCode: string;
+  poyntPriceMinor: number;
+  poyntCurrencyCode: string;
+};
+
 export type CounterRedemptionCheckout = {
   redemptionTransactionId: ID;
 
@@ -133,6 +145,11 @@ export type CounterRedemptionCheckout = {
   failureCode?: string | null;
 
   failureMessage?: string | null;
+
+  pricingReconciliationRequired?: boolean;
+  pricingReconciliationHash?: string | null;
+  pricingAcknowledged?: boolean;
+  pricingDiscrepancies?: CounterRedemptionPriceDiscrepancy[];
 
   paymentRequired: boolean;
 };
@@ -814,6 +831,23 @@ export class CounterApi {
     );
   }
 
+  acknowledgeRedemptionPricing(
+    ctx: CounterContext,
+    transactionId: ID,
+    pricingReconciliationHash: string,
+  ): Promise<ApiResult<CounterRedemptionCheckout>> {
+    return httpClient.post(
+      this.path(
+        ctx,
+        `redemption-transactions/${encodeURIComponent(transactionId)}/checkout/pricing/acknowledge`,
+      ),
+      {
+        storeId: ctx.storeId,
+        staffId: ctx.staffId,
+        pricingReconciliationHash,
+      },
+    );
+  }
   startRedemptionRemoteTerminalPayment(
     ctx: CounterContext,
     transactionId: ID,
