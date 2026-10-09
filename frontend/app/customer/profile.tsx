@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Image, Linking, Pressable, View } from "react-native";
+import { Image, Linking, Platform, Pressable, View } from "react-native";
 import type { CustomerAccountDeletionActiveSubscription } from "@/src/data/api/auth-api";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
@@ -109,7 +109,11 @@ export default function Profile() {
   const confirmSignOut = async () => {
     setSignOutVisible(false);
     await logout();
-    router.replace(APP_ROUTES.customerLogin as never);
+    router.replace(
+      (Platform.OS === "web"
+        ? APP_ROUTES.customerLogin
+        : APP_ROUTES.mobileEntry) as never,
+    );
   };
 
   const closeDeleteAccount = () => {
@@ -153,7 +157,11 @@ export default function Profile() {
       await deleteCustomerAccount(acknowledgeActiveSubscriptions);
       setDeleteAccountVisible(false);
       setDeleteAccountStep("impact");
-      router.replace(APP_ROUTES.customerLogin as never);
+      router.replace(
+        (Platform.OS === "web"
+          ? APP_ROUTES.customerLogin
+          : APP_ROUTES.mobileEntry) as never,
+      );
     } catch (error) {
       if (
         error instanceof AuthRequestError &&

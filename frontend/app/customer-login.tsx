@@ -1,6 +1,13 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { services, type CountryReference } from "@/src/core";
@@ -128,82 +135,108 @@ export default function CustomerLoginScreen() {
   };
 
   return (
-    <View style={styles.page}>
-      <View style={styles.card}>
-        <Text variant="title">Your Memberships</Text>
-        <Text color="textMuted">
-          Sign in with your mobile number and one-time code.
-        </Text>
-        <PhoneField
-          label="Mobile number"
-          required
-          value={phone}
-          countries={countries}
-          onChange={setPhone}
-          maxDigits={10}
-          testID="customer-login-phone"
-        />
-        {challengeId ? (
-          <>
-            <Input
-              label="One-time code"
-              required
-              keyboardType="number-pad"
-              value={otp}
-              onChangeText={setOtp}
-              maxLength={6}
-              testID="customer-login-otp"
-            />
-            {devCode ? (
-              <Text color="textMuted">Development code: {devCode}</Text>
-            ) : null}
+    <KeyboardAvoidingView
+      style={styles.keyboardAvoidingView}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        showsVerticalScrollIndicator
+      >
+        <View style={styles.card}>
+          <Text variant="title">Your Memberships</Text>
+          <Text color="textMuted">
+            Sign in with your mobile number and one-time code.
+          </Text>
+          <PhoneField
+            label="Mobile number"
+            required
+            value={phone}
+            countries={countries}
+            onChange={setPhone}
+            maxDigits={10}
+            testID="customer-login-phone"
+          />
+          {challengeId ? (
+            <>
+              <Input
+                label="One-time code"
+                required
+                keyboardType="number-pad"
+                value={otp}
+                onChangeText={setOtp}
+                maxLength={6}
+                testID="customer-login-otp"
+              />
+              {devCode ? (
+                <Text color="textMuted">Development code: {devCode}</Text>
+              ) : null}
+              <Button
+                label={busy ? "Verifying…" : "Verify code"}
+                onPress={() => void verifyOtp()}
+                disabled={busy || otp.length !== 6}
+                fullWidth
+              />
+              <Button
+                label="Use another number"
+                variant="ghost"
+                onPress={() => {
+                  setChallengeId(null);
+                  setOtp("");
+                  setDevCode(null);
+                  setCustomerAccountNotFound(false);
+                  setError(null);
+                }}
+              />
+            </>
+          ) : (
             <Button
-              label={busy ? "Verifying…" : "Verify code"}
-              onPress={() => void verifyOtp()}
-              disabled={busy || otp.length !== 6}
+              label={busy ? "Sending…" : "Send code"}
+              onPress={() => void requestOtp()}
+              disabled={busy || !phone.number}
               fullWidth
             />
+          )}
+          {error ? <Text color="danger">{error}</Text> : null}
+          {customerAccountNotFound ? (
             <Button
-              label="Use another number"
-              variant="ghost"
-              onPress={() => {
-                setChallengeId(null);
-                setOtp("");
-                setDevCode(null);
-                setCustomerAccountNotFound(false);
-                setError(null);
-              }}
+              label="Join Memgine"
+              onPress={() => router.push(APP_ROUTES.register as never)}
+              fullWidth
             />
-          </>
-        ) : (
-          <Button
-            label={busy ? "Sending…" : "Send code"}
-            onPress={() => void requestOtp()}
-            disabled={busy || !phone.number}
-            fullWidth
-          />
-        )}
-        {error ? <Text color="danger">{error}</Text> : null}
-        {customerAccountNotFound ? (
-          <Button
-            label="Join Memgine"
-            onPress={() => router.push(APP_ROUTES.register as never)}
-            fullWidth
-          />
-        ) : null}
-        <View style={styles.joinRow}>
-          <Text color="textMuted">New to Memgine?</Text>
+          ) : null}
+          <View style={styles.joinRow}>
+            <Text color="textMuted">New to Memgine?</Text>
 
-          <Pressable onPress={() => router.push(APP_ROUTES.register as never)}>
-            <Text color="primary">Join Memgine</Text>
-          </Pressable>
+            <Pressable onPress={() => router.push(APP_ROUTES.register as never)}>
+              <Text color="primary">Join Memgine</Text>
+            </Pressable>
+          </View>
         </View>
-      </View>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoidingView: {
+    flex: 1,
+    backgroundColor: "#F5F6F8",
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    alignItems: "center",
+    justifyContent: "flex-start",
+    paddingHorizontal: 24,
+    paddingTop: 40,
+    paddingBottom: 180,
+  },
   page: {
     flex: 1,
     backgroundColor: "#F5F6F8",
