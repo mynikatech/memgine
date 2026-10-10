@@ -28,6 +28,7 @@ export type PhoneFieldProps = {
   disabled?: boolean;
   placeholder?: string;
   testID?: string;
+  onPhoneFocus?: () => void;
 };
 
 export function PhoneField({
@@ -41,6 +42,7 @@ export function PhoneField({
   disabled = false,
   placeholder = "Phone number",
   testID,
+  onPhoneFocus,
 }: PhoneFieldProps) {
   const theme = useTheme();
 
@@ -116,6 +118,7 @@ export function PhoneField({
             maxLength={maxDigits}
             editable={!disabled}
             error={error}
+            onFocus={onPhoneFocus}
             testID={testID ? `${testID}-number` : undefined}
           />
         </View>

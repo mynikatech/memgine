@@ -39,6 +39,7 @@ export const APP_ROUTES = {
   customerLogin: "/customer-login",
   register: "/register",
   mobileEntry: "/mobile-entry",
+  paymentReturn: "/payment-return",
   counterUnlock: "/counter-unlock",
   workspaces: "/workspaces",
 

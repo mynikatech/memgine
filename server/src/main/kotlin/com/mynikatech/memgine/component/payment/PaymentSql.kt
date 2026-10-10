@@ -9,6 +9,29 @@ import org.jdbi.v3.sqlobject.statement.SqlQuery
 
 @RegisterBeanMapper(CounterPaymentFinalizationRow::class)
 interface PaymentSql {
+    @SqlQuery("SELECT payment_create_poynt_collect_checkout_session(:sessionId, :tokenHash, :organizationId, :intentId, :actorUserId, :expiresAt)")
+    fun createCollectCheckoutSession(
+        @Bind("sessionId") sessionId: String,
+        @Bind("tokenHash") tokenHash: String,
+        @Bind("organizationId") organizationId: String,
+        @Bind("intentId") intentId: String,
+        @Bind("actorUserId") actorUserId: String,
+        @Bind("expiresAt") expiresAt: java.time.OffsetDateTime
+    ): Boolean
+
+    @SqlQuery("SELECT * FROM payment_redeem_poynt_collect_checkout_session(:tokenHash, :browserHash, :csrfHash, :expiresAt)")
+    @RegisterBeanMapper(PoyntCollectCheckoutSessionRow::class)
+    fun redeemCollectCheckoutSession(
+        @Bind("tokenHash") tokenHash: String,
+        @Bind("browserHash") browserHash: String,
+        @Bind("csrfHash") csrfHash: String,
+        @Bind("expiresAt") expiresAt: java.time.OffsetDateTime
+    ): PoyntCollectCheckoutSessionRow?
+
+    @SqlQuery("SELECT * FROM payment_get_poynt_collect_browser_session(:browserHash)")
+    @RegisterBeanMapper(PoyntCollectCheckoutSessionRow::class)
+    fun browserCollectCheckoutSession(@Bind("browserHash") browserHash: String): PoyntCollectCheckoutSessionRow?
+
     @SqlQuery("SELECT * FROM payment_get_poynt_collect_configuration(:organizationId, :intentId, :actorUserId)")
     @RegisterBeanMapper(PoyntCollectConfigurationRow::class)
     fun collectConfiguration(
@@ -198,6 +221,13 @@ data class PoyntCollectConfigurationRow(
     var providerStoreId: String? = null,
     var secretReference: String = "",
     var merchantCurrencyCode: String = ""
+)
+
+data class PoyntCollectCheckoutSessionRow(
+    var organizationId: String = "",
+    var paymentIntentId: String = "",
+    var customerUserId: String = "",
+    var csrfTokenHash: String? = null
 )
 
 data class CounterPaymentFinalizationRow(

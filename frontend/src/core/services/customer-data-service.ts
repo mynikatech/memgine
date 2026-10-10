@@ -7,7 +7,7 @@ import type {
   Store,
 } from "@/src/core";
 import { CustomerDataApi } from "@/src/data/api/customer-data-api";
-import type { PoyntCollectBootstrap } from "@/src/data/api/customer-data-api";
+import type { PoyntCollectBootstrap, PoyntCollectCheckoutSession } from "@/src/data/api/customer-data-api";
 import type {
   CustomerDiscoverableOrganization,
   CustomerCombinedOffer,
@@ -286,6 +286,15 @@ export class CustomerDataService {
     paymentIntentId: ID,
   ): Promise<PoyntCollectBootstrap> {
     const result = await this.api.collectBootstrap(organizationId, paymentIntentId);
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
+  }
+
+  async createCollectBrowserCheckout(
+    organizationId: ID,
+    paymentIntentId: ID,
+  ): Promise<PoyntCollectCheckoutSession> {
+    const result = await this.api.createCollectBrowserCheckout(organizationId, paymentIntentId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }

@@ -25,7 +25,7 @@ import type {
   CustomerProfile,
 } from "@/src/core/services/customer-data-service";
 import { entityStatusApi } from "./entity-status-api";
-import { httpClient } from "./http-client";
+import { API_BASE_URL, httpClient } from "./http-client";
 import { apiSuccess, type ApiResult } from "./result";
 import { MembershipProductApi } from "./membership-product-api";
 import { BenefitApi } from "./benefit-api";
@@ -41,8 +41,38 @@ export type PoyntCollectBootstrap = {
   applicationId: string;
 };
 
+export type PoyntCollectCheckoutSession = { checkoutUrl: string };
+export type PoyntCollectBrowserCheckout = {
+  csrfToken: string;
+  payment: PaymentIntent;
+};
+
 const collectPaymentPath = (organizationId: ID, paymentIntentId: ID) =>
   `/api/v1/organizations/${encodeURIComponent(organizationId)}/payments/${encodeURIComponent(paymentIntentId)}`;
+
+async function browserCheckoutRequest<T>(
+  path: string,
+  method: "GET" | "POST",
+  body?: unknown,
+  csrfToken?: string,
+): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    credentials: "include",
+    headers: {
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...(csrfToken ? { "X-Memgine-Checkout-CSRF": csrfToken } : {}),
+    },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { success?: boolean; data?: T; error?: { message?: string } }
+    | null;
+  if (!response.ok || !payload?.success || payload.data == null) {
+    throw new Error(payload?.error?.message ?? "Secure checkout is unavailable.");
+  }
+  return payload.data;
+}
 
 export type CustomerDiscoverableOrganization = {
   organizationId: ID;
@@ -287,6 +317,16 @@ export class CustomerDataApi {
     );
   }
 
+  createCollectBrowserCheckout(
+    organizationId: ID,
+    paymentIntentId: ID,
+  ): Promise<ApiResult<PoyntCollectCheckoutSession>> {
+    return httpClient.post(
+      `${collectPaymentPath(organizationId, paymentIntentId)}/poynt-collect/checkout-session`,
+      {},
+    );
+  }
+
   confirmCollectPayment(
     organizationId: ID,
     paymentIntentId: ID,
@@ -394,3 +434,21 @@ export class CustomerDataApi {
     return new StoreApi().listForCustomer(organizationId, userId);
   }
 }
+
+/** Browser-only cookie session API used by the native Poynt Collect hand-off. */
+export const poyntCollectBrowserApi = {
+  redeem(session: string): Promise<PoyntCollectBrowserCheckout> {
+    return browserCheckoutRequest("/api/v1/poynt-collect/checkout/redeem", "POST", { session });
+  },
+  bootstrap(): Promise<PoyntCollectBootstrap> {
+    return browserCheckoutRequest("/api/v1/poynt-collect/checkout/bootstrap", "GET");
+  },
+  status(): Promise<PaymentConfirmation> {
+    return browserCheckoutRequest("/api/v1/poynt-collect/checkout/status", "GET");
+  },
+  confirm(nonce: string, csrfToken: string): Promise<PaymentConfirmation> {
+    return browserCheckoutRequest(
+      "/api/v1/poynt-collect/checkout/confirm", "POST", { nonce }, csrfToken,
+    );
+  },
+};

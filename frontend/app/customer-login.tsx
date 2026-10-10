@@ -1,6 +1,15 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
 import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  findNodeHandle,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -30,6 +39,36 @@ export default function CustomerLoginScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customerAccountNotFound, setCustomerAccountNotFound] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const focusedSectionRef = useRef<View | null>(null);
+  const phoneSectionRef = useRef<View | null>(null);
+  const otpSectionRef = useRef<View | null>(null);
+
+  const scrollFocusedSectionIntoView = useCallback(() => {
+    if (Platform.OS === "web") return;
+    const node = findNodeHandle(focusedSectionRef.current);
+    if (!node) return;
+    scrollRef.current
+      ?.getScrollResponder()
+      .scrollResponderScrollNativeHandleToKeyboard(node, 0, true);
+  }, []);
+
+  const focusSection = useCallback(
+    (section: RefObject<View | null>) => {
+      focusedSectionRef.current = section.current;
+      requestAnimationFrame(scrollFocusedSectionIntoView);
+    },
+    [scrollFocusedSectionIntoView],
+  );
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    const subscription = Keyboard.addListener(
+      "keyboardDidShow",
+      scrollFocusedSectionIntoView,
+    );
+    return () => subscription.remove();
+  }, [scrollFocusedSectionIntoView]);
 
   useEffect(() => {
     void services.referenceData.listCountries().then((items) => {
@@ -140,6 +179,7 @@ export default function CustomerLoginScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
@@ -151,17 +191,20 @@ export default function CustomerLoginScreen() {
           <Text color="textMuted">
             Sign in with your mobile number and one-time code.
           </Text>
-          <PhoneField
-            label="Mobile number"
-            required
-            value={phone}
-            countries={countries}
-            onChange={setPhone}
-            maxDigits={10}
-            testID="customer-login-phone"
-          />
+          <View ref={phoneSectionRef} collapsable={false}>
+            <PhoneField
+              label="Mobile number"
+              required
+              value={phone}
+              countries={countries}
+              onChange={setPhone}
+              onPhoneFocus={() => focusSection(phoneSectionRef)}
+              maxDigits={10}
+              testID="customer-login-phone"
+            />
+          </View>
           {challengeId ? (
-            <>
+            <View ref={otpSectionRef} collapsable={false} style={styles.otpSection}>
               <Input
                 label="One-time code"
                 required
@@ -169,6 +212,7 @@ export default function CustomerLoginScreen() {
                 value={otp}
                 onChangeText={setOtp}
                 maxLength={6}
+                onFocus={() => focusSection(otpSectionRef)}
                 testID="customer-login-otp"
               />
               {devCode ? (
@@ -191,7 +235,7 @@ export default function CustomerLoginScreen() {
                   setError(null);
                 }}
               />
-            </>
+            </View>
           ) : (
             <Button
               label={busy ? "Sending…" : "Send code"}
@@ -259,5 +303,8 @@ const styles = StyleSheet.create({
     gap: 18,
     borderWidth: 1,
     borderColor: "#E4E7EB",
+  },
+  otpSection: {
+    gap: 18,
   },
 });

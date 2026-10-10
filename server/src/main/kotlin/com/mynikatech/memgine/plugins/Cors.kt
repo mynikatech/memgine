@@ -40,5 +40,6 @@ fun Application.configureCors(config: ServerConfig) {
 
         allowHeader(HttpHeaders.ContentType)
         allowHeader(HttpHeaders.Authorization)
+        allowHeader("X-Memgine-Checkout-CSRF")
     }
 }

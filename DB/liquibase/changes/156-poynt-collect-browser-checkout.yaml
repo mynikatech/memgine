@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 156-poynt-collect-browser-checkout
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/156-poynt-collect-browser-checkout.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

@@ -18,12 +18,23 @@ import com.mynikatech.memgine.net.dto.PoyntCollectBootstrapDto
 import com.stripe.model.Event
 import org.jdbi.v3.core.Jdbi
 import java.util.UUID
+import java.security.MessageDigest
+import java.security.SecureRandom
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.net.URI
 import org.postgresql.util.PSQLException
+
+data class BrowserCollectCheckout(
+    val browserToken: String,
+    val csrfToken: String,
+    val session: PoyntCollectCheckoutSessionRow
+)
 
 class PaymentService(
     private val jdbi: Jdbi,
     environment: String,
-    paymentConfig: PaymentConfig,
+    private val paymentConfig: PaymentConfig,
     private val paymentSqlOverride: PaymentSql? = null,
     private val collectProvider: PoyntCollectPaymentProvider? = null,
     private val collectSdkUrl: String = "https://collect.commerce.godaddy.com/sdk.js"
@@ -39,6 +50,8 @@ class PaymentService(
         else -> throw IllegalArgumentException("Unsupported payment provider configuration")
     }
     private fun sql() = paymentSqlOverride ?: jdbi.onDemand(PaymentSql::class.java)
+    private val checkoutRandom = SecureRandom()
+    private val browserCheckoutTtlMinutes = 10L
 
     /** Pricing comes from the database so every checkout uses the same tax rule. */
     fun quoteMembership(org: String, planId: String): MembershipPurchaseQuoteDto {
@@ -228,7 +241,91 @@ class PaymentService(
         return PoyntCollectBootstrapDto(collectSdkUrl, row.businessId, row.applicationId)
     }
 
+    /**
+     * Creates a one-time native-to-browser hand-off. The bearer value is never
+     * stored, and normal native session credentials are never placed in the URL.
+     */
+    fun createCollectBrowserCheckout(org: String, intentId: String, actorUserId: String): String {
+        val checkoutBase = checkoutBaseUrl()
+        get(org, intentId, actorUserId) // preserves payment ownership before issuing a bearer value
+        val rawToken = randomToken()
+        val created = translate {
+            sql().createCollectCheckoutSession(
+                UUID.randomUUID().toString(), sha256(rawToken), org, intentId, actorUserId,
+                OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(browserCheckoutTtlMinutes)
+            )
+        }
+        if (!created) throw ConflictException("Checkout session was not created")
+        return "$checkoutBase/poynt-collect/checkout?session=${java.net.URLEncoder.encode(rawToken, Charsets.UTF_8)}"
+    }
+
+    fun isCollectBrowserOrigin(origin: String?): Boolean = try {
+        val expected = URI(checkoutBaseUrl())
+        val actual = origin?.let(::URI)
+        actual != null && actual.scheme == expected.scheme && actual.host == expected.host && actual.port == expected.port
+    } catch (_: Exception) { false }
+
+    /** Atomically consumes the URL bearer and establishes the browser session. */
+    fun redeemCollectBrowserCheckout(token: String): BrowserCollectCheckout {
+        if (token.length !in 40..512) throw BadRequestException("Checkout session is invalid")
+        val browserToken = randomToken()
+        val csrfToken = randomToken()
+        val row = translate {
+            sql().redeemCollectCheckoutSession(
+                sha256(token), sha256(browserToken), sha256(csrfToken),
+                OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(browserCheckoutTtlMinutes)
+            )
+        } ?: throw ForbiddenException("Checkout session is unavailable")
+        return BrowserCollectCheckout(browserToken, csrfToken, row)
+    }
+
+    fun browserCollectBootstrap(browserToken: String): PoyntCollectBootstrapDto {
+        val session = browserSession(browserToken)
+        return collectBootstrap(session.organizationId, session.paymentIntentId, session.customerUserId)
+    }
+
+    fun browserCollectConfirmation(browserToken: String): Pair<PaymentIntentDto, CounterPurchaseResult?> {
+        val session = browserSession(browserToken)
+        return getConfirmation(session.organizationId, session.paymentIntentId, session.customerUserId)
+    }
+
+    fun browserConfirmCollectAndFinalize(browserToken: String, csrfToken: String, nonce: String): Pair<PaymentIntentDto, CounterPurchaseResult?> {
+        val session = browserSession(browserToken)
+        if (session.csrfTokenHash == null || !constantTimeEquals(session.csrfTokenHash!!, sha256(csrfToken))) {
+            throw ForbiddenException("Checkout request is invalid")
+        }
+        return confirmCollectAndFinalize(session.organizationId, session.paymentIntentId, session.customerUserId, nonce)
+    }
+
+    private fun browserSession(browserToken: String): PoyntCollectCheckoutSessionRow {
+        if (browserToken.length !in 40..512) throw ForbiddenException("Checkout session is unavailable")
+        return translate { sql().browserCollectCheckoutSession(sha256(browserToken)) }
+            ?: throw ForbiddenException("Checkout session is unavailable")
+    }
+
+    private fun checkoutBaseUrl(): String {
+        val value = paymentConfig.webBaseUrl
+        val uri = try { URI(value) } catch (_: Exception) { null }
+        if (uri?.scheme != "https" || uri.host.isNullOrBlank()) {
+            throw BadRequestException("Secure browser checkout is unavailable")
+        }
+        return value
+    }
+
+    private fun randomToken(): String = ByteArray(32).also(checkoutRandom::nextBytes)
+        .let { java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
+
+    private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
+        .digest(value.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+
+    private fun constantTimeEquals(left: String, right: String): Boolean =
+        MessageDigest.isEqual(left.toByteArray(Charsets.UTF_8), right.toByteArray(Charsets.UTF_8))
+
     fun getConfirmation(org: String, intentId: String, actorUserId: String): Pair<PaymentIntentDto, CounterPurchaseResult?> {
+        val current = get(org, intentId, actorUserId)
+        if (current.providerCode == "POYNT_COLLECT" && current.status == "PROCESSING") {
+            reconcileCollectPayment(org, intentId, actorUserId, current)
+        }
         val payment = get(org, intentId, actorUserId)
         val subscription = if (payment.finalizedSubscriptionId == null) null else translate {
             sql().finalizedMembership(org, intentId, actorUserId)
@@ -240,6 +337,76 @@ class PaymentService(
             )
         }
         return payment to subscription
+    }
+
+    /**
+     * Resolves an ambiguous Collect result using the stable Poynt request ID.
+     * It never sends a second charge and intentionally leaves PROCESSING intact
+     * when Poynt cannot prove a single terminal result.
+     */
+    private fun reconcileCollectPayment(
+        org: String,
+        intentId: String,
+        actorUserId: String,
+        current: PaymentIntentDto
+    ) {
+        val provider = collectProvider ?: return
+        if (!provider.isAvailable) return
+        val configuration = try {
+            val row = translate { sql().collectConfiguration(org, intentId, actorUserId) } ?: return
+            if (row.organizationId != org || row.providerStoreId.isNullOrBlank() ||
+                row.merchantCurrencyCode != current.currencyCode || row.businessId.isBlank() ||
+                row.applicationId.isBlank() || row.secretReference.isBlank()
+            ) return
+            PoyntCatalogConfiguration(
+                row.integrationConfigurationId, row.organizationId, row.applicationId,
+                row.businessId, row.providerStoreId, row.secretReference,
+                row.merchantCurrencyCode, null
+            )
+        } catch (_: Exception) {
+            return
+        }
+        val result = try {
+            provider.reconcile(
+                current,
+                configuration,
+                provider.token(configuration),
+                amountMinor(current.amount)
+            )
+        } catch (_: Exception) {
+            return
+        } ?: return
+        val persistedReference = try {
+            translate { sql().setProviderReference(intentId, provider.code, result.transactionId, actorUserId) }
+        } catch (_: Exception) {
+            return
+        } ?: return
+        if (persistedReference != result.transactionId) return
+        if (result.approved) {
+            val finalized = try {
+                translate {
+                    sql().confirmProviderSuccess(
+                        intentId, org, provider.code, result.transactionId,
+                        amountMinor(current.amount), current.currencyCode
+                    )
+                }
+            } catch (_: Exception) {
+                null
+            }
+            if (finalized != null) syncCommercePaymentResult(org, intentId, actorUserId)
+        } else if (result.definiteDecline) {
+            val recorded = try {
+                translate {
+                    sql().recordProviderFailure(
+                        intentId, org, provider.code, result.transactionId,
+                        "FAILED", "POYNT_COLLECT_DECLINED"
+                    )
+                }
+            } catch (_: Exception) {
+                false
+            }
+            if (recorded) syncCommercePaymentResult(org, intentId, actorUserId)
+        }
     }
 
     fun cancel(org: String, intentId: String, actorUserId: String): PaymentIntentDto {
@@ -382,12 +549,14 @@ class PaymentService(
             row.businessId, row.providerStoreId, row.secretReference,
             row.merchantCurrencyCode, null
         )
-        // Resolve OAuth before claiming the intent; credential errors cannot strand it.
+        // Tokenization cannot charge the card, so perform it before the claim. An
+        // invalid nonce leaves the intent PENDING and permits corrected card entry.
         val token = provider.token(configuration)
+        val paymentToken = provider.tokenize(configuration, nonce, token)
         if (!translate { sql().claimCollectCharge(org, intentId, actorUserId) }) {
             throw ConflictException("Payment is already in progress or closed")
         }
-        val result = provider.charge(current, configuration, nonce, token, amountMinor(current.amount))
+        val result = provider.charge(current, configuration, paymentToken, token, amountMinor(current.amount))
         val persistedReference = translate {
             sql().setProviderReference(intentId, provider.code, result.transactionId, actorUserId)
         } ?: throw ConflictException("Collect transaction reference is unavailable")

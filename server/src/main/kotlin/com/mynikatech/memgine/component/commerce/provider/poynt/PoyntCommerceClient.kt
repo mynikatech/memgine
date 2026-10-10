@@ -2,6 +2,8 @@ package com.mynikatech.memgine.component.commerce.provider.poynt
 
 import com.mynikatech.memgine.exception.BadRequestException
 import java.net.URI
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -16,6 +18,11 @@ interface PoyntHttpTransport {
     fun productsUri(businessId: String, offset: Int): URI
     fun orderUri(businessId: String, orderId: String): URI
     fun ordersUri(businessId: String): URI
+    /** Safe reconciliation lookup for a charge submitted with a stable request ID. */
+    fun transactionsByOriginalRequestIdUri(
+        businessId: String,
+        originalRequestId: String
+    ): URI = throw UnsupportedOperationException("Poynt transaction lookup URI is unavailable")
     /** Operational diagnostic endpoint; provider configuration supplies the business ID. */
     fun storesUri(businessId: String): URI = throw UnsupportedOperationException("Poynt stores URI is unavailable")
     fun storeUri(
@@ -74,6 +81,9 @@ class PoyntCloudHttpTransport(private val baseUrl: String, private val apiVersio
     override fun productsUri(businessId: String, offset: Int) = URI.create("$baseUrl/businesses/$businessId/products?limit=100&startOffset=$offset")
     override fun orderUri(businessId: String, orderId: String) = URI.create("$baseUrl/businesses/$businessId/orders/$orderId")
     override fun ordersUri(businessId: String) = URI.create("$baseUrl/businesses/$businessId/orders")
+    override fun transactionsByOriginalRequestIdUri(businessId: String, originalRequestId: String): URI =
+        URI.create("$baseUrl/businesses/$businessId/transactions?original-request-id=" +
+            URLEncoder.encode(originalRequestId, StandardCharsets.UTF_8))
     override fun storesUri(businessId: String) = URI.create("$baseUrl/businesses/$businessId/stores")
     override fun storeUri(
         businessId: String,

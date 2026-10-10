@@ -74,6 +74,18 @@ data class MonerisPaymentConfirmationDto(
 @Serializable
 data class PoyntCollectConfirmationDto(val nonce: String)
 
+/** Initial native-to-browser hand-off. The opaque URL value is single-use. */
+@Serializable
+data class PoyntCollectCheckoutSessionDto(val checkoutUrl: String)
+
+/** Returned only after the browser exchanges the one-time URL value for its cookie. */
+@Serializable
+data class PoyntCollectCheckoutDto(
+    val csrfToken: String,
+    val payment: PaymentIntentDto,
+    val bootstrap: PoyntCollectBootstrapDto? = null
+)
+
 @Serializable
 data class PoyntCollectBootstrapDto(
     val sdkUrl: String,
