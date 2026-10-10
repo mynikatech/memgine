@@ -4,10 +4,12 @@ import { Platform, ScrollView, View } from "react-native";
 import { Text, Button } from "@/src/ui";
 import { CollectCheckoutLayout } from "@/src/ui/payment/CollectCheckoutLayout";
 import { PoyntCollectCardForm } from "@/src/ui/payment/PoyntCollectCardForm";
+import { PoyntCollectWallets } from "@/src/ui/payment/PoyntCollectWallets";
 import {
   poyntCollectBrowserApi,
   type PoyntCollectBootstrap,
   type PoyntCollectBrowserCheckout,
+  type PoyntCollectPaymentMethod,
 } from "@/src/data/api/customer-data-api";
 import type { PaymentConfirmation } from "@/src/data/api/counter-api";
 
@@ -63,16 +65,21 @@ export default function PoyntCollectCheckoutScreen() {
     return () => { active = false; };
   }, [session]);
 
-  const confirm = useCallback(async (nonce: string) => {
-    if (!checkout) return;
+  const confirm = useCallback(async (nonce: string, method: PoyntCollectPaymentMethod = "card"): Promise<boolean> => {
+    if (!checkout) return false;
     try {
       setError(undefined);
-      const value = await poyntCollectBrowserApi.confirm(nonce, checkout.csrfToken);
+      const value = await poyntCollectBrowserApi.confirm(nonce, checkout.csrfToken, method);
       setConfirmation(value);
-      if (value.payment.status === "SUCCEEDED" && value.subscription) returnToMemgine();
+      if (value.payment.status === "SUCCEEDED" && value.subscription) {
+        if (method === "card") returnToMemgine();
+        return true;
+      }
+      return false;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Payment confirmation is pending.");
       await checkStatus();
+      return false;
     }
   }, [checkStatus, checkout]);
 
@@ -92,9 +99,13 @@ export default function PoyntCollectCheckoutScreen() {
             {loading ? <Text variant="body">Preparing secure checkout…</Text> : null}
             {error ? <Text variant="bodySmall" color="danger">{error}</Text> : null}
             {canPay ? (
+              <PoyntCollectWallets configuration={bootstrap}
+                onAuthorize={(nonce, method) => confirm(nonce, method)} />
+            ) : null}
+            {canPay ? (
               <PoyntCollectCardForm
                 configuration={bootstrap}
-                onNonce={confirm}
+                onNonce={async (nonce) => { await confirm(nonce); }}
                 onBack={returnToMemgine}
                 payLabel={`Pay ${money(amountMinor, checkout.payment.currencyCode)} & Subscribe`}
               />

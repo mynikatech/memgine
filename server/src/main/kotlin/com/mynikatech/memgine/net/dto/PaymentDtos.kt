@@ -72,7 +72,11 @@ data class MonerisPaymentConfirmationDto(
 )
 
 @Serializable
-data class PoyntCollectConfirmationDto(val nonce: String)
+data class PoyntCollectConfirmationDto(
+    val nonce: String,
+    // Explicit method: never infer wallet authorization from nonce contents.
+    val method: String = "card"
+)
 
 /** Initial native-to-browser hand-off. The opaque URL value is single-use. */
 @Serializable
@@ -87,10 +91,19 @@ data class PoyntCollectCheckoutDto(
 )
 
 @Serializable
+data class PoyntCollectWalletDto(
+    val country: String,
+    val currency: String,
+    val merchantName: String,
+    val amount: String
+)
+
+@Serializable
 data class PoyntCollectBootstrapDto(
     val sdkUrl: String,
     val businessId: String,
-    val applicationId: String
+    val applicationId: String,
+    val wallet: PoyntCollectWalletDto? = null
 )
 
 @Serializable

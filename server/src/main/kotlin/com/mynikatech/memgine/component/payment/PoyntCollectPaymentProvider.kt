@@ -69,6 +69,34 @@ class PoyntCollectPaymentProvider(
         return parseResult(response.body, amountMinor, payment.currencyCode, configuration)
     }
 
+    /** Direct one-time wallet nonce charge. Never call tokenize() on a wallet nonce. */
+    fun chargeWalletNonce(
+        payment: PaymentIntentDto,
+        configuration: PoyntCatalogConfiguration,
+        nonce: String,
+        token: PoyntAccessToken,
+        amountMinor: Long
+    ): PoyntCollectResult {
+        if (!isAvailable || configuration.providerStoreId.isNullOrBlank() ||
+            configuration.merchantCurrencyCode != payment.currencyCode ||
+            !configuration.businessId.matches(Regex("^[A-Za-z0-9_-]{1,128}$")) ||
+            !configuration.providerStoreId.matches(Regex("^[A-Za-z0-9_-]{1,128}$")) ||
+            nonce.isBlank() || nonce.length > 4096 || amountMinor <= 0L
+        ) throw BadRequestException("Poynt Collect wallet payment is unavailable")
+        // Same endpoint/request ID/reconciliation as card charges.
+        val request = requestBody(configuration, nonce, amountMinor, payment.currencyCode, "nonce")
+        val uri = URI.create("$baseUrl/businesses/${configuration.businessId}/cards/tokenize/charge")
+        val response = try {
+            transport.post(uri, "${token.tokenType} ${token.value}", payment.paymentIntentId, request)
+        } catch (_: Exception) {
+            throw ConflictException("Poynt wallet result is unavailable; payment requires reconciliation")
+        }
+        if (response.statusCode !in 200..299) {
+            throw ConflictException("Poynt wallet result is unavailable; payment requires reconciliation")
+        }
+        return parseResult(response.body, amountMinor, payment.currencyCode, configuration)
+    }
+
     fun tokenize(
         configuration: PoyntCatalogConfiguration,
         nonce: String,
@@ -112,51 +140,93 @@ class PoyntCollectPaymentProvider(
      * A missing, malformed, or nonterminal result deliberately remains unknown:
      * callers must retain PROCESSING and must never repost the nonce.
      */
+    
     fun reconcile(
         payment: PaymentIntentDto,
         configuration: PoyntCatalogConfiguration,
         token: PoyntAccessToken,
         amountMinor: Long
     ): PoyntCollectResult? {
+        // Never guess which transaction belongs to a payment.
+        val transactionId = payment.providerReferenceId
+            ?.takeIf {
+                it.matches(
+                    Regex("^[A-Za-z0-9_-]{1,160}$")
+                )
+            } ?: return null
+
         val response = try {
             transport.get(
-                transport.transactionsByOriginalRequestIdUri(
+                transport.transactionByIdUri(
                     configuration.businessId,
-                    payment.paymentIntentId
+                    transactionId
                 ),
                 "${token.tokenType} ${token.value}"
             )
         } catch (_: Exception) {
             return null
         }
+
         if (response.statusCode !in 200..299) return null
+
         val transactions = try {
             val root = Json.parseToJsonElement(response.body)
             when (root) {
                 is JsonArray -> root
-                is JsonObject -> root["transactions"] as? JsonArray ?: return null
+                is JsonObject ->
+                    root["transactions"] as? JsonArray ?: return null
                 else -> return null
             }
         } catch (_: Exception) {
             return null
         }
+
         if (transactions.size != 1) return null
+
         return try {
             val transaction = transactions.single().jsonObject
-            val originalRequestId = transaction["originalRequestId"]?.jsonPrimitive?.contentOrNull
-            if (originalRequestId != payment.paymentIntentId) return null
-            val context = transaction["context"]?.jsonObject ?: return null
-            if (context["businessId"]?.jsonPrimitive?.contentOrNull != configuration.businessId ||
-                context["storeId"]?.jsonPrimitive?.contentOrNull != configuration.providerStoreId
+
+            // Confirm that Poynt returned the exact saved transaction.
+            if (
+                transaction["id"]?.jsonPrimitive?.contentOrNull
+                    != transactionId
             ) return null
-            parseResult(transaction, amountMinor, payment.currencyCode, configuration)
+
+            // If Poynt provides the original request ID,
+            // it must match our payment intent.
+            val originalRequestId =
+                transaction["originalRequestId"]
+                    ?.jsonPrimitive?.contentOrNull
+
+            if (
+                originalRequestId != null &&
+                originalRequestId != payment.paymentIntentId
+            ) return null
+
+            val context = transaction["context"]?.jsonObject
+                ?: return null
+
+            if (
+                context["businessId"]?.jsonPrimitive?.contentOrNull
+                    != configuration.businessId ||
+                context["storeId"]?.jsonPrimitive?.contentOrNull
+                    != configuration.providerStoreId
+            ) return null
+
+            parseResult(
+                transaction,
+                amountMinor,
+                payment.currencyCode,
+                configuration
+            )
         } catch (_: Exception) {
             null
         }
     }
 
+
     internal fun requestBody(
-        configuration: PoyntCatalogConfiguration, paymentToken: String, amountMinor: Long, currency: String
+        configuration: PoyntCatalogConfiguration, paymentToken: String, amountMinor: Long, currency: String, fundingKey: String = "cardToken"
     ): String = buildJsonObject {
         put("action", "SALE")
         put("context", buildJsonObject {
@@ -168,7 +238,7 @@ class PoyntCollectPaymentProvider(
             put("orderAmount", amountMinor)
             put("currency", currency)
         })
-        put("fundingSource", buildJsonObject { put("cardToken", paymentToken) })
+        put("fundingSource", buildJsonObject { put(fundingKey, paymentToken) })
     }.toString()
 
     internal fun parseResult(
@@ -206,19 +276,22 @@ class PoyntCollectPaymentProvider(
         val orderAmount = try { amounts?.get("orderAmount")?.jsonPrimitive?.longOrNull } catch (_: Exception) { null }
         val processorStatus = try { processor?.get("status")?.jsonPrimitive?.contentOrNull } catch (_: Exception) { null }
         val responseCode = try { processor?.get("statusCode")?.jsonPrimitive?.contentOrNull } catch (_: Exception) { null }
-        if ((configuration != null &&
-                (businessId != configuration.businessId || storeId != configuration.providerStoreId)) ||
-            (processor?.containsKey("approvedAmount") == true && approved == null) ||
-            (amounts?.containsKey("transactionAmount") == true && transactionAmount == null) ||
-            (amounts?.containsKey("orderAmount") == true && orderAmount == null) ||
-            (amounts?.containsKey("currency") == true && currency.isNullOrBlank()) ||
-            (currency != null && currency != expectedCurrency) ||
-            (transactionAmount != null && transactionAmount != expectedAmountMinor) ||
-            (orderAmount != null && orderAmount != expectedAmountMinor) ||
-            (approved != null && approved != expectedAmountMinor)
-        ) return PoyntCollectResult(id, false)
+       if (
+            configuration == null ||
+            businessId != configuration.businessId ||
+            storeId != configuration.providerStoreId ||
+            currency != expectedCurrency ||
+            transactionAmount != expectedAmountMinor ||
+            orderAmount != expectedAmountMinor ||
+            approved != expectedAmountMinor
+        ) {
+            return PoyntCollectResult(id, false)
+        }
         if (status == "DECLINED") return PoyntCollectResult(id, false, true)
-        if (status != "AUTHORIZED" || processorStatus != "Successful" || responseCode != "AA") {
+        if (status !in setOf("AUTHORIZED", "CAPTURED") ||
+            processorStatus != "Successful" ||
+            responseCode != "AA"
+        ) {
             return PoyntCollectResult(id, false)
         }
         return PoyntCollectResult(id, true)

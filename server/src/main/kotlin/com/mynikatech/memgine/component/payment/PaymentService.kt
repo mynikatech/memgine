@@ -5,6 +5,11 @@ import com.mynikatech.memgine.exception.ConflictException
 import com.mynikatech.memgine.exception.NotFoundException
 import com.mynikatech.memgine.exception.ForbiddenException
 import com.mynikatech.memgine.exception.ApiException
+import com.mynikatech.memgine.component.organization.OrganizationSql
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import com.mynikatech.memgine.config.PaymentConfig
 import com.mynikatech.memgine.component.commerce.provider.poynt.PoyntCatalogConfiguration
 import com.mynikatech.memgine.net.dto.CounterPurchaseResult
@@ -15,6 +20,8 @@ import com.mynikatech.memgine.net.dto.MembershipPurchaseQuoteDto
 import com.mynikatech.memgine.net.dto.CounterMembershipPurchaseQuoteDto
 import com.mynikatech.memgine.net.dto.TestPaymentConfirmationDto
 import com.mynikatech.memgine.net.dto.PoyntCollectBootstrapDto
+import com.mynikatech.memgine.net.dto.PoyntCollectWalletDto
+import com.mynikatech.memgine.net.dto.PoyntCollectConfirmationDto
 import com.stripe.model.Event
 import org.jdbi.v3.core.Jdbi
 import java.util.UUID
@@ -238,7 +245,36 @@ class PaymentService(
                 "https://collect.commerce.godaddy.com/sdk.js",
                 "https://collect.commerce.ote-godaddy.com/sdk.js"
             )) throw BadRequestException("Poynt Collect SDK is unavailable")
-        return PoyntCollectBootstrapDto(collectSdkUrl, row.businessId, row.applicationId)
+        // Resolve wallet display metadata using existing organization DB functions.
+        // No per-organization environment variables, new functions, or schema changes.
+        // Missing/malformed metadata hides wallet buttons without affecting card checkout.
+        val wallet = try {
+            val organizationSql = jdbi.onDemand(OrganizationSql::class.java)
+            val organization = organizationSql.getOrganization(org)
+                ?.let { Json.parseToJsonElement(it).jsonObject }
+            val details = organizationSql.getOrganizationDetails(org)
+                ?.let { Json.parseToJsonElement(it).jsonObject }
+            val displayName = listOf(
+                organization?.get("displayName")?.jsonPrimitive?.contentOrNull,
+                organization?.get("name")?.jsonPrimitive?.contentOrNull
+            ).firstOrNull { !it.isNullOrBlank() }?.trim()
+            val country = details?.get("address")?.jsonObject
+                ?.get("countryCode")?.jsonPrimitive?.contentOrNull
+                ?.trim()?.uppercase(java.util.Locale.ROOT)
+            if (displayName != null && displayName.length <= 80 &&
+                country != null && country.matches(Regex("^[A-Z]{2}$"))) {
+                PoyntCollectWalletDto(
+                    country = country,
+                    currency = current.currencyCode,
+                    merchantName = displayName,
+                    amount = java.math.BigDecimal.valueOf(amountMinor(current.amount), 2)
+                        .setScale(2).toPlainString()
+                )
+            } else null
+        } catch (_: Exception) {
+            null
+        }
+        return PoyntCollectBootstrapDto(collectSdkUrl, row.businessId, row.applicationId, wallet)
     }
 
     /**
@@ -289,13 +325,17 @@ class PaymentService(
         return getConfirmation(session.organizationId, session.paymentIntentId, session.customerUserId)
     }
 
-    fun browserConfirmCollectAndFinalize(browserToken: String, csrfToken: String, nonce: String): Pair<PaymentIntentDto, CounterPurchaseResult?> {
+    fun browserConfirmCollectAndFinalize(browserToken: String, csrfToken: String, request: PoyntCollectConfirmationDto): Pair<PaymentIntentDto, CounterPurchaseResult?> {
         val session = browserSession(browserToken)
         if (session.csrfTokenHash == null || !constantTimeEquals(session.csrfTokenHash!!, sha256(csrfToken))) {
             throw ForbiddenException("Checkout request is invalid")
         }
-        return confirmCollectAndFinalize(session.organizationId, session.paymentIntentId, session.customerUserId, nonce)
+        return confirmCollectAndFinalize(session.organizationId, session.paymentIntentId, session.customerUserId, request)
     }
+
+    // Compatibility overload retained for existing card integration tests/call sites.
+    fun browserConfirmCollectAndFinalize(browserToken: String, csrfToken: String, nonce: String): Pair<PaymentIntentDto, CounterPurchaseResult?> =
+        browserConfirmCollectAndFinalize(browserToken, csrfToken, PoyntCollectConfirmationDto(nonce))
 
     private fun browserSession(browserToken: String): PoyntCollectCheckoutSessionRow {
         if (browserToken.length !in 40..512) throw ForbiddenException("Checkout session is unavailable")
@@ -527,8 +567,16 @@ class PaymentService(
     }
 
     fun confirmCollectAndFinalize(
-        org: String, intentId: String, actorUserId: String, nonce: String
+        org: String, intentId: String, actorUserId: String, request: PoyntCollectConfirmationDto
     ): Pair<PaymentIntentDto, CounterPurchaseResult?> {
+        val nonce = request.nonce
+        if (request.method !in setOf("card", "apple_pay", "google_pay")) {
+            throw BadRequestException("Unsupported Poynt payment method")
+        }
+        val walletPayment = request.method != "card"
+        if (walletPayment && collectBootstrap(org, intentId, actorUserId).wallet == null) {
+            throw BadRequestException("Wallet payments are not configured for this organization")
+        }
         val provider = collectProvider ?: throw BadRequestException("Poynt Collect is not configured")
         if (!provider.isAvailable) {
             throw BadRequestException("Poynt Collect payment is unavailable")
@@ -549,14 +597,18 @@ class PaymentService(
             row.businessId, row.providerStoreId, row.secretReference,
             row.merchantCurrencyCode, null
         )
-        // Tokenization cannot charge the card, so perform it before the claim. An
-        // invalid nonce leaves the intent PENDING and permits corrected card entry.
         val token = provider.token(configuration)
-        val paymentToken = provider.tokenize(configuration, nonce, token)
+        // Card tokenization is non-charging and stays before the claim.
+        // A wallet nonce is single-use charge material: ALWAYS claim first.
+        val paymentToken = if (walletPayment) null else provider.tokenize(configuration, nonce, token)
         if (!translate { sql().claimCollectCharge(org, intentId, actorUserId) }) {
             throw ConflictException("Payment is already in progress or closed")
         }
-        val result = provider.charge(current, configuration, paymentToken, token, amountMinor(current.amount))
+        val result = if (walletPayment) {
+            provider.chargeWalletNonce(current, configuration, nonce, token, amountMinor(current.amount))
+        } else {
+            provider.charge(current, configuration, paymentToken!!, token, amountMinor(current.amount))
+        }
         val persistedReference = translate {
             sql().setProviderReference(intentId, provider.code, result.transactionId, actorUserId)
         } ?: throw ConflictException("Collect transaction reference is unavailable")
@@ -585,6 +637,13 @@ class PaymentService(
         syncCommercePaymentResult(org, intentId, actorUserId)
         return getConfirmation(org, intentId, actorUserId)
     }
+
+
+    // Compatibility overload for existing card-only call sites.
+    fun confirmCollectAndFinalize(
+        org: String, intentId: String, actorUserId: String, nonce: String
+    ): Pair<PaymentIntentDto, CounterPurchaseResult?> =
+        confirmCollectAndFinalize(org, intentId, actorUserId, PoyntCollectConfirmationDto(nonce))
 
     fun handleStripeWebhook(rawBody: String, signature: String?): Boolean {
         val event = stripeProvider.verifiedEvent(rawBody, signature)

@@ -25,6 +25,8 @@ interface PoyntHttpTransport {
     ): URI = throw UnsupportedOperationException("Poynt transaction lookup URI is unavailable")
     /** Operational diagnostic endpoint; provider configuration supplies the business ID. */
     fun storesUri(businessId: String): URI = throw UnsupportedOperationException("Poynt stores URI is unavailable")
+    fun transactionByIdUri(businessId: String, transactionId: String): URI =
+    throw UnsupportedOperationException("Poynt transaction lookup unavailable")
     fun storeUri(
         businessId: String,
         storeId: String
@@ -63,7 +65,14 @@ class PoyntCloudHttpTransport(private val baseUrl: String, private val apiVersio
         return try {
             val response = client.send(request, HttpResponse.BodyHandlers.ofString())
             PoyntHttpResponse(response.statusCode(), response.body())
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            org.slf4j.LoggerFactory.getLogger(PoyntCloudHttpTransport::class.java)
+                .error(
+                    "Poynt HTTP POST failed endpoint={} exceptionType={} message={}",
+                    uri.path,
+                    error.javaClass.simpleName,
+                    error.message
+                )
             throw BadRequestException("Poynt order request failed")
         }
     }
@@ -91,6 +100,13 @@ class PoyntCloudHttpTransport(private val baseUrl: String, private val apiVersio
     ): URI =
         URI.create("$baseUrl/businesses/$businessId/stores/$storeId")
     override fun cloudMessagesUri() = URI.create("$baseUrl/cloudMessages")
+    override fun transactionByIdUri(
+        businessId: String,
+        transactionId: String
+    ): URI = URI.create(
+        "$baseUrl/businesses/$businessId/transactions?transactionIds=" +
+            URLEncoder.encode(transactionId, StandardCharsets.UTF_8)
+    )
 }
 
 /** Adds a cached Poynt bearer token to each safe catalog GET and retries exactly once after 401. */

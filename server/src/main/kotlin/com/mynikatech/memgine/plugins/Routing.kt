@@ -185,15 +185,14 @@ fun Application.configureRouting(
     )
     val poyntCommerceSql = database.jdbi.onDemand(PoyntCommerceSql::class.java)
     val poyntHttpTransport = PoyntCloudHttpTransport(config.poynt.cloudBaseUrl, config.poynt.apiVersion)
-    val collectTokens = PoyntTokenService(
-        AwsSecretsManagerPoyntCredentialResolver(config.poynt.secretsRegion),
-        PoyntCloudTokenTransport(config.poynt.collectBaseUrl, config.poynt.apiVersion),
-        config.poynt.jwtAudience
-    )
+
     val collectProvider = PoyntCollectPaymentProvider(
         config.poynt.collectBaseUrl,
-        PoyntCloudHttpTransport(config.poynt.collectBaseUrl, config.poynt.apiVersion),
-        collectTokens::token
+        PoyntCloudHttpTransport(
+            config.poynt.collectBaseUrl,
+            config.poynt.apiVersion
+        ),
+        poyntTokens::token
     )
     val paymentService = PaymentService(database.jdbi, config.server.environment, config.payment,
         collectProvider = collectProvider, collectSdkUrl = config.poynt.collectSdkUrl)

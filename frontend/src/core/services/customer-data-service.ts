@@ -7,7 +7,11 @@ import type {
   Store,
 } from "@/src/core";
 import { CustomerDataApi } from "@/src/data/api/customer-data-api";
-import type { PoyntCollectBootstrap, PoyntCollectCheckoutSession } from "@/src/data/api/customer-data-api";
+import type { PoyntCollectPaymentMethod } from "@/src/data/api/customer-data-api";
+import type {
+  PoyntCollectBootstrap,
+  PoyntCollectCheckoutSession,
+} from "@/src/data/api/customer-data-api";
 import type {
   CustomerDiscoverableOrganization,
   CustomerCombinedOffer,
@@ -33,7 +37,10 @@ import type { OrgAdminRedemption } from "@/src/data/api/org-admin-transaction-ap
 export type CustomerChoice = { userId: ID; displayName: string };
 
 export class CustomerPaymentStatusError extends Error {
-  constructor(message: string, readonly code: string) {
+  constructor(
+    message: string,
+    readonly code: string,
+  ) {
     super(message);
   }
 }
@@ -285,7 +292,10 @@ export class CustomerDataService {
     organizationId: ID,
     paymentIntentId: ID,
   ): Promise<PoyntCollectBootstrap> {
-    const result = await this.api.collectBootstrap(organizationId, paymentIntentId);
+    const result = await this.api.collectBootstrap(
+      organizationId,
+      paymentIntentId,
+    );
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
@@ -294,7 +304,10 @@ export class CustomerDataService {
     organizationId: ID,
     paymentIntentId: ID,
   ): Promise<PoyntCollectCheckoutSession> {
-    const result = await this.api.createCollectBrowserCheckout(organizationId, paymentIntentId);
+    const result = await this.api.createCollectBrowserCheckout(
+      organizationId,
+      paymentIntentId,
+    );
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
@@ -303,18 +316,30 @@ export class CustomerDataService {
     organizationId: ID,
     paymentIntentId: ID,
     nonce: string,
+    method: PoyntCollectPaymentMethod = "card",
   ): Promise<PaymentConfirmation> {
-    const result = await this.api.confirmCollectPayment(organizationId, paymentIntentId, nonce);
+    const result = await this.api.confirmCollectPayment(
+      organizationId,
+      paymentIntentId,
+      nonce,
+      method,
+    );
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async paymentStatus(
     organizationId: ID,
     paymentIntentId: ID,
   ): Promise<PaymentConfirmation> {
-    const result = await this.api.paymentStatus(organizationId, paymentIntentId);
-    if (!result.success) throw new CustomerPaymentStatusError(result.error.message, result.error.code);
+    const result = await this.api.paymentStatus(
+      organizationId,
+      paymentIntentId,
+    );
+    if (!result.success)
+      throw new CustomerPaymentStatusError(
+        result.error.message,
+        result.error.code,
+      );
     return result.data;
   }
 

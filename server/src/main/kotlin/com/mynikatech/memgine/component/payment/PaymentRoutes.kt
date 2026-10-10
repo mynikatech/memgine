@@ -104,7 +104,7 @@ fun Route.paymentRoutes(service: PaymentService) {
                 ?: throw BadRequestException("Payment intent id is required")
             val result = service.confirmCollectAndFinalize(
                 organizationId, paymentIntentId, call.authenticatedPrincipal().userId,
-                call.receive<PoyntCollectConfirmationDto>().nonce
+                call.receive<PoyntCollectConfirmationDto>()
             )
             call.respond(ApiResponse.success(PaymentConfirmationDto(result.first, result.second), call.callId))
         }
@@ -163,7 +163,7 @@ fun Route.paymentRoutes(service: PaymentService) {
             val csrf = call.request.headers["X-Memgine-Checkout-CSRF"]
                 ?: throw BadRequestException("Checkout request is invalid")
             val result = service.browserConfirmCollectAndFinalize(
-                token, csrf, call.receive<PoyntCollectConfirmationDto>().nonce
+                token, csrf, call.receive<PoyntCollectConfirmationDto>()
             )
             call.respond(ApiResponse.success(PaymentConfirmationDto(result.first, result.second), call.callId))
         }

@@ -19,6 +19,8 @@ import type {
 import type { MembershipPurchaseQuote } from "@/src/data/api/counter-api";
 import type { PoyntCollectBootstrap } from "@/src/data/api/customer-data-api";
 import { PoyntCollectCardForm } from "@/src/ui/payment/PoyntCollectCardForm";
+import { PoyntCollectWallets } from "@/src/ui/payment/PoyntCollectWallets";
+import type { PoyntCollectPaymentMethod } from "@/src/data/api/customer-data-api";
 import { CollectCheckoutLayout } from "@/src/ui/payment/CollectCheckoutLayout";
 import { CustomerPaymentStatusError } from "@/src/core/services/customer-data-service";
 
@@ -118,6 +120,7 @@ type Step =
   | "monerisCard"
   | "collectCard"
   | "processing"
+  | "collectUnavailable"
   | "success";
 
 type PendingCounterTerminalPayment = {
@@ -142,14 +145,22 @@ type PendingCustomerCollectPayment = {
   pollingWindowStartedAt: number;
 };
 
-const COUNTER_TERMINAL_PAYMENT_STORAGE_PREFIX =
-  "counter-terminal-payment";
+const COUNTER_TERMINAL_PAYMENT_STORAGE_PREFIX = "counter-terminal-payment";
 const COUNTER_TERMINAL_PAYMENT_POLL_INTERVAL_MS = 2_000;
 const COUNTER_TERMINAL_PAYMENT_AUTO_POLL_WINDOW_MS = 120_000;
+type PendingCustomerPaymentStart = {
+  key: string;
+  planId: string;
+  offerId: string;
+  quotedMinor: number;
+  paymentIntentId?: string;
+};
+const CUSTOMER_PAYMENT_START_STORAGE_PREFIX = "customer-payment-start";
 const CUSTOMER_COLLECT_PAYMENT_STORAGE_PREFIX = "customer-collect-payment";
-const CUSTOMER_COLLECT_PAYMENT_RETURN_STORAGE_PREFIX = "customer-collect-payment-return";
+const CUSTOMER_COLLECT_PAYMENT_RETURN_STORAGE_PREFIX =
+  "customer-collect-payment-return";
 const CUSTOMER_COLLECT_PAYMENT_POLL_INTERVAL_MS = 2_000;
-const CUSTOMER_COLLECT_PAYMENT_AUTO_POLL_WINDOW_MS = 120_000;
+const CUSTOMER_COLLECT_PAYMENT_AUTO_POLL_WINDOW_MS = 300_000;
 
 /*
 
@@ -423,7 +434,33 @@ function JoinFlow() {
     useState<PendingCustomerCollectPayment | null>(null);
   const [restoringCustomerCollectPayment, setRestoringCustomerCollectPayment] =
     useState(!isStaffSale);
+  const customerPaymentStartInFlight = useRef(false);
+  const customerPaymentStartStorageKey =
+    !isStaffSale && session?.userId
+      ? `${CUSTOMER_PAYMENT_START_STORAGE_PREFIX}:${orgId}:${session.userId}`
+      : "";
   const collectPolling = useRef(false);
+  const [collectPollingActive, setCollectPollingActive] = useState(false);
+  const [collectPollingStartedAt, setCollectPollingStartedAt] = useState<
+    number | null
+  >(null);
+  const [collectNow, setCollectNow] = useState(Date.now());
+  useEffect(() => {
+    if (!collectPollingActive || collectPollingStartedAt === null) return;
+    const timer = setInterval(() => setCollectNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [collectPollingActive, collectPollingStartedAt]);
+  const collectRemainingSeconds =
+    collectPollingStartedAt === null
+      ? 0
+      : Math.max(
+          0,
+          Math.ceil(
+            (CUSTOMER_COLLECT_PAYMENT_AUTO_POLL_WINDOW_MS -
+              (collectNow - collectPollingStartedAt)) /
+              1_000,
+          ),
+        );
 
   const [pendingCounterTerminalPayment, setPendingCounterTerminalPayment] =
     useState<PendingCounterTerminalPayment | null>(null);
@@ -458,10 +495,20 @@ function JoinFlow() {
     if (customerCollectPaymentStorageKey) {
       void storage.removeItem(customerCollectPaymentStorageKey);
     }
-    if (session?.userId) {
-      void storage.removeItem(`${CUSTOMER_COLLECT_PAYMENT_RETURN_STORAGE_PREFIX}:${session.userId}`);
+    // This function is called only after a known terminal payment outcome.
+    if (customerPaymentStartStorageKey) {
+      void storage.removeItem(customerPaymentStartStorageKey);
     }
-  }, [customerCollectPaymentStorageKey, session?.userId]);
+    if (session?.userId) {
+      void storage.removeItem(
+        `${CUSTOMER_COLLECT_PAYMENT_RETURN_STORAGE_PREFIX}:${session.userId}`,
+      );
+    }
+  }, [
+    customerCollectPaymentStorageKey,
+    customerPaymentStartStorageKey,
+    session?.userId,
+  ]);
 
   const monerisFrameRef = useRef<any>(null);
 
@@ -1261,6 +1308,9 @@ function JoinFlow() {
 
       paymentReference: string,
     ) => {
+      if (!isStaffSale && customerPaymentStartStorageKey) {
+        void storage.removeItem(customerPaymentStartStorageKey);
+      }
       if (isStaffSale) {
         clearPendingCounterTerminalPayment();
 
@@ -1317,11 +1367,17 @@ function JoinFlow() {
       isStaffSale,
       orgId,
       setActiveContext,
+      customerPaymentStartStorageKey,
     ],
   );
 
   useEffect(() => {
-    if (!isStaffSale || !product || !plan || !counterTerminalPaymentStorageKey) {
+    if (
+      !isStaffSale ||
+      !product ||
+      !plan ||
+      !counterTerminalPaymentStorageKey
+    ) {
       setRestoringCounterTerminalPayment(false);
       return;
     }
@@ -1438,9 +1494,7 @@ function JoinFlow() {
         }
 
         if (
-          ["FAILED", "CANCELED", "CANCELLED"].includes(
-            confirmed.payment.status,
-          )
+          ["FAILED", "CANCELED", "CANCELLED"].includes(confirmed.payment.status)
         ) {
           clearPendingCounterTerminalPayment();
           setOtpError("Payment was not completed. No membership was created.");
@@ -1498,15 +1552,21 @@ function JoinFlow() {
     async (intentId: string, pollingStartedAt = Date.now()) => {
       if (collectPolling.current) return;
       collectPolling.current = true;
+      setCollectPollingStartedAt(pollingStartedAt);
+      setCollectNow(Date.now());
+      setCollectPollingActive(true);
+      setCollectPendingIntentId(intentId);
+      setStep("processing");
       let statusMessage =
         "Payment is still processing. Check its status before trying another purchase.";
       try {
-        for (let attempt = 0; attempt < 60; attempt += 1) {
+        for (;;) {
           if (
             Date.now() - pollingStartedAt >=
             CUSTOMER_COLLECT_PAYMENT_AUTO_POLL_WINDOW_MS
           ) {
-            statusMessage = "Payment confirmation is taking longer than expected.";
+            statusMessage =
+              "Unable to confirm payment status. Your payment attempt is preserved; please check its status before trying again.";
             break;
           }
           const confirmed = await services.customerData.paymentStatus(
@@ -1545,17 +1605,24 @@ function JoinFlow() {
             setStep("review");
             return;
           }
-          if (confirmed.payment.status !== "PROCESSING") {
-            statusMessage =
-              "Payment confirmation is taking longer than expected.";
+          if (confirmed.payment.status === "PENDING") {
+            // The server has confirmed the intent has not been claimed for charging.
+            // Do not automatically resubmit or silently reopen payment entry.
             setCollectPendingIntentId(intentId);
+            setOtpError(
+              "Payment not completed. Your previous payment attempt is still awaiting payment. You can return to the secure checkout using this same payment intent.",
+            );
             setStep("processing");
             return;
           }
-          if (attempt < 59)
-            await new Promise<void>((resolve) =>
-              setTimeout(resolve, CUSTOMER_COLLECT_PAYMENT_POLL_INTERVAL_MS),
-            );
+          if (confirmed.payment.status !== "PROCESSING") {
+            statusMessage =
+              "Payment status could not be confirmed. Do not retry the charge until it is resolved.";
+            break;
+          }
+          await new Promise<void>((resolve) =>
+            setTimeout(resolve, CUSTOMER_COLLECT_PAYMENT_POLL_INTERVAL_MS),
+          );
         }
       } catch (error) {
         // Keep the intent available for status checks; never dispatch another charge here.
@@ -1567,23 +1634,104 @@ function JoinFlow() {
             "Your session expired. Sign in again to check this payment; do not retry the charge.";
         } else {
           statusMessage =
-            "Payment confirmation is taking longer than expected.";
+            "Unable to confirm payment status. Your payment attempt is preserved; please check its status before trying again.";
         }
       } finally {
         collectPolling.current = false;
+        setCollectPollingActive(false);
       }
       setCollectPendingIntentId(intentId);
       setOtpError(statusMessage);
       setStep("processing");
     },
-    [clearPendingCustomerCollectPayment, finishSubscription, orgId],
+    [
+      clearPendingCustomerCollectPayment,
+      explicitOfferId,
+      finishSubscription,
+      orgId,
+      plan,
+    ],
+  );
+
+  const returnToPendingCollectPayment = useCallback(
+    async (intentId: string) => {
+      if (collectPolling.current) return;
+      collectPolling.current = true;
+      setCollectPollingActive(true);
+      setOtpError(undefined);
+      try {
+        // Never open payment entry without rechecking the authoritative status.
+        const status = await services.customerData.paymentStatus(
+          orgId,
+          intentId,
+        );
+        if (status.payment.status !== "PENDING") {
+          setOtpError(
+            "Payment status has changed. Check Payment Status before continuing.",
+          );
+          setCollectPendingIntentId(intentId);
+          setStep("processing");
+          return;
+        }
+        if (!plan || Platform.OS !== "web") {
+          setOtpError(
+            "Payment is pending. Secure checkout is unavailable here; please check payment status again.",
+          );
+          return;
+        }
+        const quote = await services.customerData.purchaseQuote(
+          orgId,
+          plan.id,
+          explicitOfferId || undefined,
+        );
+        if (
+          !Number.isFinite(quote.totalAmount) ||
+          Math.round(quote.totalAmount * 100) !==
+            Math.round(status.payment.amount * 100)
+        ) {
+          setOtpError(
+            "The price has changed since this payment was created. Do not pay from this intent; contact support to close it safely.",
+          );
+          return;
+        }
+        const configuration = await services.customerData.collectBootstrap(
+          orgId,
+          intentId,
+        );
+        setPurchaseQuote(quote);
+        setCollectPayment({
+          paymentIntentId: intentId,
+          amount: status.payment.amount,
+          configuration,
+        });
+        setCollectPendingIntentId(null);
+        setStep("collectCard");
+      } catch {
+        setOtpError(
+          "We couldn't reopen checkout. Your payment intent is preserved; check its status before trying again.",
+        );
+      } finally {
+        collectPolling.current = false;
+        setCollectPollingActive(false);
+      }
+    },
+    [checkCollectPayment, explicitOfferId, orgId, plan],
   );
 
   const confirmCollectNonce = useCallback(
-    async (nonce: string) => {
-      if (!collectPayment) return;
+    async (
+      nonce: string,
+      method: PoyntCollectPaymentMethod = "card",
+    ): Promise<boolean> => {
+      if (!collectPayment) return false;
       const intentId = collectPayment.paymentIntentId;
-      if (!isStaffSale && session?.userId && product && plan && customerCollectPaymentStorageKey) {
+      if (
+        !isStaffSale &&
+        session?.userId &&
+        product &&
+        plan &&
+        customerCollectPaymentStorageKey
+      ) {
         const pending: PendingCustomerCollectPayment = {
           organizationId: orgId,
           customerUserId: session.userId,
@@ -1597,12 +1745,14 @@ function JoinFlow() {
       }
       setCollectPendingIntentId(intentId);
       setOtpError(undefined);
-      setStep("processing");
+      // Keep the wallet sheet mounted until its authorization callback completes.
+      if (method === "card") setStep("processing");
       try {
         const confirmed = await services.customerData.confirmCollectPayment(
           orgId,
           intentId,
           nonce,
+          method,
         );
         if (
           confirmed.payment.status === "SUCCEEDED" &&
@@ -1615,12 +1765,38 @@ function JoinFlow() {
             confirmed.payment.providerReferenceId ??
               confirmed.payment.paymentIntentId,
           );
-          return;
+          return true;
         }
-      } catch {
-        // A timeout can mean the provider received the charge. Read status before any retry.
+      } catch (error) {
+        // Only the explicit server-side OAuth failure is known to occur before
+        // tokenization/charge. Do not interpret generic HTTP 400s as safe failures.
+        const preChargeAuthUnavailable =
+          error instanceof Error &&
+          error.message.includes("Poynt Collect authentication is unavailable");
+        if (preChargeAuthUnavailable) {
+          try {
+            const status = await services.customerData.paymentStatus(
+              orgId,
+              intentId,
+            );
+            if (status.payment.status === "PENDING") {
+              // The server has not claimed the intent for charging.
+              // Do not automatically reopen payment entry: show an actionable error.
+              setCollectPollingActive(false);
+              setCollectPendingIntentId(intentId);
+              setOtpError(undefined);
+              setStep("collectUnavailable");
+              return false;
+            }
+          } catch {
+            // Uncertain status: use the normal reconciliation flow below.
+          }
+        }
+        // Any other failure may be a timeout after charge submission.
+        // Keep the intent and reconcile rather than retrying the nonce.
       }
       await checkCollectPayment(intentId);
+      return false;
     },
     [
       checkCollectPayment,
@@ -1670,7 +1846,10 @@ function JoinFlow() {
         setCollectPendingIntentId(saved.paymentIntentId);
         setCollectPayment(null);
         setStep("processing");
-        void checkCollectPayment(saved.paymentIntentId, saved.pollingWindowStartedAt);
+        void checkCollectPayment(
+          saved.paymentIntentId,
+          saved.pollingWindowStartedAt,
+        );
       })
       .finally(() => {
         if (active) setRestoringCustomerCollectPayment(false);
@@ -1908,53 +2087,245 @@ function JoinFlow() {
   ]);
 
   const payAndSubscribe = useCallback(async () => {
-    const customerUserId = session?.userId;
-    if (!product || !plan || (!isStaffSale && !customerUserId)) {
-      return;
-    }
-
-    if (isStaffSale && (restoringCounterTerminalPayment || pendingCounterTerminalPayment)) {
-      setStep("processing");
-      return;
-    }
-
-    if (
-      !isStaffSale &&
-      (restoringCustomerCollectPayment || pendingCustomerCollectPayment)
-    ) {
-      setStep("processing");
-      return;
-    }
-
-    // Counter sale has exactly one Memgine OTP. Request it before payment.
-
-    if (isStaffSale && !purchaseOtpVerified) {
-      await requestCounterPurchaseOtp();
-
-      return;
-    }
-
-    setStep("processing");
-
+    if (customerPaymentStartInFlight.current) return;
+    customerPaymentStartInFlight.current = true;
     try {
-      if (isStaffSale) {
-        if (!purchaseOtpChallengeId) {
-          throw new Error("Purchase verification is required before payment.");
+      const customerUserId = session?.userId;
+      if (!product || !plan || (!isStaffSale && !customerUserId)) {
+        return;
+      }
+
+      if (
+        isStaffSale &&
+        (restoringCounterTerminalPayment || pendingCounterTerminalPayment)
+      ) {
+        setStep("processing");
+        return;
+      }
+
+      if (
+        !isStaffSale &&
+        (restoringCustomerCollectPayment || pendingCustomerCollectPayment)
+      ) {
+        setStep("processing");
+        return;
+      }
+
+      // Counter sale has exactly one Memgine OTP. Request it before payment.
+
+      if (isStaffSale && !purchaseOtpVerified) {
+        await requestCounterPurchaseOtp();
+
+        return;
+      }
+
+      setStep("processing");
+
+      try {
+        if (isStaffSale) {
+          if (!purchaseOtpChallengeId) {
+            throw new Error(
+              "Purchase verification is required before payment.",
+            );
+          }
+
+          const { context } = counterPurchasePayload();
+
+          const intent = await services.counter.startPurchasePayment(
+            context,
+
+            purchaseOtpChallengeId,
+
+            `${purchaseOtpChallengeId}:provider`,
+
+            product.id,
+
+            explicitOfferId || undefined,
+          );
+
+          if (intent.providerCode === "STRIPE" && intent.checkoutUrl) {
+            redirectToStripeCheckout(intent.checkoutUrl);
+
+            return;
+          }
+
+          if (
+            intent.providerCode === "MONERIS" &&
+            intent.monerisHostedTokenizationProfileId &&
+            intent.monerisHostedTokenizationUrl
+          ) {
+            if (Platform.OS !== "web") {
+              throw new Error(
+                "Moneris card payments are available in the Web Counter only.",
+              );
+            }
+
+            setMonerisPayment({
+              paymentIntentId: intent.paymentIntentId,
+
+              hostedTokenizationProfileId:
+                intent.monerisHostedTokenizationProfileId,
+
+              hostedTokenizationUrl: intent.monerisHostedTokenizationUrl,
+            });
+
+            setStep("monerisCard");
+
+            return;
+          }
+
+          if (intent.providerCode === "POYNT") {
+            if (!intent.commerceTransactionId) {
+              throw new Error(
+                "Terminal payment is missing its Commerce transaction.",
+              );
+            }
+
+            if (counterTerminalPaymentDispatching.current) return;
+            counterTerminalPaymentDispatching.current = true;
+
+            try {
+              await services.counter.startRemoteTerminalPayment(
+                context,
+                intent.commerceTransactionId,
+              );
+            } catch (error) {
+              counterTerminalPaymentDispatching.current = false;
+              throw error;
+            }
+
+            const pendingPayment: PendingCounterTerminalPayment = {
+              paymentIntentId: intent.paymentIntentId,
+              commerceTransactionId: intent.commerceTransactionId,
+              organizationId: context.organizationId,
+              storeId: context.storeId,
+              staffId: context.staffId,
+              membershipProductId: product.id,
+              subscriptionPlanId: plan.id,
+              counterPurchaseId: counterPurchaseId || null,
+              purchaseOtpChallengeId: purchaseOtpChallengeId || null,
+              pollingWindowStartedAt: Date.now(),
+            };
+
+            if (counterTerminalPaymentStorageKey) {
+              await storage.setItem(
+                counterTerminalPaymentStorageKey,
+                pendingPayment,
+              );
+            }
+
+            setOtpError(undefined);
+            setCounterTerminalPaymentTimedOut(false);
+            setPendingCounterTerminalPayment(pendingPayment);
+            setStep("processing");
+            return;
+          }
+
+          if (intent.providerCode !== "TEST") {
+            throw new Error("Provider checkout is not configured yet.");
+          }
+
+          const confirmed = await services.counter.confirmTestPayment(
+            orgId,
+
+            intent.paymentIntentId,
+          );
+
+          if (
+            confirmed.payment.status !== "SUCCEEDED" ||
+            !confirmed.subscription
+          ) {
+            throw new Error("Payment is pending or was not completed.");
+          }
+
+          finishSubscription(
+            confirmed.subscription,
+
+            confirmed.payment.providerReferenceId ??
+              confirmed.payment.paymentIntentId,
+          );
+
+          return;
         }
 
-        const { context } = counterPurchasePayload();
-
-        const intent = await services.counter.startPurchasePayment(
-          context,
-
-          purchaseOtpChallengeId,
-
-          `${purchaseOtpChallengeId}:provider`,
-
-          product.id,
-
+        // A quote displayed earlier can become stale when a membership price changes.
+        // Re-read it from the server for this particular purchase attempt.
+        const latestQuote = await services.customerData.purchaseQuote(
+          orgId,
+          plan.id,
           explicitOfferId || undefined,
         );
+        if (!latestQuote || !Number.isFinite(latestQuote.totalAmount)) {
+          throw new Error(
+            "Unable to verify the current membership price. Please try again.",
+          );
+        }
+        setPurchaseQuote(latestQuote);
+
+        if (!customerPaymentStartStorageKey) {
+          throw new Error(
+            "Cannot secure this payment attempt without a customer session.",
+          );
+        }
+        const quotedMinor = Math.round(latestQuote.totalAmount * 100);
+        const offerId = explicitOfferId || "";
+        // Durable key is written BEFORE the network call. Retrying an unknown
+        // response reuses the same frozen Commerce checkout and payment intent.
+        let attempt = await storage.getItem<PendingCustomerPaymentStart | null>(
+          customerPaymentStartStorageKey,
+          null,
+        );
+        if (
+          attempt &&
+          (attempt.planId !== plan.id ||
+            attempt.offerId !== offerId ||
+            attempt.quotedMinor !== quotedMinor)
+        ) {
+          // An existing attempt is immutable. Never silently create another
+          // charge if an earlier request might already have reached the server.
+          throw new Error(
+            "An earlier checkout attempt uses different pricing or plan details. " +
+              "Please resolve or cancel that attempt before starting a new payment.",
+          );
+        }
+        if (!attempt) {
+          const randomKey =
+            typeof globalThis.crypto?.randomUUID === "function"
+              ? globalThis.crypto.randomUUID()
+              : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+          attempt = {
+            key: `customer-payment-${randomKey}`,
+            planId: plan.id,
+            offerId,
+            quotedMinor,
+          };
+          await storage.setItem(customerPaymentStartStorageKey, attempt);
+        }
+        const intent = await services.customerData.startAuthenticatedPayment(
+          orgId,
+          plan.id,
+          attempt.key,
+          product.id,
+          explicitOfferId || undefined,
+        );
+
+        // Persist the returned intent for post-refresh reconciliation, too.
+        await storage.setItem(customerPaymentStartStorageKey, {
+          ...attempt,
+          paymentIntentId: intent.paymentIntentId,
+        });
+
+        // Never mount a payment form or wallet if the amount the backend is about
+        // to charge differs from the latest price breakdown shown to the user.
+        if (
+          intent.providerCode === "POYNT_COLLECT" &&
+          Math.round(intent.amount * 100) !==
+            Math.round(latestQuote.totalAmount * 100)
+        ) {
+          throw new Error(
+            "The payment amount differs from the current membership price. No payment was submitted. Please restart checkout.",
+          );
+        }
 
         if (intent.providerCode === "STRIPE" && intent.checkoutUrl) {
           redirectToStripeCheckout(intent.checkoutUrl);
@@ -1987,50 +2358,84 @@ function JoinFlow() {
           return;
         }
 
-        if (intent.providerCode === "POYNT") {
-          if (!intent.commerceTransactionId) {
-            throw new Error(
-              "Terminal payment is missing its Commerce transaction.",
-            );
-          }
-
-          if (counterTerminalPaymentDispatching.current) return;
-          counterTerminalPaymentDispatching.current = true;
-
-          try {
-            await services.counter.startRemoteTerminalPayment(
-              context,
-              intent.commerceTransactionId,
-            );
-          } catch (error) {
-            counterTerminalPaymentDispatching.current = false;
-            throw error;
-          }
-
-          const pendingPayment: PendingCounterTerminalPayment = {
-            paymentIntentId: intent.paymentIntentId,
-            commerceTransactionId: intent.commerceTransactionId,
-            organizationId: context.organizationId,
-            storeId: context.storeId,
-            staffId: context.staffId,
-            membershipProductId: product.id,
-            subscriptionPlanId: plan.id,
-            counterPurchaseId: counterPurchaseId || null,
-            purchaseOtpChallengeId: purchaseOtpChallengeId || null,
-            pollingWindowStartedAt: Date.now(),
-          };
-
-          if (counterTerminalPaymentStorageKey) {
+        if (intent.providerCode === "POYNT_COLLECT") {
+          if (Platform.OS !== "web") {
+            if (
+              !session?.userId ||
+              !product ||
+              !plan ||
+              !customerCollectPaymentStorageKey
+            ) {
+              throw new Error("Your membership payment could not be prepared.");
+            }
+            const pending: PendingCustomerCollectPayment = {
+              organizationId: orgId,
+              customerUserId: session.userId,
+              paymentIntentId: intent.paymentIntentId,
+              membershipProductId: product.id,
+              subscriptionPlanId: plan.id,
+              pollingWindowStartedAt: Date.now(),
+            };
+            setPendingCustomerCollectPayment(pending);
+            await storage.setItem(customerCollectPaymentStorageKey, pending);
             await storage.setItem(
-              counterTerminalPaymentStorageKey,
-              pendingPayment,
+              `${CUSTOMER_COLLECT_PAYMENT_RETURN_STORAGE_PREFIX}:${session.userId}`,
+              pending,
             );
+            const checkout =
+              await services.customerData.createCollectBrowserCheckout(
+                orgId,
+                intent.paymentIntentId,
+              );
+            // The browser receives only the one-time checkout bearer; it never sees
+            // the native Memgine session. Returning is a signal, so status is read
+            // authoritatively from the existing payment intent afterwards.
+            await WebBrowser.openAuthSessionAsync(
+              checkout.checkoutUrl,
+              "memgine://payment-return",
+            );
+            await checkCollectPayment(intent.paymentIntentId);
+            return;
           }
-
+          if (intent.status === "SUCCEEDED") {
+            const confirmed = await services.customerData.paymentStatus(
+              orgId,
+              intent.paymentIntentId,
+            );
+            if (
+              confirmed.payment.status === "SUCCEEDED" &&
+              confirmed.subscription
+            ) {
+              finishSubscription(
+                confirmed.subscription,
+                confirmed.payment.providerReferenceId ??
+                  confirmed.payment.paymentIntentId,
+              );
+              return;
+            }
+            setCollectPendingIntentId(intent.paymentIntentId);
+            await checkCollectPayment(intent.paymentIntentId);
+            return;
+          }
+          if (intent.status === "PROCESSING") {
+            setCollectPendingIntentId(intent.paymentIntentId);
+            await checkCollectPayment(intent.paymentIntentId);
+            return;
+          }
+          if (intent.status !== "PENDING") {
+            throw new Error("This payment cannot accept card details.");
+          }
+          const configuration = await services.customerData.collectBootstrap(
+            orgId,
+            intent.paymentIntentId,
+          );
+          setCollectPayment({
+            paymentIntentId: intent.paymentIntentId,
+            amount: intent.amount,
+            configuration,
+          });
           setOtpError(undefined);
-          setCounterTerminalPaymentTimedOut(false);
-          setPendingCounterTerminalPayment(pendingPayment);
-          setStep("processing");
+          setStep("collectCard");
           return;
         }
 
@@ -2038,7 +2443,7 @@ function JoinFlow() {
           throw new Error("Provider checkout is not configured yet.");
         }
 
-        const confirmed = await services.counter.confirmTestPayment(
+        const confirmed = await services.customerData.confirmTestPayment(
           orgId,
 
           intent.paymentIntentId,
@@ -2057,153 +2462,17 @@ function JoinFlow() {
           confirmed.payment.providerReferenceId ??
             confirmed.payment.paymentIntentId,
         );
+      } catch (error) {
+        setStep("review");
 
-        return;
-      }
-
-      const intent = await services.customerData.startAuthenticatedPayment(
-        orgId,
-
-        plan.id,
-
-        `${orgId}:${customerUserId}:${plan.id}:provider`,
-
-        product.id,
-
-        explicitOfferId || undefined,
-      );
-
-      if (intent.providerCode === "STRIPE" && intent.checkoutUrl) {
-        redirectToStripeCheckout(intent.checkoutUrl);
-
-        return;
-      }
-
-      if (
-        intent.providerCode === "MONERIS" &&
-        intent.monerisHostedTokenizationProfileId &&
-        intent.monerisHostedTokenizationUrl
-      ) {
-        if (Platform.OS !== "web") {
-          throw new Error(
-            "Moneris card payments are available in the Web Counter only.",
-          );
-        }
-
-        setMonerisPayment({
-          paymentIntentId: intent.paymentIntentId,
-
-          hostedTokenizationProfileId:
-            intent.monerisHostedTokenizationProfileId,
-
-          hostedTokenizationUrl: intent.monerisHostedTokenizationUrl,
-        });
-
-        setStep("monerisCard");
-
-        return;
-      }
-
-      if (intent.providerCode === "POYNT_COLLECT") {
-        if (Platform.OS !== "web") {
-          if (!session?.userId || !product || !plan || !customerCollectPaymentStorageKey) {
-            throw new Error("Your membership payment could not be prepared.");
-          }
-          const pending: PendingCustomerCollectPayment = {
-            organizationId: orgId,
-            customerUserId: session.userId,
-            paymentIntentId: intent.paymentIntentId,
-            membershipProductId: product.id,
-            subscriptionPlanId: plan.id,
-            pollingWindowStartedAt: Date.now(),
-          };
-          setPendingCustomerCollectPayment(pending);
-          await storage.setItem(customerCollectPaymentStorageKey, pending);
-          await storage.setItem(
-            `${CUSTOMER_COLLECT_PAYMENT_RETURN_STORAGE_PREFIX}:${session.userId}`,
-            pending,
-          );
-          const checkout = await services.customerData.createCollectBrowserCheckout(
-            orgId,
-            intent.paymentIntentId,
-          );
-          // The browser receives only the one-time checkout bearer; it never sees
-          // the native Memgine session. Returning is a signal, so status is read
-          // authoritatively from the existing payment intent afterwards.
-          await WebBrowser.openAuthSessionAsync(checkout.checkoutUrl, "memgine://payment-return");
-          await checkCollectPayment(intent.paymentIntentId);
-          return;
-        }
-        if (intent.status === "SUCCEEDED") {
-          const confirmed = await services.customerData.paymentStatus(
-            orgId,
-            intent.paymentIntentId,
-          );
-          if (
-            confirmed.payment.status === "SUCCEEDED" &&
-            confirmed.subscription
-          ) {
-            finishSubscription(
-              confirmed.subscription,
-              confirmed.payment.providerReferenceId ??
-                confirmed.payment.paymentIntentId,
-            );
-            return;
-          }
-          setCollectPendingIntentId(intent.paymentIntentId);
-          await checkCollectPayment(intent.paymentIntentId);
-          return;
-        }
-        if (intent.status === "PROCESSING") {
-          setCollectPendingIntentId(intent.paymentIntentId);
-          await checkCollectPayment(intent.paymentIntentId);
-          return;
-        }
-        if (intent.status !== "PENDING") {
-          throw new Error("This payment cannot accept card details.");
-        }
-        const configuration = await services.customerData.collectBootstrap(
-          orgId,
-          intent.paymentIntentId,
+        setOtpError(
+          error instanceof Error
+            ? error.message
+            : "Unable to complete the purchase.",
         );
-        setCollectPayment({
-          paymentIntentId: intent.paymentIntentId,
-          amount: intent.amount,
-          configuration,
-        });
-        setOtpError(undefined);
-        setStep("collectCard");
-        return;
       }
-
-      if (intent.providerCode !== "TEST") {
-        throw new Error("Provider checkout is not configured yet.");
-      }
-
-      const confirmed = await services.customerData.confirmTestPayment(
-        orgId,
-
-        intent.paymentIntentId,
-      );
-
-      if (confirmed.payment.status !== "SUCCEEDED" || !confirmed.subscription) {
-        throw new Error("Payment is pending or was not completed.");
-      }
-
-      finishSubscription(
-        confirmed.subscription,
-
-        confirmed.payment.providerReferenceId ??
-          confirmed.payment.paymentIntentId,
-      );
-    } catch (error) {
-      setStep("review");
-
-      setOtpError(
-        error instanceof Error
-          ? error.message
-          : "Unable to complete the purchase.",
-      );
+    } finally {
+      customerPaymentStartInFlight.current = false;
     }
   }, [
     product,
@@ -2243,6 +2512,7 @@ function JoinFlow() {
     explicitOfferId,
 
     session?.userId,
+    customerPaymentStartStorageKey,
   ]);
 
   const requestCashPayment = useCallback(async () => {
@@ -3099,15 +3369,33 @@ function JoinFlow() {
       {step === "collectCard" && collectPayment && Platform.OS === "web" ? (
         <View testID="join-collect-card" style={{ width: "100%", minWidth: 0 }}>
           <CollectCheckoutLayout
-            merchantName={activeOrganization.displayName ?? activeOrganization.name}
+            merchantName={
+              activeOrganization.displayName ?? activeOrganization.name
+            }
             payment={
               <View style={{ gap: 14, minWidth: 0 }}>
-                {otpError ? <Text variant="bodySmall" color="danger">{otpError}</Text> : null}
+                {otpError ? (
+                  <Text variant="bodySmall" color="danger">
+                    {otpError}
+                  </Text>
+                ) : null}
+                <PoyntCollectWallets
+                  configuration={collectPayment.configuration}
+                  onAuthorize={(nonce, method) =>
+                    confirmCollectNonce(nonce, method)
+                  }
+                />
                 <PoyntCollectCardForm
                   configuration={collectPayment.configuration}
-                  onNonce={confirmCollectNonce}
+                  onNonce={async (nonce) => {
+                    await confirmCollectNonce(nonce);
+                  }}
                   payLabel={`Pay ${formatMoney(Math.round(collectPayment.amount * 100))} & Subscribe`}
                   onBack={() => {
+                    // Preserve the stable idempotency key when leaving the form.
+                    // A reopened checkout must reuse this pending intent, not
+                    // silently create a new one while the old intent still exists.
+                    setCollectPayment(null);
                     setOtpError(undefined);
                     setStep("review");
                   }}
@@ -3117,68 +3405,70 @@ function JoinFlow() {
             summary={
               <View style={{ gap: 12 }}>
                 <Text variant="bodyStrong" color="text">
-                  {product?.displayName ?? product?.membershipProductName} · {intervalLabel}
+                  {product?.displayName ?? product?.membershipProductName} ·{" "}
+                  {intervalLabel}
                 </Text>
                 <ReceiptSummary
-                title={t("join.receiptTitle")}
-                meta={[
-                  {
-                    label: t("join.plan"),
-                    value: `${product?.displayName ?? product?.membershipProductName} · ${plan?.subscriptionPlanName ?? intervalLabel}`,
-                  },
-                ]}
-                lines={
-                  purchaseQuote?.appliedOfferId
-                    ? [
-                        {
-                          label: "Regular price",
-                          amountMinor: Math.round(
-                            purchaseQuote.subtotalAmount * 100,
-                          ),
-                        },
-                        {
-                          label: "Offer discount",
-                          amountMinor: -Math.round(
-                            (purchaseQuote.discountAmount ?? 0) * 100,
-                          ),
-                        },
-                        {
-                          label: "Subtotal",
-                          amountMinor: Math.round(
-                            (purchaseQuote.netSubtotalAmount ??
-                              purchaseQuote.subtotalAmount) * 100,
-                          ),
-                        },
-                        {
-                          label: `${purchaseQuote.taxName ?? purchaseQuote.taxCode ?? "Tax"} (${purchaseQuote.taxRate}%)`,
-                          amountMinor: Math.round(
-                            purchaseQuote.taxAmount * 100,
-                          ),
-                        },
-                      ]
-                    : [
-                        {
-                          label: product?.membershipProductName ?? "Membership",
-                          amountMinor:
-                            purchaseQuote?.subtotalAmount != null
-                              ? Math.round(purchaseQuote.subtotalAmount * 100)
-                              : (plan?.price.amountMinor ??
-                                Math.round(collectPayment.amount * 100)),
-                        },
-                        ...(purchaseQuote
-                          ? [
-                              {
-                                label: `${purchaseQuote.taxName ?? purchaseQuote.taxCode ?? "Tax"} (${purchaseQuote.taxRate}%)`,
-                                amountMinor: Math.round(
-                                  purchaseQuote.taxAmount * 100,
-                                ),
-                              },
-                            ]
-                          : []),
-                      ]
-                }
-                totalMinor={Math.round(collectPayment.amount * 100)}
-              />
+                  title={t("join.receiptTitle")}
+                  meta={[
+                    {
+                      label: t("join.plan"),
+                      value: `${product?.displayName ?? product?.membershipProductName} · ${plan?.subscriptionPlanName ?? intervalLabel}`,
+                    },
+                  ]}
+                  lines={
+                    purchaseQuote?.appliedOfferId
+                      ? [
+                          {
+                            label: "Regular price",
+                            amountMinor: Math.round(
+                              purchaseQuote.subtotalAmount * 100,
+                            ),
+                          },
+                          {
+                            label: "Offer discount",
+                            amountMinor: -Math.round(
+                              (purchaseQuote.discountAmount ?? 0) * 100,
+                            ),
+                          },
+                          {
+                            label: "Subtotal",
+                            amountMinor: Math.round(
+                              (purchaseQuote.netSubtotalAmount ??
+                                purchaseQuote.subtotalAmount) * 100,
+                            ),
+                          },
+                          {
+                            label: `${purchaseQuote.taxName ?? purchaseQuote.taxCode ?? "Tax"} (${purchaseQuote.taxRate}%)`,
+                            amountMinor: Math.round(
+                              purchaseQuote.taxAmount * 100,
+                            ),
+                          },
+                        ]
+                      : [
+                          {
+                            label:
+                              product?.membershipProductName ?? "Membership",
+                            amountMinor:
+                              purchaseQuote?.subtotalAmount != null
+                                ? Math.round(purchaseQuote.subtotalAmount * 100)
+                                : (plan?.price.amountMinor ??
+                                  Math.round(collectPayment.amount * 100)),
+                          },
+                          ...(purchaseQuote
+                            ? [
+                                {
+                                  label: `${purchaseQuote.taxName ?? purchaseQuote.taxCode ?? "Tax"} (${purchaseQuote.taxRate}%)`,
+                                  amountMinor: Math.round(
+                                    purchaseQuote.taxAmount * 100,
+                                  ),
+                                },
+                              ]
+                            : []),
+                        ]
+                  }
+                  totalMinor={Math.round(collectPayment.amount * 100)}
+                />
               </View>
             }
           />
@@ -3246,21 +3536,57 @@ function JoinFlow() {
         </View>
       ) : null}
 
+      {step === "collectUnavailable" ? (
+        <View
+          style={{ gap: theme.spacing.md }}
+          testID="join-collect-unavailable"
+        >
+          <Text variant="h2" color="text">
+            Payment temporarily unavailable
+          </Text>
+          <Text variant="bodySmall" color="textMuted">
+            We couldn't connect to the payment provider. This payment was not
+            submitted for processing. Please try again later.
+          </Text>
+          <Text variant="bodySmall" color="textMuted">
+            Your existing payment attempt is preserved. Checking its status will
+            not charge your card.
+          </Text>
+          {collectPendingIntentId ? (
+            <Button
+              label="Check Payment Status"
+              fullWidth
+              onPress={() => {
+                setOtpError(undefined);
+                void checkCollectPayment(collectPendingIntentId);
+              }}
+              testID="join-collect-unavailable-check-status"
+            />
+          ) : null}
+        </View>
+      ) : null}
+
       {step === "processing" ? (
         <View style={{ gap: theme.spacing.md }}>
-          <StateView
-            kind="loading"
-            message={
-              pendingCounterTerminalPayment
-                ? "Waiting for POS payment. Please complete the payment on the terminal."
-                : collectPendingIntentId
-                  ? "Checking payment status..."
-                  : returnedPaymentIntentId
-                    ? "Payment confirmation is processing..."
-                    : t("join.processing")
-            }
-            testID="join-processing"
-          />
+          {!(collectPendingIntentId && !collectPollingActive) ? (
+            <StateView
+              kind="loading"
+              message={
+                pendingCounterTerminalPayment
+                  ? "Waiting for POS payment. Please complete the payment on the terminal."
+                  : collectPendingIntentId
+                    ? `Checking payment status — ${String(Math.floor(collectRemainingSeconds / 60)).padStart(2, "0")}:${String(collectRemainingSeconds % 60).padStart(2, "0")} remaining`
+                    : returnedPaymentIntentId
+                      ? "Payment confirmation is processing..."
+                      : t("join.processing")
+              }
+              testID="join-processing"
+            />
+          ) : (
+            <Text variant="bodyStrong" color="text">
+              Payment status needs your attention.
+            </Text>
+          )}
           {pendingCounterTerminalPayment && counterTerminalPaymentTimedOut ? (
             <>
               <Text variant="bodySmall" color="textMuted">
@@ -3293,6 +3619,16 @@ function JoinFlow() {
               <Text variant="bodySmall" color="textMuted">
                 {otpError}
               </Text>
+              {otpError.startsWith("Payment not completed.") ? (
+                <Button
+                  label="Return to Payment"
+                  fullWidth
+                  onPress={() =>
+                    void returnToPendingCollectPayment(collectPendingIntentId)
+                  }
+                  testID="join-collect-return-to-payment"
+                />
+              ) : null}
               <Button
                 label="Check Payment Status"
                 fullWidth

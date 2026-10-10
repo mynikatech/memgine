@@ -52,7 +52,7 @@ const sdkLoads = new Map<string, Promise<void>>();
 const CardHost = "div" as any;
 let nextHostId = 0;
 
-function loadSdk(sdkUrl: string): Promise<void> {
+export function loadPoyntCollectSdk(sdkUrl: string): Promise<void> {
   if (!APPROVED_SDK_URLS.has(sdkUrl)) {
     return Promise.reject(new Error("Secure card entry is unavailable."));
   }
@@ -303,7 +303,7 @@ export function PoyntCollectCardForm({
     setReady(false);
     setError(undefined);
 
-    void loadSdk(configuration.sdkUrl)
+    void loadPoyntCollectSdk(configuration.sdkUrl)
       .then(() => {
         if (!active) return;
         try {

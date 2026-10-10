@@ -39,7 +39,15 @@ export type PoyntCollectBootstrap = {
   sdkUrl: string;
   businessId: string;
   applicationId: string;
+  wallet?: {
+    country: string;
+    currency: string;
+    merchantName: string;
+    amount: string; // Decimal string produced on the backend, never recomputed in frontend.
+  } | null;
 };
+
+export type PoyntCollectPaymentMethod = "card" | "apple_pay" | "google_pay";
 
 export type PoyntCollectCheckoutSession = { checkoutUrl: string };
 export type PoyntCollectBrowserCheckout = {
@@ -65,11 +73,15 @@ async function browserCheckoutRequest<T>(
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
-  const payload = (await response.json().catch(() => null)) as
-    | { success?: boolean; data?: T; error?: { message?: string } }
-    | null;
+  const payload = (await response.json().catch(() => null)) as {
+    success?: boolean;
+    data?: T;
+    error?: { message?: string };
+  } | null;
   if (!response.ok || !payload?.success || payload.data == null) {
-    throw new Error(payload?.error?.message ?? "Secure checkout is unavailable.");
+    throw new Error(
+      payload?.error?.message ?? "Secure checkout is unavailable.",
+    );
   }
   return payload.data;
 }
@@ -331,10 +343,11 @@ export class CustomerDataApi {
     organizationId: ID,
     paymentIntentId: ID,
     nonce: string,
+    method: PoyntCollectPaymentMethod = "card",
   ): Promise<ApiResult<PaymentConfirmation>> {
     return httpClient.post(
       `${collectPaymentPath(organizationId, paymentIntentId)}/poynt-collect/confirm`,
-      { nonce },
+      { nonce, method },
     );
   }
 
@@ -438,17 +451,34 @@ export class CustomerDataApi {
 /** Browser-only cookie session API used by the native Poynt Collect hand-off. */
 export const poyntCollectBrowserApi = {
   redeem(session: string): Promise<PoyntCollectBrowserCheckout> {
-    return browserCheckoutRequest("/api/v1/poynt-collect/checkout/redeem", "POST", { session });
+    return browserCheckoutRequest(
+      "/api/v1/poynt-collect/checkout/redeem",
+      "POST",
+      { session },
+    );
   },
   bootstrap(): Promise<PoyntCollectBootstrap> {
-    return browserCheckoutRequest("/api/v1/poynt-collect/checkout/bootstrap", "GET");
+    return browserCheckoutRequest(
+      "/api/v1/poynt-collect/checkout/bootstrap",
+      "GET",
+    );
   },
   status(): Promise<PaymentConfirmation> {
-    return browserCheckoutRequest("/api/v1/poynt-collect/checkout/status", "GET");
-  },
-  confirm(nonce: string, csrfToken: string): Promise<PaymentConfirmation> {
     return browserCheckoutRequest(
-      "/api/v1/poynt-collect/checkout/confirm", "POST", { nonce }, csrfToken,
+      "/api/v1/poynt-collect/checkout/status",
+      "GET",
+    );
+  },
+  confirm(
+    nonce: string,
+    csrfToken: string,
+    method: PoyntCollectPaymentMethod = "card",
+  ): Promise<PaymentConfirmation> {
+    return browserCheckoutRequest(
+      "/api/v1/poynt-collect/checkout/confirm",
+      "POST",
+      { nonce, method },
+      csrfToken,
     );
   },
 };
