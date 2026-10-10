@@ -19,6 +19,7 @@ import type {
 import type { MembershipPurchaseQuote } from "@/src/data/api/counter-api";
 import type { PoyntCollectBootstrap } from "@/src/data/api/customer-data-api";
 import { PoyntCollectCardForm } from "@/src/ui/payment/PoyntCollectCardForm";
+import { CollectCheckoutLayout } from "@/src/ui/payment/CollectCheckoutLayout";
 import { CustomerPaymentStatusError } from "@/src/core/services/customer-data-service";
 
 import { services } from "@/src/core";
@@ -3096,26 +3097,29 @@ function JoinFlow() {
       {/* PROCESSING */}
 
       {step === "collectCard" && collectPayment && Platform.OS === "web" ? (
-        <View style={{ gap: theme.spacing.lg }} testID="join-collect-card">
-          <View>
-            <Text variant="h2" color="text">
-              Pay securely by card
-            </Text>
-            <Text
-              variant="body"
-              color="textMuted"
-              style={{ marginTop: theme.spacing.sm }}
-            >
-              Enter card details in the secure Poynt Collect form.
-            </Text>
-          </View>
-          <Card padding="lg">
-            <View style={{ gap: theme.spacing.md }}>
-              <Text variant="bodyStrong" color="text">
-                {product?.displayName ?? product?.membershipProductName} ·{" "}
-                {intervalLabel}
-              </Text>
-              <ReceiptSummary
+        <View testID="join-collect-card" style={{ width: "100%", minWidth: 0 }}>
+          <CollectCheckoutLayout
+            merchantName={activeOrganization.displayName ?? activeOrganization.name}
+            payment={
+              <View style={{ gap: 14, minWidth: 0 }}>
+                {otpError ? <Text variant="bodySmall" color="danger">{otpError}</Text> : null}
+                <PoyntCollectCardForm
+                  configuration={collectPayment.configuration}
+                  onNonce={confirmCollectNonce}
+                  payLabel={`Pay ${formatMoney(Math.round(collectPayment.amount * 100))} & Subscribe`}
+                  onBack={() => {
+                    setOtpError(undefined);
+                    setStep("review");
+                  }}
+                />
+              </View>
+            }
+            summary={
+              <View style={{ gap: 12 }}>
+                <Text variant="bodyStrong" color="text">
+                  {product?.displayName ?? product?.membershipProductName} · {intervalLabel}
+                </Text>
+                <ReceiptSummary
                 title={t("join.receiptTitle")}
                 meta={[
                   {
@@ -3175,22 +3179,9 @@ function JoinFlow() {
                 }
                 totalMinor={Math.round(collectPayment.amount * 100)}
               />
-              {otpError ? (
-                <Text variant="bodySmall" color="textMuted">
-                  {otpError}
-                </Text>
-              ) : null}
-              <PoyntCollectCardForm
-                configuration={collectPayment.configuration}
-                onNonce={confirmCollectNonce}
-                payLabel={`Pay ${formatMoney(Math.round(collectPayment.amount * 100))} & Subscribe`}
-                onBack={() => {
-                  setOtpError(undefined);
-                  setStep("review");
-                }}
-              />
-            </View>
-          </Card>
+              </View>
+            }
+          />
         </View>
       ) : null}
 
