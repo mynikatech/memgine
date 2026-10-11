@@ -27,50 +27,65 @@ export function CollectCheckoutLayout({
     <View style={{ flex: desktop ? 1.2 : undefined, minWidth: 0, gap: 18 }}>
       <View style={{ gap: 5 }}>
         <Text variant="h2">{heading}</Text>
-        <Text variant="bodySmall" color="textMuted">Choose how you'd like to pay.</Text>
+        <Text variant="bodySmall" color="textMuted">
+          Choose how you would like to pay.
+        </Text>
       </View>
       {/* Wallets remain hidden until the SDK integration is verified. */}
-      <View style={{ gap: 10 }}>
-        <Text variant="bodyStrong">Credit or debit card</Text>
-        {payment}
-      </View>
-      <Text variant="bodySmall" color="textMuted">Card information is handled securely by Poynt.</Text>
+      <View style={{ gap: 10 }}>{payment}</View>
+      <Text variant="bodySmall" color="textMuted">
+        Card information is handled securely by Poynt.
+      </Text>
     </View>
   );
 
   const summaryPanel = (
-    <View style={{
-      flex: desktop ? 0.88 : undefined,
-      minWidth: 0,
-      borderLeftWidth: desktop ? 1 : 0,
-      borderBottomWidth: desktop ? 0 : 1,
-      borderColor: "#E5E7EB",
-      paddingLeft: desktop ? 24 : 0,
-      paddingBottom: desktop ? 0 : 20,
-      gap: 12,
-    }}>
+    <View
+      style={{
+        flex: desktop ? 0.88 : undefined,
+        minWidth: 0,
+        borderLeftWidth: desktop ? 1 : 0,
+        borderBottomWidth: desktop ? 0 : 1,
+        borderColor: "#E5E7EB",
+        paddingLeft: desktop ? 24 : 0,
+        paddingBottom: desktop ? 0 : 20,
+        gap: 12,
+      }}
+    >
       <Text variant="h2">Order summary</Text>
       {summary}
     </View>
   );
 
   return (
-    <View style={{ width: "100%", maxWidth: 1040, alignSelf: "center", gap: 18, paddingVertical: 12 }}>
+    <View
+      style={{
+        width: "100%",
+        maxWidth: 1040,
+        alignSelf: "center",
+        gap: 18,
+        paddingVertical: 12,
+      }}
+    >
       <View style={{ gap: 5 }}>
         {merchantName ? <Text variant="bodyStrong">{merchantName}</Text> : null}
         <Text variant="h2">Secure membership checkout</Text>
-        <Text variant="bodySmall" color="textMuted">{subtitle}</Text>
+        <Text variant="bodySmall" color="textMuted">
+          {subtitle}
+        </Text>
       </View>
-      <View style={{
-        flexDirection: desktop ? "row" : "column",
-        gap: desktop ? 32 : 20,
-        width: "100%",
-        padding: desktop ? 28 : 18,
-        borderRadius: 18,
-        backgroundColor: "#FFFFFF",
-        borderWidth: 1,
-        borderColor: "#E5E7EB",
-      }}>
+      <View
+        style={{
+          flexDirection: desktop ? "row" : "column",
+          gap: desktop ? 32 : 20,
+          width: "100%",
+          padding: desktop ? 28 : 18,
+          borderRadius: 18,
+          backgroundColor: "#FFFFFF",
+          borderWidth: 1,
+          borderColor: "#E5E7EB",
+        }}
+      >
         {desktop ? (
           <>
             {paymentPanel}

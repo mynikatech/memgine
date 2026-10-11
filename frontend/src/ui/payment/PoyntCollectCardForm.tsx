@@ -292,6 +292,17 @@ export function PoyntCollectCardForm({
   const hostId = useRef(`memgine-collect-${++nextHostId}`).current;
   const instance = useRef<CollectInstance | null>(null);
   const busy = useRef(false);
+  const nonceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const onNonceRef = useRef(onNonce);
+  onNonceRef.current = onNonce;
+
+  const clearNonceTimer = () => {
+    if (nonceTimer.current) {
+      clearTimeout(nonceTimer.current);
+      nonceTimer.current = null;
+    }
+  };
   const [ready, setReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
@@ -357,6 +368,7 @@ export function PoyntCollectCardForm({
               return;
 
             const wasSubmitting = busy.current;
+            clearNonceTimer();
             busy.current = false;
             setSubmitting(false);
             setError(
@@ -368,22 +380,42 @@ export function PoyntCollectCardForm({
 
           collect.on("nonce", (event: unknown) => {
             if (!active || !busy.current) return;
+
             const nonce = (event as { data?: { nonce?: unknown } })?.data
               ?.nonce;
+
+            clearNonceTimer();
+
             if (typeof nonce !== "string" || !nonce) {
               busy.current = false;
               setSubmitting(false);
+
               setError(
-                "Card verification could not be completed. Please try again.",
+                "Card verification could not be completed. " +
+                  "Please check your card details.",
               );
+
               return;
             }
-            busy.current = false;
-            void onNonce(nonce).finally(() => {
-              if (active) setSubmitting(false);
-            });
-          });
 
+            busy.current = false;
+
+            // Payment may now be submitted.
+            // The parent owns the final payment status.
+            void onNonceRef
+              .current(nonce)
+              .catch(() => {
+                if (active) {
+                  setError(
+                    "Payment confirmation is uncertain. " +
+                      "Please check payment status before trying again.",
+                  );
+                }
+              })
+              .finally(() => {
+                if (active) setSubmitting(false);
+              });
+          });
           readyTimer = setTimeout(() => {
             if (active)
               setError(
@@ -420,12 +452,21 @@ export function PoyntCollectCardForm({
 
     return () => {
       active = false;
+
+      // Stop the card nonce timeout.
+      clearNonceTimer();
+
+      // Reset the submission guard.
+      busy.current = false;
+
       if (readyTimer) clearTimeout(readyTimer);
+
       try {
         instance.current?.unmount(hostId, document);
       } catch {
         /* SDK may not have mounted. */
       }
+
       instance.current = null;
     };
   }, [
@@ -433,7 +474,6 @@ export function PoyntCollectCardForm({
     configuration.businessId,
     configuration.applicationId,
     hostId,
-    onNonce,
   ]);
 
   return (
@@ -467,17 +507,40 @@ export function PoyntCollectCardForm({
         disabled={!ready || submitting || !!error}
         testID="join-collect-pay"
         onPress={() => {
-          if (!instance.current || busy.current || !ready || error) return;
+          if (!instance.current || busy.current || !ready || error) {
+            return;
+          }
+
           busy.current = true;
           setSubmitting(true);
           setError(undefined);
+
+          clearNonceTimer();
+
+          // This timeout applies only to receiving the card nonce.
+          // No backend charge has been submitted by this handler yet.
+          nonceTimer.current = setTimeout(() => {
+            if (!busy.current) return;
+
+            busy.current = false;
+            setSubmitting(false);
+
+            setError(
+              "Card verification is taking longer than expected. " +
+                "Please check your card details and try again.",
+            );
+          }, 20_000);
+
           try {
             instance.current.getNonce({});
           } catch {
+            clearNonceTimer();
+
             busy.current = false;
             setSubmitting(false);
+
             setError(
-              "Card verification could not be started. Please try again.",
+              "Card verification could not be started. " + "Please try again.",
             );
           }
         }}

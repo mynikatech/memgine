@@ -58,32 +58,57 @@ export type PoyntCollectBrowserCheckout = {
 const collectPaymentPath = (organizationId: ID, paymentIntentId: ID) =>
   `/api/v1/organizations/${encodeURIComponent(organizationId)}/payments/${encodeURIComponent(paymentIntentId)}`;
 
+const CHECKOUT_READ_TIMEOUT_MS = 20_000;
+const PAYMENT_STATUS_TIMEOUT_MS = 15_000;
+const PAYMENT_CONFIRM_TIMEOUT_MS = 45_000;
+
 async function browserCheckoutRequest<T>(
   path: string,
   method: "GET" | "POST",
   body?: unknown,
   csrfToken?: string,
+  timeoutMs: number = CHECKOUT_READ_TIMEOUT_MS,
 ): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    credentials: "include",
-    headers: {
-      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-      ...(csrfToken ? { "X-Memgine-Checkout-CSRF": csrfToken } : {}),
-    },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
-  const payload = (await response.json().catch(() => null)) as {
-    success?: boolean;
-    data?: T;
-    error?: { message?: string };
-  } | null;
-  if (!response.ok || !payload?.success || payload.data == null) {
-    throw new Error(
-      payload?.error?.message ?? "Secure checkout is unavailable.",
-    );
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      credentials: "include",
+      signal: controller.signal,
+      headers: {
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(csrfToken ? { "X-Memgine-Checkout-CSRF": csrfToken } : {}),
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      success?: boolean;
+      data?: T;
+      error?: { message?: string };
+    } | null;
+
+    if (!response.ok || !payload?.success || payload.data == null) {
+      throw new Error(
+        payload?.error?.message ?? "Secure checkout is unavailable.",
+      );
+    }
+
+    return payload.data;
+  } catch (error) {
+    if (controller.signal.aborted) {
+      // Timeout is an unknown outcome, NOT a payment decline.
+      throw new Error(
+        "The request timed out. Payment status may still be pending.",
+      );
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
-  return payload.data;
 }
 
 export type CustomerDiscoverableOrganization = {
@@ -467,6 +492,9 @@ export const poyntCollectBrowserApi = {
     return browserCheckoutRequest(
       "/api/v1/poynt-collect/checkout/status",
       "GET",
+      undefined,
+      undefined,
+      PAYMENT_STATUS_TIMEOUT_MS,
     );
   },
   confirm(
@@ -479,6 +507,7 @@ export const poyntCollectBrowserApi = {
       "POST",
       { nonce, method },
       csrfToken,
+      PAYMENT_CONFIRM_TIMEOUT_MS,
     );
   },
 };

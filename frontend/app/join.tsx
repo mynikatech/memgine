@@ -440,6 +440,7 @@ function JoinFlow() {
       ? `${CUSTOMER_PAYMENT_START_STORAGE_PREFIX}:${orgId}:${session.userId}`
       : "";
   const collectPolling = useRef(false);
+  const collectConfirmationInFlight = useRef<string | null>(null);
   const [collectPollingActive, setCollectPollingActive] = useState(false);
   const [collectPollingStartedAt, setCollectPollingStartedAt] = useState<
     number | null
@@ -1724,79 +1725,96 @@ function JoinFlow() {
       method: PoyntCollectPaymentMethod = "card",
     ): Promise<boolean> => {
       if (!collectPayment) return false;
+
       const intentId = collectPayment.paymentIntentId;
-      if (
-        !isStaffSale &&
-        session?.userId &&
-        product &&
-        plan &&
-        customerCollectPaymentStorageKey
-      ) {
-        const pending: PendingCustomerCollectPayment = {
-          organizationId: orgId,
-          customerUserId: session.userId,
-          paymentIntentId: intentId,
-          membershipProductId: product.id,
-          subscriptionPlanId: plan.id,
-          pollingWindowStartedAt: Date.now(),
-        };
-        setPendingCustomerCollectPayment(pending);
-        void storage.setItem(customerCollectPaymentStorageKey, pending);
+
+      // Prevent a second authorization event from submitting
+      // another confirmation request while this one is running.
+      if (collectConfirmationInFlight.current !== null) {
+        return false;
       }
-      setCollectPendingIntentId(intentId);
-      setOtpError(undefined);
-      // Keep the wallet sheet mounted until its authorization callback completes.
-      if (method === "card") setStep("processing");
+
+      collectConfirmationInFlight.current = intentId;
       try {
-        const confirmed = await services.customerData.confirmCollectPayment(
-          orgId,
-          intentId,
-          nonce,
-          method,
-        );
         if (
-          confirmed.payment.status === "SUCCEEDED" &&
-          confirmed.subscription
+          !isStaffSale &&
+          session?.userId &&
+          product &&
+          plan &&
+          customerCollectPaymentStorageKey
         ) {
-          clearPendingCustomerCollectPayment();
-          setCollectPayment(null);
-          finishSubscription(
-            confirmed.subscription,
-            confirmed.payment.providerReferenceId ??
-              confirmed.payment.paymentIntentId,
+          const pending: PendingCustomerCollectPayment = {
+            organizationId: orgId,
+            customerUserId: session.userId,
+            paymentIntentId: intentId,
+            membershipProductId: product.id,
+            subscriptionPlanId: plan.id,
+            pollingWindowStartedAt: Date.now(),
+          };
+          setPendingCustomerCollectPayment(pending);
+          void storage.setItem(customerCollectPaymentStorageKey, pending);
+        }
+        setCollectPendingIntentId(intentId);
+        setOtpError(undefined);
+        // Keep the wallet sheet mounted until its authorization callback completes.
+        if (method === "card") setStep("processing");
+        try {
+          const confirmed = await services.customerData.confirmCollectPayment(
+            orgId,
+            intentId,
+            nonce,
+            method,
           );
-          return true;
-        }
-      } catch (error) {
-        // Only the explicit server-side OAuth failure is known to occur before
-        // tokenization/charge. Do not interpret generic HTTP 400s as safe failures.
-        const preChargeAuthUnavailable =
-          error instanceof Error &&
-          error.message.includes("Poynt Collect authentication is unavailable");
-        if (preChargeAuthUnavailable) {
-          try {
-            const status = await services.customerData.paymentStatus(
-              orgId,
-              intentId,
+          if (
+            confirmed.payment.status === "SUCCEEDED" &&
+            confirmed.subscription
+          ) {
+            clearPendingCustomerCollectPayment();
+            setCollectPayment(null);
+            finishSubscription(
+              confirmed.subscription,
+              confirmed.payment.providerReferenceId ??
+                confirmed.payment.paymentIntentId,
             );
-            if (status.payment.status === "PENDING") {
-              // The server has not claimed the intent for charging.
-              // Do not automatically reopen payment entry: show an actionable error.
-              setCollectPollingActive(false);
-              setCollectPendingIntentId(intentId);
-              setOtpError(undefined);
-              setStep("collectUnavailable");
-              return false;
-            }
-          } catch {
-            // Uncertain status: use the normal reconciliation flow below.
+            return true;
           }
+        } catch (error) {
+          // Only the explicit server-side OAuth failure is known to occur before
+          // tokenization/charge. Do not interpret generic HTTP 400s as safe failures.
+          const preChargeAuthUnavailable =
+            error instanceof Error &&
+            error.message.includes(
+              "Poynt Collect authentication is unavailable",
+            );
+          if (preChargeAuthUnavailable) {
+            try {
+              const status = await services.customerData.paymentStatus(
+                orgId,
+                intentId,
+              );
+              if (status.payment.status === "PENDING") {
+                // The server has not claimed the intent for charging.
+                // Do not automatically reopen payment entry: show an actionable error.
+                setCollectPollingActive(false);
+                setCollectPendingIntentId(intentId);
+                setOtpError(undefined);
+                setStep("collectUnavailable");
+                return false;
+              }
+            } catch {
+              // Uncertain status: use the normal reconciliation flow below.
+            }
+          }
+          // Any other failure may be a timeout after charge submission.
+          // Keep the intent and reconcile rather than retrying the nonce.
         }
-        // Any other failure may be a timeout after charge submission.
-        // Keep the intent and reconcile rather than retrying the nonce.
+        await checkCollectPayment(intentId);
+        return false;
+      } finally {
+        if (collectConfirmationInFlight.current === intentId) {
+          collectConfirmationInFlight.current = null;
+        }
       }
-      await checkCollectPayment(intentId);
-      return false;
     },
     [
       checkCollectPayment,
@@ -1846,10 +1864,7 @@ function JoinFlow() {
         setCollectPendingIntentId(saved.paymentIntentId);
         setCollectPayment(null);
         setStep("processing");
-        void checkCollectPayment(
-          saved.paymentIntentId,
-          saved.pollingWindowStartedAt,
-        );
+        void checkCollectPayment(saved.paymentIntentId, Date.now());
       })
       .finally(() => {
         if (active) setRestoringCustomerCollectPayment(false);
@@ -3380,11 +3395,28 @@ function JoinFlow() {
                   </Text>
                 ) : null}
                 <PoyntCollectWallets
+                  key={collectPayment.paymentIntentId}
                   configuration={collectPayment.configuration}
+                  merchantName={
+                    activeOrganization.displayName ?? activeOrganization.name
+                  }
+                  membershipName={
+                    product?.displayName ??
+                    product?.membershipProductName ??
+                    "Membership"
+                  }
+                  amountText={formatMoney(
+                    Math.round(collectPayment.amount * 100),
+                  )}
                   onAuthorize={(nonce, method) =>
                     confirmCollectNonce(nonce, method)
                   }
                 />
+                {/* CARD PAYMENT SECTION */}
+                <Text variant="bodyStrong" color="text">
+                  Credit or debit card
+                </Text>
+
                 <PoyntCollectCardForm
                   configuration={collectPayment.configuration}
                   onNonce={async (nonce) => {
@@ -3545,8 +3577,8 @@ function JoinFlow() {
             Payment temporarily unavailable
           </Text>
           <Text variant="bodySmall" color="textMuted">
-            We couldn't connect to the payment provider. This payment was not
-            submitted for processing. Please try again later.
+            We couldn&apos;t connect to the payment provider. This payment was
+            not submitted for processing. Please try again later.
           </Text>
           <Text variant="bodySmall" color="textMuted">
             Your existing payment attempt is preserved. Checking its status will
@@ -3687,23 +3719,20 @@ function JoinFlow() {
             ) : (
               <>
                 <Text variant="h1" color="text">
-                  {t("join.successTitle")}
+                  Payment Successful!
+                </Text>
+
+                <Text variant="bodyStrong" color="text">
+                  Thank you for your purchase!
                 </Text>
 
                 <Text
                   variant="body"
                   color="textMuted"
-                  style={{
-                    textAlign: "center",
-                  }}
+                  style={{ textAlign: "center" }}
                 >
-                  {t("join.successBody", {
-                    business:
-                      activeOrganization.displayName ?? activeOrganization.name,
-
-                    product:
-                      product.displayName ?? product.membershipProductName,
-                  })}
+                  Your membership is now active. You can start enjoying your
+                  membership benefits right away.
                 </Text>
               </>
             )}
