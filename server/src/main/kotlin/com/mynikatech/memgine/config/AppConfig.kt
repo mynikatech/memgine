@@ -3,8 +3,6 @@ package com.mynikatech.memgine.config
 import io.ktor.server.config.ApplicationConfig
 import java.util.Properties
 
-const val DEFAULT_POYNT_CLOUD_BASE_URL = "https://services.poynt.net"
-const val DEFAULT_POYNT_JWT_AUDIENCE = "https://services.poynt.net"
 
 data class AppConfig(
     val server: ServerConfig,
@@ -279,16 +277,58 @@ data class AppConfig(
                 ),
 
                 poynt = PoyntCommerceConfig(
-                    cloudBaseUrl = value("memgine.poynt.cloudBaseUrl", "MEMGINE_POYNT_CLOUD_BASE_URL", DEFAULT_POYNT_CLOUD_BASE_URL).trim().trimEnd('/'),
-                    collectBaseUrl = value("memgine.poynt.collectBaseUrl", "MEMGINE_POYNT_COLLECT_BASE_URL", DEFAULT_POYNT_CLOUD_BASE_URL).trim().trimEnd('/'),
-                    collectSdkUrl = value("memgine.poynt.collectSdkUrl", "MEMGINE_POYNT_COLLECT_SDK_URL", "https://collect.commerce.godaddy.com/sdk.js").trim(),
-                    secretsRegion = optionalValue("memgine.poynt.secretsRegion", "MEMGINE_POYNT_SECRETS_REGION") ?: assetAwsRegion,
-                    apiVersion = value("memgine.poynt.apiVersion", "MEMGINE_POYNT_API_VERSION", "1.2").trim(),
-                    jwtAudience = value("memgine.poynt.jwtAudience", "MEMGINE_POYNT_JWT_AUDIENCE", DEFAULT_POYNT_JWT_AUDIENCE).trim(),
-                    paymentBridgeCallbackUrl = optionalValue("memgine.poynt.paymentBridgeCallbackUrl", "MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_URL").orEmpty(),
-                    paymentBridgeCallbackHeaderName = value("memgine.poynt.paymentBridgeCallbackHeaderName", "MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_NAME", "X-Memgine-Poynt-Callback").trim(),
-                    paymentBridgeCallbackHeaderValue = optionalValue("memgine.poynt.paymentBridgeCallbackHeaderValue", "MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_VALUE").orEmpty(),
-                    paymentBridgeTtlSeconds = value("memgine.poynt.paymentBridgeTtlSeconds", "MEMGINE_POYNT_PAYMENT_BRIDGE_TTL_SECONDS", "45").toLong()
+                    cloudBaseUrl = value(
+                        "memgine.poynt.cloudBaseUrl",
+                        "MEMGINE_POYNT_CLOUD_BASE_URL"
+                    ).trim().trimEnd('/'),
+
+                    collectBaseUrl = value(
+                        "memgine.poynt.collectBaseUrl",
+                        "MEMGINE_POYNT_COLLECT_BASE_URL"
+                    ).trim().trimEnd('/'),
+
+                    collectSdkUrl = value(
+                        "memgine.poynt.collectSdkUrl",
+                        "MEMGINE_POYNT_COLLECT_SDK_URL"
+                    ).trim(),
+
+                    secretsRegion = optionalValue(
+                        "memgine.poynt.secretsRegion",
+                        "MEMGINE_POYNT_SECRETS_REGION"
+                    ) ?: assetAwsRegion,
+
+                    apiVersion = value(
+                        "memgine.poynt.apiVersion",
+                        "MEMGINE_POYNT_API_VERSION",
+                        "1.2"
+                    ).trim(),
+
+                    jwtAudience = value(
+                        "memgine.poynt.jwtAudience",
+                        "MEMGINE_POYNT_JWT_AUDIENCE"
+                    ).trim(),
+
+                    paymentBridgeCallbackUrl = optionalValue(
+                        "memgine.poynt.paymentBridgeCallbackUrl",
+                        "MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_URL"
+                    ).orEmpty(),
+
+                    paymentBridgeCallbackHeaderName = value(
+                        "memgine.poynt.paymentBridgeCallbackHeaderName",
+                        "MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_NAME",
+                        "X-Memgine-Poynt-Callback"
+                    ).trim(),
+
+                    paymentBridgeCallbackHeaderValue = optionalValue(
+                        "memgine.poynt.paymentBridgeCallbackHeaderValue",
+                        "MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_VALUE"
+                    ).orEmpty(),
+
+                    paymentBridgeTtlSeconds = value(
+                        "memgine.poynt.paymentBridgeTtlSeconds",
+                        "MEMGINE_POYNT_PAYMENT_BRIDGE_TTL_SECONDS",
+                        "45"
+                    ).toLong()
                 ),
 
                 assets = AssetStorageConfig(
@@ -341,8 +381,8 @@ data class OtpConfig(
 
 data class PoyntCommerceConfig(
     val cloudBaseUrl: String,
-    val collectBaseUrl: String = DEFAULT_POYNT_CLOUD_BASE_URL,
-    val collectSdkUrl: String = "https://collect.commerce.godaddy.com/sdk.js",
+    val collectBaseUrl: String,
+    val collectSdkUrl: String,
     val secretsRegion: String,
     val apiVersion: String,
     val jwtAudience: String,

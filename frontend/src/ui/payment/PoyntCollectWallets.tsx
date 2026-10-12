@@ -1,40 +1,60 @@
 import { useEffect, useRef, useState } from "react";
+
 import { Platform, View } from "react-native";
+
 import type {
   PoyntCollectBootstrap,
   PoyntCollectPaymentMethod,
 } from "@/src/data/api/customer-data-api";
+
 import { Text, Button } from "@/src/ui";
+
 import { loadPoyntCollectSdk } from "./PoyntCollectCardForm";
 
 type WalletMethod = Exclude<PoyntCollectPaymentMethod, "card">;
+
 type WalletEvent = {
   type?: unknown;
+
   data?: unknown;
+
   name?: unknown;
+
   message?: unknown;
+
   nonce?: unknown;
+
   source?: unknown;
+
   complete?: (options?: {
     error: { code: "unknown"; message: string };
   }) => void;
 };
+
 type WalletCollect = {
   supportWalletPayments: () => Promise<{
     applePay?: boolean;
+
     googlePay?: boolean;
   }>;
 
   mount: (
     id: string,
+
     document: Document,
+
     options: {
       paymentMethods: WalletMethod[];
+
       buttonOptions?: {
         color: string;
+
         type: string;
+
         width: string;
+
         height: string;
+
         onClick?: (event: { source: string }) => void;
       };
     },
@@ -45,31 +65,46 @@ type WalletCollect = {
   on: (name: string, listener: (event: WalletEvent) => void) => void;
 
   startGooglePaySession: () => void;
+
   startApplePaySession: () => void;
 };
+
 type WalletConstructor = new (
   businessId: string,
+
   applicationId: string,
+
   request: {
     total: { label: string; amount: string };
+
     country: string;
+
     currency: string;
+
     merchantName: string;
+    disableWallets?: { paze?: boolean; googlePay: true };
   },
 ) => WalletCollect;
+
 function isCustomerCancellation(event: WalletEvent): boolean {
   // The SDK has emitted both flat errors and nested {data:{error}} events.
+
   // Never treat customer dismissal as a payment decline.
+
   const payload =
     event.data && typeof event.data === "object"
       ? (event.data as Record<string, unknown>)
       : {};
+
   const nested =
     payload.error && typeof payload.error === "object"
       ? (payload.error as Record<string, unknown>)
       : {};
+
   const name = event.name ?? payload.name ?? nested.name;
+
   const message = event.message ?? payload.message ?? nested.message;
+
   return (
     name === "AbortError" ||
     (typeof message === "string" &&
@@ -80,34 +115,54 @@ function isCustomerCancellation(event: WalletEvent): boolean {
 }
 
 /**
+
  * Poynt's production SDK prints a Google Pay AbortError with console.error when
+
  * the customer closes the wallet. Expo's development LogBox interprets that
+
  * expected SDK log as an application error. Only in local development, while a
+
  * wallet host is mounted, ignore that ONE exact SDK cancellation log. Do not
+
  * suppress unrelated errors or change payment state.
+
  *
+
  * The filter wraps console.error because the log originates inside sdk.js,
+
  * before the on("error") handler can run. It is reference-counted and restored
+
  * when the final wallet component unmounts.
+
  */
+
 let cancelLogUsers = 0;
+
 let originalConsoleError: typeof console.error | undefined;
+
 let cancelLogWrapper: typeof console.error | undefined;
 
 function isExpectedPoyntCancelLog(args: unknown[]): boolean {
   const first = args[0];
+
   let value: unknown = first;
+
   if (typeof first === "string") {
     // SDK currently logs JSON.stringify(error), undefined.
+
     if (!first.includes("User closed the Payment Request UI.")) return false;
+
     try {
       value = JSON.parse(first);
     } catch {
       return false;
     }
   }
+
   if (!value || typeof value !== "object") return false;
+
   const detail = value as Record<string, unknown>;
+
   return (
     detail.name === "AbortError" &&
     detail.type === "GOOGLE_PAY" &&
@@ -117,44 +172,63 @@ function isExpectedPoyntCancelLog(args: unknown[]): boolean {
 
 function installDevCancellationLogFilter(): () => void {
   if (process.env.NODE_ENV !== "development") return () => {};
+
   cancelLogUsers += 1;
+
   if (cancelLogUsers === 1) {
     originalConsoleError = console.error;
+
     const previous = originalConsoleError;
+
     cancelLogWrapper = (...args: unknown[]) => {
       if (isExpectedPoyntCancelLog(args)) return;
+
       previous(...args);
     };
+
     console.error = cancelLogWrapper;
   }
+
   return () => {
     cancelLogUsers = Math.max(0, cancelLogUsers - 1);
+
     if (cancelLogUsers === 0) {
       if (console.error === cancelLogWrapper && originalConsoleError) {
         console.error = originalConsoleError;
       }
+
       cancelLogWrapper = undefined;
+
       originalConsoleError = undefined;
     }
   };
 }
 
 let walletIdCounter = 0;
+
 const WalletHost = "div" as any;
 
 /** Never displays unverified wallet buttons. Poynt provides the genuine branded controls. */
 
 export function PoyntCollectWallets({
   configuration,
+
   merchantName,
+
   membershipName,
+
   amountText,
+
   onAuthorize,
 }: {
   configuration: PoyntCollectBootstrap;
+
   merchantName: string;
+
   membershipName: string;
+
   amountText: string;
+
   onAuthorize: (nonce: string, method: WalletMethod) => Promise<boolean>;
 }) {
   const hostId = useRef(`memgine-poynt-wallet-${++walletIdCounter}`).current;
@@ -166,13 +240,17 @@ export function PoyntCollectWallets({
   );
 
   const [launching, setLaunching] = useState(false);
+
   const [walletError, setWalletError] = useState<string>();
 
   const collectRef = useRef<WalletCollect | null>(null);
+
   const authorizationInFlight = useRef(false);
+
   const walletSessionStarting = useRef(false);
 
   const callback = useRef(onAuthorize);
+
   callback.current = onAuthorize;
 
   useEffect(() => {
@@ -181,6 +259,7 @@ export function PoyntCollectWallets({
     const restoreCancelLog = installDevCancellationLogFilter();
 
     let active = true;
+
     let collect: WalletCollect | null = null;
 
     const setup = async () => {
@@ -199,19 +278,28 @@ export function PoyntCollectWallets({
 
         collect = new Constructor(
           configuration.businessId,
+
           configuration.applicationId,
+
           {
             total: {
               label: "Membership payment",
+
               amount: walletConfig.amount,
             },
+
             country: walletConfig.country,
+
             currency: walletConfig.currency,
+
             merchantName: walletConfig.merchantName,
+            // Skip Paze discovery in this Google Pay / Apple Pay component.
+            disableWallets: { paze: true, googlePay: true },
           },
         );
 
         const walletInstance = collect;
+
         collectRef.current = walletInstance;
 
         walletInstance.on("error", (event) => {
@@ -219,12 +307,17 @@ export function PoyntCollectWallets({
 
           if (isCustomerCancellation(event)) {
             // Wallet dismissed without an authorized nonce.
+
             // The customer can choose Google Pay or Apple Pay again.
+
             if (!authorizationInFlight.current) {
               walletSessionStarting.current = false;
+
               setWalletError(undefined);
+
               setSelectedWallet(null);
             }
+
             return;
           }
 
@@ -251,31 +344,40 @@ export function PoyntCollectWallets({
             event.complete?.({
               error: {
                 code: "unknown",
+
                 message: "Wallet authorization could not be verified.",
               },
             });
+
             return;
           }
 
           // Protect against duplicate wallet authorization events.
+
           if (authorizationInFlight.current) {
             event.complete?.({
               error: {
                 code: "unknown",
+
                 message:
                   "This payment is already being confirmed. " +
                   "Please check its status.",
               },
             });
+
             return;
           }
 
           authorizationInFlight.current = true;
 
           // Preserve the original single-submission behavior.
+
           // Wallet authorization has already occurred at this point.
+
           void callback
+
             .current(event.nonce, method)
+
             .then((success) => {
               if (success) {
                 event.complete?.();
@@ -283,6 +385,7 @@ export function PoyntCollectWallets({
                 event.complete?.({
                   error: {
                     code: "unknown",
+
                     message:
                       "Payment status could not be confirmed. " +
                       "Please check your payment status.",
@@ -290,10 +393,12 @@ export function PoyntCollectWallets({
                 });
               }
             })
+
             .catch(() => {
               event.complete?.({
                 error: {
                   code: "unknown",
+
                   message:
                     "Payment status is uncertain. " +
                     "Please check before retrying.",
@@ -309,20 +414,27 @@ export function PoyntCollectWallets({
         const methods: WalletMethod[] = [];
 
         if (supported.googlePay) methods.push("google_pay");
+
         if (supported.applePay) methods.push("apple_pay");
 
         if (!methods.length) return;
 
         walletInstance.mount(hostId, document, {
           paymentMethods: methods,
+
           buttonOptions: {
             color: "black",
+
             type: "pay",
+
             width: "100%",
+
             height: "48px",
 
             // This is the REAL Poynt wallet button click.
+
             // Do not open Google Pay / Apple Pay yet.
+
             onClick: (event) => {
               if (
                 !active ||
@@ -340,6 +452,7 @@ export function PoyntCollectWallets({
               }
 
               setWalletError(undefined);
+
               setSelectedWallet(event.source);
             },
           },
@@ -365,16 +478,24 @@ export function PoyntCollectWallets({
       }
 
       collectRef.current = null;
+
       restoreCancelLog();
     };
   }, [
     configuration.sdkUrl,
+
     configuration.businessId,
+
     configuration.applicationId,
+
     configuration.wallet?.country,
+
     configuration.wallet?.currency,
+
     configuration.wallet?.merchantName,
+
     configuration.wallet?.amount,
+
     hostId,
   ]);
 
@@ -389,12 +510,15 @@ export function PoyntCollectWallets({
     }
 
     walletSessionStarting.current = true;
+
     setLaunching(true);
+
     setWalletError(undefined);
 
     const method = selectedWallet;
 
     // Close the Memgine review before opening the wallet sheet.
+
     setSelectedWallet(null);
 
     try {
@@ -405,6 +529,7 @@ export function PoyntCollectWallets({
       }
     } catch {
       walletSessionStarting.current = false;
+
       setWalletError(
         "Unable to open the wallet. No new payment " +
           "has been submitted by this action.",
@@ -416,6 +541,7 @@ export function PoyntCollectWallets({
 
   const cancelReview = () => {
     if (launching || authorizationInFlight.current) return;
+
     setSelectedWallet(null);
   };
 
@@ -433,7 +559,9 @@ export function PoyntCollectWallets({
         aria-label="Secure wallet checkout"
         style={{
           width: "100%",
+
           minHeight: available ? 52 : 0,
+
           display: selectedWallet ? "none" : "block",
         }}
       />
@@ -442,11 +570,17 @@ export function PoyntCollectWallets({
         <View
           style={{
             width: "100%",
+
             gap: 12,
+
             padding: 16,
+
             borderWidth: 1,
+
             borderColor: "#E5E7EB",
+
             borderRadius: 12,
+
             backgroundColor: "#FFFFFF",
           }}
         >
@@ -491,6 +625,7 @@ export function PoyntCollectWallets({
         <View
           style={{
             alignItems: "center",
+
             marginVertical: 5,
           }}
         >

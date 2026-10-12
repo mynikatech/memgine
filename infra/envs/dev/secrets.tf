@@ -33,3 +33,9 @@ resource "aws_secretsmanager_secret" "poynt_cloud_app" {
   description = "Poynt Cloud Application private key for Memgine DEV"
   tags        = local.lambda_tags
 }
+# New Poynt OTE credentials - Memgine DEV test application
+resource "aws_secretsmanager_secret" "poynt_ote_cloud_app" {
+  name        = "memgine/dev/poynt-dev/cloud-app"
+  description = "Memgine DEV Poynt OTE Cloud Application private key"
+  tags        = local.lambda_tags
+}

@@ -78,8 +78,16 @@ class CustomerPaymentRouteStartTest {
                 override fun orderUri(businessId: String, orderId: String) = error("No order URI")
                 override fun ordersUri(businessId: String) = error("No orders URI")
             }) { error("No OAuth lookup") }
-        val service = PaymentService(Jdbi.create("jdbc:postgresql://unused/memgine"), "dev",
-            PaymentConfig("TEST", "", "", "", "", "", "", "https://api.sb.moneris.io", "2026-08-14", "", ""),
-            sql, collect)
+        val service = PaymentService(
+            Jdbi.create("jdbc:postgresql://unused/memgine"),
+            "dev",
+            PaymentConfig(
+                "TEST", "", "", "", "", "", "",
+                "https://api.sb.moneris.io", "2026-08-14", "", ""
+            ),
+            sql,
+            collect,
+            collectSdkUrl = "https://collect.commerce.ote-godaddy.com/sdk.js"
+        )
     }
 }

@@ -76,8 +76,9 @@ class CounterMembershipPaymentStartTest {
             monerisApiVersion = "2026-08-14",
             monerisHostedTokenizationProfileId = "profile",
             monerisHostedTokenizationUrl = "https://esqa.moneris.com/HPPtoken/index.php"
-        ),
-        sql.proxy
+       ),
+        sql.proxy,
+        collectSdkUrl = "https://collect.commerce.ote-godaddy.com/sdk.js"
     )
 
     private class RecordingPaymentSql(

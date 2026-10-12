@@ -44,7 +44,7 @@ class PaymentService(
     private val paymentConfig: PaymentConfig,
     private val paymentSqlOverride: PaymentSql? = null,
     private val collectProvider: PoyntCollectPaymentProvider? = null,
-    private val collectSdkUrl: String = "https://collect.commerce.godaddy.com/sdk.js"
+    private val collectSdkUrl: String
 ) {
     private val testProvider = TestPaymentProvider(environment in setOf("local", "dev", "development"))
     private val stripeProvider = StripePaymentProvider(paymentConfig)

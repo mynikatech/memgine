@@ -9,7 +9,6 @@ import com.mynikatech.memgine.net.dto.CommerceCheckoutRequest
 import com.mynikatech.memgine.net.dto.CommerceCheckoutAdjustment
 import com.mynikatech.memgine.net.dto.CommerceTransactionAdjustmentDto
 import com.mynikatech.memgine.net.dto.CommerceTransactionLineDto
-import com.mynikatech.memgine.config.DEFAULT_POYNT_JWT_AUDIENCE
 import com.mynikatech.memgine.exception.BadRequestException
 import java.net.URI
 import java.security.KeyPairGenerator
@@ -85,7 +84,7 @@ class PoyntCommerceProviderTest {
 
     private fun tokens(
         transport: PoyntTokenTransport = FakeTokenTransport(),
-        audience: String = DEFAULT_POYNT_JWT_AUDIENCE,
+        audience: String = "https://services-ote.poynt.net",
         clock: () -> Instant = { Instant.ofEpochSecond(1_000) }
     ) = PoyntTokenService(PoyntCredentialResolver { PoyntCredential(privateKeyPem) }, transport, audience, clock)
 
@@ -174,9 +173,13 @@ class PoyntCommerceProviderTest {
         assertEquals("https://poynt-ote.example/businesses/business/products?limit=100&startOffset=0", PoyntCloudHttpTransport("https://poynt-ote.example", "1.2").productsUri("business", 0).toString())
     }
 
-    @Test fun `default JWT audience is the official Poynt services audience`() {
-        assertEquals("https://services.poynt.net", DEFAULT_POYNT_JWT_AUDIENCE)
-        assertEquals(DEFAULT_POYNT_JWT_AUDIENCE, JWT.decode(tokens().assertion(configuration.applicationId, privateKeyPem)).audience.single())
+    @Test
+    fun `JWT audience uses the explicitly configured value`() {
+        val audience = "https://services-ote.poynt.net"
+        val jwt = tokens(audience = audience)
+            .assertion(configuration.applicationId, privateKeyPem)
+
+        assertEquals(audience, JWT.decode(jwt).audience.single())
     }
 
     @Test fun `token acquisition caches until refresh window`() {

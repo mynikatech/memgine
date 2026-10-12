@@ -446,6 +446,11 @@ resource "aws_instance" "app" {
     environment   = var.environment
     deploy_bucket = aws_s3_bucket.deploy.bucket
   })
+  lifecycle {
+    ignore_changes = [
+      ami
+    ]
+  }
 
   tags = merge(local.tags, {
     Name = "${local.name_prefix}-app"
