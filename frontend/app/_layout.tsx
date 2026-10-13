@@ -1,7 +1,7 @@
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
-import { LogBox, Platform } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { LogBox, Platform, Pressable, Text, View } from "react-native";
 
 import { services } from "@/src/core";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
@@ -32,36 +32,96 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [loaded, error] = useIconFonts();
+  const [referenceDataState, setReferenceDataState] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
+  const [referenceDataError, setReferenceDataError] = useState<string | null>(
+    null,
+  );
+  const [retryToken, setRetryToken] = useState(0);
+  const templateRefreshStarted = useRef(false);
 
   useEffect(() => {
-    if (loaded || error) {
-      SplashScreen.hideAsync();
+    if ((loaded || error) && referenceDataState !== "loading") {
+      void SplashScreen.hideAsync();
     }
-  }, [loaded, error]);
+  }, [loaded, error, referenceDataState]);
 
   useEffect(() => {
     if (!loaded && !error) {
       return;
     }
 
-    async function refreshReferenceData() {
+    let cancelled = false;
+
+    async function initializeReferenceData() {
+      setReferenceDataState("loading");
+      setReferenceDataError(null);
+
+      if (!templateRefreshStarted.current) {
+        templateRefreshStarted.current = true;
+        void services.template.refresh().catch((templateError) => {
+          console.error("Failed to refresh templates:", templateError);
+        });
+      }
+
       try {
         await Promise.all([
-          services.referenceData.refresh(),
-          services.template.refresh(),
+          services.referenceData.initialize(),
+          services.status.initialize(),
         ]);
-        console.log("Reference data refreshed successfully.");
-      } catch (refreshError) {
-        console.error("Failed to refresh reference data:", refreshError);
+
+        if (!cancelled) {
+          setReferenceDataState("ready");
+        }
+      } catch (initializationError) {
+        if (!cancelled) {
+          setReferenceDataState("error");
+          setReferenceDataError(
+            initializationError instanceof Error
+              ? initializationError.message
+              : "Unable to load application reference data.",
+          );
+        }
       }
     }
 
-    void refreshReferenceData();
-  }, [loaded, error]);
+    void initializeReferenceData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loaded, error, retryToken]);
 
   // If the CDN is unreachable we fall through on error rather than wedging
   // the app — icons will tofu, but the app still boots.
   if (!loaded && !error) return null;
+
+  if (referenceDataState === "loading") return null;
+
+  if (referenceDataState === "error") {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}
+      >
+        <Text style={{ marginBottom: 16, textAlign: "center" }}>
+          {referenceDataError ?? "Unable to load application reference data."}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setRetryToken((value) => value + 1)}
+          style={{ paddingHorizontal: 16, paddingVertical: 10 }}
+        >
+          <Text>Retry</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   // Reusable foundation providers (Stage 2B). Business context + localization
   // are available to all routes; the Stage 1 navigation shells are unchanged.

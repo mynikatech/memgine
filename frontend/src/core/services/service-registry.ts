@@ -13,7 +13,6 @@ import { LocalBenefitService } from "./benefit-service.local";
 import { LocalOfferService } from "./offer-service.local";
 import { LocalSubscriptionService } from "./subscription-service.local";
 import { LocalPaymentService } from "./payment-service.local";
-import { CachedStatusService } from "./status-cache";
 import { ServerStatusService } from "./status-service.server";
 import { LocalRedemptionService } from "./redemption-service.local";
 import { OrgAdminTransactionReadService } from "./org-admin-transaction-read-service";
@@ -60,8 +59,6 @@ import type {
   ProductService,
   PaymentService,
 } from "./service-contracts";
-import type { ReferenceDataService } from "./reference-data";
-import type { StatusService } from "./status";
 import type { TemplateService } from "./template";
 import type { CustomerExperienceService } from "./customer-experience";
 import type { CustomerExperienceReleaseService } from "./customer-experience-release";
@@ -80,11 +77,8 @@ const offerService: OfferService = new LocalOfferService();
 const userAcquisitionService: UserAcquisitionService =
   new LocalUserAcquisitionService(mockServices.userAcquisition);
 const serverStatusService = new ServerStatusService();
-const referenceDataService: ReferenceDataService =
-  new ServerReferenceDataService();
-const statusService: StatusService = new CachedStatusService(
-  serverStatusService,
-);
+const referenceDataService = new ServerReferenceDataService();
+const statusService = serverStatusService;
 const qrCodeService: QRCodeService = new LocalQRCodeService(apis.qrCode);
 const qrScanHistoryService: QRScanHistoryService =
   new LocalQRScanHistoryService(apis.qrScanHistory);
@@ -181,10 +175,10 @@ export type MemgineServices = {
   customerData: CustomerDataService;
   organizationMaintenance: OrganizationMaintenanceService;
   offerRedemption: OfferRedemptionService;
-  status: StatusService;
+  status: ServerStatusService;
   auth: CustomerAuthService;
   payment: PaymentService;
-  referenceData: ReferenceDataService;
+  referenceData: ServerReferenceDataService;
   template: TemplateService;
   customerExperience: CustomerExperienceService;
   customerExperienceRelease: CustomerExperienceReleaseService;

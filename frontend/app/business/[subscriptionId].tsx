@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
@@ -19,6 +19,7 @@ import type {
 } from "@/src/core";
 import { services } from "@/src/core";
 import { BusinessExperience } from "@/src/experience";
+import { entityStatusApi } from "@/src/data/api/entity-status-api";
 import {
   BusinessPreviewScope,
   useCustomerContext,
@@ -62,49 +63,82 @@ type BusinessData = {
 export default function BusinessExperienceRoute() {
   const router = useRouter();
   const { subscriptionId } = useLocalSearchParams<{ subscriptionId: string }>();
-  const { customerId, profiles, setActiveContext, setActiveSubscription } =
-    useCustomerContext();
+  const {
+    customerId,
+    organizationId: activeOrganizationId,
+    subscriptionId: activeSubscriptionId,
+    customersLoading,
+    customersError,
+    landing,
+    refreshCustomers,
+    membershipSummary,
+    setActiveContext,
+    setActiveSubscription,
+  } = useCustomerContext();
   const { t } = useTranslation();
   const theme = useTheme();
   const [data, setData] = useState<BusinessData | null>(null);
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
+  const [resolvedOrganizationId, setResolvedOrganizationId] = useState<
+    string | null
+  >(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const activeOrganizationIdRef = useRef(activeOrganizationId);
+  const requestIdRef = useRef(0);
+  activeOrganizationIdRef.current = activeOrganizationId;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const load = useCallback(async (isCurrent: () => boolean) => {
     try {
+      if (!landing) return;
       if (!customerId || !subscriptionId)
         throw new Error("Select a customer and membership.");
-      const relationships = profiles.length
-        ? profiles
-        : await services.customerData.profiles(customerId);
-      let foundOrg: string | null = null;
-      let foundSubscriptions: Awaited<
-        ReturnType<typeof services.customerData.subscriptions>
-      > = [];
-      for (const relationship of relationships) {
-        const rows = await services.customerData.subscriptions(
-          relationship.organizationId,
-          customerId,
+      const relationships = landing.relationships.filter(
+        (relationship) => relationship.userId === customerId,
+      );
+      const activeRelationship = relationships.find(
+        (relationship) =>
+          relationship.organizationId === activeOrganizationIdRef.current,
+      );
+      let selected:
+        | { organizationId: string; summary: Awaited<ReturnType<typeof membershipSummary>> }
+        | undefined;
+
+      if (activeRelationship) {
+        const summary = await membershipSummary(
+          activeRelationship.organizationId,
         );
-        if (rows.some((row) => row.id === subscriptionId)) {
-          foundOrg = relationship.organizationId;
-          foundSubscriptions = rows;
-          break;
+        if (summary.subscriptions.some((row) => row.id === subscriptionId)) {
+          selected = {
+            organizationId: activeRelationship.organizationId,
+            summary,
+          };
         }
       }
-      if (!foundOrg)
+
+      if (!selected) {
+        for (const relationship of relationships) {
+          if (relationship.organizationId === activeOrganizationIdRef.current)
+            continue;
+          const summary = await membershipSummary(relationship.organizationId);
+          if (summary.subscriptions.some((row) => row.id === subscriptionId)) {
+            selected = { organizationId: relationship.organizationId, summary };
+            break;
+          }
+        }
+      }
+      if (!selected)
         throw new Error("Membership not found for the selected customer.");
-      const orgId = foundOrg;
+      const orgId = selected.organizationId;
+      const foundSubscriptions = selected.summary.subscriptions;
+      const catalog = selected.summary.membershipProducts;
+      const allBenefits = selected.summary.benefits;
+      const branding = selected.summary.branding;
       const [
         organization,
         details,
-        branding,
-        catalog,
         joinCatalog,
-        allBenefits,
         combinedOffers,
         stores,
         allRedemptions,
@@ -112,10 +146,7 @@ export default function BusinessExperienceRoute() {
       ] = await Promise.all([
         services.organization.getOrganization(orgId),
         services.organization.getOrganizationDetails(orgId),
-        services.organization.getOrganizationBranding(orgId),
-        services.customerData.membershipProducts(orgId, customerId),
         services.customerData.membershipProducts(orgId),
-        services.customerData.benefits(orgId, customerId),
         services.customerData.combinedOffers(orgId),
         services.customerData.stores(orgId, customerId),
         services.customerData.redemptions(orgId, customerId),
@@ -145,9 +176,10 @@ export default function BusinessExperienceRoute() {
           (item) => item.id === row.membershipProductId,
         );
         if (!product) throw new Error("Membership product is unavailable.");
-        const status = await services.status.getStatus(
+        const subscriptionStatusId = await entityStatusApi.resolveStatusId(
           row.subscriptionStatusId,
         );
+        const status = await services.status.getStatus(subscriptionStatusId);
         const subscription = {
           id: row.id,
           subscriptionNumber: row.subscriptionNumber,
@@ -156,7 +188,7 @@ export default function BusinessExperienceRoute() {
           subscriptionDate: row.subscriptionDate,
           startDate: row.startDate,
           endDate: row.endDate,
-          subscriptionStatusId: row.subscriptionStatusId,
+          subscriptionStatusId,
           totalAmount: {
             amountMinor: Math.round(row.totalAmount * 100),
             currency: row.currencyCode,
@@ -205,6 +237,7 @@ export default function BusinessExperienceRoute() {
       const redemptionItemStatusesBySubscription = Object.fromEntries(
         foundSubscriptions.map((row, index) => [row.id, statusLists[index]]),
       );
+      if (!isCurrent()) return;
       setData({
         organization,
         details,
@@ -228,22 +261,67 @@ export default function BusinessExperienceRoute() {
         redemptionItemStatusesBySubscription,
       });
       setSelectedSubId(subscriptionId);
-      setActiveContext(orgId, subscriptionId);
+      setResolvedOrganizationId(orgId);
     } catch (failure) {
+      if (!isCurrent()) return;
       setData(null);
+      setResolvedOrganizationId(null);
       setError(
         failure instanceof Error
           ? failure.message
           : "Unable to load membership.",
       );
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [customerId, subscriptionId, profiles, setActiveContext]);
+  }, [
+    customerId,
+    subscriptionId,
+    landing,
+    membershipSummary,
+  ]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    const requestId = ++requestIdRef.current;
+    const isCurrent = () => requestId === requestIdRef.current;
+
+    if (customersLoading || (!landing && !customersError)) {
+      setLoading(true);
+      setError(null);
+      setData(null);
+      setResolvedOrganizationId(null);
+      return;
+    }
+
+    if (customersError) {
+      setLoading(false);
+      setData(null);
+      setResolvedOrganizationId(null);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setData(null);
+    setResolvedOrganizationId(null);
+    void load(isCurrent);
+  }, [customersLoading, customersError, landing, load, reloadKey]);
+
+  useEffect(() => {
+    if (!resolvedOrganizationId || !subscriptionId) return;
+    if (
+      activeOrganizationId !== resolvedOrganizationId ||
+      activeSubscriptionId !== subscriptionId
+    ) {
+      setActiveContext(resolvedOrganizationId, subscriptionId);
+    }
+  }, [
+    activeOrganizationId,
+    activeSubscriptionId,
+    resolvedOrganizationId,
+    setActiveContext,
+    subscriptionId,
+  ]);
 
   const current =
     data?.memberships.find((item) => item.subscription.id === selectedSubId) ??
@@ -289,7 +367,9 @@ export default function BusinessExperienceRoute() {
             )
           }
           onExit={() => router.replace(APP_ROUTES.customer.cards)}
-          onRefreshRedemptionState={load}
+          onRefreshRedemptionState={() =>
+            setReloadKey((currentReloadKey) => currentReloadKey + 1)
+          }
           organizationOverride={data.organization}
           detailsOverride={data.details}
           membershipLogoUrl={data.logoUrl}
@@ -311,13 +391,17 @@ export default function BusinessExperienceRoute() {
         padding: theme.spacing.lg,
       }}
     >
-      {error ? (
+      {error || customersError ? (
         <StateView
           kind="error"
           title={t("common.error")}
-          message={error}
+          message={customersError ?? error ?? "Unable to load membership."}
           actionLabel={t("common.retry")}
-          onAction={() => void load()}
+          onAction={() =>
+            customersError
+              ? void refreshCustomers()
+              : setReloadKey((currentReloadKey) => currentReloadKey + 1)
+          }
           testID="experience-state"
         />
       ) : (

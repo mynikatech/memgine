@@ -11,7 +11,29 @@ import {
   type OrganizationAccount,
 } from "../domain/entities";
 
+const inFlightResolutions = new Map<ID, Promise<BusinessContext | null>>();
+
 export async function resolveOrganizationContext(
+  organizationId: ID,
+): Promise<BusinessContext | null> {
+  const existing = inFlightResolutions.get(organizationId);
+  if (existing) {
+    return existing;
+  }
+
+  const resolution = resolveOrganizationContextRequest(organizationId);
+  let sharedResolution: Promise<BusinessContext | null>;
+  sharedResolution = resolution.finally(() => {
+    if (inFlightResolutions.get(organizationId) === sharedResolution) {
+      inFlightResolutions.delete(organizationId);
+    }
+  });
+
+  inFlightResolutions.set(organizationId, sharedResolution);
+  return sharedResolution;
+}
+
+async function resolveOrganizationContextRequest(
   organizationId: ID,
 ): Promise<BusinessContext | null> {
   const result = await apis.organization.getAggregate(organizationId);

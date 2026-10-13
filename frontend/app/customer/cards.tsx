@@ -24,6 +24,7 @@ import { Badge, Card, Header, Section, StateView, Text } from "@/src/ui";
 import { MembershipCard } from "@/src/ui/domain";
 import { CustomerNotificationBell } from "@/src/ui/domain/CustomerNotificationBell";
 import type { CustomerDiscoverableOrganization } from "@/src/data/api/customer-data-api";
+import { entityStatusApi } from "@/src/data/api/entity-status-api";
 
 type CardVM = {
   subscription: Subscription;
@@ -99,8 +100,12 @@ export default function MyCards() {
                     return null;
                   }
 
+                  const normalizedStatusId =
+                    await entityStatusApi.resolveStatusId(
+                      row.subscriptionStatusId,
+                    );
                   const status = await services.status.getStatus(
-                    row.subscriptionStatusId,
+                    normalizedStatusId,
                   );
 
                   return {
@@ -112,7 +117,7 @@ export default function MyCards() {
                       subscriptionDate: row.subscriptionDate,
                       startDate: row.startDate,
                       endDate: row.endDate,
-                      subscriptionStatusId: row.subscriptionStatusId,
+                      subscriptionStatusId: normalizedStatusId,
                       totalAmount: {
                         amountMinor: Math.round(row.totalAmount * 100),
                         currency: row.currencyCode,

@@ -14,7 +14,6 @@ import { services } from "@/src/core";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { membershipDraftStore } from "@/src/core/services/membership-draft-store";
-import { ServerReferenceDataService } from "@/src/core/services/reference-data-service.server";
 import { useBusiness } from "@/src/providers";
 import {
   Button,
@@ -26,8 +25,6 @@ import {
 } from "@/src/ui";
 
 import { MembershipForm } from "@/src/ui/admin/MembershipForm";
-
-const membershipReferenceData = new ServerReferenceDataService();
 
 function cloneProducts(products: MembershipProduct[]): MembershipProduct[] {
   return products.map((product) => ({
@@ -106,11 +103,11 @@ export default function OrgAdminMemberships() {
           services.membershipProduct.listProducts(organization.id),
           services.benefit.listByOrganization(organization.id),
           services.status.listBenefitStatuses(),
-          membershipReferenceData.listProductCategories(),
-          membershipReferenceData.listProductTypes(),
+          services.referenceData.listProductCategories(),
+          services.referenceData.listProductTypes(),
           services.status.listMembershipProductStatuses(),
           services.status.listSubscriptionPlanStatuses(),
-          membershipReferenceData.listCurrencies(),
+          services.referenceData.listCurrencies(),
           services.organization.getOrganizationDetails(organization.id),
         ]);
 

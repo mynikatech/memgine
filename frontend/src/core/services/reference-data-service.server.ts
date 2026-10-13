@@ -26,9 +26,37 @@ type ReferenceDataSnapshot = {
 
 export class ServerReferenceDataService implements ReferenceDataService {
   private snapshot: ReferenceDataSnapshot | null = null;
+  private initialization: Promise<void> | null = null;
+  private refreshQueue: Promise<void> = Promise.resolve();
+  private requestVersion = 0;
+
+  async initialize(): Promise<void> {
+    if (this.snapshot) {
+      return;
+    }
+
+    if (this.initialization) {
+      return this.initialization;
+    }
+
+    this.initialization = this.loadAndReplaceSnapshot().finally(() => {
+      this.initialization = null;
+    });
+
+    return this.initialization;
+  }
 
   async refresh(): Promise<void> {
-    this.snapshot = await this.load();
+    const initializationToWaitFor = this.initialization;
+    const refresh = this.refreshQueue
+      .catch(() => undefined)
+      .then(async () => {
+        await initializationToWaitFor?.catch(() => undefined);
+        await this.loadAndReplaceSnapshot();
+      });
+
+    this.refreshQueue = refresh;
+    return refresh;
   }
 
   private async load(): Promise<ReferenceDataSnapshot> {
@@ -43,62 +71,71 @@ export class ServerReferenceDataService implements ReferenceDataService {
     return result.data;
   }
 
-  private async getSnapshot(): Promise<ReferenceDataSnapshot> {
+  private async loadAndReplaceSnapshot(): Promise<void> {
+    const requestVersion = ++this.requestVersion;
+    const snapshot = await this.load();
+
+    if (requestVersion === this.requestVersion) {
+      this.snapshot = snapshot;
+    }
+  }
+
+  getSnapshot(): ReferenceDataSnapshot {
     if (!this.snapshot) {
-      this.snapshot = await this.load();
+      throw new Error("Reference data has not been initialized.");
     }
 
     return this.snapshot;
   }
 
   async listLanguages(): Promise<ReferenceDataItem[]> {
-    return (await this.getSnapshot()).languages;
+    return this.getSnapshot().languages;
   }
 
   async listOrganizationTypes(): Promise<ReferenceDataItem[]> {
-    return (await this.getSnapshot()).organizationTypes;
+    return this.getSnapshot().organizationTypes;
   }
 
   async listOrganizationUserTypes(): Promise<ReferenceDataItem[]> {
-    return (await this.getSnapshot()).organizationUserTypes;
+    return this.getSnapshot().organizationUserTypes;
   }
 
   async listStoreTypes(): Promise<ReferenceDataItem[]> {
-    return (await this.getSnapshot()).storeTypes;
+    return this.getSnapshot().storeTypes;
   }
 
   async listProductCategories(): Promise<ReferenceDataItem[]> {
-    return (await this.getSnapshot()).productCategories;
+    return this.getSnapshot().productCategories;
   }
 
   async listProductTypes(): Promise<ReferenceDataItem[]> {
-    return (await this.getSnapshot()).productTypes;
+    return this.getSnapshot().productTypes;
   }
 
   async listBenefitCategories(): Promise<ReferenceDataItem[]> {
-    return (await this.getSnapshot()).benefitCategories;
+    return this.getSnapshot().benefitCategories;
   }
 
   async listBenefitTypes(): Promise<ReferenceDataItem[]> {
-    return (await this.getSnapshot()).benefitTypes;
+    return this.getSnapshot().benefitTypes;
   }
 
   async listCurrencies(): Promise<ReferenceDataItem[]> {
-    return (await this.getSnapshot()).currencies;
+    return this.getSnapshot().currencies;
   }
 
   async listIntegrationTypes(): Promise<ReferenceDataItem[]> {
-    return (await this.getSnapshot()).integrationTypes;
+    return this.getSnapshot().integrationTypes;
   }
 
   async listCountries(): Promise<CountryReference[]> {
-    return (await this.getSnapshot()).countries;
+    return this.getSnapshot().countries;
   }
 
   async listRegions(countryCode: string): Promise<RegionReference[]> {
     const normalizedCountryCode = countryCode.trim().toUpperCase();
 
-    return (await this.getSnapshot()).regions
+    return this.getSnapshot().regions
       .filter(
         (region) =>
           region.countryCode.trim().toUpperCase() === normalizedCountryCode,
@@ -113,7 +150,7 @@ export class ServerReferenceDataService implements ReferenceDataService {
     const normalizedCountryCode = countryCode.trim().toUpperCase();
     const normalizedRegionCode = regionCode.trim().toUpperCase();
 
-    return (await this.getSnapshot()).cities
+    return this.getSnapshot().cities
       .filter(
         (city) =>
           city.countryCode.trim().toUpperCase() === normalizedCountryCode &&

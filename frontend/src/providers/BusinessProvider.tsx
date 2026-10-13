@@ -97,6 +97,7 @@ export function BusinessProvider({
     pathname === "/customer" ||
     pathname.startsWith("/customer/") ||
     pathname.startsWith("/discover/");
+  const isOrganizationScopedAdminRoute = pathname.startsWith("/org-admin/");
   const isCustomerOnlySession =
     !!session &&
     !session.posContext &&
@@ -110,7 +111,10 @@ export function BusinessProvider({
     );
   const skipImplicitOrganizationResolution =
     !organizationId &&
-    (!session || isCustomerLevelRoute || isCustomerOnlySession);
+    (!session ||
+      isCustomerLevelRoute ||
+      isOrganizationScopedAdminRoute ||
+      isCustomerOnlySession);
 
   const sessionOrganizationIds = useMemo(
     () =>

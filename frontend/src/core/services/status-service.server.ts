@@ -1,45 +1,23 @@
 import type { ID } from "../domain/common";
 import type { EntityStatus, EntityType, Status } from "../domain/entities";
 import type { StatusService } from "./status";
-import { httpClient } from "@/src/data/api/http-client";
-
-type EntityStatusSnapshot = {
-  statuses: Status[];
-  entityTypes: EntityType[];
-  entityStatuses: EntityStatus[];
-};
+import {
+  getEntityStatusSnapshot,
+  initializeEntityStatusSnapshot,
+  refreshEntityStatusSnapshot,
+} from "./entity-status-snapshot";
 
 export class ServerStatusService implements StatusService {
-  private snapshot: EntityStatusSnapshot | null = null;
-  private loading: Promise<EntityStatusSnapshot> | null = null;
+  async initialize(): Promise<void> {
+    return initializeEntityStatusSnapshot();
+  }
 
   async refresh(): Promise<void> {
-    this.snapshot = await this.load();
+    return refreshEntityStatusSnapshot();
   }
 
-  private async load(): Promise<EntityStatusSnapshot> {
-    const result = await httpClient.get<EntityStatusSnapshot>(
-      "/api/v1/entity-status",
-    );
-
-    if (!result.success) {
-      throw new Error(result.error.message);
-    }
-
-    return result.data;
-  }
-
-  private async getSnapshot(): Promise<EntityStatusSnapshot> {
-    if (!this.snapshot) {
-      this.loading ??= this.load();
-      try {
-        this.snapshot = await this.loading;
-      } finally {
-        this.loading = null;
-      }
-    }
-
-    return this.snapshot;
+  getSnapshot() {
+    return getEntityStatusSnapshot();
   }
 
   // ---------------------------------------------------------------------------
@@ -63,7 +41,7 @@ export class ServerStatusService implements StatusService {
   }
 
   async listStatuses(): Promise<Status[]> {
-    return (await this.getSnapshot()).statuses;
+    return this.getSnapshot().statuses;
   }
 
   async listActiveStatuses(): Promise<Status[]> {
@@ -92,7 +70,7 @@ export class ServerStatusService implements StatusService {
   }
 
   async listEntityTypes(): Promise<EntityType[]> {
-    return (await this.getSnapshot()).entityTypes;
+    return this.getSnapshot().entityTypes;
   }
 
   async listActiveEntityTypes(): Promise<EntityType[]> {
@@ -110,7 +88,7 @@ export class ServerStatusService implements StatusService {
   }
 
   async listEntityStatuses(): Promise<EntityStatus[]> {
-    return (await this.getSnapshot()).entityStatuses;
+    return this.getSnapshot().entityStatuses;
   }
 
   async listEntityStatusesByEntityType(
