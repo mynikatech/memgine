@@ -34,9 +34,11 @@ export default function QRResolutionScreen() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
+  const [resolvedDestination, setResolvedDestination] = useState<string>();
 
   useEffect(() => {
     let mounted = true;
+    setResolvedDestination(undefined);
 
     const resolve = async () => {
       if (!token) {
@@ -105,6 +107,8 @@ export default function QRResolutionScreen() {
         const destination = journey.membershipProductId
           ? `${APP_ROUTES.join.membership(journey.organizationId, journey.membershipProductId)}&source=QR`
           : `${APP_ROUTES.join.organization(journey.organizationId)}&source=QR`;
+
+        setResolvedDestination(destination);
 
         if (Platform.OS !== "web" && auth.loading) return;
         if (Platform.OS !== "web" && (!auth.session || auth.mobileSessionMode !== "customer")) {
@@ -209,7 +213,12 @@ export default function QRResolutionScreen() {
             </Text>
             <Button
               label="Continue"
-              onPress={() => router.replace(APP_ROUTES.join.root)}
+              disabled={!resolvedDestination}
+              onPress={() => {
+                if (resolvedDestination) {
+                  router.replace(resolvedDestination as never);
+                }
+              }}
             />
           </View>
         </Card>

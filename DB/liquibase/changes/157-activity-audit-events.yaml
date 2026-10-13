@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 157-activity-audit-events
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/157-activity-audit-events.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

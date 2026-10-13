@@ -5,6 +5,9 @@ import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.model.common.ApiResponse
 import com.mynikatech.memgine.net.dto.*
 import com.mynikatech.memgine.security.authenticatedPrincipal
+import com.mynikatech.memgine.security.AuthenticatedPrincipal
+import com.mynikatech.memgine.security.PosSessionContext
+import com.mynikatech.memgine.component.activityaudit.ActivityAuditService
 import io.ktor.http.Cookie
 import io.ktor.http.HttpHeaders
 import io.ktor.server.application.*
@@ -13,7 +16,7 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.*
 
-fun Route.posAuthenticationRoutes(service: PosAuthenticationService, config: AuthenticationConfig) {
+fun Route.posAuthenticationRoutes(service: PosAuthenticationService, config: AuthenticationConfig, audit: ActivityAuditService) {
  route("/organizations/{organizationId}") {
   route("/pos-devices") {
    get { val org=call.parameters["organizationId"]?:throw BadRequestException("Organization id is required"); call.respond(ApiResponse.success(service.list(org,call.authenticatedPrincipal().userId),call.callId)) }
@@ -24,7 +27,7 @@ fun Route.posAuthenticationRoutes(service: PosAuthenticationService, config: Aut
  }
  route("/pos") {
   get("/context") { call.respond(ApiResponse.success(service.context(call.request.cookies[config.posDeviceCookieName]),call.callId)) }
-  post("/unlock") { val unlocked=service.unlock(call.request.cookies[config.posDeviceCookieName],call.receive(),call.clientIp(),call.request.headers[HttpHeaders.UserAgent]); call.setUserCookie(config,unlocked.token); call.respond(ApiResponse.success(unlocked.dto,call.callId)) }
+  post("/unlock") { val unlocked=service.unlock(call.request.cookies[config.posDeviceCookieName],call.receive(),call.clientIp(),call.request.headers[HttpHeaders.UserAgent]); call.setUserCookie(config,unlocked.token); val context = unlocked.dto.posContext!!; audit.recordLogin(AuthenticatedPrincipal(unlocked.dto.userId, unlocked.dto.displayName, unlocked.dto.expiresAt, unlocked.dto.access, PosSessionContext(context.deviceId, context.organizationId, context.storeId, context.staffId))); call.respond(ApiResponse.success(unlocked.dto,call.callId)) }
  }
 }
 private fun ApplicationCall.clientIp()=request.headers["X-Forwarded-For"]?.substringBefore(',')?.trim()?:request.headers["X-Real-IP"]?.trim()

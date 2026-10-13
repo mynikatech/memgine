@@ -100,6 +100,8 @@ export function BusinessProvider({
   const isOrganizationScopedAdminRoute = pathname.startsWith("/org-admin/");
   const isCounterRoute =
     pathname === "/counter" || pathname.startsWith("/counter/");
+  const isJoinRoute =
+    pathname === "/join" || pathname.startsWith("/join/");
   const isCustomerOnlySession =
     !!session &&
     !session.posContext &&
@@ -117,6 +119,7 @@ export function BusinessProvider({
       isCustomerLevelRoute ||
       isOrganizationScopedAdminRoute ||
       isCounterRoute ||
+      isJoinRoute ||
       isCustomerOnlySession);
 
   const sessionOrganizationIds = useMemo(
@@ -251,7 +254,13 @@ export function BusinessProvider({
 
       try {
         const context = await resolveOrganizationContext(targetOrganizationId);
-
+        console.log("[BUSINESS RESOLVE]", {
+          pathname,
+          explicitOrganizationId: organizationId,
+          targetOrganizationId,
+          contextResolved: Boolean(context),
+          cancelled,
+        });
         if (cancelled) {
           return;
         }

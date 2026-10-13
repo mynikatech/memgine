@@ -3,12 +3,16 @@ package com.mynikatech.memgine.component.payment
 import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.model.common.ApiResponse
 import com.mynikatech.memgine.net.dto.PaymentConfirmationDto
+import com.mynikatech.memgine.net.dto.CounterPurchaseResult
 import com.mynikatech.memgine.net.dto.MonerisPaymentConfirmationDto
 import com.mynikatech.memgine.net.dto.PoyntCollectConfirmationDto
 import com.mynikatech.memgine.net.dto.PoyntCollectCheckoutDto
 import com.mynikatech.memgine.net.dto.PoyntCollectCheckoutSessionDto
 import com.mynikatech.memgine.net.dto.TestPaymentConfirmationDto
 import com.mynikatech.memgine.security.authenticatedPrincipal
+import com.mynikatech.memgine.component.activityaudit.ActivityAuditEvent
+import com.mynikatech.memgine.component.activityaudit.ActivityAuditService
+import com.mynikatech.memgine.component.activityaudit.ActivityEventType
 import io.ktor.server.application.call
 import io.ktor.server.plugins.callid.callId
 import io.ktor.server.request.receive
@@ -24,7 +28,7 @@ import io.ktor.http.HttpHeaders
 private const val CollectCheckoutCookie = "memgine_collect_checkout"
 
 /** Provider callbacks will use the same service boundary after signature validation is added. */
-fun Route.paymentRoutes(service: PaymentService) {
+fun Route.paymentRoutes(service: PaymentService, audit: ActivityAuditService) {
     route("/payments/providers/stripe") {
         post("/webhook") {
             val accepted = service.handleStripeWebhook(
@@ -95,6 +99,7 @@ fun Route.paymentRoutes(service: PaymentService) {
                 call.authenticatedPrincipal().userId,
                 call.receive<MonerisPaymentConfirmationDto>().temporaryToken
             )
+            recordCompletedPurchase(audit, organizationId, call.authenticatedPrincipal().userId, result)
             call.respond(ApiResponse.success(PaymentConfirmationDto(result.first, result.second), call.callId))
         }
         post("/{paymentIntentId}/poynt-collect/confirm") {
@@ -106,6 +111,7 @@ fun Route.paymentRoutes(service: PaymentService) {
                 organizationId, paymentIntentId, call.authenticatedPrincipal().userId,
                 call.receive<PoyntCollectConfirmationDto>()
             )
+            recordCompletedPurchase(audit, organizationId, call.authenticatedPrincipal().userId, result)
             call.respond(ApiResponse.success(PaymentConfirmationDto(result.first, result.second), call.callId))
         }
         post("/{paymentIntentId}/test-result") {
@@ -119,6 +125,7 @@ fun Route.paymentRoutes(service: PaymentService) {
                 call.authenticatedPrincipal().userId,
                 call.receive<TestPaymentConfirmationDto>()
             )
+            recordCompletedPurchase(audit, organizationId, call.authenticatedPrincipal().userId, result)
             call.respond(ApiResponse.success(PaymentConfirmationDto(result.first, result.second), call.callId))
         }
     }
@@ -165,9 +172,26 @@ fun Route.paymentRoutes(service: PaymentService) {
             val result = service.browserConfirmCollectAndFinalize(
                 token, csrf, call.receive<PoyntCollectConfirmationDto>()
             )
+            recordCompletedPurchase(audit, null, result.first.customerUserId ?: "", result)
             call.respond(ApiResponse.success(PaymentConfirmationDto(result.first, result.second), call.callId))
         }
     }
+}
+
+private fun recordCompletedPurchase(
+    audit: ActivityAuditService,
+    organizationId: String?,
+    actorUserId: String,
+    result: Pair<com.mynikatech.memgine.net.dto.PaymentIntentDto, CounterPurchaseResult?>
+) {
+    val subscription = result.second ?: return
+    audit.record(ActivityAuditEvent(
+        ActivityEventType.PURCHASE_COMPLETED, actorUserId, "CUSTOMER", organizationId,
+        customerUserId = subscription.userId, subscriptionId = subscription.subscriptionId,
+        transactionId = result.first.commerceTransactionId ?: result.first.paymentIntentId,
+        source = "CUSTOMER",
+        deduplicationKey = "PURCHASE_COMPLETED:${result.first.commerceTransactionId ?: result.first.paymentIntentId}"
+    ))
 }
 
 private fun requireCollectOrigin(call: io.ktor.server.application.ApplicationCall, service: PaymentService) {

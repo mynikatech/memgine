@@ -29,6 +29,7 @@ import type {
 } from "@/src/core";
 
 import { services } from "@/src/core";
+import { trackActivity } from "@/src/core/services/activity-audit";
 import { resolveAssetUrl } from "@/src/data/api/asset-url";
 import type { CustomerRedemptionItemStatus } from "@/src/data/api/customer-data-api";
 import {
@@ -1514,15 +1515,21 @@ export function BusinessExperience({
                             : t("experience.join")
                         }
                         size="sm"
-                        onPress={() =>
-                          membershipOffer
-                            ? onUseMembershipPurchaseOffer?.(
-                                membershipOffer.offerId,
-                                membershipOffer.displayName,
-                                p.id,
-                              )
-                            : onJoin(p.id)
-                        }
+                        onPress={() => {
+                          trackActivity("BUY_MEMBERSHIP_CLICKED", {
+                            organizationId: organization.id,
+                            membershipProductId: p.id,
+                          });
+                          if (membershipOffer) {
+                            onUseMembershipPurchaseOffer?.(
+                              membershipOffer.offerId,
+                              membershipOffer.displayName,
+                              p.id,
+                            );
+                          } else {
+                            onJoin(p.id);
+                          }
+                        }}
                         disabled={Boolean(
                           membershipOffer && !onUseMembershipPurchaseOffer,
                         )}

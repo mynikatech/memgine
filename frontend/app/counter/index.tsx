@@ -28,6 +28,7 @@ import { RedemptionMethod, RedemptionResult, services } from "@/src/core";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { counterCheckout } from "@/src/core/services/counter-checkout";
+import { trackActivity } from "@/src/core/services/activity-audit";
 import { useCounterSession } from "@/src/core/services/counter-session-context";
 import {
   eligibleCounterStores,
@@ -76,7 +77,6 @@ const COUNTER_REDEMPTION_PAYMENT_STORAGE_PREFIX =
   "counter-redemption-terminal-payment";
 const COUNTER_REDEMPTION_PAYMENT_POLL_INTERVAL_MS = 2_000;
 const COUNTER_REDEMPTION_PAYMENT_AUTO_POLL_WINDOW_MS = 120_000;
-
 
 type RedemptionCheckoutStage =
   | "idle"
@@ -260,14 +260,15 @@ export default function StaffCounter() {
   >([]);
   const redemptionCheckoutInFlight = useRef(false);
   const redemptionRemoteStartInFlight = useRef(false);
-  const [pendingRedemptionTerminalPayment, setPendingRedemptionTerminalPayment] =
-    useState<PendingCounterRedemptionPayment | null>(null);
+  const [
+    pendingRedemptionTerminalPayment,
+    setPendingRedemptionTerminalPayment,
+  ] = useState<PendingCounterRedemptionPayment | null>(null);
   const [redemptionPaymentTimedOut, setRedemptionPaymentTimedOut] =
     useState(false);
   const redemptionPaymentPolling = useRef(false);
   const [restoringRedemptionPayment, setRestoringRedemptionPayment] =
     useState(true);
-
 
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
@@ -655,7 +656,11 @@ export default function StaffCounter() {
             { organizationId: orgId, storeId, staffId },
             saved.redemptionTransactionId,
           );
-          if (!active || latest.commerceTransactionId !== saved.commerceTransactionId) return;
+          if (
+            !active ||
+            latest.commerceTransactionId !== saved.commerceTransactionId
+          )
+            return;
           setRedemptionCheckout(latest);
           setPendingRedemptionTerminalPayment(saved);
           setRedemptionPaymentTimedOut(
@@ -663,7 +668,8 @@ export default function StaffCounter() {
               COUNTER_REDEMPTION_PAYMENT_AUTO_POLL_WINDOW_MS,
           );
           setRedemptionCheckoutStage(
-            latest.redemptionStatus === "SUCCESS" || latest.commerceStatus === "COMPLETED"
+            latest.redemptionStatus === "SUCCESS" ||
+              latest.commerceStatus === "COMPLETED"
               ? "complete"
               : "waiting",
           );
@@ -822,7 +828,9 @@ export default function StaffCounter() {
 
   const identifyCustomer = async (
     customerId: string,
-    providedRow?: Awaited<ReturnType<typeof services.counter.customers>>[number],
+    providedRow?: Awaited<
+      ReturnType<typeof services.counter.customers>
+    >[number],
   ) => {
     try {
       const row =
@@ -949,6 +957,13 @@ export default function StaffCounter() {
       setError("Enter the new customer details first.");
       return;
     }
+
+    // trackActivity("COUNTER_SELL_MEMBERSHIP_CLICKED", {
+    //  organizationId: orgId,
+    //  storeId,
+    //  staffId,
+    //   membershipProductId: productId,
+    // });
     router.push({
       pathname: APP_ROUTES.join.root,
       params: {
@@ -1240,7 +1255,10 @@ export default function StaffCounter() {
       }
 
       if (latest.providerCode === "POYNT") {
-        if (latest.pricingReconciliationRequired && !latest.pricingAcknowledged) {
+        if (
+          latest.pricingReconciliationRequired &&
+          !latest.pricingAcknowledged
+        ) {
           setRedemptionCheckoutStage("ready");
           setError("");
           return;
@@ -1253,13 +1271,17 @@ export default function StaffCounter() {
         try {
           setRedemptionCheckoutStage("ready");
           await services.counter.startRedemptionRemoteTerminalPayment(
-            counterContext(), latest.redemptionTransactionId,
+            counterContext(),
+            latest.redemptionTransactionId,
           );
           const waiting = await services.counter.redemptionCheckout(
-            counterContext(), latest.redemptionTransactionId,
+            counterContext(),
+            latest.redemptionTransactionId,
           );
           const pending: PendingCounterRedemptionPayment = {
-            organizationId: orgId, storeId, staffId,
+            organizationId: orgId,
+            storeId,
+            staffId,
             redemptionTransactionId: latest.redemptionTransactionId,
             commerceTransactionId: latest.commerceTransactionId,
             pollingWindowStartedAt: Date.now(),
@@ -1391,7 +1413,11 @@ export default function StaffCounter() {
       );
       await applyRedemptionCheckoutState(acknowledged, true);
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Unable to acknowledge updated POS prices.");
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Unable to acknowledge updated POS prices.",
+      );
     } finally {
       setBusy(false);
     }
@@ -1404,7 +1430,8 @@ export default function StaffCounter() {
     setError("");
     try {
       const latest = await services.counter.redemptionCheckout(
-        counterContext(), redemptionCheckout.redemptionTransactionId,
+        counterContext(),
+        redemptionCheckout.redemptionTransactionId,
       );
       await applyRedemptionCheckoutState(latest, false);
       if (latest.commerceStatus === "PROVIDER_IN_PROGRESS") {
@@ -1420,7 +1447,11 @@ export default function StaffCounter() {
         });
       }
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Unable to check terminal payment status.");
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Unable to check terminal payment status.",
+      );
     } finally {
       redemptionPaymentPolling.current = false;
       setBusy(false);
@@ -1431,7 +1462,8 @@ export default function StaffCounter() {
       redemptionCheckoutStage !== "waiting" ||
       !pendingRedemptionTerminalPayment ||
       redemptionPaymentTimedOut
-    ) return;
+    )
+      return;
 
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1442,7 +1474,10 @@ export default function StaffCounter() {
     };
     const poll = async () => {
       if (!active) return;
-      if (Date.now() - pendingRedemptionTerminalPayment.pollingWindowStartedAt >= COUNTER_REDEMPTION_PAYMENT_AUTO_POLL_WINDOW_MS) {
+      if (
+        Date.now() - pendingRedemptionTerminalPayment.pollingWindowStartedAt >=
+        COUNTER_REDEMPTION_PAYMENT_AUTO_POLL_WINDOW_MS
+      ) {
         timeout();
         return;
       }
@@ -1461,29 +1496,52 @@ export default function StaffCounter() {
           pendingRedemptionTerminalPayment.redemptionTransactionId,
         );
         if (!active) return;
-        if (latest.redemptionStatus === "SUCCESS" || latest.commerceStatus === "COMPLETED") {
+        if (
+          latest.redemptionStatus === "SUCCESS" ||
+          latest.commerceStatus === "COMPLETED"
+        ) {
           await finishRedemptionCheckout(latest);
           return;
         }
         if (
-          ["PROVIDER_FAILED", "CANCELLED", "CANCELED"].includes(latest.commerceStatus) ||
+          ["PROVIDER_FAILED", "CANCELLED", "CANCELED"].includes(
+            latest.commerceStatus,
+          ) ||
           (latest.commerceStatus === "ORDER_CREATED" && !!latest.failureCode)
         ) {
           clearPendingRedemptionTerminalPayment();
           setRedemptionCheckout(latest);
           setRedemptionCheckoutStage("failed");
-          setError(latest.failureMessage || "Terminal payment was not completed.");
+          setError(
+            latest.failureMessage || "Terminal payment was not completed.",
+          );
           return;
         }
-        if (Date.now() - pendingRedemptionTerminalPayment.pollingWindowStartedAt >= COUNTER_REDEMPTION_PAYMENT_AUTO_POLL_WINDOW_MS) {
+        if (
+          Date.now() -
+            pendingRedemptionTerminalPayment.pollingWindowStartedAt >=
+          COUNTER_REDEMPTION_PAYMENT_AUTO_POLL_WINDOW_MS
+        ) {
           timeout();
           return;
         }
-        timer = setTimeout(() => void poll(), COUNTER_REDEMPTION_PAYMENT_POLL_INTERVAL_MS);
+        timer = setTimeout(
+          () => void poll(),
+          COUNTER_REDEMPTION_PAYMENT_POLL_INTERVAL_MS,
+        );
       } catch {
         if (!active) return;
-        if (Date.now() - pendingRedemptionTerminalPayment.pollingWindowStartedAt >= COUNTER_REDEMPTION_PAYMENT_AUTO_POLL_WINDOW_MS) timeout();
-        else timer = setTimeout(() => void poll(), COUNTER_REDEMPTION_PAYMENT_POLL_INTERVAL_MS);
+        if (
+          Date.now() -
+            pendingRedemptionTerminalPayment.pollingWindowStartedAt >=
+          COUNTER_REDEMPTION_PAYMENT_AUTO_POLL_WINDOW_MS
+        )
+          timeout();
+        else
+          timer = setTimeout(
+            () => void poll(),
+            COUNTER_REDEMPTION_PAYMENT_POLL_INTERVAL_MS,
+          );
       } finally {
         redemptionPaymentPolling.current = false;
       }
@@ -1725,6 +1783,13 @@ export default function StaffCounter() {
       ) {
         throw new Error("Select a customer, membership and at least one item.");
       }
+
+      trackActivity("COUNTER_REDEEM_CLICKED", {
+        organizationId: orgId,
+        storeId,
+        staffId,
+        subscriptionId: selectedSubId,
+      });
 
       const transaction = await services.counter.createRedemptionTransaction(
         counterContext(),
@@ -3013,15 +3078,18 @@ export default function StaffCounter() {
             <View style={styles.customerSavedBox}>
               <Text style={styles.identified}>POS prices changed</Text>
               <Text style={styles.muted}>
-                Review the current Poynt prices before sending payment to the terminal.
+                Review the current Poynt prices before sending payment to the
+                terminal.
               </Text>
               {(redemptionCheckout.pricingDiscrepancies ?? []).map((item) => (
                 <View key={item.lineId} style={styles.ctxRow}>
                   <Text style={styles.ctxLabel}>{item.productName}</Text>
                   <Text style={styles.ctxValue}>
-                    {item.storedCurrencyCode} {(item.storedPriceMinor / 100).toFixed(2)}
+                    {item.storedCurrencyCode}{" "}
+                    {(item.storedPriceMinor / 100).toFixed(2)}
                     {" -> "}
-                    {item.poyntCurrencyCode} {(item.poyntPriceMinor / 100).toFixed(2)}
+                    {item.poyntCurrencyCode}{" "}
+                    {(item.poyntPriceMinor / 100).toFixed(2)}
                   </Text>
                 </View>
               ))}
@@ -3058,7 +3126,8 @@ export default function StaffCounter() {
             </Pressable>
           ) : null}
 
-          {redemptionCheckoutStage === "waiting" && redemptionPaymentTimedOut ? (
+          {redemptionCheckoutStage === "waiting" &&
+          redemptionPaymentTimedOut ? (
             <Pressable
               testID="counter-redemption-check-payment-status"
               disabled={busy}

@@ -502,6 +502,7 @@ class CounterService(
         principal: AuthenticatedPrincipal
     ): PaymentConfirmationDto {
         val result = payments.confirmCounterCashAndFinalize(org, paymentIntentId, principal.userId)
+        result.first.commerceTransactionId?.let { counterCommercePayments.recordCompletion(it, principal.userId) }
         return PaymentConfirmationDto(result.first, result.second)
     }
 

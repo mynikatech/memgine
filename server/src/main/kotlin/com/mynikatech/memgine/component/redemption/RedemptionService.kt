@@ -1,6 +1,9 @@
 package com.mynikatech.memgine.component.redemption
 
 import com.mynikatech.memgine.exception.BadRequestException
+import com.mynikatech.memgine.component.activityaudit.ActivityAuditEvent
+import com.mynikatech.memgine.component.activityaudit.ActivityAuditService
+import com.mynikatech.memgine.component.activityaudit.ActivityEventType
 import com.mynikatech.memgine.exception.ConflictException
 import com.mynikatech.memgine.exception.ForbiddenException
 import com.mynikatech.memgine.net.dto.OrgAdminRedemptionDto
@@ -14,7 +17,10 @@ import java.security.SecureRandom
 import java.util.Base64
 import org.postgresql.util.PSQLException
 
-class RedemptionService(private val sql: RedemptionSql) {
+class RedemptionService(
+    private val sql: RedemptionSql,
+    private val activityAudit: ActivityAuditService
+) {
     private val qrRandom = SecureRandom()
     // Current Org Admin components use the development actor until request auth is wired.
     fun listForOrganization(organizationId: String, actorUserId: String): List<OrgAdminRedemptionDto> {
@@ -80,6 +86,11 @@ class RedemptionService(private val sql: RedemptionSql) {
                 actorUserId
             ) ?: throw BadRequestException("Unable to issue redemption QR")
         }
+        activityAudit.record(ActivityAuditEvent(
+            ActivityEventType.REDEMPTION_QR_GENERATED, actorUserId, "CUSTOMER",
+            organizationId, customerUserId = actorUserId, transactionId = transactionId,
+            source = "CUSTOMER", deduplicationKey = "REDEMPTION_QR_GENERATED:$transactionId"
+        ))
         return RedemptionTransactionQrDto(rawReference, row.transactionNumber, row.expiresAt)
     }
 
@@ -122,10 +133,18 @@ class RedemptionService(private val sql: RedemptionSql) {
         requireId(transactionId, "redemption transaction id")
         requireId(storeId, "store id")
         requireId(staffId, "staff id")
-        return translateCounterTransaction {
+        val result = translateCounterTransaction {
             sql.executeTransaction(transactionId, organizationId, storeId, staffId, actorUserId)
                 ?: throw BadRequestException("Unable to execute redemption transaction")
         }
+        if (result.status.equals("COMPLETED", ignoreCase = true)) {
+            activityAudit.record(ActivityAuditEvent(
+                ActivityEventType.REDEMPTION_COMPLETED, actorUserId, "COUNTER_STAFF",
+                organizationId, storeId, staffId, transactionId = transactionId,
+                source = "COUNTER", deduplicationKey = "REDEMPTION_COMPLETED:$transactionId"
+            ))
+        }
+        return result
     }
 
     private fun requireId(value: String, name: String) {

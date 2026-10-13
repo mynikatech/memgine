@@ -5,6 +5,7 @@ import com.mynikatech.memgine.exception.UnauthorizedException
 import com.mynikatech.memgine.model.common.ApiResponse
 import com.mynikatech.memgine.net.dto.*
 import com.mynikatech.memgine.security.authenticatedPrincipal
+import com.mynikatech.memgine.component.activityaudit.ActivityAuditService
 import io.ktor.http.Cookie
 import io.ktor.http.HttpHeaders
 import io.ktor.server.application.call
@@ -17,7 +18,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 
-fun Route.authenticationRoutes(service: AuthenticationService, config: AuthenticationConfig) {
+fun Route.authenticationRoutes(service: AuthenticationService, config: AuthenticationConfig, audit: ActivityAuditService) {
     route("/auth") {
         post("/password/login") {
             val created = service.passwordLogin(
@@ -25,6 +26,7 @@ fun Route.authenticationRoutes(service: AuthenticationService, config: Authentic
             )
             val native = call.isNativeAuthenticationClient()
             if (!native) call.setSessionCookie(config, created.token)
+            audit.recordLogin(created.principal)
             call.respond(ApiResponse.success(
                 service.toDto(created.principal, if (native) created.token else null), call.callId
             ))
@@ -38,6 +40,7 @@ fun Route.authenticationRoutes(service: AuthenticationService, config: Authentic
             )
             val native = call.isNativeAuthenticationClient()
             if (!native) call.setSessionCookie(config, created.token)
+            audit.recordLogin(created.principal)
             call.respond(ApiResponse.success(
                 service.toDto(created.principal, if (native) created.token else null), call.callId
             ))
@@ -53,6 +56,7 @@ fun Route.authenticationRoutes(service: AuthenticationService, config: Authentic
             if (!native) call.setSessionCookie(
                 config, created.token, config.customerSessionDurationDays * 24 * 60
             )
+            audit.recordLogin(created.principal)
             call.respond(ApiResponse.success(
                 service.toDto(created.principal, if (native) created.token else null), call.callId
             ))
@@ -109,6 +113,7 @@ fun Route.authenticationRoutes(service: AuthenticationService, config: Authentic
                     config.customerSessionDurationDays * 24 * 60
                 )
             }
+            audit.recordLogin(created.principal)
             call.respond(
                 ApiResponse.success(
                     service.toDto(

@@ -1,5 +1,8 @@
 package com.mynikatech.memgine.component.commerce
 
+import com.mynikatech.memgine.component.activityaudit.ActivityAuditEvent
+import com.mynikatech.memgine.component.activityaudit.ActivityAuditService
+import com.mynikatech.memgine.component.activityaudit.ActivityEventType
 import com.mynikatech.memgine.exception.ApiException
 import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.exception.ConflictException
@@ -28,6 +31,7 @@ import org.jdbi.v3.sqlobject.config.RegisterBeanMapper
 import org.jdbi.v3.sqlobject.customizer.Bind
 import org.jdbi.v3.sqlobject.statement.SqlQuery
 import org.postgresql.util.PSQLException
+import org.slf4j.LoggerFactory
 import java.security.MessageDigest
 import java.util.UUID
 
@@ -49,8 +53,11 @@ class CounterCommercePaymentService(
     private val providers: CommerceProviderRegistry,
     private val remotePaymentConfiguration: CommerceRemotePaymentConfiguration,
     private val terminalBindingResolver: PoyntTerminalBindingResolver,
+    private val activityAudit: ActivityAuditService,
     private val testProviderEnabled: Boolean = false
 ) {
+    private val logger = LoggerFactory.getLogger(CounterCommercePaymentService::class.java)
+
     private fun sql(): CounterCommercePaymentSql =
         jdbi.onDemand(CounterCommercePaymentSql::class.java)
 
@@ -232,7 +239,7 @@ class CounterCommercePaymentService(
             throw BadRequestException("Terminal payment failure detail is too long")
         }
 
-        sql().recordLocalTerminalPaymentResult(
+        val persisted = sql().recordLocalTerminalPaymentResult(
             organizationId,
             transactionId,
             request.providerTransactionId,
@@ -243,6 +250,8 @@ class CounterCommercePaymentService(
             request.failureMessage,
             actorUserId
         )
+        if (persisted) recordCompletion(transactionId, actorUserId)
+        persisted
     }
 
     fun startRemoteTerminalPayment(
@@ -393,6 +402,7 @@ class CounterCommercePaymentService(
             )
         }
 
+        recordCompletion(checkout.commerceTransactionId, actorUserId)
         redemptionCheckoutDto(checkout, actorUserId)
     }
 
@@ -422,6 +432,7 @@ class CounterCommercePaymentService(
             )
         }
 
+        recordCompletion(checkout.commerceTransactionId, actorUserId)
         redemptionCheckoutDto(checkout, actorUserId)
     }
 
@@ -577,20 +588,22 @@ class CounterCommercePaymentService(
             throw ConflictException("TEST redemption payment result was not persisted")
         }
 
-        redemptionCheckoutDto(
-            redemptionCheckout(
-                organizationId,
-                redemptionTransactionId,
-                storeId,
-                staffId,
-                actorUserId
-            ),
+        val updated = redemptionCheckout(
+            organizationId,
+            redemptionTransactionId,
+            storeId,
+            staffId,
             actorUserId
         )
+        recordCompletion(updated.commerceTransactionId, actorUserId)
+        redemptionCheckoutDto(updated, actorUserId)
     }
 
     fun finalizeRemoteTerminalPayment(referenceId: String) = translate {
-        sql().finalizeRemoteTerminalPayment(referenceId.trim())
+        val normalizedReference = referenceId.trim()
+        sql().finalizeRemoteTerminalPayment(normalizedReference)?.also {
+            recordRemoteTerminalCompletion(normalizedReference)
+        }
     }
 
     /*
@@ -902,6 +915,61 @@ class CounterCommercePaymentService(
             staffId,
             actorUserId
         ) ?: throw NotFoundException("Counter redemption checkout was not found")
+
+    /**
+     * Completion is persisted by the Commerce SQL functions before this
+     * best-effort audit read. This also makes asynchronous bridge callbacks
+     * independent of a browser or active staff session.
+     */
+    fun recordCompletion(transactionId: String, actorUserId: String?) {
+        try {
+            val completion = sql().completionAuditContext(transactionId) ?: return
+            when (completion.sourceChannel) {
+                "COUNTER", "COUNTER_MEMBERSHIP" -> activityAudit.record(
+                    ActivityAuditEvent(
+                        eventType = ActivityEventType.PURCHASE_COMPLETED,
+                        actorUserId = actorUserId ?: completion.counterActorUserId,
+                        actorRole = "COUNTER_STAFF",
+                        organizationId = completion.organizationId,
+                        storeId = completion.storeId,
+                        customerUserId = completion.customerUserId,
+                        subscriptionId = completion.subscriptionId,
+                        transactionId = completion.commerceTransactionId,
+                        source = "COUNTER",
+                        deduplicationKey = "PURCHASE_COMPLETED:${completion.commerceTransactionId}"
+                    )
+                )
+                "COUNTER_REDEMPTION" -> {
+                    val redemptionTransactionId = completion.redemptionTransactionId ?: return
+                    activityAudit.record(
+                        ActivityAuditEvent(
+                            eventType = ActivityEventType.REDEMPTION_COMPLETED,
+                            actorUserId = actorUserId ?: completion.counterActorUserId,
+                            actorRole = "COUNTER_STAFF",
+                            organizationId = completion.organizationId,
+                            storeId = completion.storeId,
+                            customerUserId = completion.customerUserId,
+                            subscriptionId = completion.subscriptionId,
+                            transactionId = redemptionTransactionId,
+                            source = "COUNTER",
+                            deduplicationKey = "REDEMPTION_COMPLETED:$redemptionTransactionId"
+                        )
+                    )
+                }
+            }
+        } catch (error: Exception) {
+            logger.warn("Activity audit completion lookup failed")
+        }
+    }
+
+    private fun recordRemoteTerminalCompletion(referenceId: String) {
+        try {
+            sql().completionAuditContextByRemoteReference(referenceId)
+                ?.let { recordCompletion(it.commerceTransactionId, null) }
+        } catch (error: Exception) {
+            logger.warn("Activity audit remote completion lookup failed")
+        }
+    }
 
     private fun redemptionCheckoutDto(
         row: CounterRedemptionCheckoutRow,
@@ -1254,6 +1322,17 @@ class CounterCommerceRemotePaymentStartRow {
     var providerReferenceId: String = ""
 }
 
+class CounterCommerceCompletionAuditRow {
+    var commerceTransactionId: String = ""
+    var sourceChannel: String = ""
+    var organizationId: String = ""
+    var storeId: String? = null
+    var customerUserId: String? = null
+    var subscriptionId: String? = null
+    var redemptionTransactionId: String? = null
+    var counterActorUserId: String? = null
+}
+
 class CounterRedemptionPreparedRow {
     var commerceTransactionId: String = ""
     var providerCode: String = ""
@@ -1384,6 +1463,75 @@ interface CounterCommercePaymentSql {
         @Bind("transactionId") transactionId: String,
         @Bind("actorUserId") actorUserId: String
     ): CounterCommerceTransactionRow?
+
+    @SqlQuery("""
+        SELECT c.commerce_transaction_id AS commerceTransactionId,
+               c.source_channel AS sourceChannel,
+               c.organization_id AS organizationId,
+               c.store_id AS storeId,
+               c.customer_user_id AS customerUserId,
+               c.subscription_id AS subscriptionId,
+               r.redemption_transaction_id AS redemptionTransactionId,
+               ou.user_id AS counterActorUserId
+          FROM commerce_transactions c
+          LEFT JOIN commerce_transaction_redemptions r
+            ON r.commerce_transaction_id = c.commerce_transaction_id
+           AND NOT r.is_deleted
+          LEFT JOIN organization_user ou
+            ON ou.organization_user_id = c.created_by
+           AND ou.organization_id = c.organization_id
+           AND NOT ou.is_deleted
+         WHERE c.commerce_transaction_id = :transactionId
+           AND NOT c.is_deleted
+           AND (
+                (c.source_channel IN ('COUNTER', 'COUNTER_MEMBERSHIP')
+                 AND c.subscription_id IS NOT NULL)
+                OR
+                (c.source_channel = 'COUNTER_REDEMPTION'
+                 AND c.status = 'COMPLETED')
+           )
+    """)
+    @RegisterBeanMapper(CounterCommerceCompletionAuditRow::class)
+    fun completionAuditContext(
+        @Bind("transactionId") transactionId: String
+    ): CounterCommerceCompletionAuditRow?
+
+    @SqlQuery("""
+        SELECT c.commerce_transaction_id AS commerceTransactionId,
+               c.source_channel AS sourceChannel,
+               c.organization_id AS organizationId,
+               c.store_id AS storeId,
+               c.customer_user_id AS customerUserId,
+               c.subscription_id AS subscriptionId,
+               r.redemption_transaction_id AS redemptionTransactionId,
+               ou.user_id AS counterActorUserId
+          FROM commerce_provider_payment_attempts a
+          JOIN commerce_transactions c
+            ON c.commerce_transaction_id = a.commerce_transaction_id
+          LEFT JOIN commerce_transaction_redemptions r
+            ON r.commerce_transaction_id = c.commerce_transaction_id
+           AND NOT r.is_deleted
+          LEFT JOIN organization_user ou
+            ON ou.organization_user_id = c.created_by
+           AND ou.organization_id = c.organization_id
+           AND NOT ou.is_deleted
+         WHERE a.provider_reference_id = :referenceId
+           AND a.payment_channel = 'REMOTE_TERMINAL'
+           AND NOT c.is_deleted
+           AND (
+                (c.source_channel IN ('COUNTER', 'COUNTER_MEMBERSHIP')
+                 AND c.subscription_id IS NOT NULL)
+                OR
+                (c.source_channel = 'COUNTER_REDEMPTION'
+                 AND c.status = 'COMPLETED')
+           )
+         ORDER BY a.created_at DESC
+         LIMIT 1
+    """)
+    @RegisterBeanMapper(CounterCommerceCompletionAuditRow::class)
+    fun completionAuditContextByRemoteReference(
+        @Bind("referenceId") referenceId: String
+    ): CounterCommerceCompletionAuditRow?
 
     @SqlQuery("SELECT * FROM commerce_get_counter_membership_lines(:transactionId,:actorUserId)")
     @RegisterBeanMapper(CounterCommerceLineRow::class)

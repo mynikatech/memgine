@@ -213,6 +213,10 @@ export default function JoinRoute() {
     ? params.organizationId[0]?.trim()
     : params.organizationId?.trim();
 
+  console.log("[JOIN CONTEXT]", {
+    requestedOrganizationId,
+    currentBusinessId: currentBusiness?.organization.id,
+  });
   /*
    * Authenticated business/counter journeys may already have the
    * correct BusinessProvider context.
@@ -279,7 +283,8 @@ function JoinFlow() {
   const auth = useAuth();
   const { session } = auth;
 
-  const { setActiveContext, refreshCustomers, invalidateCustomerLanding } = useCustomerContext();
+  const { setActiveContext, refreshCustomers, invalidateCustomerLanding } =
+    useCustomerContext();
 
   const { t, formatMoney, formatDate } = useTranslation();
 
@@ -674,21 +679,10 @@ function JoinFlow() {
         const organizationBenefits =
           await services.customerData.benefits(orgId);
 
-        console.log("[JOIN-BENEFITS] product", {
-          productId: prod.id,
-          benefitIds: prod.benefitIds,
-        });
-
-        console.log(
-          "[JOIN-BENEFITS] organizationBenefits",
-          organizationBenefits,
-        );
-
         const bens = organizationBenefits.filter(
           (benefit) =>
             !benefit.isDeleted && prod.benefitIds.includes(benefit.id),
         );
-        console.log("[JOIN-BENEFITS] matched", bens);
 
         /*
 
@@ -1092,14 +1086,6 @@ function JoinFlow() {
   ]);
 
   useEffect(() => {
-    console.log("[TAX-QUOTE] effect", {
-      orgId,
-      isStaffSale,
-      planId: plan?.id,
-      organizationUserId,
-      source: params.source,
-    });
-
     if (!plan) {
       setPurchaseQuote(null);
       setPurchaseQuoteError(undefined);
@@ -1113,14 +1099,6 @@ function JoinFlow() {
 
     const loadQuote = async () => {
       try {
-        console.log("[TAX-QUOTE] requesting", {
-          mode: isStaffSale ? "COUNTER" : "CUSTOMER",
-          orgId,
-          planId: plan.id,
-          organizationUserId,
-          source: params.source,
-        });
-
         const quote = isStaffSale
           ? await services.counter.purchaseQuote(
               counterPurchasePayload().context,
@@ -1136,15 +1114,11 @@ function JoinFlow() {
               )
             : null;
 
-        console.log("[TAX-QUOTE] response", quote);
-
         if (active) {
           setPurchaseQuote(quote);
           setPurchaseQuoteError(undefined);
         }
       } catch (error) {
-        console.error("[TAX-QUOTE] FAILED", error);
-
         // Checkout start remains authoritative and will return any pricing error.
         if (active) {
           setPurchaseQuote(null);

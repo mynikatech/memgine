@@ -1,6 +1,9 @@
 package com.mynikatech.memgine.plugins
 
 import com.mynikatech.memgine.component.asset.BrandingAssetService
+import com.mynikatech.memgine.component.activityaudit.ActivityAuditService
+import com.mynikatech.memgine.component.activityaudit.ActivityAuditSql
+import com.mynikatech.memgine.component.activityaudit.activityAuditRoutes
 import com.mynikatech.memgine.component.benefit.BenefitService
 import com.mynikatech.memgine.component.benefit.benefitRoutes
 import com.mynikatech.memgine.component.product.OrganizationProductService
@@ -133,6 +136,9 @@ fun Application.configureRouting(
         database.jdbi.onDemand(AuthenticationSql::class.java), otpService,
         phoneNormalizer, config.authentication
     )
+    val activityAuditService = ActivityAuditService(
+        database.jdbi.onDemand(ActivityAuditSql::class.java)
+    )
     val posAuthenticationService = PosAuthenticationService(
         database.jdbi.onDemand(PosAuthenticationSql::class.java), authenticationService, config.authentication
     )
@@ -174,7 +180,9 @@ fun Application.configureRouting(
     val membershipProductService = MembershipProductService(database.jdbi)
     val offerService = OfferService(database.jdbi)
     val subscriptionService = SubscriptionService(database.jdbi.onDemand(SubscriptionSql::class.java))
-    val redemptionService = RedemptionService(database.jdbi.onDemand(RedemptionSql::class.java))
+    val redemptionService = RedemptionService(
+        database.jdbi.onDemand(RedemptionSql::class.java), activityAuditService
+    )
     val notificationConfigurationService = NotificationConfigurationService(database.jdbi)
     val integrationConfigurationService = IntegrationConfigurationService(database.jdbi)
     val poyntCredentials = AwsSecretsManagerPoyntCredentialResolver(config.poynt.secretsRegion)
@@ -220,6 +228,7 @@ fun Application.configureRouting(
         commerceProviders,
         remotePaymentConfiguration,
         poyntTerminalBindingResolver,
+        activityAuditService,
         testProviderEnabled =
             config.server.environment in setOf("local", "dev", "development")
     )
@@ -266,8 +275,9 @@ fun Application.configureRouting(
         }
 
         route("/api/v1") {
-            authenticationRoutes(authenticationService, config.authentication)
-            posAuthenticationRoutes(posAuthenticationService, config.authentication)
+            authenticationRoutes(authenticationService, config.authentication, activityAuditService)
+            posAuthenticationRoutes(posAuthenticationService, config.authentication, activityAuditService)
+            activityAuditRoutes(activityAuditService)
             poyntTerminalRoutes(poyntTerminalService)
             rbacRoutes(rbacService, customerDevIdentityEnabled)
             organizationRoutes(organizationService)
@@ -293,7 +303,7 @@ fun Application.configureRouting(
             customerSelfServiceRoutes(customerService, redemptionService)
             counterRoutes(counterService)
             counterRedemptionCheckoutRoutes(counterCommercePaymentService)
-            paymentRoutes(paymentService)
+            paymentRoutes(paymentService, activityAuditService)
             notificationConfigurationRoutes(notificationConfigurationService)
             notificationRoutes(notificationService)
             integrationConfigurationRoutes(integrationConfigurationService)
