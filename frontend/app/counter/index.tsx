@@ -820,10 +820,16 @@ export default function StaffCounter() {
     [orgId, storeId, staffId],
   );
 
-  const identifyCustomer = async (customerId: string) => {
+  const identifyCustomer = async (
+    customerId: string,
+    providedRow?: Awaited<ReturnType<typeof services.counter.customers>>[number],
+  ) => {
     try {
-      const rows = await services.counter.customers(counterContext());
-      const row = rows.find((item) => item.userId === customerId);
+      const row =
+        providedRow ??
+        (await services.counter.customers(counterContext())).find(
+          (item) => item.userId === customerId,
+        );
       if (!row) throw new Error("Customer is not active in this organization.");
       const identified: Customer = {
         id: row.userId,
@@ -1535,7 +1541,7 @@ export default function StaffCounter() {
 
       // Identification itself is only lookup. The action-bound OTP is requested
       // after the membership (sale) or exact benefits (redemption) are selected.
-      await identifyCustomer(row.userId);
+      await identifyCustomer(row.userId, row);
       setOtpRequestId("");
       setOtpSent(false);
       setOtpCode("");

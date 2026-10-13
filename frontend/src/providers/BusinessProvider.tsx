@@ -98,6 +98,8 @@ export function BusinessProvider({
     pathname.startsWith("/customer/") ||
     pathname.startsWith("/discover/");
   const isOrganizationScopedAdminRoute = pathname.startsWith("/org-admin/");
+  const isCounterRoute =
+    pathname === "/counter" || pathname.startsWith("/counter/");
   const isCustomerOnlySession =
     !!session &&
     !session.posContext &&
@@ -114,6 +116,7 @@ export function BusinessProvider({
     (!session ||
       isCustomerLevelRoute ||
       isOrganizationScopedAdminRoute ||
+      isCounterRoute ||
       isCustomerOnlySession);
 
   const sessionOrganizationIds = useMemo(
