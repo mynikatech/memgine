@@ -109,7 +109,8 @@ export function BusinessProvider({
       ),
     );
   const skipImplicitOrganizationResolution =
-    !organizationId && (isCustomerLevelRoute || isCustomerOnlySession);
+    !organizationId &&
+    (!session || isCustomerLevelRoute || isCustomerOnlySession);
 
   const sessionOrganizationIds = useMemo(
     () =>
