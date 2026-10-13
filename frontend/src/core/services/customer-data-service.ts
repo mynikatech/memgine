@@ -22,6 +22,8 @@ import type {
   PendingRedemptionTransaction,
   RedemptionTransactionQr,
   CustomerMembershipPurchaseOfferQr,
+  CustomerHomeBootstrap,
+  CustomerMembershipSummary,
 } from "@/src/data/api/customer-data-api";
 import type {
   CounterPurchaseResult,
@@ -151,6 +153,18 @@ export class CustomerDataService {
 
   async profiles(userId?: ID): Promise<CustomerProfile[]> {
     const result = await this.api.profiles(userId);
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
+  }
+
+  async homeBootstrap(): Promise<CustomerHomeBootstrap> {
+    const result = await this.api.homeBootstrap();
+    if (!result.success) throw new Error(result.error.message);
+    return result.data;
+  }
+
+  async membershipSummary(organizationId: ID): Promise<CustomerMembershipSummary> {
+    const result = await this.api.membershipSummary(organizationId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }

@@ -128,6 +128,24 @@ data class CustomerRelationshipDto(
     val subscriptionCount: Int, val membershipName: String? = null
 )
 
+/** Small authenticated landing payload; intentionally excludes subscription detail. */
+@Serializable
+data class CustomerHomeBootstrapDto(
+    val discoverableOrganizations: List<CustomerDiscoverableOrganizationDto>,
+    val relationships: List<CustomerRelationshipDto>,
+    val unreadNotificationCount: Int? = null,
+)
+
+/** Per-organization card data, available only to an active customer relationship. */
+@Serializable
+data class CustomerMembershipSummaryDto(
+    val organizationId: String,
+    val subscriptions: List<CounterSubscriptionDto>,
+    val membershipProducts: List<MembershipProductDto>,
+    val benefits: List<BenefitDto>,
+    val branding: OrganizationBrandingDto? = null,
+)
+
 @Serializable
 data class CustomerPurchaseRequestDto(
     val planId: String,

@@ -279,7 +279,7 @@ function JoinFlow() {
   const auth = useAuth();
   const { session } = auth;
 
-  const { setActiveContext, refreshCustomers } = useCustomerContext();
+  const { setActiveContext, refreshCustomers, invalidateCustomerLanding } = useCustomerContext();
 
   const { t, formatMoney, formatDate } = useTranslation();
 
@@ -1360,6 +1360,8 @@ function JoinFlow() {
 
       setActiveContext(orgId, sub.id);
 
+      invalidateCustomerLanding();
+
       setStep("success");
     },
 
@@ -1368,6 +1370,7 @@ function JoinFlow() {
       isStaffSale,
       orgId,
       setActiveContext,
+      invalidateCustomerLanding,
       customerPaymentStartStorageKey,
     ],
   );

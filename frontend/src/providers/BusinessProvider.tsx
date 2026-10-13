@@ -6,6 +6,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { usePathname } from "expo-router";
 
 import {
   BusinessConfiguration,
@@ -91,6 +92,24 @@ export function BusinessProvider({
   children: ReactNode;
 } & BusinessProviderOverrides) {
   const { session, loading: sessionLoading } = useAuth();
+  const pathname = usePathname();
+  const isCustomerLevelRoute =
+    pathname === "/customer" ||
+    pathname.startsWith("/customer/") ||
+    pathname.startsWith("/discover/");
+  const isCustomerOnlySession =
+    !!session &&
+    !session.posContext &&
+    !session.access.some((context) =>
+      context.capabilities.some(
+        (capability) =>
+          capability === "PLATFORM_ADMIN_ACCESS" ||
+          capability === "ORG_ADMIN_ACCESS" ||
+          capability === "COUNTER_ACCESS",
+      ),
+    );
+  const skipImplicitOrganizationResolution =
+    !organizationId && (isCustomerLevelRoute || isCustomerOnlySession);
 
   const sessionOrganizationIds = useMemo(
     () =>
@@ -131,8 +150,8 @@ export function BusinessProvider({
     !sessionLoading &&
     !!session &&
     !organizationId &&
-    !activeOrgId &&
-    !sessionOrganizationId;
+    (skipImplicitOrganizationResolution ||
+      (!activeOrgId && !sessionOrganizationId));
 
   const [resolvedContext, setResolvedContext] =
     useState<BusinessContext | null>(null);
@@ -197,6 +216,14 @@ export function BusinessProvider({
   useEffect(() => {
     let cancelled = false;
 
+    if (skipImplicitOrganizationResolution) {
+      setResolvedContext(null);
+      setResolving(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const targetOrganizationId =
       organizationId ?? activeOrgId ?? sessionOrganizationId;
 
@@ -250,7 +277,13 @@ export function BusinessProvider({
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, organizationId, sessionLoading, sessionOrganizationId]);
+  }, [
+    activeOrgId,
+    organizationId,
+    sessionLoading,
+    sessionOrganizationId,
+    skipImplicitOrganizationResolution,
+  ]);
 
   /*
    * Preview providers continue to use their explicitly supplied

@@ -23,9 +23,13 @@ import com.mynikatech.memgine.net.dto.MembershipProductDto
 import com.mynikatech.memgine.net.dto.BenefitDto
 import com.mynikatech.memgine.net.dto.BenefitUsageRuleDto
 import com.mynikatech.memgine.net.dto.StoreDto
+import com.mynikatech.memgine.net.dto.CustomerHomeBootstrapDto
+import com.mynikatech.memgine.net.dto.CustomerMembershipSummaryDto
+import com.mynikatech.memgine.net.dto.OrganizationBrandingDto
 import com.mynikatech.memgine.component.membership.MembershipProductService
 import com.mynikatech.memgine.component.benefit.BenefitService
 import com.mynikatech.memgine.component.store.StoreService
+import com.mynikatech.memgine.component.organization.OrganizationService
 import com.mynikatech.memgine.component.otp.BusinessOtpService
 import com.mynikatech.memgine.component.otp.OtpPurpose
 import com.mynikatech.memgine.component.otp.OtpRequestResult
@@ -49,6 +53,7 @@ class CustomerService(
     private val memberships: MembershipProductService,
     private val benefits: BenefitService,
     private val stores: StoreService,
+    private val organizations: OrganizationService,
     private val devIdentityEnabled: Boolean,
     private val businessOtp: BusinessOtpService,
     private val payments: PaymentService
@@ -93,6 +98,28 @@ class CustomerService(
     fun relationships(userId: String): List<CustomerRelationshipDto> {
         validateUserId(userId)
         return sql.relationships(userId)
+    }
+
+    fun homeBootstrap(userId: String): CustomerHomeBootstrapDto {
+        validateUserId(userId)
+        return CustomerHomeBootstrapDto(discoverableOrganizations(), sql.relationships(userId))
+    }
+
+    fun membershipSummary(organizationId: String, userId: String): CustomerMembershipSummaryDto {
+        authorizeCustomer(organizationId, userId)
+        val subscriptions = sql.subscriptions(organizationId, userId)
+        val membershipProducts = memberships(organizationId, userId)
+            .filter { product -> subscriptions.any { it.membershipProductId == product.id } }
+        val benefitIds = membershipProducts.flatMap { it.benefitIds }.toSet()
+        return CustomerMembershipSummaryDto(
+            organizationId = organizationId,
+            subscriptions = subscriptions,
+            membershipProducts = membershipProducts,
+            benefits = benefits(organizationId, userId).filter { it.id in benefitIds },
+            branding = json.decodeFromString<OrganizationBrandingDto>(
+                organizations.getBranding(organizationId)
+            ),
+        )
     }
 
     fun subscriptions(organizationId: String, userId: String): List<CounterSubscriptionDto> {

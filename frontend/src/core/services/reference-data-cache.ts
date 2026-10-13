@@ -42,6 +42,7 @@ export class ReferenceDataCache {
 export const referenceDataCache = new ReferenceDataCache();
 
 export class CachedReferenceDataService implements ReferenceDataService {
+  private readonly inFlight = new Map<string, Promise<unknown>>();
   constructor(
     private readonly source: ReferenceDataService,
     private readonly ttlMs = CACHE_TTL_MS,
@@ -94,7 +95,16 @@ export class CachedReferenceDataService implements ReferenceDataService {
       return cached;
     }
 
-    const data = await loader();
+    const running = this.inFlight.get(key) as Promise<T> | undefined;
+    if (running) return running;
+    const request = loader();
+    this.inFlight.set(key, request);
+    let data: T;
+    try {
+      data = await request;
+    } finally {
+      this.inFlight.delete(key);
+    }
 
     await this.setCached(key, data);
 

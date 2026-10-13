@@ -47,6 +47,20 @@ export type PoyntCollectBootstrap = {
   } | null;
 };
 
+export type CustomerHomeBootstrap = {
+  discoverableOrganizations: CustomerDiscoverableOrganization[];
+  relationships: CustomerProfile[];
+  unreadNotificationCount?: number | null;
+};
+
+export type CustomerMembershipSummary = {
+  organizationId: ID;
+  subscriptions: CounterSubscription[];
+  membershipProducts: MembershipProduct[];
+  benefits: Benefit[];
+  branding?: OrganizationBranding | null;
+};
+
 export type PoyntCollectPaymentMethod = "card" | "apple_pay" | "google_pay";
 
 export type PoyntCollectCheckoutSession = { checkoutUrl: string };
@@ -274,6 +288,12 @@ export class CustomerDataApi {
     return httpClient.get(
       `/api/v1/customer/relationships?refresh=${Date.now()}`,
     );
+  }
+  homeBootstrap(): Promise<ApiResult<CustomerHomeBootstrap>> {
+    return httpClient.get("/api/v1/customer/home/bootstrap");
+  }
+  membershipSummary(organizationId: ID): Promise<ApiResult<CustomerMembershipSummary>> {
+    return httpClient.get(`${base(organizationId)}/membership-summary`);
   }
   purchase(
     organizationId: ID,

@@ -11,6 +11,7 @@ type EntityStatusSnapshot = {
 
 export class ServerStatusService implements StatusService {
   private snapshot: EntityStatusSnapshot | null = null;
+  private loading: Promise<EntityStatusSnapshot> | null = null;
 
   async refresh(): Promise<void> {
     this.snapshot = await this.load();
@@ -30,7 +31,12 @@ export class ServerStatusService implements StatusService {
 
   private async getSnapshot(): Promise<EntityStatusSnapshot> {
     if (!this.snapshot) {
-      this.snapshot = await this.load();
+      this.loading ??= this.load();
+      try {
+        this.snapshot = await this.loading;
+      } finally {
+        this.loading = null;
+      }
     }
 
     return this.snapshot;

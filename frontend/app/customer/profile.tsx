@@ -43,6 +43,7 @@ export default function Profile() {
     customersLoading,
     customersError,
     refreshCustomers,
+    clearActiveContext,
   } = useCustomerContext();
 
   const {
@@ -108,6 +109,7 @@ export default function Profile() {
 
   const confirmSignOut = async () => {
     setSignOutVisible(false);
+    clearActiveContext();
     await logout();
     router.replace(
       (Platform.OS === "web"
@@ -155,6 +157,7 @@ export default function Profile() {
     setDeleteAccountError(null);
     try {
       await deleteCustomerAccount(acknowledgeActiveSubscriptions);
+      clearActiveContext();
       setDeleteAccountVisible(false);
       setDeleteAccountStep("impact");
       router.replace(

@@ -9,7 +9,8 @@ import type {
   Status as DomainStatus,
   Subscription,
 } from "@/src/core";
-import { CardStyle, services } from "@/src/core";
+import { CardStyle } from "@/src/core";
+import { services } from "@/src/core/services/service-registry";
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
 import {
@@ -50,6 +51,8 @@ export default function MyCards() {
     customersLoading,
     customersError,
     refreshCustomers,
+    landing,
+    membershipSummary,
     setActiveContext,
   } = useCustomerContext();
   const { t, formatDate } = useTranslation();
@@ -63,7 +66,7 @@ export default function MyCards() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!customerId || customersLoading || customersError) {
+      if (!customerId || customersLoading || customersError || !landing) {
         setGroups([]);
         setDiscoverable([]);
         return;
@@ -75,32 +78,16 @@ export default function MyCards() {
 
       (async () => {
         try {
-          const discoveries =
-            await services.customerData.discoverOrganizations();
-
-          const freshProfiles =
-            await services.customerData.profiles(customerId);
-
-          const relationships = freshProfiles.filter(
+          const discoveries = landing.discoverableOrganizations;
+          const relationships = landing.relationships.filter(
             (row) => row.userId === customerId,
           );
           const loaded = await Promise.all(
             relationships.map(async (relationship): Promise<OrgGroup> => {
               const organizationId = relationship.organizationId;
 
-              const [subscriptions, products, allBenefits, branding] =
-                await Promise.all([
-                  services.customerData.subscriptions(
-                    organizationId,
-                    customerId,
-                  ),
-                  services.customerData.membershipProducts(
-                    organizationId,
-                    customerId,
-                  ),
-                  services.customerData.benefits(organizationId, customerId),
-                  services.organization.getOrganizationBranding(organizationId),
-                ]);
+              const summary = await membershipSummary(organizationId);
+              const { subscriptions, membershipProducts: products, benefits: allBenefits, branding } = summary;
 
               const cards = await Promise.all(
                 subscriptions.map(async (row): Promise<CardVM | null> => {
@@ -240,7 +227,7 @@ export default function MyCards() {
       return () => {
         active = false;
       };
-    }, [customerId, customersLoading, customersError]),
+    }, [customerId, customersLoading, customersError, landing, membershipSummary]),
   );
 
   const openBusiness = (card: CardVM) => {

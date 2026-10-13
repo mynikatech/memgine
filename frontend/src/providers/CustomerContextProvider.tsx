@@ -1,6 +1,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { services } from "@/src/core/services/service-registry";
 import type { CustomerProfile } from "@/src/core/services/customer-data-service";
+import type { CustomerHomeBootstrap, CustomerMembershipSummary } from "@/src/data/api/customer-data-api";
 import { useAuth } from "./AuthProvider";
 
 /**
@@ -24,6 +25,9 @@ type CustomerContextValue = ActiveCustomerContext & {
   customersLoading: boolean;
   customersError: string | null;
   refreshCustomers: () => Promise<void>;
+  landing: CustomerHomeBootstrap | null;
+  membershipSummary: (organizationId: string) => Promise<CustomerMembershipSummary>;
+  invalidateCustomerLanding: () => void;
   setActiveContext: (organizationId: string, subscriptionId: string) => void;
   clearActiveContext: () => void;
   /** Switch the selected subscription WITHIN the current organization. */
@@ -35,6 +39,8 @@ type CustomerContextValue = ActiveCustomerContext & {
 };
 
 const CustomerCtx = createContext<CustomerContextValue | null>(null);
+const summaryCache = new Map<string, CustomerMembershipSummary>();
+const summaryInflight = new Map<string, Promise<CustomerMembershipSummary>>();
 
 export function CustomerContextProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
@@ -45,6 +51,7 @@ export function CustomerContextProvider({ children }: { children: ReactNode }) {
   const [profiles, setProfiles] = useState<CustomerProfile[]>([]);
   const [customersLoading, setCustomersLoading] = useState(false);
   const [customersError, setCustomersError] = useState<string | null>(null);
+  const [landing, setLanding] = useState<CustomerHomeBootstrap | null>(null);
 
   const setActiveContext = useCallback(
     (organizationId: string, subscriptionId: string) => setCtx({ organizationId, subscriptionId }),
@@ -64,11 +71,13 @@ export function CustomerContextProvider({ children }: { children: ReactNode }) {
     setCustomersLoading(true);
     setCustomersError(null);
     try {
-      const rows = await services.customerData.profiles();
-      setProfiles(rows);
+      const bootstrap = await services.customerData.homeBootstrap();
+      setLanding(bootstrap);
+      setProfiles(bootstrap.relationships);
     } catch (error) {
       setCustomersError(error instanceof Error ? error.message : "Unable to load customers.");
       setProfiles([]);
+      setLanding(null);
     } finally {
       setCustomersLoading(false);
     }
@@ -77,11 +86,35 @@ export function CustomerContextProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!session) {
       setProfiles([]);
+      setLanding(null);
+      summaryCache.clear();
+      summaryInflight.clear();
       clearActiveContext();
       return;
     }
+    summaryCache.clear();
+    summaryInflight.clear();
     void refreshCustomers();
   }, [session, refreshCustomers, clearActiveContext]);
+
+  const membershipSummary = useCallback((organizationId: string) => {
+    const cacheKey = `${session?.userId ?? "anonymous"}:${organizationId}`;
+    const cached = summaryCache.get(cacheKey);
+    if (cached) return Promise.resolve(cached);
+    const existing = summaryInflight.get(cacheKey);
+    if (existing) return existing;
+    const request = services.customerData.membershipSummary(organizationId)
+      .then((value) => { summaryCache.set(cacheKey, value); return value; })
+      .finally(() => summaryInflight.delete(cacheKey));
+    summaryInflight.set(cacheKey, request);
+    return request;
+  }, [session?.userId]);
+
+  const invalidateCustomerLanding = useCallback(() => {
+    summaryCache.clear();
+    summaryInflight.clear();
+    void refreshCustomers();
+  }, [refreshCustomers]);
 
   const value = useMemo<CustomerContextValue>(
     () => ({
@@ -91,13 +124,16 @@ export function CustomerContextProvider({ children }: { children: ReactNode }) {
       customersLoading,
       customersError,
       refreshCustomers,
+      landing,
+      membershipSummary,
+      invalidateCustomerLanding,
       setActiveContext,
       clearActiveContext,
       setActiveSubscription,
       enterBusiness: setActiveContext,
       exitBusiness: clearActiveContext,
     }),
-    [ctx, session, profiles, customersLoading, customersError, refreshCustomers,
+    [ctx, session, profiles, customersLoading, customersError, refreshCustomers, landing, membershipSummary, invalidateCustomerLanding,
       setActiveContext, clearActiveContext, setActiveSubscription],
   );
 

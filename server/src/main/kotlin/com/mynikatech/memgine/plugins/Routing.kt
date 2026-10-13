@@ -197,7 +197,7 @@ fun Application.configureRouting(
     val paymentService = PaymentService(database.jdbi, config.server.environment, config.payment,
         collectProvider = collectProvider, collectSdkUrl = config.poynt.collectSdkUrl)
     val customerService = CustomerService(database.jdbi.onDemand(CustomerSql::class.java),
-        membershipProductService, benefitService, storeService, customerDevIdentityEnabled, businessOtpService, paymentService)
+        membershipProductService, benefitService, storeService, organizationService, customerDevIdentityEnabled, businessOtpService, paymentService)
     val poyntCommerceProvider = PoyntCommerceProvider(
         poyntCommerceSql,
         PoyntAuthenticatedCatalogClient(poyntHttpTransport, poyntTokens),

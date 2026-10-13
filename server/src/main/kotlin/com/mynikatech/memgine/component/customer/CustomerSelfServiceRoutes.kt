@@ -30,6 +30,9 @@ private fun ApplicationCall.userId(): String = authenticatedPrincipal().userId
 /** Customer use cases are separate from organization administration. */
 fun Route.customerSelfServiceRoutes(service: CustomerService, redemptionService: RedemptionService) {
     route("/customer") {
+        get("/home/bootstrap") {
+            call.respond(ApiResponse.success(service.homeBootstrap(call.userId()), call.callId))
+        }
         route("/discover") {
             get("/organizations") {
                 call.respond(ApiResponse.success(service.discoverableOrganizations(), call.callId))
@@ -45,6 +48,11 @@ fun Route.customerSelfServiceRoutes(service: CustomerService, redemptionService:
             call.respond(ApiResponse.success(service.relationships(call.userId()), call.callId))
         }
         route("/organizations/{organizationId}") {
+            get("/membership-summary") {
+                call.respond(ApiResponse.success(
+                    service.membershipSummary(call.organizationId(), call.userId()), call.callId
+                ))
+            }
             post("/redemption-transactions") {
                 val organizationId = call.organizationId()
                 call.respond(ApiResponse.success(
