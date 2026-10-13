@@ -1,6 +1,7 @@
 package com.mynikatech.memgine.component.activityaudit
 
 import com.mynikatech.memgine.exception.BadRequestException
+import com.mynikatech.memgine.exception.ForbiddenException
 import com.mynikatech.memgine.security.AuthenticatedPrincipal
 import org.slf4j.LoggerFactory
 import java.util.UUID
@@ -61,11 +62,19 @@ class ActivityAuditService(private val sql: ActivityAuditSql) {
         }
         val counterEvent = request.eventType != ActivityEventType.BUY_MEMBERSHIP_CLICKED
         if (counterEvent) {
-            principal.require("COUNTER_ACCESS", organizationId)
-            if (principal.posContext?.organizationId != organizationId ||
-                (request.storeId != null && principal.posContext.storeId != request.storeId) ||
-                (request.staffId != null && principal.posContext.staffId != request.staffId)) {
-                throw BadRequestException("Counter context is not valid")
+            val storeId = request.storeId?.takeIf(::validId)
+                ?: throw BadRequestException("Store id is required")
+            val staffId = request.staffId?.takeIf(::validId)
+                ?: throw BadRequestException("Staff id is required")
+            principal.posContext?.let { context ->
+                if (context.organizationId != organizationId ||
+                    context.storeId != storeId ||
+                    context.staffId != staffId) {
+                    throw ForbiddenException("Fixed POS context does not match this Counter operation")
+                }
+            }
+            if (!sql.canOperate(organizationId, storeId, staffId, principal.userId)) {
+                throw ForbiddenException("Staff is not active at this store")
             }
         } else if (!sql.organizationExists(organizationId)) {
             throw BadRequestException("Organization is unavailable")

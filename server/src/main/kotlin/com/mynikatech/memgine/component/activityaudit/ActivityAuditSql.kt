@@ -8,6 +8,14 @@ interface ActivityAuditSql {
     @SqlQuery("SELECT EXISTS(SELECT 1 FROM organization WHERE organization_id = :organizationId AND is_deleted = false)")
     fun organizationExists(@Bind("organizationId") organizationId: String): Boolean
 
+    @SqlQuery("SELECT counter_can_operate(:organizationId, :storeId, :staffId, :actorUserId)")
+    fun canOperate(
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String,
+        @Bind("staffId") staffId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): Boolean
+
     @SqlUpdate("""
         INSERT INTO activity_audit_events (
             id, event_type, actor_user_id, actor_role, organization_id, store_id, staff_id,

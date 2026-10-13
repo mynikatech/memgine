@@ -958,12 +958,12 @@ export default function StaffCounter() {
       return;
     }
 
-    // trackActivity("COUNTER_SELL_MEMBERSHIP_CLICKED", {
-    //  organizationId: orgId,
-    //  storeId,
-    //  staffId,
-    //   membershipProductId: productId,
-    // });
+    trackActivity("COUNTER_SELL_MEMBERSHIP_CLICKED", {
+      organizationId: orgId,
+      storeId,
+      staffId,
+      membershipProductId: productId,
+    });
     router.push({
       pathname: APP_ROUTES.join.root,
       params: {
