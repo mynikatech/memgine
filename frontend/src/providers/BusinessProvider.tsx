@@ -465,12 +465,11 @@ export function useOptionalBusiness(): BusinessContextValue | null {
 
 export function useTheme(): Theme {
   const override = useContext(ThemeOverrideCtx);
+  const business = useContext(BusinessCtx);
 
   if (override) {
     return override;
   }
-
-  const business = useContext(BusinessCtx);
 
   if (business) {
     return business.theme;

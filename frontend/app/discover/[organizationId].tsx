@@ -166,7 +166,8 @@ function DiscoverContent() {
     productId?: string;
   }>();
 
-  const { customerId, setActiveContext } = useCustomerContext();
+  const { customerId, profiles, customersLoading, setActiveContext } =
+    useCustomerContext();
 
   const { t, formatMoney } = useTranslation();
 
@@ -189,8 +190,16 @@ function DiscoverContent() {
   const [detailProduct, setDetailProduct] = useState<MembershipProduct | null>(
     null,
   );
+  const hasOrganizationRelationship = profiles.some(
+    (relationship) =>
+      relationship.userId === customerId &&
+      relationship.organizationId === organizationId,
+  );
 
   const load = useCallback(async () => {
+    if (customersLoading) {
+      return;
+    }
     if (!organizationId) {
       setStatus("error");
 
@@ -207,17 +216,20 @@ function DiscoverContent() {
         services.customerData.combinedOffers(organizationId),
       ]);
 
-      const protectedReads = await Promise.allSettled([
-        services.customerData.subscriptions(organizationId, customerId),
-
-        services.customerData.redemptions(organizationId, customerId),
-      ]);
+      const protectedReads = hasOrganizationRelationship
+        ? await Promise.allSettled([
+            services.customerData.subscriptions(organizationId, customerId),
+            services.customerData.redemptions(organizationId, customerId),
+          ])
+        : null;
 
       const subscriptions =
-        protectedReads[0].status === "fulfilled" ? protectedReads[0].value : [];
+        protectedReads?.[0].status === "fulfilled"
+          ? protectedReads[0].value
+          : [];
 
       const redemptions =
-        protectedReads[1].status === "fulfilled"
+        protectedReads?.[1].status === "fulfilled"
           ? protectedReads[1].value.map(redemptionFromProtectedRow)
           : [];
 
@@ -304,7 +316,13 @@ function DiscoverContent() {
     } catch {
       setStatus("error");
     }
-  }, [customerId, organizationId, productId]);
+  }, [
+    customerId,
+    organizationId,
+    productId,
+    customersLoading,
+    hasOrganizationRelationship,
+  ]);
 
   useEffect(() => {
     void load();

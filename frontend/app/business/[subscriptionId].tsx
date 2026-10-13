@@ -21,7 +21,6 @@ import { services } from "@/src/core";
 import { BusinessExperience } from "@/src/experience";
 import {
   BusinessPreviewScope,
-  useBusiness,
   useCustomerContext,
   useTheme,
   useTranslation,
@@ -63,7 +62,6 @@ type BusinessData = {
 export default function BusinessExperienceRoute() {
   const router = useRouter();
   const { subscriptionId } = useLocalSearchParams<{ subscriptionId: string }>();
-  const { setActiveBusiness, configuration } = useBusiness();
   const { customerId, profiles, setActiveContext, setActiveSubscription } =
     useCustomerContext();
   const { t } = useTranslation();
@@ -230,7 +228,6 @@ export default function BusinessExperienceRoute() {
         redemptionItemStatusesBySubscription,
       });
       setSelectedSubId(subscriptionId);
-      setActiveBusiness(orgId);
       setActiveContext(orgId, subscriptionId);
     } catch (failure) {
       setData(null);
@@ -242,13 +239,7 @@ export default function BusinessExperienceRoute() {
     } finally {
       setLoading(false);
     }
-  }, [
-    customerId,
-    subscriptionId,
-    profiles,
-    setActiveBusiness,
-    setActiveContext,
-  ]);
+  }, [customerId, subscriptionId, profiles, setActiveContext]);
 
   useEffect(() => {
     void load();
@@ -260,11 +251,7 @@ export default function BusinessExperienceRoute() {
   if (!loading && data && current) {
     const orgId = data.organization.id;
     return (
-      <BusinessPreviewScope
-        organizationId={orgId}
-        configuration={configuration}
-        template={data.template}
-      >
+      <BusinessPreviewScope organizationId={orgId} template={data.template}>
         <BusinessExperience
           content={data.content}
           subscription={current.subscription}
