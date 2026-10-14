@@ -37,32 +37,9 @@ class PoyntOteDiscoveryTest {
             return
         }
 
-        val config = PoyntCatalogConfiguration(
-            "test-lab-verification",
-            "test-lab-verification",
-            applicationId,
-            "",
-            null,
-            secretReference,
-            "CAD",
-            null
-        )
-
-        val credentialResolver =
-            AwsSecretsManagerPoyntCredentialResolver("ca-central-1")
-
-        val tokens = PoyntTokenService(
-            credentials = credentialResolver,
-            transport = PoyntCloudTokenTransport(
-                poyntBaseUrl,
-                "1.2"
-            ),
-            audience = poyntBaseUrl
-        )
-
         // Authenticate using the merchant-created application key.
         // Never print JWT assertions, access tokens, or private keys.
-        val token = tokens.token(config)
+        val token = accessToken()
 
         assertTrue(
             token.value.isNotBlank(),
@@ -174,8 +151,123 @@ class PoyntOteDiscoveryTest {
         println("Note: NOT_EXPOSED does not mean no devices exist.")
     }
 
+    /**
+     * Opt-in read-only shape diagnostic for a known transaction. This only
+     * obtains OAuth credentials and sends the transaction lookup GET; it never
+     * creates, tokenizes, charges, or changes a Memgine record.
+     */
+    @Test
+    fun inspectTransactionById() {
+        if (System.getenv("POYNT_OTE_DISCOVERY") != "true") {
+            println("Poynt transaction diagnostic: SKIPPED")
+            return
+        }
+
+        val transactionId = System.getenv("POYNT_DIAGNOSTIC_TRANSACTION_ID")
+            ?.trim()
+            ?.takeIf { it.matches(Regex("^[A-Za-z0-9_-]{1,160}$")) }
+
+        if (transactionId == null) {
+            println("Poynt transaction diagnostic: SKIPPED (POYNT_DIAGNOSTIC_TRANSACTION_ID is missing or invalid)")
+            return
+        }
+
+        val token = accessToken()
+        val transport = PoyntCloudHttpTransport(poyntBaseUrl, "1.2")
+        val response = transport.get(
+            transport.transactionByIdUri(businessId, transactionId),
+            "${token.tokenType} ${token.value}"
+        )
+
+        println("Transaction lookup HTTP ${response.statusCode}")
+
+        val root = runCatching { Json.parseToJsonElement(response.body) }
+            .getOrElse {
+                println("Transaction JSON root: INVALID")
+                return
+            }
+
+        val transaction = when (root) {
+            is JsonObject -> {
+                println("Transaction JSON root: OBJECT")
+                val transactions = root["transactions"] as? JsonArray
+                if (transactions != null) {
+                    println("Transactions returned: ${transactions.size}")
+                    transactions.singleOrNull() as? JsonObject
+                } else {
+                    root
+                }
+            }
+            is JsonArray -> {
+                println("Transaction JSON root: ARRAY")
+                println("Transactions returned: ${root.size}")
+                root.singleOrNull() as? JsonObject
+            }
+            else -> {
+                println("Transaction JSON root: OTHER")
+                null
+            }
+        }
+
+        if (transaction == null) {
+            println("Transaction diagnostic: no single transaction object")
+            return
+        }
+
+        val processor = transaction["processorResponse"] as? JsonObject
+        val amounts = transaction["amounts"] as? JsonObject
+        val context = transaction["context"] as? JsonObject
+
+        println("Transaction ID: ${safeDiagnosticField(transaction, "id")}")
+        println("Transaction action: ${safeDiagnosticField(transaction, "action")}")
+        println("Transaction status: ${safeDiagnosticField(transaction, "status")}")
+        println("Processor: ${safeDiagnosticField(processor, "processor")}")
+        println("Processor status: ${safeDiagnosticField(processor, "status")}")
+        println("Processor status code: ${safeDiagnosticField(processor, "statusCode")}")
+        processor?.get("statusMessage")?.let {
+            println("Processor status message: ${safeDiagnosticValue(it)}")
+        }
+        println("Processor approved amount: ${safeDiagnosticField(processor, "approvedAmount")}")
+        println("Currency: ${safeDiagnosticField(amounts, "currency")}")
+        println("Transaction amount: ${safeDiagnosticField(amounts, "transactionAmount")}")
+        println("Order amount: ${safeDiagnosticField(amounts, "orderAmount")}")
+        println("Business ID matches: ${safeField(context ?: JsonObject(emptyMap()), "businessId") == businessId}")
+        println("Store ID matches: ${safeField(context ?: JsonObject(emptyMap()), "storeId") == expectedStoreId}")
+    }
+
+    private fun accessToken(): PoyntAccessToken {
+        val config = PoyntCatalogConfiguration(
+            "test-lab-verification",
+            "test-lab-verification",
+            applicationId,
+            "",
+            null,
+            secretReference,
+            "CAD",
+            null
+        )
+        val credentialResolver =
+            AwsSecretsManagerPoyntCredentialResolver("ca-central-1")
+        val tokens = PoyntTokenService(
+            credentials = credentialResolver,
+            transport = PoyntCloudTokenTransport(poyntBaseUrl, "1.2"),
+            audience = poyntBaseUrl
+        )
+        return tokens.token(config)
+    }
+
     private fun safeField(obj: JsonObject, field: String): String =
         (obj[field] as? JsonPrimitive)?.content ?: "NOT_EXPOSED"
+
+    private fun safeDiagnosticField(obj: JsonObject?, field: String): String =
+        obj?.get(field)?.let(::safeDiagnosticValue) ?: "NOT_EXPOSED"
+
+    private fun safeDiagnosticValue(value: kotlinx.serialization.json.JsonElement): String {
+        val content = (value as? JsonPrimitive)?.content ?: return "NOT_EXPOSED"
+        return content
+            .replace(Regex("[\\r\\n\\t]"), " ")
+            .take(256)
+    }
 
     private fun printDeviceInformation(label: String, obj: JsonObject) {
         for (field in listOf("storeDevices", "devices")) {

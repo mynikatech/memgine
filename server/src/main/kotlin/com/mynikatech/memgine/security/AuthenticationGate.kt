@@ -65,13 +65,25 @@ fun Application.installAuthenticationGate(
 }
 
 private fun protectCustomerPath(principal: AuthenticatedPrincipal?, path: String, method: HttpMethod) {
+    val publicDiscoveryRead = method == HttpMethod.Get && isPublicCustomerDiscoveryPath(path)
     val publicCatalogRead = method == HttpMethod.Get && (
         path.endsWith("/membership-products") || path.endsWith("/benefits")
     )
     val publicAcquisition = method == HttpMethod.Post && path.endsWith("/purchases")
-    if (!publicCatalogRead && !publicAcquisition) {
+    if (!publicDiscoveryRead && !publicCatalogRead && !publicAcquisition) {
         if (principal == null) throw UnauthorizedException("Authentication is required")
     }
+}
+
+private fun isPublicCustomerDiscoveryPath(path: String): Boolean {
+    val organizationsPath = "/api/v1/customer/discover/organizations"
+
+    if (path == organizationsPath) return true
+
+    val organizationId = path.removePrefix("$organizationsPath/")
+    return path.startsWith("$organizationsPath/") &&
+        organizationId.isNotBlank() &&
+        '/' !in organizationId
 }
 
 private fun protectOrganizationPath(

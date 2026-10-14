@@ -163,6 +163,12 @@ try {
         Pop-Location
     }
 
+    & node (Join-Path $frontend 'scripts\write-app-link-associations.js') $OutputDirectory
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Frontend app-link association generation failed with exit code $LASTEXITCODE."
+    }
+
     # -----------------------------------------------------------------------
     # Validate generated output.
     # -----------------------------------------------------------------------

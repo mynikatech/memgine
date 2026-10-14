@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.mynikatech.memgine",
+      "sha256_cert_fingerprints": [
+        "B2:EC:1B:1D:D4:21:7E:8E:4B:75:F8:FB:6C:72:9C:03:F8:DA:D0:47:A7:DD:11:88:D4:D2:11:4F:E8:34:75:D9"
+      ]
+    }
+  }
+]

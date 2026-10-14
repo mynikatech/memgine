@@ -30,6 +30,8 @@ server {
     index index.html;
 
     location /.well-known/acme-challenge/ { root ${web_root}; }
+    location = /.well-known/assetlinks.json { try_files \$uri =404; default_type application/json; }
+    location = /.well-known/apple-app-site-association { try_files \$uri =404; default_type application/json; }
     location / { try_files \$uri \$uri/ /index.html; }
 }
 

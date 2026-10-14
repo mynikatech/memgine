@@ -11,6 +11,10 @@
     "preview": {
       "distribution": "internal",
       "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "dev",
+        "EXPO_PUBLIC_WEB_BASE_URL": "https://memgine-dev.mynikatech.in"
+      },
       "android": {
         "buildType": "apk"
       }
@@ -19,6 +23,10 @@
       "distribution": "store",
       "environment": "preview",
       "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "dev",
+        "EXPO_PUBLIC_WEB_BASE_URL": "https://memgine-dev.mynikatech.in"
+      },
       "android": {
         "buildType": "app-bundle"
       }
@@ -26,12 +34,20 @@
     "testflight-dev": {
       "distribution": "store",
       "environment": "preview",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "dev",
+        "EXPO_PUBLIC_WEB_BASE_URL": "https://memgine-dev.mynikatech.in"
+      }
     },
     "production": {
       "distribution": "store",
       "environment": "production",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "prod",
+        "EXPO_PUBLIC_WEB_BASE_URL": "https://memgine.mynikatech.in"
+      }
     }
   },
   "submit": {

@@ -14,3 +14,4 @@ mkdir -p "$output_path"
 cd "$frontend_path"
 npm ci
 npx expo export --platform web --output-dir "$output_path"
+node "$frontend_path/scripts/write-app-link-associations.js" "$output_path"

@@ -16,6 +16,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
+import org.slf4j.LoggerFactory
 
 data class PoyntCollectResult(
     val transactionId: String,
@@ -29,6 +30,8 @@ class PoyntCollectPaymentProvider(
     private val transport: PoyntHttpTransport,
     private val accessToken: (PoyntCatalogConfiguration) -> PoyntAccessToken
 ) : PaymentProvider {
+    private val logger = LoggerFactory.getLogger(PoyntCollectPaymentProvider::class.java)
+
     override val code = "POYNT_COLLECT"
     override val isAvailable: Boolean get() = baseUrl.startsWith("https://")
     override fun canConfirm(status: String) = false
@@ -169,47 +172,46 @@ class PoyntCollectPaymentProvider(
 
         if (response.statusCode !in 200..299) return null
 
-        val transactions = try {
+        val transaction = try {
             val root = Json.parseToJsonElement(response.body)
             when (root) {
-                is JsonArray -> root
-                is JsonObject ->
-                    root["transactions"] as? JsonArray ?: return null
+                is JsonArray -> root.singleOrNull()?.jsonObject
+                is JsonObject -> {
+                    val transactions = root["transactions"] as? JsonArray
+                    when {
+                        transactions != null -> transactions.singleOrNull()?.jsonObject
+                        root["id"] != null -> root
+                        else -> null
+                    }
+                }
                 else -> return null
             }
         } catch (_: Exception) {
             return null
         }
 
-        if (transactions.size != 1) return null
+        if (transaction == null) return null
 
         return try {
-            val transaction = transactions.single().jsonObject
-
             // Confirm that Poynt returned the exact saved transaction.
             if (
-                transaction["id"]?.jsonPrimitive?.contentOrNull
+                strictString(transaction, "id")
                     != transactionId
             ) return null
 
             // If Poynt provides the original request ID,
             // it must match our payment intent.
-            val originalRequestId =
-                transaction["originalRequestId"]
-                    ?.jsonPrimitive?.contentOrNull
-
-            if (
-                originalRequestId != null &&
-                originalRequestId != payment.paymentIntentId
+            if (transaction.containsKey("originalRequestId") &&
+                strictString(transaction, "originalRequestId") != payment.paymentIntentId
             ) return null
 
-            val context = transaction["context"]?.jsonObject
+            val context = transaction["context"] as? JsonObject
                 ?: return null
 
             if (
-                context["businessId"]?.jsonPrimitive?.contentOrNull
+                strictString(context, "businessId")
                     != configuration.businessId ||
-                context["storeId"]?.jsonPrimitive?.contentOrNull
+                strictString(context, "storeId")
                     != configuration.providerStoreId
             ) return null
 
@@ -247,7 +249,10 @@ class PoyntCollectPaymentProvider(
         expectedCurrency: String,
         configuration: PoyntCatalogConfiguration? = null
     ): PoyntCollectResult {
-        val root = try { Json.parseToJsonElement(body).jsonObject } catch (_: Exception) {
+        val root = try {
+            Json.parseToJsonElement(body).jsonObject
+        } catch (_: Exception) {
+            logger.warn("Poynt Collect confirmation validation failed: malformed response")
             throw ConflictException("Poynt Collect result is invalid; payment requires reconciliation")
         }
         return parseResult(root, expectedAmountMinor, expectedCurrency, configuration)
@@ -259,41 +264,102 @@ class PoyntCollectPaymentProvider(
         expectedCurrency: String,
         configuration: PoyntCatalogConfiguration? = null
     ): PoyntCollectResult {
-        fun string(key: String) = root[key]?.jsonPrimitive?.contentOrNull
-        val id = try { string("id")?.takeIf { it.isNotBlank() && it.length <= 160 } } catch (_: Exception) { null }
-            ?: throw ConflictException("Poynt Collect result is invalid; payment requires reconciliation")
-        val action = try { string("action") } catch (_: Exception) { null }
-        if (action != "SALE") return PoyntCollectResult(id, false)
-        val status = try { string("status") } catch (_: Exception) { null }
-        val processor = try { root["processorResponse"]?.jsonObject } catch (_: Exception) { null }
-        val amounts = try { root["amounts"]?.jsonObject } catch (_: Exception) { null }
-        val context = try { root["context"]?.jsonObject } catch (_: Exception) { null }
-        val businessId = try { context?.get("businessId")?.jsonPrimitive?.contentOrNull } catch (_: Exception) { null }
-        val storeId = try { context?.get("storeId")?.jsonPrimitive?.contentOrNull } catch (_: Exception) { null }
-        val approved = try { processor?.get("approvedAmount")?.jsonPrimitive?.longOrNull } catch (_: Exception) { null }
-        val currency = try { amounts?.get("currency")?.jsonPrimitive?.contentOrNull } catch (_: Exception) { null }
-        val transactionAmount = try { amounts?.get("transactionAmount")?.jsonPrimitive?.longOrNull } catch (_: Exception) { null }
-        val orderAmount = try { amounts?.get("orderAmount")?.jsonPrimitive?.longOrNull } catch (_: Exception) { null }
-        val processorStatus = try { processor?.get("status")?.jsonPrimitive?.contentOrNull } catch (_: Exception) { null }
-        val responseCode = try { processor?.get("statusCode")?.jsonPrimitive?.contentOrNull } catch (_: Exception) { null }
-       if (
-            configuration == null ||
-            businessId != configuration.businessId ||
-            storeId != configuration.providerStoreId ||
-            currency != expectedCurrency ||
-            transactionAmount != expectedAmountMinor ||
-            orderAmount != expectedAmountMinor ||
-            approved != expectedAmountMinor
-        ) {
-            return PoyntCollectResult(id, false)
+        val id = strictString(root, "id")
+            ?.takeIf { it.isNotBlank() && it.length <= 160 }
+            ?: run {
+                logger.warn("Poynt Collect confirmation validation failed: missing transaction id")
+                throw ConflictException("Poynt Collect result is invalid; payment requires reconciliation")
+            }
+
+        fun rejected(reason: String, definiteDecline: Boolean = false) =
+            PoyntCollectResult(id, false, definiteDecline).also {
+                logger.warn("Poynt Collect confirmation validation failed: {}", reason)
+            }
+
+        val action = strictString(root, "action")
+        if (action != "SALE") return rejected("unexpected action")
+
+        if (configuration == null) return rejected("missing Poynt configuration")
+
+        val context = root["context"] as? JsonObject
+            ?: return rejected("missing transaction context")
+        if (strictString(context, "businessId") != configuration.businessId) {
+            return rejected("business mismatch")
         }
-        if (status == "DECLINED") return PoyntCollectResult(id, false, true)
-        if (status !in setOf("AUTHORIZED", "CAPTURED") ||
-            processorStatus != "Successful" ||
-            responseCode != "AA"
-        ) {
-            return PoyntCollectResult(id, false)
+        if (strictString(context, "storeId") != configuration.providerStoreId) {
+            return rejected("store mismatch")
         }
+
+        val amounts = root["amounts"] as? JsonObject
+            ?: return rejected("missing transaction amounts")
+        if (strictString(amounts, "currency") != expectedCurrency) {
+            return rejected("currency mismatch")
+        }
+        if (strictMinorAmount(amounts, "transactionAmount") != expectedAmountMinor) {
+            return rejected("transaction amount mismatch")
+        }
+        if (strictMinorAmount(amounts, "orderAmount") != expectedAmountMinor) {
+            return rejected("order amount mismatch")
+        }
+
+        val status = strictString(root, "status")
+        val processor = root["processorResponse"] as? JsonObject
+        val processorStatus = processor?.let { strictString(it, "status") }
+        val contradiction = contradictoryIndicator(root)
+
+        if (status == "DECLINED") {
+            if (processorStatus != "Failure") return rejected("decline processor status is incomplete")
+            if (contradiction != null) return rejected(contradiction)
+
+            val approvedAmountPresent = processor?.containsKey("approvedAmount") == true
+            val approvedAmount = processor?.let { strictMinorAmount(it, "approvedAmount") }
+            if (approvedAmountPresent && approvedAmount != 0L) {
+                return rejected("declined transaction has a nonzero or malformed approved amount")
+            }
+            return rejected("provider decline", definiteDecline = true)
+        }
+
+        if (status != "CAPTURED") return rejected("transaction is not fully captured")
+        if (processorStatus != "Successful") return rejected("processor not successful")
+        if (contradiction != null) return rejected(contradiction)
+
+        val approvedAmount = processor?.let { strictMinorAmount(it, "approvedAmount") }
+        if (approvedAmount != expectedAmountMinor) return rejected("approved amount mismatch")
+
         return PoyntCollectResult(id, true)
+    }
+
+    private fun strictString(value: JsonObject, key: String): String? =
+        (value[key] as? kotlinx.serialization.json.JsonPrimitive)
+            ?.takeIf { it.isString }
+            ?.content
+
+    private fun strictMinorAmount(value: JsonObject, key: String): Long? {
+        val primitive = value[key] as? kotlinx.serialization.json.JsonPrimitive ?: return null
+        if (primitive.isString) return null
+        return primitive.longOrNull
+    }
+
+    private fun contradictoryIndicator(transaction: JsonObject): String? {
+        val indicators = listOf(
+            "partiallyApproved",
+            "voided",
+            "authOnly",
+            "partiallyCaptured",
+            "refunded",
+            "partiallyRefunded",
+            "reversed",
+            "reversal"
+        )
+        for (indicator in indicators) {
+            val element = transaction[indicator] ?: continue
+            val primitive = element as? kotlinx.serialization.json.JsonPrimitive
+                ?: return "$indicator is malformed"
+            if (primitive.isString || primitive.content !in setOf("true", "false")) {
+                return "$indicator is malformed"
+            }
+            if (primitive.content == "true") return "$indicator is set"
+        }
+        return null
     }
 }

@@ -82,7 +82,7 @@ type WalletConstructor = new (
     currency: string;
 
     merchantName: string;
-    disableWallets?: { paze?: boolean; googlePay: true };
+    disableWallets?: { paze?: boolean };
   },
 ) => WalletCollect;
 
@@ -294,7 +294,7 @@ export function PoyntCollectWallets({
 
             merchantName: walletConfig.merchantName,
             // Skip Paze discovery in this Google Pay / Apple Pay component.
-            disableWallets: { paze: true, googlePay: true },
+            disableWallets: { paze: true },
           },
         );
 

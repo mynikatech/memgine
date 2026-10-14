@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { useCallback, useEffect, useState } from "react";
 
-import { View } from "react-native";
+import { Linking, Platform, View } from "react-native";
 
 import type {
   Benefit,
@@ -55,6 +55,57 @@ type MembershipBundle = {
 
   redemptionItemStatuses: CustomerRedemptionItemStatus[];
 };
+
+const androidInstallUrl = process.env.EXPO_PUBLIC_ANDROID_INSTALL_URL?.trim();
+const iosInstallUrl = process.env.EXPO_PUBLIC_IOS_INSTALL_URL?.trim();
+
+function AppInstallSection() {
+  if (
+    Platform.OS !== "web" ||
+    (!androidInstallUrl && !iosInstallUrl)
+  ) {
+    return null;
+  }
+
+  return (
+    <View
+      style={{
+        paddingHorizontal: 16,
+        paddingBottom: 16,
+        gap: 10,
+      }}
+      testID="discover-app-install"
+    >
+      <Text variant="bodyStrong" color="text">
+        Get the Memgine app
+      </Text>
+
+      <Text variant="bodySmall" color="textSecondary">
+        You can continue on the web or install the app for future visits.
+      </Text>
+
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        {androidInstallUrl ? (
+          <Button
+            label="Get it on Google Play"
+            size="sm"
+            variant="outline"
+            onPress={() => void Linking.openURL(androidInstallUrl)}
+          />
+        ) : null}
+
+        {iosInstallUrl ? (
+          <Button
+            label="Get it on the App Store"
+            size="sm"
+            variant="outline"
+            onPress={() => void Linking.openURL(iosInstallUrl)}
+          />
+        ) : null}
+      </View>
+    </View>
+  );
+}
 
 function subscriptionFromProtectedRow(row: CounterSubscription): Subscription {
   return {
@@ -465,6 +516,8 @@ function DiscoverContent() {
         onRefreshRedemptionState={load}
         customerUserId={customerId}
       />
+
+      <AppInstallSection />
 
       <Modal
         visible={!!detailProduct}
