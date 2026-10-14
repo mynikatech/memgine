@@ -22,7 +22,8 @@ const money = (minor: number, currency: string) =>
     currency,
   }).format(minor / 100);
 
-const CHECK_TIMEOUT_MS = 20_000;
+const STATUS_POLL_INTERVAL_MS = 2_000;
+const STATUS_POLL_TIMEOUT_MS = 60_000;
 
 function returnToMemgine() {
   if (typeof window !== "undefined") {
@@ -30,7 +31,11 @@ function returnToMemgine() {
   }
 }
 
-type Phase = "ready" | "submitting" | "checking" | "uncertain";
+type Phase = "ready" | "processing" | "uncertain";
+type StatusCheckOutcome = "terminal" | "processing" | "failed";
+
+const isTerminalPaymentStatus = (status: string) =>
+  ["SUCCEEDED", "FAILED", "CANCELED", "CANCELLED"].includes(status);
 
 export default function PoyntCollectCheckoutScreen() {
   const { session } = useLocalSearchParams<{ session?: string }>();
@@ -54,49 +59,101 @@ export default function PoyntCollectCheckoutScreen() {
   // Never send two charge requests from this browser session.
   const submitted = useRef(false);
   const checking = useRef(false);
+  const mounted = useRef(false);
+  const pollGeneration = useRef(0);
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const checkStatus = useCallback(async () => {
-    if (checking.current) return;
+  const stopStatusPolling = useCallback(() => {
+    pollGeneration.current += 1;
+    if (pollTimer.current) {
+      clearTimeout(pollTimer.current);
+      pollTimer.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      stopStatusPolling();
+    };
+  }, [stopStatusPolling]);
+
+  const checkStatus = useCallback(async (): Promise<StatusCheckOutcome> => {
+    if (checking.current) return "processing";
 
     checking.current = true;
-    setPhase("checking");
+    if (mounted.current) setPhase("processing");
 
     try {
+      const result = await poyntCollectBrowserApi.status();
+      if (!mounted.current) return "processing";
+
       setError(undefined);
-
-      // Read-only status check. A timeout does not mean decline.
-      const result = await Promise.race([
-        poyntCollectBrowserApi.status(),
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error("Status check timeout")),
-            CHECK_TIMEOUT_MS,
-          ),
-        ),
-      ]);
-
       setConfirmation(result);
 
-      if (
-        ["SUCCEEDED", "FAILED", "CANCELED", "CANCELLED"].includes(
-          result.payment.status,
-        )
-      ) {
+      if (isTerminalPaymentStatus(result.payment.status)) {
         setPhase("ready");
-      } else {
-        setPhase("uncertain");
+        return "terminal";
       }
+
+      setPhase("processing");
+      return "processing";
     } catch {
-      setPhase("uncertain");
-      setError(
-        "We couldn't confirm your payment status. " +
-          "You may already have been charged. " +
-          "Please check the status again instead of paying again.",
-      );
+      if (mounted.current) {
+        setPhase("uncertain");
+        setError(
+          "We couldn't confirm your payment status. " +
+            "You may already have been charged. " +
+            "Please check the status again instead of paying again.",
+        );
+      }
+      return "failed";
     } finally {
       checking.current = false;
     }
   }, []);
+
+  const startStatusPolling = useCallback(() => {
+    stopStatusPolling();
+    const generation = pollGeneration.current;
+    const deadline = Date.now() + STATUS_POLL_TIMEOUT_MS;
+
+    const poll = async () => {
+      if (!mounted.current || generation !== pollGeneration.current) return;
+
+      const outcome = await checkStatus();
+      if (
+        !mounted.current ||
+        generation !== pollGeneration.current ||
+        outcome !== "processing"
+      ) {
+        return;
+      }
+
+      if (Date.now() >= deadline) {
+        setPhase("uncertain");
+        setError(
+          "Your payment is still being confirmed. " +
+            "You may already have been charged. Please check its status " +
+            "instead of paying again.",
+        );
+        return;
+      }
+
+      pollTimer.current = setTimeout(() => {
+        void poll();
+      }, STATUS_POLL_INTERVAL_MS);
+    };
+
+    void poll();
+  }, [checkStatus, stopStatusPolling]);
+
+  const checkPaymentStatus = useCallback(() => {
+    void checkStatus().then((outcome) => {
+      if (outcome === "processing") startStatusPolling();
+    });
+  }, [checkStatus, startStatusPolling]);
 
   useEffect(() => {
     if (Platform.OS !== "web" || !session) {
@@ -125,8 +182,8 @@ export default function PoyntCollectCheckoutScreen() {
         setBootstrap(config);
 
         if (redeemed.payment.status !== "PENDING") {
-          setPhase("uncertain");
-          void checkStatus();
+          setPhase("processing");
+          startStatusPolling();
         }
       } catch (reason) {
         if (active) {
@@ -144,7 +201,7 @@ export default function PoyntCollectCheckoutScreen() {
     return () => {
       active = false;
     };
-  }, [session, checkStatus]);
+  }, [session, startStatusPolling]);
 
   const confirm = useCallback(
     async (
@@ -154,7 +211,7 @@ export default function PoyntCollectCheckoutScreen() {
       if (!checkout || submitted.current) return false;
 
       submitted.current = true;
-      setPhase("submitting");
+      setPhase("processing");
       setError(undefined);
 
       try {
@@ -178,17 +235,16 @@ export default function PoyntCollectCheckoutScreen() {
           return false;
         }
 
-        setPhase("uncertain");
-        return false;
+        startStatusPolling();
+        return true;
       } catch {
         // A lost response may mean the provider received the charge.
         // Never automatically send the nonce again.
-        setPhase("uncertain");
-        void checkStatus();
-        return false;
+        startStatusPolling();
+        return true;
       }
     },
-    [checkout, checkStatus],
+    [checkout, startStatusPolling],
   );
 
   const status = confirmation?.payment.status ?? checkout?.payment.status;
@@ -200,7 +256,7 @@ export default function PoyntCollectCheckoutScreen() {
 
   const failed = ["FAILED", "CANCELED", "CANCELLED"].includes(status ?? "");
 
-  const processing = phase === "submitting" || phase === "checking";
+  const processing = phase === "processing";
 
   const unresolved =
     phase === "uncertain" || status === "PROCESSING" || activationPending;
@@ -286,7 +342,7 @@ export default function PoyntCollectCheckoutScreen() {
                   label="Check Membership Status"
                   fullWidth
                   disabled={processing}
-                  onPress={() => void checkStatus()}
+                  onPress={checkPaymentStatus}
                 />
 
                 <Button
@@ -316,7 +372,7 @@ export default function PoyntCollectCheckoutScreen() {
               <View style={{ gap: 12 }}>
                 <Text variant="h2">
                   {processing
-                    ? "Confirming Your Payment…"
+                    ? "Processing your payment…"
                     : "Payment Status Pending"}
                 </Text>
 
@@ -334,7 +390,7 @@ export default function PoyntCollectCheckoutScreen() {
                   fullWidth
                   variant="secondary"
                   disabled={processing}
-                  onPress={() => void checkStatus()}
+                  onPress={checkPaymentStatus}
                 />
 
                 <Button
@@ -375,7 +431,7 @@ export default function PoyntCollectCheckoutScreen() {
                   <Button
                     label="Check Payment Status"
                     fullWidth
-                    onPress={() => void checkStatus()}
+                    onPress={checkPaymentStatus}
                   />
                 ) : null}
               </>

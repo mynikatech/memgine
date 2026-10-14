@@ -145,6 +145,14 @@ type PendingCustomerCollectPayment = {
   pollingWindowStartedAt: number;
 };
 
+type CollectConfirmationUiState =
+  | { kind: "idle" }
+  | { kind: "processing" }
+  | { kind: "activationPending"; message: string }
+  | { kind: "attention"; message: string; canReturnToPayment?: boolean }
+  | { kind: "failed"; message: string }
+  | { kind: "succeeded" };
+
 const COUNTER_TERMINAL_PAYMENT_STORAGE_PREFIX = "counter-terminal-payment";
 const COUNTER_TERMINAL_PAYMENT_POLL_INTERVAL_MS = 2_000;
 const COUNTER_TERMINAL_PAYMENT_AUTO_POLL_WINDOW_MS = 120_000;
@@ -450,6 +458,8 @@ function JoinFlow() {
   const [collectPollingStartedAt, setCollectPollingStartedAt] = useState<
     number | null
   >(null);
+  const [collectConfirmationState, setCollectConfirmationState] =
+    useState<CollectConfirmationUiState>({ kind: "idle" });
   const [collectNow, setCollectNow] = useState(Date.now());
   useEffect(() => {
     if (!collectPollingActive || collectPollingStartedAt === null) return;
@@ -1534,17 +1544,25 @@ function JoinFlow() {
       setCollectNow(Date.now());
       setCollectPollingActive(true);
       setCollectPendingIntentId(intentId);
+      setCollectConfirmationState({ kind: "processing" });
+      setOtpError(undefined);
       setStep("processing");
-      let statusMessage =
-        "Payment is still processing. Check its status before trying another purchase.";
+      let unresolvedOutcome: CollectConfirmationUiState = {
+        kind: "attention",
+        message:
+          "Payment is still processing. Check its status before trying another purchase.",
+      };
       try {
         for (;;) {
           if (
             Date.now() - pollingStartedAt >=
             CUSTOMER_COLLECT_PAYMENT_AUTO_POLL_WINDOW_MS
           ) {
-            statusMessage =
-              "Unable to confirm payment status. Your payment attempt is preserved; please check its status before trying again.";
+            unresolvedOutcome = {
+              kind: "attention",
+              message:
+                "Unable to confirm payment status. Your payment attempt is preserved; please check its status before trying again.",
+            };
             break;
           }
           const confirmed = await services.customerData.paymentStatus(
@@ -1557,6 +1575,7 @@ function JoinFlow() {
           ) {
             clearPendingCustomerCollectPayment();
             setCollectPayment(null);
+            setCollectConfirmationState({ kind: "succeeded" });
             finishSubscription(
               confirmed.subscription,
               confirmed.payment.providerReferenceId ??
@@ -1566,9 +1585,11 @@ function JoinFlow() {
           }
           if (confirmed.payment.status === "SUCCEEDED") {
             setCollectPendingIntentId(intentId);
-            setOtpError(
-              "Payment succeeded. Membership confirmation is still pending; check again shortly.",
-            );
+            setCollectConfirmationState({
+              kind: "activationPending",
+              message:
+                "Payment succeeded. Membership confirmation is still pending; check again shortly.",
+            });
             setStep("processing");
             return;
           }
@@ -1579,7 +1600,9 @@ function JoinFlow() {
           ) {
             clearPendingCustomerCollectPayment();
             setCollectPayment(null);
-            setOtpError("Payment was not approved. No membership was created.");
+            const message = "Payment was not approved. No membership was created.";
+            setCollectConfirmationState({ kind: "failed", message });
+            setOtpError(message);
             setStep("review");
             return;
           }
@@ -1587,15 +1610,21 @@ function JoinFlow() {
             // The server has confirmed the intent has not been claimed for charging.
             // Do not automatically resubmit or silently reopen payment entry.
             setCollectPendingIntentId(intentId);
-            setOtpError(
-              "Payment not completed. Your previous payment attempt is still awaiting payment. You can return to the secure checkout using this same payment intent.",
-            );
+            setCollectConfirmationState({
+              kind: "attention",
+              message:
+                "Payment not completed. Your previous payment attempt is still awaiting payment. You can return to the secure checkout using this same payment intent.",
+              canReturnToPayment: true,
+            });
             setStep("processing");
             return;
           }
           if (confirmed.payment.status !== "PROCESSING") {
-            statusMessage =
-              "Payment status could not be confirmed. Do not retry the charge until it is resolved.";
+            unresolvedOutcome = {
+              kind: "attention",
+              message:
+                "Payment status could not be confirmed. Do not retry the charge until it is resolved.",
+            };
             break;
           }
           await new Promise<void>((resolve) =>
@@ -1608,18 +1637,24 @@ function JoinFlow() {
           error instanceof CustomerPaymentStatusError &&
           ["UNAUTHORIZED", "HTTP_401"].includes(error.code)
         ) {
-          statusMessage =
-            "Your session expired. Sign in again to check this payment; do not retry the charge.";
+          unresolvedOutcome = {
+            kind: "attention",
+            message:
+              "Your session expired. Sign in again to check this payment; do not retry the charge.",
+          };
         } else {
-          statusMessage =
-            "Unable to confirm payment status. Your payment attempt is preserved; please check its status before trying again.";
+          unresolvedOutcome = {
+            kind: "attention",
+            message:
+              "Unable to confirm payment status. Your payment attempt is preserved; please check its status before trying again.",
+          };
         }
       } finally {
         collectPolling.current = false;
         setCollectPollingActive(false);
       }
       setCollectPendingIntentId(intentId);
-      setOtpError(statusMessage);
+      setCollectConfirmationState(unresolvedOutcome);
       setStep("processing");
     },
     [
@@ -1636,6 +1671,7 @@ function JoinFlow() {
       if (collectPolling.current) return;
       collectPolling.current = true;
       setCollectPollingActive(true);
+      setCollectConfirmationState({ kind: "processing" });
       setOtpError(undefined);
       try {
         // Never open payment entry without rechecking the authoritative status.
@@ -1644,17 +1680,56 @@ function JoinFlow() {
           intentId,
         );
         if (status.payment.status !== "PENDING") {
-          setOtpError(
-            "Payment status has changed. Check Payment Status before continuing.",
-          );
+          if (status.payment.status === "SUCCEEDED" && status.subscription) {
+            clearPendingCustomerCollectPayment();
+            setCollectPayment(null);
+            setCollectConfirmationState({ kind: "succeeded" });
+            finishSubscription(
+              status.subscription,
+              status.payment.providerReferenceId ??
+                status.payment.paymentIntentId,
+            );
+            return;
+          }
+          if (status.payment.status === "SUCCEEDED") {
+            setCollectConfirmationState({
+              kind: "activationPending",
+              message:
+                "Payment succeeded. Membership confirmation is still pending; check again shortly.",
+            });
+            setCollectPendingIntentId(intentId);
+            setStep("processing");
+            return;
+          }
+          if (
+            ["FAILED", "CANCELED", "CANCELLED"].includes(
+              status.payment.status,
+            )
+          ) {
+            clearPendingCustomerCollectPayment();
+            setCollectPayment(null);
+            const message = "Payment was not approved. No membership was created.";
+            setCollectConfirmationState({ kind: "failed", message });
+            setOtpError(message);
+            setStep("review");
+            return;
+          }
+          setCollectConfirmationState({
+            kind: "attention",
+            message:
+              "Payment status has changed. Check Payment Status before continuing.",
+          });
           setCollectPendingIntentId(intentId);
           setStep("processing");
           return;
         }
         if (!plan || Platform.OS !== "web") {
-          setOtpError(
-            "Payment is pending. Secure checkout is unavailable here; please check payment status again.",
-          );
+          setCollectConfirmationState({
+            kind: "attention",
+            message:
+              "Payment is pending. Secure checkout is unavailable here; please check payment status again.",
+          });
+          setStep("processing");
           return;
         }
         const quote = await services.customerData.purchaseQuote(
@@ -1667,9 +1742,12 @@ function JoinFlow() {
           Math.round(quote.totalAmount * 100) !==
             Math.round(status.payment.amount * 100)
         ) {
-          setOtpError(
-            "The price has changed since this payment was created. Do not pay from this intent; contact support to close it safely.",
-          );
+          setCollectConfirmationState({
+            kind: "attention",
+            message:
+              "The price has changed since this payment was created. Do not pay from this intent; contact support to close it safely.",
+          });
+          setStep("processing");
           return;
         }
         const configuration = await services.customerData.collectBootstrap(
@@ -1683,17 +1761,27 @@ function JoinFlow() {
           configuration,
         });
         setCollectPendingIntentId(null);
+        setCollectConfirmationState({ kind: "idle" });
         setStep("collectCard");
       } catch {
-        setOtpError(
-          "We couldn't reopen checkout. Your payment intent is preserved; check its status before trying again.",
-        );
+        setCollectConfirmationState({
+          kind: "attention",
+          message:
+            "We couldn't reopen checkout. Your payment intent is preserved; check its status before trying again.",
+        });
+        setStep("processing");
       } finally {
         collectPolling.current = false;
         setCollectPollingActive(false);
       }
     },
-    [checkCollectPayment, explicitOfferId, orgId, plan],
+    [
+      clearPendingCustomerCollectPayment,
+      explicitOfferId,
+      finishSubscription,
+      orgId,
+      plan,
+    ],
   );
 
   const confirmCollectNonce = useCallback(
@@ -1732,6 +1820,7 @@ function JoinFlow() {
           void storage.setItem(customerCollectPaymentStorageKey, pending);
         }
         setCollectPendingIntentId(intentId);
+        setCollectConfirmationState({ kind: "processing" });
         setOtpError(undefined);
         // Keep the wallet sheet mounted until its authorization callback completes.
         if (method === "card") setStep("processing");
@@ -1748,6 +1837,7 @@ function JoinFlow() {
           ) {
             clearPendingCustomerCollectPayment();
             setCollectPayment(null);
+            setCollectConfirmationState({ kind: "succeeded" });
             finishSubscription(
               confirmed.subscription,
               confirmed.payment.providerReferenceId ??
@@ -1774,6 +1864,7 @@ function JoinFlow() {
                 // Do not automatically reopen payment entry: show an actionable error.
                 setCollectPollingActive(false);
                 setCollectPendingIntentId(intentId);
+                setCollectConfirmationState({ kind: "idle" });
                 setOtpError(undefined);
                 setStep("collectUnavailable");
                 return false;
@@ -2398,6 +2489,7 @@ function JoinFlow() {
               confirmed.payment.status === "SUCCEEDED" &&
               confirmed.subscription
             ) {
+              setCollectConfirmationState({ kind: "succeeded" });
               finishSubscription(
                 confirmed.subscription,
                 confirmed.payment.providerReferenceId ??
@@ -2426,6 +2518,7 @@ function JoinFlow() {
             amount: intent.amount,
             configuration,
           });
+          setCollectConfirmationState({ kind: "idle" });
           setOtpError(undefined);
           setStep("collectCard");
           return;
@@ -3405,6 +3498,7 @@ function JoinFlow() {
                     // A reopened checkout must reuse this pending intent, not
                     // silently create a new one while the old intent still exists.
                     setCollectPayment(null);
+                    setCollectConfirmationState({ kind: "idle" });
                     setOtpError(undefined);
                     setStep("review");
                   }}
@@ -3577,7 +3671,27 @@ function JoinFlow() {
 
       {step === "processing" ? (
         <View style={{ gap: theme.spacing.md }}>
-          {!(collectPendingIntentId && !collectPollingActive) ? (
+          {collectPendingIntentId &&
+          collectConfirmationState.kind === "activationPending" ? (
+            <View style={{ gap: theme.spacing.sm }}>
+              <Text variant="bodyStrong" color="text">
+                Payment received
+              </Text>
+              <Text variant="bodySmall" color="textMuted">
+                {collectConfirmationState.message}
+              </Text>
+            </View>
+          ) : collectPendingIntentId &&
+            collectConfirmationState.kind === "attention" ? (
+            <View style={{ gap: theme.spacing.sm }}>
+              <Text variant="bodyStrong" color="text">
+                Payment status needs your attention.
+              </Text>
+              <Text variant="bodySmall" color="textMuted">
+                {collectConfirmationState.message}
+              </Text>
+            </View>
+          ) : (
             <StateView
               kind="loading"
               message={
@@ -3591,10 +3705,6 @@ function JoinFlow() {
               }
               testID="join-processing"
             />
-          ) : (
-            <Text variant="bodyStrong" color="text">
-              Payment status needs your attention.
-            </Text>
           )}
           {pendingCounterTerminalPayment && counterTerminalPaymentTimedOut ? (
             <>
@@ -3623,12 +3733,22 @@ function JoinFlow() {
               />
             </>
           ) : null}
-          {collectPendingIntentId && otpError ? (
+          {collectPendingIntentId &&
+          collectConfirmationState.kind === "activationPending" ? (
             <>
-              <Text variant="bodySmall" color="textMuted">
-                {otpError}
-              </Text>
-              {otpError.startsWith("Payment not completed.") ? (
+              <Button
+                label="Check Membership Status"
+                fullWidth
+                onPress={() => {
+                  void checkCollectPayment(collectPendingIntentId);
+                }}
+                testID="join-collect-check-status"
+              />
+            </>
+          ) : collectPendingIntentId &&
+            collectConfirmationState.kind === "attention" ? (
+            <>
+              {collectConfirmationState.canReturnToPayment ? (
                 <Button
                   label="Return to Payment"
                   fullWidth
@@ -3642,7 +3762,6 @@ function JoinFlow() {
                 label="Check Payment Status"
                 fullWidth
                 onPress={() => {
-                  setOtpError(undefined);
                   void checkCollectPayment(collectPendingIntentId);
                 }}
                 testID="join-collect-check-status"

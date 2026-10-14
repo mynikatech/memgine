@@ -108,7 +108,9 @@ class PoyntCollectPaymentProviderTest {
             sale(approvedAmount = null), sale(approvedAmount = "89.99"),
             sale(flags = mapOf("partiallyApproved" to "true")),
             sale(flags = mapOf("voided" to "true")), sale(flags = mapOf("authOnly" to "true")),
-            sale(flags = mapOf("refunded" to "true")), sale(flags = mapOf("partiallyApproved" to "yes")),
+            sale(flags = mapOf("refunded" to "true")), sale(flags = mapOf("reversed" to "true")),
+            sale(flags = mapOf("reversal" to "true")), sale(flags = mapOf("partiallyCaptured" to "true")),
+            sale(action = "REFUND"), sale(flags = mapOf("partiallyApproved" to "yes")),
             sale(businessId = "OTHER"), sale(storeId = "OTHER"), sale(currency = "USD"),
             sale(transactionAmount = "8998"), sale(orderAmount = "8998"),
             sale(transactionAmount = "89.99"), sale(orderAmount = "\"8999\"")
@@ -127,6 +129,36 @@ class PoyntCollectPaymentProviderTest {
         assertFailsWith<ConflictException> {
             provider(FakeTransport(tokenized(), "{}", chargeStatus = 503)).charge(payment, config, "payment-token", token(), 8999)
         }
+        assertFailsWith<ConflictException> {
+            provider(FakeTransport(tokenized(), "{}", chargeStatus = 500)).charge(payment, config, "payment-token", token(), 8999)
+        }
+        val timeout = FakeTransport(tokenized(), sale(), throwOnCharge = true)
+        assertFailsWith<ConflictException> {
+            provider(timeout).charge(payment, config, "payment-token", token(), 8999)
+        }
+        assertEquals(1, timeout.posts.size)
+    }
+
+    @Test
+    fun `wallet timeout never reposts nonce and reconciliation is GET only`() {
+        val transport = FakeTransport(tokenized(), sale(), throwOnCharge = true)
+        val provider = provider(transport)
+        assertFailsWith<ConflictException> {
+            provider.chargeWalletNonce(payment, config, "wallet-nonce", token(), 8999)
+        }
+        assertEquals(1, transport.posts.size)
+
+        transport.throwOnCharge = false
+        transport.lookupResponse = sale()
+        val recovered = provider.reconcile(
+            payment.copy(providerReferenceId = "TX-1"), config, token(), 8999
+        )
+        assertTrue(recovered?.approved == true)
+        assertEquals(1, transport.posts.size)
+        assertEquals(
+            URI.create("https://services-ote.poynt.net/businesses/BUS-1/transactions?transactionIds=TX-1"),
+            transport.lookupUri
+        )
     }
 
     @Test
@@ -152,6 +184,24 @@ class PoyntCollectPaymentProviderTest {
         }
         assertFailsWith<BadRequestException> { credentialFailure.token(config) }
         assertEquals(null, credentialTransport.body)
+    }
+
+    @Test
+    fun `malformed inactive missing and rejected card tokenization never charge`() {
+        for ((body, status) in listOf(
+            "not-json" to 200,
+            "{}" to 200,
+            """{"status":"ACTIVE"}""" to 200,
+            """{"status":"INACTIVE","paymentToken":"payment-token"}""" to 200,
+            """{"status":"ACTIVE","paymentToken":"payment-token"}""" to 500
+        )) {
+            val transport = FakeTransport(body, sale(), tokenizationStatus = status)
+            assertFailsWith<BadRequestException> {
+                provider(transport).tokenize(config, "nonce", token())
+            }
+            assertEquals(1, transport.posts.size)
+            assertNull(transport.uri)
+        }
     }
 
     @Test
@@ -190,6 +240,29 @@ class PoyntCollectPaymentProviderTest {
         assertEquals(0, transport.posts.size)
     }
 
+    @Test
+    fun `reconciliation never approves mismatched context or money and only performs GET`() {
+        val current = payment.copy(providerReferenceId = "TX-1")
+        val transport = FakeTransport(tokenized(), sale())
+        val provider = provider(transport)
+
+        for (response in listOf(
+            sale(businessId = "BUS-OTHER"), sale(storeId = "STORE-OTHER"),
+            sale(currency = "USD"), sale(transactionAmount = "8998"),
+            sale(orderAmount = "8998"), sale(approvedAmount = "8998")
+        )) {
+            transport.lookupResponse = response
+            val result = provider.reconcile(current, config, token(), 8999)
+            assertFalse(result?.approved == true)
+            assertFalse(result?.definiteDecline == true)
+        }
+        assertEquals(0, transport.posts.size)
+        assertEquals(
+            URI.create("https://services-ote.poynt.net/businesses/BUS-1/transactions?transactionIds=TX-1"),
+            transport.lookupUri
+        )
+    }
+
     private fun classify(response: String): PoyntCollectResult =
         provider(FakeTransport(tokenized(), response)).parseResult(response, 8999, "CAD", config)
 
@@ -223,7 +296,11 @@ class PoyntCollectPaymentProviderTest {
     }
 
     private class FakeTransport(
-        private val tokenizationBody: String, private val chargeBody: String, private val chargeStatus: Int = 200
+        private val tokenizationBody: String,
+        private val chargeBody: String,
+        private val chargeStatus: Int = 200,
+        private val tokenizationStatus: Int = 200,
+        var throwOnCharge: Boolean = false
     ) : PoyntHttpTransport {
         data class Post(val uri: URI, val body: String)
         val posts = mutableListOf<Post>()
@@ -237,10 +314,13 @@ class PoyntCollectPaymentProviderTest {
 
         override fun post(uri: URI, authorization: String, requestId: String, body: String): PoyntHttpResponse {
             posts += Post(uri, body)
-            if (uri.path.endsWith("/cards/tokenize")) return PoyntHttpResponse(200, tokenizationBody)
+            if (uri.path.endsWith("/cards/tokenize")) {
+                return PoyntHttpResponse(tokenizationStatus, tokenizationBody)
+            }
             this.uri = uri
             this.requestId = requestId
             this.body = body
+            if (throwOnCharge) error("charge timeout")
             return PoyntHttpResponse(chargeStatus, chargeBody)
         }
         override fun get(uri: URI, authorization: String, modifiedSince: String?): PoyntHttpResponse {

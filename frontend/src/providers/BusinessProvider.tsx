@@ -97,11 +97,16 @@ export function BusinessProvider({
     pathname === "/customer" ||
     pathname.startsWith("/customer/") ||
     pathname.startsWith("/discover/");
-  const isOrganizationScopedAdminRoute = pathname.startsWith("/org-admin/");
+  const isOrganizationScopedAdminRoute =
+    pathname === "/org-admin" || pathname.startsWith("/org-admin/");
   const isCounterRoute =
     pathname === "/counter" || pathname.startsWith("/counter/");
-  const isJoinRoute =
-    pathname === "/join" || pathname.startsWith("/join/");
+  const isJoinRoute = pathname === "/join" || pathname.startsWith("/join/");
+  // Customer membership detail resolves its organization only after it has
+  // validated the requested subscription through CustomerContext. The root
+  // provider must not replace that route with a persisted staff workspace.
+  const isCustomerBusinessExperienceRoute =
+    pathname === "/business" || pathname.startsWith("/business/");
   const isCustomerOnlySession =
     !!session &&
     !session.posContext &&
@@ -120,6 +125,7 @@ export function BusinessProvider({
       isOrganizationScopedAdminRoute ||
       isCounterRoute ||
       isJoinRoute ||
+      isCustomerBusinessExperienceRoute ||
       isCustomerOnlySession);
 
   const sessionOrganizationIds = useMemo(
@@ -405,10 +411,28 @@ export function BusinessProvider({
    */
 
   if (!sessionLoading && !session && !organizationId) {
-    return <>{children}</>;
+    return (
+      <ActiveBusinessControlCtx.Provider value={activeBusinessControl}>
+        {children}
+      </ActiveBusinessControlCtx.Provider>
+    );
   }
 
   if (authenticatedWithoutOrganizationContext) {
+    return (
+      <ActiveBusinessControlCtx.Provider value={activeBusinessControl}>
+        {children}
+      </ActiveBusinessControlCtx.Provider>
+    );
+  }
+
+  /*
+   * The root provider wraps Expo Router's Stack. It may resolve an implicit
+   * organization while navigation enters a route with its own scoped provider.
+   * Keep that Stack mounted during root resolution; explicit providers still
+   * own their existing loading boundary.
+   */
+  if (!organizationId && (resolving || !value)) {
     return (
       <ActiveBusinessControlCtx.Provider value={activeBusinessControl}>
         {children}

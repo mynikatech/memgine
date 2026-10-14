@@ -11,6 +11,14 @@ function configuredHost(value: string | undefined): string | undefined {
 }
 
 export default ({ config }: ConfigContext): ExpoConfig => {
+  const name = config.name;
+  const slug = config.slug;
+  if (!name || !slug) {
+    throw new Error(
+      "Expo base configuration must define an application name and slug.",
+    );
+  }
+
   const environment = process.env.EXPO_PUBLIC_APP_ENV?.trim().toLowerCase();
   const configuredWebHost = configuredHost(process.env.EXPO_PUBLIC_WEB_BASE_URL);
   const environmentHost =
@@ -38,6 +46,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
   return {
     ...config,
+    name,
+    slug,
     ios: {
       ...config.ios,
       associatedDomains: appLinkHost

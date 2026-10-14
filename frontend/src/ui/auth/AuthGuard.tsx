@@ -16,6 +16,17 @@ export function AuthGuard({
   children: ReactNode;
 }) {
   const { loading, session, hasCapability } = useAuth();
+  if (capability === "ORG_ADMIN_ACCESS") {
+    console.log("[ORG ADMIN AUTH GUARD]", {
+      loading,
+      hasSession: Boolean(session),
+      organizationId,
+      authorized:
+        !loading && Boolean(session)
+          ? hasCapability(capability, organizationId)
+          : null,
+    });
+  }
 
   if (loading) {
     return (

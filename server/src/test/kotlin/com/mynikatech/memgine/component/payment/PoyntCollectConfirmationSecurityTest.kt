@@ -105,7 +105,9 @@ class PoyntCollectConfirmationSecurityTest {
     }
 
     @Test fun `decline fails without finalizing membership`() {
-        val fixture = Fixture("""{"id":"TX-2","action":"SALE","status":"DECLINED","context":{"businessId":"BUS-1","storeId":"STORE-1"}}""")
+        val fixture = Fixture(
+            """{"id":"TX-2","originalRequestId":"PAY-1","action":"SALE","status":"DECLINED","context":{"businessId":"BUS-1","storeId":"STORE-1"},"amounts":{"transactionAmount":8999,"orderAmount":8999,"currency":"CAD"},"processorResponse":{"status":"Failure","approvedAmount":0}}"""
+        )
         assertFailsWith<BadRequestException> {
             fixture.service.confirmCollectAndFinalize("ORG-1", "PAY-1", "CUSTOMER-1", "nonce")
         }
@@ -179,6 +181,7 @@ class PoyntCollectConfirmationSecurityTest {
         val fixture = Fixture(
             SUCCESS,
             initialStatus = "PROCESSING",
+            initialReference = "TX-1",
             lookupBody = """{"transactions":[${SUCCESS}]}"""
         )
         val result = fixture.service.getConfirmation("ORG-1", "PAY-1", "CUSTOMER-1")
@@ -193,6 +196,7 @@ class PoyntCollectConfirmationSecurityTest {
         val fixture = Fixture(
             SUCCESS,
             initialStatus = "PROCESSING",
+            initialReference = "TX-1",
             lookupBody = """{"transactions":[]}"""
         )
         val result = fixture.service.getConfirmation("ORG-1", "PAY-1", "CUSTOMER-1")
@@ -235,10 +239,11 @@ class PoyntCollectConfirmationSecurityTest {
         sdkUrl: String = "https://collect.commerce.ote-godaddy.com/sdk.js",
         configuredProviderCode: String = "POYNT_COLLECT",
         initialStatus: String = "PENDING",
+            initialReference: String? = null,
         lookupBody: String? = null,
         tokenizationBody: String = TOKENIZED
     ) {
-        val sql = FakeSql(intentProviderCode, initialStatus)
+        val sql = FakeSql(intentProviderCode, initialStatus, initialReference)
         val transport = FakeTransport(body, timeout, entered, release, lookupBody, tokenizationBody)
         val tokenLookups = AtomicInteger()
         private val provider = PoyntCollectPaymentProvider("https://services-ote.poynt.net", transport) {
@@ -254,9 +259,13 @@ class PoyntCollectConfirmationSecurityTest {
         )
     }
 
-    private class FakeSql(private val intentProviderCode: String, initialStatus: String) {
+    private class FakeSql(
+        private val intentProviderCode: String,
+        initialStatus: String,
+        initialReference: String?
+    ) {
         val status = AtomicReference(initialStatus)
-        val reference = AtomicReference<String?>(null)
+        val reference = AtomicReference(initialReference)
         val claims = AtomicInteger()
         val configurationReads = AtomicInteger()
         val successFinalizations = AtomicInteger()
@@ -342,10 +351,12 @@ class PoyntCollectConfirmationSecurityTest {
         override fun ordersUri(businessId: String) = error("Unexpected URI")
         override fun transactionsByOriginalRequestIdUri(businessId: String, originalRequestId: String) =
             URI.create("https://services-ote.poynt.net/businesses/$businessId/transactions?original-request-id=$originalRequestId")
+        override fun transactionByIdUri(businessId: String, transactionId: String) =
+            URI.create("https://services-ote.poynt.net/businesses/$businessId/transactions?transactionIds=$transactionId")
     }
 
     companion object {
         private const val TOKENIZED = """{"status":"ACTIVE","paymentToken":"payment-token"}"""
-        private const val SUCCESS = """{"id":"TX-1","originalRequestId":"PAY-1","action":"SALE","status":"AUTHORIZED","context":{"businessId":"BUS-1","storeId":"STORE-1"},"amounts":{"transactionAmount":8999,"orderAmount":8999,"currency":"CAD"},"processorResponse":{"approvedAmount":8999,"status":"Successful","statusCode":"AA"}}"""
+        private const val SUCCESS = """{"id":"TX-1","originalRequestId":"PAY-1","action":"SALE","status":"CAPTURED","context":{"businessId":"BUS-1","storeId":"STORE-1"},"amounts":{"transactionAmount":8999,"orderAmount":8999,"currency":"CAD"},"processorResponse":{"approvedAmount":8999,"status":"Successful","statusCode":"AA"}}"""
     }
 }

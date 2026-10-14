@@ -11,7 +11,15 @@ export default function OrganizationScopedOrgAdminLayout() {
     ? params.organizationId[0]
     : params.organizationId;
 
+  console.log("[ORG ADMIN LAYOUT]", {
+    organizationId,
+    params,
+  });
   if (!organizationId) return null;
+  console.log("[ORG ADMIN LAYOUT RENDER]", {
+    organizationId,
+    pathname: "/org-admin/" + organizationId,
+  });
 
   return (
     <AuthGuard capability="ORG_ADMIN_ACCESS" organizationId={organizationId}>
