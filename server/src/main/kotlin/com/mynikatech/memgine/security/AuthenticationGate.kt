@@ -160,6 +160,30 @@ private fun protectOrganizationPath(
         }
         return
     }
+    
+    if (resource == "payments" &&
+        method == HttpMethod.Get &&
+        parts.size == 6) {
+        // PaymentService and the SQL functions enforce payment ownership.
+        // This also permits customer-scoped financial-exception lookup
+        // only through the separately authorized path below.
+        if (principal == null) {
+            throw UnauthorizedException("Authentication is required")
+        }
+        return
+    }
+
+    if (resource == "payments" &&
+        method == HttpMethod.Get &&
+        parts.size == 7 &&
+        parts[6] == "financial-exception") {
+        // Stage B: the service and SQL must verify ownership of this
+        // payment intent before returning financial exception details.
+        if (principal == null) {
+            throw UnauthorizedException("Authentication is required")
+        }
+        return
+    }
 
     if (resource == "payments" && method == HttpMethod.Post &&
         parts.getOrNull(6) in setOf("moneris", "poynt-collect")) {

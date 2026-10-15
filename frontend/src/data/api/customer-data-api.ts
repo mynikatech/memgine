@@ -72,6 +72,17 @@ export type PoyntCollectRecovery = {
   payment: PaymentIntent;
   subscription?: CounterPurchaseResult | null;
 };
+/** Stage B: customer-visible, captured-but-unfulfilled financial review case. */
+export type PoyntCollectFinancialException = {
+  financialExceptionId: string;
+  paymentIntentId: string;
+  classification: string;
+  caseStatus: string;
+  relatedPaymentIntentId?: string | null;
+  relatedSubscriptionId?: string | null;
+  amountMinor: number;
+  currencyCode: string;
+};
 
 export type PoyntCollectCheckoutSession = { checkoutUrl: string };
 export type PoyntCollectBrowserCheckout = {
@@ -415,6 +426,15 @@ export class CustomerDataApi {
     return httpClient.post<Record<string, never>, PoyntCollectRecovery>(
       `${collectPaymentPath(organizationId, paymentIntentId)}/reconcile`,
       {},
+    );
+  }
+  /** Read-only lookup. The backend verifies payment ownership. */
+  collectFinancialException(
+    organizationId: ID,
+    paymentIntentId: ID,
+  ): Promise<ApiResult<PoyntCollectFinancialException | null>> {
+    return httpClient.get(
+      `${collectPaymentPath(organizationId, paymentIntentId)}/financial-exception`,
     );
   }
 

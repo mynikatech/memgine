@@ -78,6 +78,18 @@ fun Route.paymentRoutes(service: PaymentService, audit: ActivityAuditService) {
                 call.callId
             ))
         }
+        // Stage B: read-only financial exception for the payment owner.
+        // The SECURITY DEFINER lookup verifies payment ownership again in SQL.
+        get("/{paymentIntentId}/financial-exception") {
+            val organizationId = call.parameters["organizationId"]
+                ?: throw BadRequestException("Organization id is required")
+            val paymentIntentId = call.parameters["paymentIntentId"]
+                ?: throw BadRequestException("Payment intent id is required")
+            val result = service.getCollectFinancialException(
+                organizationId, paymentIntentId, call.authenticatedPrincipal().userId
+            )
+            call.respond(ApiResponse.success(result, call.callId))
+        }
         // Stage A: authenticated, explicit Poynt Collect reconciliation.
         // Reconciliation verifies provider state and may finalize membership; it never charges.
         post("/{paymentIntentId}/reconcile") {

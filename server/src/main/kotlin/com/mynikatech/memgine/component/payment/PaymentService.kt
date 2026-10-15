@@ -45,7 +45,8 @@ class PaymentService(
     private val paymentSqlOverride: PaymentSql? = null,
     private val collectProvider: PoyntCollectPaymentProvider? = null,
     private val collectSdkUrl: String,
-    private val collectCaptureSqlOverride: PoyntCollectCaptureSql? = null
+    private val collectCaptureSqlOverride: PoyntCollectCaptureSql? = null,
+    private val collectExceptionSqlOverride: PoyntCollectFinancialExceptionSql? = null
 ) {
     private val testProvider = TestPaymentProvider(environment in setOf("local", "dev", "development"))
     private val stripeProvider = StripePaymentProvider(paymentConfig)
@@ -59,6 +60,7 @@ class PaymentService(
     }
     private fun sql() = paymentSqlOverride ?: jdbi.onDemand(PaymentSql::class.java)
     private fun collectCaptureSql() = collectCaptureSqlOverride ?: jdbi.onDemand(PoyntCollectCaptureSql::class.java)
+    private fun collectExceptionSql() = collectExceptionSqlOverride ?: jdbi.onDemand(PoyntCollectFinancialExceptionSql::class.java)
     private val checkoutRandom = SecureRandom()
     private val browserCheckoutTtlMinutes = 10L
 
@@ -228,6 +230,27 @@ class PaymentService(
     fun get(org: String, intentId: String, actorUserId: String): PaymentIntentDto = translate {
         sql().get(org, intentId, actorUserId) ?: throw NotFoundException("Payment was not found")
     }
+    
+    /**
+    * Stage B: read the financial exception for an authenticated payment owner.
+    * No reconciliation, payment mutation or refund occurs here.
+    */
+    fun getCollectFinancialException(
+        org: String,
+        intentId: String,
+        actorUserId: String
+    ): PoyntCollectFinancialExceptionRow? {
+        validateId(org, "organization id")
+        validateId(intentId, "payment intent id")
+        validateId(actorUserId, "actor user id")
+
+        // Enforce payment ownership using the existing authorization-backed SQL.
+        get(org, intentId, actorUserId)
+
+        return translate {
+            collectExceptionSql().getCustomerCase(org, intentId, actorUserId)
+        }
+    }
 
     fun collectBootstrap(org: String, intentId: String, actorUserId: String): PoyntCollectBootstrapDto {
         val provider = collectProvider ?: throw BadRequestException("Poynt Collect is not configured")
@@ -394,6 +417,14 @@ class PaymentService(
         val (payment, subscription) = getConfirmation(org, intentId, actorUserId)
         val hasCapture = translate {
             collectCaptureSql().hasVerifiedCapture(org, intentId, actorUserId)
+        }
+        // Stage B: persist a durable review case only after Stage A has verified capture.
+        // This is a separate Jdbi call/transaction from membership finalization.
+        // Do not infer duplicate membership or initiate a refund here.
+        if (hasCapture && payment.status == "PROCESSING" &&
+            payment.finalizedSubscriptionId == null && subscription == null
+        ) {
+            translate { collectExceptionSql().openCapturedUnfulfilledCase(org, intentId, actorUserId) }
         }
         val outcome = when {
             payment.status == "SUCCEEDED" && subscription != null -> "FULFILLED"

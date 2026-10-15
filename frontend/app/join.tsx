@@ -157,6 +157,7 @@ type CollectConfirmationUiState =
       message: string;
       title?: string;
       canReturnToPayment?: boolean;
+      showMembershipButton?: boolean;
     }
   | { kind: "failed"; message: string }
   | { kind: "succeeded" };
@@ -1868,13 +1869,33 @@ function JoinFlow() {
           return;
         }
         if (recovered.outcome === "CAPTURED_UNFULFILLED") {
+          // Stage B: case details are read-only. Never infer a duplicate from
+          // CAPTURED_UNFULFILLED alone, and never initiate another charge.
+          let reviewMessage =
+            "Your payment was received, but we couldn't activate a membership from this payment. Please don't pay again. Keep your payment reference for support.";
+          try {
+            const financialException =
+              await services.customerData.collectFinancialException(
+                orgId,
+                intentId,
+              );
+            if (financialException) {
+              reviewMessage =
+                `Your payment was received but could not be applied to a membership. ` +
+                `A financial review case has been opened (reference: ${financialException.financialExceptionId}). ` +
+                `Please don't pay again. You can view your existing memberships below.`;
+            }
+          } catch {
+            // A case lookup failure must not hide the verified payment result.
+          }
+          if (!collectMounted.current) return;
           setCollectPendingIntentId(intentId);
           setCollectPollingActive(false);
           setCollectConfirmationState({
             kind: "attention",
             title: "Payment received — membership needs review",
-            message:
-              "Your payment was received, but we couldn't activate your membership. Please don't pay again. Keep your payment reference for support.",
+            message: reviewMessage,
+            showMembershipButton: !isStaffSale,
           });
           setStep("processing");
           return;
@@ -1920,6 +1941,7 @@ function JoinFlow() {
       checkCollectPayment,
       clearPendingCustomerCollectPayment,
       finishSubscription,
+      isStaffSale,
     ],
   );
 
@@ -4652,6 +4674,16 @@ function JoinFlow() {
                 }}
                 testID="join-collect-check-status"
               />
+              {collectConfirmationState.showMembershipButton ? (
+                <Button
+                  label="View My Memberships"
+                  fullWidth
+                  onPress={() =>
+                    router.replace(APP_ROUTES.customer.cards as never)
+                  }
+                  testID="join-collect-view-memberships"
+                />
+              ) : null}
             </>
           ) : null}
         </View>

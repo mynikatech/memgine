@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 160-fix-poynt-collect-financial-exception-provider
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/160-fix-poynt-collect-financial-exception-provider.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
