@@ -234,6 +234,153 @@ class PoyntOteDiscoveryTest {
         println("Business ID matches: ${safeField(context ?: JsonObject(emptyMap()), "businessId") == businessId}")
         println("Store ID matches: ${safeField(context ?: JsonObject(emptyMap()), "storeId") == expectedStoreId}")
     }
+    
+    
+@Test
+fun inspectPendingCounterTerminalPayment() {
+    if (System.getenv("POYNT_OTE_DISCOVERY") != "true") {
+        println("Poynt terminal diagnostic: SKIPPED")
+        return
+    }
+
+    val orderId = "50c47b68-e88d-40bb-8020-01c38841da45"
+    val referenceId = "MRP-c4ef4988-43e2-48e6-84ab-112e341b1937"
+
+    val token = accessToken()
+    val transport = PoyntCloudHttpTransport(poyntBaseUrl, "1.2")
+    val authorization = "${token.tokenType} ${token.value}"
+
+    fun inspect(label: String, uri: URI) {
+        val response = transport.get(uri, authorization)
+        println("\n=== $label ===")
+        println("HTTP status: ${response.statusCode}")
+
+        val root = runCatching {
+            Json.parseToJsonElement(response.body)
+        }.getOrNull()
+
+        if (root == null) {
+            println("Response: Non-JSON or empty")
+            return
+        }
+
+        fun field(obj: JsonObject?, key: String): String =
+            (obj?.get(key) as? JsonPrimitive)
+                ?.content ?: "NOT_EXPOSED"
+
+        fun printRecord(record: JsonObject) {
+            val amounts = record["amounts"] as? JsonObject
+            val context = record["context"] as? JsonObject
+            println("ID: ${field(record, "id")}")
+            println("Status: ${field(record, "status")}")
+            println("Action: ${field(record, "action")}")
+            println("Original request ID: ${field(record, "originalRequestId")}")
+            println("Order ID: ${field(record, "orderId")}")
+            println("Reference ID: ${field(record, "referenceId")}")
+            println("Amount: ${field(amounts, "transactionAmount")}")
+            println("Currency: ${field(amounts, "currency")}")
+            println("Context store matches: ${field(context, "storeId") == expectedStoreId}")
+            println("Context business matches: ${field(context, "businessId") == businessId}")
+        }
+
+        when (root) {
+            is JsonObject -> {
+                println("Response fields: ${root.keys.sorted()}")
+
+                val records = (
+                    root["transactions"] as? JsonArray
+                        ?: root["items"] as? JsonArray
+                    )
+
+                if (records != null) {
+                    println("Returned records: ${records.size}")
+                    records
+                        .mapNotNull { it as? JsonObject }
+                        .filter { record ->
+                            val serialized = record.toString()
+                            serialized.contains(orderId) ||
+                                serialized.contains(referenceId) ||
+                                serialized.contains(
+                                    "\"transactionAmount\":42"
+                                )
+                        }
+                        .take(10)
+                        .forEach(::printRecord)
+                } else {
+                    printRecord(root)
+                }
+            }
+
+            is JsonArray -> {
+                println("Returned records: ${root.size}")
+                root.mapNotNull { it as? JsonObject }
+                    .filter { record ->
+                        val serialized = record.toString()
+                        serialized.contains(orderId) ||
+                            serialized.contains(referenceId) ||
+                            serialized.contains(
+                                "\"transactionAmount\":42"
+                            )
+                    }
+                    .take(10)
+                    .forEach(::printRecord)
+            }
+
+            else -> println("Unexpected JSON response shape")
+        }
+    }
+
+val orderResponse = transport.get(
+    URI.create("$poyntBaseUrl/businesses/$businessId/orders/$orderId"),
+    authorization
+)
+
+println("\n=== POYNT ORDER DETAILS ===")
+println("HTTP status: ${orderResponse.statusCode}")
+
+val order = runCatching {
+    Json.parseToJsonElement(orderResponse.body).jsonObject
+}.getOrNull()
+
+if (order != null) {
+    println("Order ID: ${safeDiagnosticField(order, "id")}")
+    println("Accepted: ${safeDiagnosticField(order, "accepted")}")
+    println("Valid: ${safeDiagnosticField(order, "valid")}")
+
+    val amounts = order["amounts"] as? JsonObject
+    println("Order amounts: ${amounts?.keys?.sorted()}")
+
+    val statuses = order["statuses"] as? JsonObject
+    println("Order statuses: ${statuses?.keys?.sorted()}")
+    println("Order status: ${safeDiagnosticField(statuses, "status")}")
+    println("Transaction summary: ${safeDiagnosticField(statuses, "transactionStatusSummary")}")
+    println("Fulfillment status: ${safeDiagnosticField(statuses, "fulfillmentStatus")}")
+
+    val histories = order["orderHistories"] as? JsonArray
+    println("Order history count: ${histories?.size ?: 0}")
+
+    histories?.forEachIndexed { index, history ->
+        val entry = history as? JsonObject ?: return@forEachIndexed
+        println(
+            "History ${index + 1}: " +
+                "status=${safeDiagnosticField(entry, "status")}, " +
+                "createdAt=${safeDiagnosticField(entry, "createdAt")}"
+        )
+    }
+}
+
+    inspect(
+        "POYNT TRANSACTIONS",
+        URI.create(
+            "$poyntBaseUrl/businesses/$businessId/transactions" +
+                "?startAt=2026-10-14T18%3A40%3A00Z" +
+                "&endAt=2026-10-14T19%3A00%3A00Z"
+        )
+    )
+
+    println("\nDiagnostic complete. No payment was initiated.")
+}
+
 
     private fun accessToken(): PoyntAccessToken {
         val config = PoyntCatalogConfiguration(

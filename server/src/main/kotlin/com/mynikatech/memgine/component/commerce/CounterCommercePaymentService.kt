@@ -1256,7 +1256,14 @@ class CounterCommercePaymentService(
             val postgres = generateSequence<Throwable>(error) { it.cause }
                 .filterIsInstance<PSQLException>()
                 .firstOrNull()
-
+        logger.error(
+            "Counter Commerce DB failure: sqlState={}, message={}, where={}, hint={}, constraint={}",
+            postgres?.sqlState,
+            postgres?.serverErrorMessage?.message,
+            postgres?.serverErrorMessage?.where,
+            postgres?.serverErrorMessage?.hint,
+            postgres?.serverErrorMessage?.constraint
+        )
             when (postgres?.sqlState) {
                 "42501" ->
                     throw ForbiddenException("Counter Commerce operation is not permitted")
