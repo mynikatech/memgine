@@ -150,10 +150,14 @@ private fun protectOrganizationPath(
         return
     }
 
-    if (resource == "payments" && method == HttpMethod.Get) {
-        // The payment function performs the final creator/customer ownership check.
-        // This permits a signed-in customer to poll only their own Checkout result.
-        if (principal == null) throw UnauthorizedException("Authentication is required")
+    if (resource == "payments" &&
+        method == HttpMethod.Post &&
+        parts.getOrNull(6) == "reconcile") {
+        // Allow an authenticated customer to request reconciliation.
+        // PaymentService.get() enforces ownership of the payment intent.
+        if (principal == null) {
+            throw UnauthorizedException("Authentication is required")
+        }
         return
     }
 

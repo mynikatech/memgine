@@ -11,6 +11,7 @@ import type { PoyntCollectPaymentMethod } from "@/src/data/api/customer-data-api
 import type {
   PoyntCollectBootstrap,
   PoyntCollectCheckoutSession,
+  PoyntCollectRecovery,
 } from "@/src/data/api/customer-data-api";
 import type {
   CustomerDiscoverableOrganization,
@@ -35,9 +36,7 @@ import type {
   PaymentIntent,
 } from "@/src/data/api/counter-api";
 import type { OrgAdminRedemption } from "@/src/data/api/org-admin-transaction-api";
-
 export type CustomerChoice = { userId: ID; displayName: string };
-
 export class CustomerPaymentStatusError extends Error {
   constructor(
     message: string,
@@ -67,17 +66,14 @@ export type CustomerProfile = {
   subscriptionCount: number;
   membershipName?: string | null;
 };
-
 /** Customer-facing data only. Server errors always reach the screen. */
 export class CustomerDataService {
   constructor(private readonly api: CustomerDataApi) {}
-
   async choices(): Promise<CustomerChoice[]> {
     const result = await this.api.choices();
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async discoverOrganizations(): Promise<CustomerDiscoverableOrganization[]> {
     const result = await this.api.discoverOrganizations();
     if (!result.success) throw new Error(result.error.message);
@@ -94,7 +90,6 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async discoverOrganizationDetail(
     organizationId: ID,
   ): Promise<CustomerDiscoveryDetail> {
@@ -102,7 +97,6 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async redemptionItemStatuses(
     organizationId: ID,
     subscriptionId: ID,
@@ -114,7 +108,6 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async createRedemptionTransaction(
     organizationId: ID,
     request: CustomerRedemptionTransactionRequest,
@@ -126,7 +119,6 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async issueRedemptionTransactionQr(
     organizationId: ID,
     transactionId: ID,
@@ -138,7 +130,6 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async redemptionTransactionStatus(
     organizationId: ID,
     transactionId: ID,
@@ -150,25 +141,23 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async profiles(userId?: ID): Promise<CustomerProfile[]> {
     const result = await this.api.profiles(userId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async homeBootstrap(): Promise<CustomerHomeBootstrap> {
     const result = await this.api.homeBootstrap();
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
-  async membershipSummary(organizationId: ID): Promise<CustomerMembershipSummary> {
+  async membershipSummary(
+    organizationId: ID,
+  ): Promise<CustomerMembershipSummary> {
     const result = await this.api.membershipSummary(organizationId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async subscriptions(
     organizationId: ID,
     userId: ID,
@@ -177,7 +166,6 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async redemptions(
     organizationId: ID,
     userId: ID,
@@ -186,7 +174,6 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async membershipProducts(
     organizationId: ID,
     userId?: ID,
@@ -195,13 +182,11 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async benefits(organizationId: ID, userId?: ID): Promise<Benefit[]> {
     const result = await this.api.benefits(organizationId, userId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   benefitRules(
     organizationId: ID,
     userId: ID,
@@ -209,25 +194,21 @@ export class CustomerDataService {
   ): Promise<BenefitUsageRule[]> {
     return this.api.benefitRules(organizationId, userId, benefitId);
   }
-
   async offers(organizationId: ID, userId: ID): Promise<Offer[]> {
     const result = await this.api.offers(organizationId, userId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async combinedOffers(organizationId: ID): Promise<CustomerCombinedOffer[]> {
     const result = await this.api.combinedOffers(organizationId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async stores(organizationId: ID, userId: ID): Promise<Store[]> {
     const result = await this.api.stores(organizationId, userId);
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async purchase(
     organizationId: ID,
     input: {
@@ -243,7 +224,6 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async startAuthenticatedPayment(
     organizationId: ID,
     planId: ID,
@@ -261,7 +241,6 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async purchaseQuote(
     organizationId: ID,
     planId: ID,
@@ -275,7 +254,6 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async confirmTestPayment(
     organizationId: ID,
     paymentIntentId: ID,
@@ -287,7 +265,6 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async confirmMonerisPayment(
     organizationId: ID,
     paymentIntentId: ID,
@@ -301,7 +278,6 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async collectBootstrap(
     organizationId: ID,
     paymentIntentId: ID,
@@ -313,7 +289,6 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async createCollectBrowserCheckout(
     organizationId: ID,
     paymentIntentId: ID,
@@ -325,7 +300,6 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data;
   }
-
   async confirmCollectPayment(
     organizationId: ID,
     paymentIntentId: ID,
@@ -339,6 +313,22 @@ export class CustomerDataService {
       method,
     );
     if (!result.success) throw new Error(result.error.message);
+    return result.data;
+  }
+  /** Explicit recovery action: provider lookup and safe fulfillment, never a new charge. */
+  async reconcileCollectPayment(
+    organizationId: ID,
+    paymentIntentId: ID,
+  ): Promise<PoyntCollectRecovery> {
+    const result = await this.api.reconcileCollectPayment(
+      organizationId,
+      paymentIntentId,
+    );
+    if (!result.success)
+      throw new CustomerPaymentStatusError(
+        result.error.message,
+        result.error.code,
+      );
     return result.data;
   }
   async paymentStatus(
@@ -356,7 +346,6 @@ export class CustomerDataService {
       );
     return result.data;
   }
-
   async preference(
     organizationId: ID,
     userId: ID,
@@ -366,7 +355,6 @@ export class CustomerDataService {
     if (!result.success) throw new Error(result.error.message);
     return result.data.value;
   }
-
   async setPreference(
     organizationId: ID,
     userId: ID,

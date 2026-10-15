@@ -78,6 +78,18 @@ fun Route.paymentRoutes(service: PaymentService, audit: ActivityAuditService) {
                 call.callId
             ))
         }
+        // Stage A: authenticated, explicit Poynt Collect reconciliation.
+        // Reconciliation verifies provider state and may finalize membership; it never charges.
+        post("/{paymentIntentId}/reconcile") {
+            val organizationId = call.parameters["organizationId"]
+                ?: throw BadRequestException("Organization id is required")
+            val paymentIntentId = call.parameters["paymentIntentId"]
+                ?: throw BadRequestException("Payment intent id is required")
+            val actorUserId = call.authenticatedPrincipal().userId
+            val result = service.reconcileCollectAndGet(organizationId, paymentIntentId, actorUserId)
+            recordCompletedPurchase(audit, organizationId, actorUserId, result.payment to result.subscription)
+            call.respond(ApiResponse.success(result, call.callId))
+        }
         post("/{paymentIntentId}/cancel") {
             val organizationId = call.parameters["organizationId"]
                 ?: throw BadRequestException("Organization id is required")

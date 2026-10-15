@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 158-poynt-collect-capture-evidence
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/158-poynt-collect-capture-evidence.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

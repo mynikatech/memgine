@@ -31,16 +31,13 @@ import { MembershipProductApi } from "./membership-product-api";
 import { BenefitApi } from "./benefit-api";
 import { OfferApi } from "./offer-api";
 import { StoreApi } from "./store-api";
-
 console.log("[W39 MODULE LOADED]", {
   mode: process.env.EXPO_PUBLIC_W39_TEST_MODE,
   isDev: __DEV__,
   hostname: typeof window !== "undefined" ? window.location.hostname : "N/A",
 });
-
 const base = (organizationId: ID) =>
   `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}`;
-
 export type PoyntCollectBootstrap = {
   sdkUrl: string;
   businessId: string;
@@ -52,13 +49,11 @@ export type PoyntCollectBootstrap = {
     amount: string; // Decimal string produced on the backend, never recomputed in frontend.
   } | null;
 };
-
 export type CustomerHomeBootstrap = {
   discoverableOrganizations: CustomerDiscoverableOrganization[];
   relationships: CustomerProfile[];
   unreadNotificationCount?: number | null;
 };
-
 export type CustomerMembershipSummary = {
   organizationId: ID;
   subscriptions: CounterSubscription[];
@@ -66,22 +61,28 @@ export type CustomerMembershipSummary = {
   benefits: Benefit[];
   branding?: OrganizationBranding | null;
 };
-
 export type PoyntCollectPaymentMethod = "card" | "apple_pay" | "google_pay";
+export type PoyntCollectRecovery = {
+  outcome:
+    | "FULFILLED"
+    | "CAPTURED_UNFULFILLED"
+    | "PAYMENT_PENDING"
+    | "PAYMENT_FAILED"
+    | "OUTCOME_UNKNOWN";
+  payment: PaymentIntent;
+  subscription?: CounterPurchaseResult | null;
+};
 
 export type PoyntCollectCheckoutSession = { checkoutUrl: string };
 export type PoyntCollectBrowserCheckout = {
   csrfToken: string;
   payment: PaymentIntent;
 };
-
 const collectPaymentPath = (organizationId: ID, paymentIntentId: ID) =>
   `/api/v1/organizations/${encodeURIComponent(organizationId)}/payments/${encodeURIComponent(paymentIntentId)}`;
-
 const CHECKOUT_READ_TIMEOUT_MS = 20_000;
 const PAYMENT_STATUS_TIMEOUT_MS = 15_000;
 const PAYMENT_CONFIRM_TIMEOUT_MS = 45_000;
-
 async function browserCheckoutRequest<T>(
   path: string,
   method: "GET" | "POST",
@@ -91,7 +92,6 @@ async function browserCheckoutRequest<T>(
 ): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method,
@@ -103,19 +103,16 @@ async function browserCheckoutRequest<T>(
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
-
     const payload = (await response.json().catch(() => null)) as {
       success?: boolean;
       data?: T;
       error?: { message?: string };
     } | null;
-
     if (!response.ok || !payload?.success || payload.data == null) {
       throw new Error(
         payload?.error?.message ?? "Secure checkout is unavailable.",
       );
     }
-
     return payload.data;
   } catch (error) {
     if (controller.signal.aborted) {
@@ -124,13 +121,11 @@ async function browserCheckoutRequest<T>(
         "The request timed out. Payment status may still be pending.",
       );
     }
-
     throw error;
   } finally {
     clearTimeout(timer);
   }
 }
-
 export type CustomerDiscoverableOrganization = {
   organizationId: ID;
   name: string;
@@ -138,7 +133,6 @@ export type CustomerDiscoverableOrganization = {
   logoUrl?: string | null;
   tagline?: string | null;
 };
-
 export type CustomerCombinedOffer = {
   offerId: ID;
   offerType: "REGULAR" | "MEMBERSHIP_PURCHASE";
@@ -152,7 +146,6 @@ export type CustomerMembershipPurchaseOfferQr = {
   displayName: string;
   expiresAt: string;
 };
-
 export type CustomerDiscoveryDetail = {
   organization: Pick<
     Organization,
@@ -189,34 +182,29 @@ export type CustomerDiscoveryDetail = {
   offerUsageRules: OfferUsageRule[];
   stores: Store[];
 };
-
 export type CustomerRedemptionTransactionRequest = {
   subscriptionId: ID;
   benefitIds: ID[];
   offerIds: ID[];
   redemptionMethod: "CUSTOMER_QR";
 };
-
 export type PendingRedemptionTransaction = {
   transactionId: ID;
   transactionNumber: string;
   status: "PENDING" | "SUCCESS" | "FAILED" | "EXPIRED" | "CANCELLED";
   expiresAt?: string | null;
 };
-
 export type RedemptionTransactionQr = {
   qrReference: string;
   transactionNumber: string;
   expiresAt: string;
 };
-
 export type CustomerRedemptionTransactionStatus = {
   transactionId: ID;
   status: "PENDING" | "SUCCESS" | "FAILED" | "EXPIRED" | "CANCELLED";
   expiresAt?: string | null;
   completedAt?: string | null;
 };
-
 export type CustomerRedemptionItemStatus = {
   itemId: ID;
   itemType: "BENEFIT" | "OFFER";
@@ -229,7 +217,6 @@ export type CustomerRedemptionItemStatus = {
     | "INACTIVE";
   displayReason?: string | null;
 };
-
 export class CustomerDataApi {
   createRedemptionTransaction(
     organizationId: ID,
@@ -289,7 +276,6 @@ export class CustomerDataApi {
   choices(): Promise<ApiResult<CustomerChoice[]>> {
     return httpClient.get("/api/v1/customer/dev/choices");
   }
-
   profiles(_userId?: ID): Promise<ApiResult<CustomerProfile[]>> {
     return httpClient.get(
       `/api/v1/customer/relationships?refresh=${Date.now()}`,
@@ -317,7 +303,6 @@ export class CustomerDataApi {
     const { customerUserId: _customerUserId, ...request } = input;
     return httpClient.post(`${base(organizationId)}/purchases`, request);
   }
-
   startAuthenticatedPayment(
     organizationId: ID,
     planId: ID,
@@ -335,7 +320,6 @@ export class CustomerDataApi {
       },
     );
   }
-
   purchaseQuote(
     organizationId: ID,
     planId: ID,
@@ -345,13 +329,11 @@ export class CustomerDataApi {
       `${base(organizationId)}/purchases/quote?planId=${encodeURIComponent(planId)}${explicitOfferId ? `&explicitOfferId=${encodeURIComponent(explicitOfferId)}` : ""}`,
     );
   }
-
   combinedOffers(
     organizationId: ID,
   ): Promise<ApiResult<CustomerCombinedOffer[]>> {
     return httpClient.get(`${base(organizationId)}/combined-offers`);
   }
-
   confirmTestPayment(
     organizationId: ID,
     paymentIntentId: ID,
@@ -361,7 +343,6 @@ export class CustomerDataApi {
       { status: "SUCCEEDED" },
     );
   }
-
   confirmMonerisPayment(
     organizationId: ID,
     paymentIntentId: ID,
@@ -372,7 +353,6 @@ export class CustomerDataApi {
       { temporaryToken },
     );
   }
-
   collectBootstrap(
     organizationId: ID,
     paymentIntentId: ID,
@@ -381,7 +361,6 @@ export class CustomerDataApi {
       `${collectPaymentPath(organizationId, paymentIntentId)}/poynt-collect/config`,
     );
   }
-
   createCollectBrowserCheckout(
     organizationId: ID,
     paymentIntentId: ID,
@@ -391,7 +370,6 @@ export class CustomerDataApi {
       {},
     );
   }
-
   async confirmCollectPayment(
     organizationId: ID,
     paymentIntentId: ID,
@@ -404,17 +382,14 @@ export class CustomerDataApi {
       | "delay"
       | "lost"
       | "off";
-
     const isLocalWebTest =
       __DEV__ &&
       typeof window !== "undefined" &&
       ["localhost", "127.0.0.1"].includes(window.location.hostname);
-
     console.log("[W39] confirmCollectPayment ENTERED", {
       isLocalWebTest,
       w39Mode,
     });
-
     const response = await httpClient.post<
       { nonce: string; method: PoyntCollectPaymentMethod },
       PaymentConfirmation
@@ -422,19 +397,25 @@ export class CustomerDataApi {
       `${collectPaymentPath(organizationId, paymentIntentId)}/poynt-collect/confirm`,
       { nonce, method },
     );
-
     if (isLocalWebTest && w39Mode !== "off" && response.success) {
       console.log("[W39] Successful API response. Delaying 45 seconds.");
-
       await new Promise<void>((resolve) => setTimeout(resolve, 45_000));
-
       if (w39Mode === "lost") {
         console.log("[W39] Simulating lost response.");
         throw new Error("W39 simulated confirmation response timeout");
       }
     }
-
     return response;
+  }
+  /** Non-charging recovery action; the server can verify and finalize an existing intent. */
+  reconcileCollectPayment(
+    organizationId: ID,
+    paymentIntentId: ID,
+  ): Promise<ApiResult<PoyntCollectRecovery>> {
+    return httpClient.post<Record<string, never>, PoyntCollectRecovery>(
+      `${collectPaymentPath(organizationId, paymentIntentId)}/reconcile`,
+      {},
+    );
   }
 
   paymentStatus(
@@ -443,7 +424,6 @@ export class CustomerDataApi {
   ): Promise<ApiResult<PaymentConfirmation>> {
     return httpClient.get(collectPaymentPath(organizationId, paymentIntentId));
   }
-
   preference(
     organizationId: ID,
     userId: ID,
@@ -453,7 +433,6 @@ export class CustomerDataApi {
       `${base(organizationId)}/preferences/${encodeURIComponent(code)}`,
     );
   }
-
   setPreference(
     organizationId: ID,
     userId: ID,
@@ -465,7 +444,6 @@ export class CustomerDataApi {
       { value },
     );
   }
-
   async subscriptions(
     organizationId: ID,
     userId: ID,
@@ -485,7 +463,6 @@ export class CustomerDataApi {
       ),
     );
   }
-
   async redemptions(
     organizationId: ID,
     userId: ID,
@@ -505,18 +482,15 @@ export class CustomerDataApi {
       ),
     );
   }
-
   membershipProducts(
     organizationId: ID,
     userId?: ID,
   ): Promise<ApiResult<MembershipProduct[]>> {
     return new MembershipProductApi().listForCustomer(organizationId, userId);
   }
-
   benefits(organizationId: ID, userId?: ID): Promise<ApiResult<Benefit[]>> {
     return new BenefitApi().listForCustomer(organizationId, userId);
   }
-
   async benefitRules(
     organizationId: ID,
     userId: ID,
@@ -524,16 +498,13 @@ export class CustomerDataApi {
   ): Promise<BenefitUsageRule[]> {
     return new BenefitApi().rulesForCustomer(organizationId, userId, benefitId);
   }
-
   offers(organizationId: ID, userId: ID): Promise<ApiResult<Offer[]>> {
     return new OfferApi().listForCustomer(organizationId, userId);
   }
-
   stores(organizationId: ID, userId: ID): Promise<ApiResult<Store[]>> {
     return new StoreApi().listForCustomer(organizationId, userId);
   }
 }
-
 /** Browser-only cookie session API used by the native Poynt Collect hand-off. */
 export const poyntCollectBrowserApi = {
   redeem(session: string): Promise<PoyntCollectBrowserCheckout> {

@@ -1844,6 +1844,85 @@ function JoinFlow() {
     [clearPendingCustomerCollectPayment, finishSubscription, orgId],
   );
 
+  // An explicit customer action may reconcile a captured payment, but never charge again.
+  const customerCollectReconcileInFlight = useRef(false);
+  const reconcileSavedCollectPayment = useCallback(
+    async (intentId: string) => {
+      if (customerCollectReconcileInFlight.current) return;
+      customerCollectReconcileInFlight.current = true;
+      try {
+        const recovered = await services.customerData.reconcileCollectPayment(
+          orgId,
+          intentId,
+        );
+        if (!collectMounted.current) return;
+        if (recovered.outcome === "FULFILLED" && recovered.subscription) {
+          clearPendingCustomerCollectPayment();
+          setCollectPayment(null);
+          setCollectConfirmationState({ kind: "succeeded" });
+          finishSubscription(
+            recovered.subscription,
+            recovered.payment.providerReferenceId ??
+              recovered.payment.paymentIntentId,
+          );
+          return;
+        }
+        if (recovered.outcome === "CAPTURED_UNFULFILLED") {
+          setCollectPendingIntentId(intentId);
+          setCollectPollingActive(false);
+          setCollectConfirmationState({
+            kind: "attention",
+            title: "Payment received — membership needs review",
+            message:
+              "Your payment was received, but we couldn't activate your membership. Please don't pay again. Keep your payment reference for support.",
+          });
+          setStep("processing");
+          return;
+        }
+        if (
+          recovered.outcome === "PAYMENT_PENDING" ||
+          recovered.outcome === "PAYMENT_FAILED"
+        ) {
+          // Existing logic checks exact plan and terminal state without charging.
+          await checkCollectPayment(intentId, Date.now(), {
+            payment: recovered.payment,
+            subscription: recovered.subscription ?? undefined,
+          });
+          return;
+        }
+        // Unknown or inconsistent state: do NOT restart five-minute polling.
+        setCollectPendingIntentId(intentId);
+        setCollectPollingActive(false);
+        setCollectConfirmationState({
+          kind: "attention",
+          title: "We're still confirming your payment",
+          message:
+            "We haven't been able to finish confirming your membership. If your bank shows a charge, please don't make another payment. Your payment reference has been saved, and you can check its status again.",
+        });
+        setStep("processing");
+      } catch {
+        if (!collectMounted.current) return;
+        setCollectPendingIntentId(intentId);
+        setCollectPollingActive(false);
+        setCollectConfirmationState({
+          kind: "attention",
+          title: "We're still confirming your payment",
+          message:
+            "We haven't been able to finish confirming your membership. If your bank shows a charge, please don't make another payment. Your payment reference has been saved, and you can check its status again.",
+        });
+        setStep("processing");
+      } finally {
+        customerCollectReconcileInFlight.current = false;
+      }
+    },
+    [
+      orgId,
+      checkCollectPayment,
+      clearPendingCustomerCollectPayment,
+      finishSubscription,
+    ],
+  );
+
   const returnToPendingCollectPayment = useCallback(
     async (intentId: string) => {
       if (collectPollingIntentIds.current.has(intentId)) return;
@@ -4416,7 +4495,7 @@ function JoinFlow() {
               fullWidth
               onPress={() => {
                 setOtpError(undefined);
-                void checkCollectPayment(collectPendingIntentId);
+                void reconcileSavedCollectPayment(collectPendingIntentId);
               }}
               testID="join-collect-unavailable-check-status"
             />
@@ -4497,7 +4576,7 @@ function JoinFlow() {
                 label="Check Membership Status"
                 fullWidth
                 onPress={() => {
-                  void checkCollectPayment(collectPendingIntentId);
+                  void reconcileSavedCollectPayment(collectPendingIntentId);
                 }}
                 testID="join-collect-check-status"
               />
@@ -4569,7 +4648,7 @@ function JoinFlow() {
                 label="Check Payment Status"
                 fullWidth
                 onPress={() => {
-                  void checkCollectPayment(collectPendingIntentId);
+                  void reconcileSavedCollectPayment(collectPendingIntentId);
                 }}
                 testID="join-collect-check-status"
               />

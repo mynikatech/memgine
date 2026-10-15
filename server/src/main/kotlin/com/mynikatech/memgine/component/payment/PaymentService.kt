@@ -44,7 +44,8 @@ class PaymentService(
     private val paymentConfig: PaymentConfig,
     private val paymentSqlOverride: PaymentSql? = null,
     private val collectProvider: PoyntCollectPaymentProvider? = null,
-    private val collectSdkUrl: String
+    private val collectSdkUrl: String,
+    private val collectCaptureSqlOverride: PoyntCollectCaptureSql? = null
 ) {
     private val testProvider = TestPaymentProvider(environment in setOf("local", "dev", "development"))
     private val stripeProvider = StripePaymentProvider(paymentConfig)
@@ -57,6 +58,7 @@ class PaymentService(
         else -> throw IllegalArgumentException("Unsupported payment provider configuration")
     }
     private fun sql() = paymentSqlOverride ?: jdbi.onDemand(PaymentSql::class.java)
+    private fun collectCaptureSql() = collectCaptureSqlOverride ?: jdbi.onDemand(PoyntCollectCaptureSql::class.java)
     private val checkoutRandom = SecureRandom()
     private val browserCheckoutTtlMinutes = 10L
 
@@ -363,9 +365,6 @@ class PaymentService(
 
     fun getConfirmation(org: String, intentId: String, actorUserId: String): Pair<PaymentIntentDto, CounterPurchaseResult?> {
         val current = get(org, intentId, actorUserId)
-        if (current.providerCode == "POYNT_COLLECT" && current.status == "PROCESSING") {
-            reconcileCollectPayment(org, intentId, actorUserId, current)
-        }
         val payment = get(org, intentId, actorUserId)
         val subscription = if (payment.finalizedSubscriptionId == null) null else translate {
             sql().finalizedMembership(org, intentId, actorUserId)
@@ -377,6 +376,35 @@ class PaymentService(
             )
         }
         return payment to subscription
+    }
+
+    /** Explicit reconciliation without card tokenization or another charge. */
+    fun reconcileCollectAndGet(
+        org: String,
+        intentId: String,
+        actorUserId: String
+    ): com.mynikatech.memgine.net.dto.PoyntCollectRecoveryDto {
+        val initial = get(org, intentId, actorUserId)
+        if (initial.providerCode != "POYNT_COLLECT") {
+            throw BadRequestException("Payment is not a Poynt Collect payment")
+        }
+        if (initial.status == "PROCESSING") {
+            reconcileCollectPayment(org, intentId, actorUserId, initial)
+        }
+        val (payment, subscription) = getConfirmation(org, intentId, actorUserId)
+        val hasCapture = translate {
+            collectCaptureSql().hasVerifiedCapture(org, intentId, actorUserId)
+        }
+        val outcome = when {
+            payment.status == "SUCCEEDED" && subscription != null -> "FULFILLED"
+            hasCapture && subscription == null -> "CAPTURED_UNFULFILLED"
+            payment.status == "PENDING" -> "PAYMENT_PENDING"
+            payment.status == "FAILED" || payment.status == "CANCELED" -> "PAYMENT_FAILED"
+            else -> "OUTCOME_UNKNOWN"
+        }
+        return com.mynikatech.memgine.net.dto.PoyntCollectRecoveryDto(
+            outcome = outcome, payment = payment, subscription = subscription
+        )
     }
 
     /**
@@ -423,6 +451,18 @@ class PaymentService(
         } ?: return
         if (persistedReference != result.transactionId) return
         if (result.approved) {
+            // Commit verified capture in its own Jdbi operation before subscription finalization.
+            val recordedCapture = try {
+                translate {
+                    collectCaptureSql().recordVerifiedCapture(
+                        org, intentId, actorUserId, result.transactionId,
+                        amountMinor(current.amount), current.currencyCode
+                    )
+                }
+            } catch (_: Exception) {
+                false
+            }
+            if (!recordedCapture) return
             val finalized = try {
                 translate {
                     sql().confirmProviderSuccess(
@@ -616,6 +656,16 @@ class PaymentService(
             throw ConflictException("Payment is associated with another Collect transaction")
         }
         if (result.approved) {
+            // Persist capture before any membership finalization, even if it later rolls back.
+            val recordedCapture = translate {
+                collectCaptureSql().recordVerifiedCapture(
+                    org, intentId, actorUserId, result.transactionId,
+                    amountMinor(current.amount), current.currencyCode
+                )
+            }
+            if (!recordedCapture) {
+                throw ConflictException("Collect capture evidence is unavailable; reconciliation required")
+            }
             translate {
                 sql().confirmProviderSuccess(
                     intentId, org, provider.code, result.transactionId,

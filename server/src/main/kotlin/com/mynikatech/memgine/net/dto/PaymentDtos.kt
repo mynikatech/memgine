@@ -114,3 +114,10 @@ data class PaymentConfirmationDto(
 
 @Serializable
 data class CounterCashPaymentConfirmDto(val paymentIntentId: String)
+
+@Serializable
+data class PoyntCollectRecoveryDto(
+    val outcome: String,
+    val payment: PaymentIntentDto,
+    val subscription: CounterPurchaseResult? = null
+)
