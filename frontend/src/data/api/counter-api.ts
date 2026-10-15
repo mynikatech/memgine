@@ -82,6 +82,8 @@ export type PaymentIntent = {
 
   currencyCode: string;
 
+  membershipPlanId: ID;
+
   providerReferenceId?: string | null;
 
   finalizedSubscriptionId?: ID | null;

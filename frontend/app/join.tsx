@@ -16,7 +16,10 @@ import type {
   Subscription,
 } from "@/src/core";
 
-import type { MembershipPurchaseQuote } from "@/src/data/api/counter-api";
+import type {
+  MembershipPurchaseQuote,
+  PaymentConfirmation,
+} from "@/src/data/api/counter-api";
 import type { PoyntCollectBootstrap } from "@/src/data/api/customer-data-api";
 import { PoyntCollectCardForm } from "@/src/ui/payment/PoyntCollectCardForm";
 import { PoyntCollectWallets } from "@/src/ui/payment/PoyntCollectWallets";
@@ -63,53 +66,53 @@ import { storage } from "@/src/utils/storage";
 
 /**
 
- * Customer acquisition & subscription purchase journey.
+  * Customer acquisition & subscription purchase journey.
 
- *
+  *
 
- * Reused for:
+  * Reused for:
 
- * - direct customer purchase
+  * - direct customer purchase
 
- * - staff-assisted counter purchase
+  * - staff-assisted counter purchase
 
- *
+  *
 
- * Subscription:
+  * Subscription:
 
- *
+  *
 
- * Customer
+  * Customer
 
- *   -> OrganizationUser
+  *   -> OrganizationUser
 
- *      -> Subscription
+  *      -> Subscription
 
- *
+  *
 
- * Subscription
+  * Subscription
 
- *   -> SubscriptionPlan
+  *   -> SubscriptionPlan
 
- *
+  *
 
- * Payment:
+  * Payment:
 
- *
+  *
 
- * JoinFlow
+  * JoinFlow
 
- *   -> PaymentService
+  *   -> PaymentService
 
- *      -> LocalPaymentService (development)
+  *      -> LocalPaymentService (development)
 
- *      -> Real provider adapter (production)
+  *      -> Real provider adapter (production)
 
- *
+  *
 
- * JoinFlow deliberately does NOT know which payment provider is being used.
+  * JoinFlow deliberately does NOT know which payment provider is being used.
 
- */
+  */
 
 type Step =
   | "landing"
@@ -149,7 +152,12 @@ type CollectConfirmationUiState =
   | { kind: "idle" }
   | { kind: "processing" }
   | { kind: "activationPending"; message: string }
-  | { kind: "attention"; message: string; canReturnToPayment?: boolean }
+  | {
+      kind: "attention";
+      message: string;
+      title?: string;
+      canReturnToPayment?: boolean;
+    }
   | { kind: "failed"; message: string }
   | { kind: "succeeded" };
 
@@ -163,6 +171,52 @@ type PendingCustomerPaymentStart = {
   quotedMinor: number;
   paymentIntentId?: string;
 };
+
+type VolatileCustomerPaymentRecovery = PendingCustomerPaymentStart & {
+  organizationId: string;
+  customerUserId: string;
+  paymentIntentId: string;
+  providerCode: string;
+};
+
+type ConflictingCollectInspection =
+  | { kind: "checking" }
+  | { kind: "result"; message: string }
+  | { kind: "error"; message: string };
+
+const hasNonBlankString = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+
+const isPendingCustomerPaymentStart = (
+  value: unknown,
+): value is PendingCustomerPaymentStart => {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<PendingCustomerPaymentStart>;
+  return (
+    hasNonBlankString(candidate.key) &&
+    hasNonBlankString(candidate.planId) &&
+    typeof candidate.offerId === "string" &&
+    Number.isFinite(candidate.quotedMinor) &&
+    (candidate.paymentIntentId === undefined ||
+      hasNonBlankString(candidate.paymentIntentId))
+  );
+};
+
+const isPendingCustomerCollectPayment = (
+  value: unknown,
+): value is PendingCustomerCollectPayment => {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<PendingCustomerCollectPayment>;
+  return (
+    hasNonBlankString(candidate.organizationId) &&
+    hasNonBlankString(candidate.customerUserId) &&
+    hasNonBlankString(candidate.paymentIntentId) &&
+    hasNonBlankString(candidate.membershipProductId) &&
+    hasNonBlankString(candidate.subscriptionPlanId) &&
+    typeof candidate.pollingWindowStartedAt === "number" &&
+    Number.isFinite(candidate.pollingWindowStartedAt)
+  );
+};
 const CUSTOMER_PAYMENT_START_STORAGE_PREFIX = "customer-payment-start";
 const CUSTOMER_COLLECT_PAYMENT_STORAGE_PREFIX = "customer-collect-payment";
 const CUSTOMER_COLLECT_PAYMENT_RETURN_STORAGE_PREFIX =
@@ -172,13 +226,13 @@ const CUSTOMER_COLLECT_PAYMENT_AUTO_POLL_WINDOW_MS = 300_000;
 
 /*
 
- * --------------------------------------------------------------
+  * --------------------------------------------------------------
 
- * Country / phone configuration
+  * Country / phone configuration
 
- * --------------------------------------------------------------
+  * --------------------------------------------------------------
 
- */
+  */
 
 type CountryOption = {
   country: string;
@@ -300,11 +354,11 @@ function JoinFlow() {
 
   /*
 
-   * Staff-assisted purchase is identified only by the navigation
+    * Staff-assisted purchase is identified only by the navigation
 
-   * source. It is not persisted on Subscription.
+    * source. It is not persisted on Subscription.
 
-   */
+    */
 
   const isStaffSale = params.source === "STAFF_ASSISTED";
 
@@ -343,9 +397,9 @@ function JoinFlow() {
 
   /*
 
-   * Canada / +1 is the default.
+    * Canada / +1 is the default.
 
-   */
+    */
 
   const [regionCode, setRegionCode] = useState(DEFAULT_COUNTRY.regionCode);
   const [callingCode, setCallingCode] = useState(DEFAULT_COUNTRY.callingCode);
@@ -361,9 +415,9 @@ function JoinFlow() {
 
   /*
 
-   * OTP state
+    * OTP state
 
-   */
+    */
 
   const [requestId, setRequestId] = useState("");
 
@@ -395,9 +449,9 @@ function JoinFlow() {
 
   /*
 
-   * Subscription / payment state
+    * Subscription / payment state
 
-   */
+    */
 
   const [subscription, setSubscription] = useState<Subscription | null>(null);
 
@@ -447,13 +501,43 @@ function JoinFlow() {
     useState<PendingCustomerCollectPayment | null>(null);
   const [restoringCustomerCollectPayment, setRestoringCustomerCollectPayment] =
     useState(!isStaffSale);
+  const [customerPaymentRecoveryBlocked, setCustomerPaymentRecoveryBlocked] =
+    useState(!isStaffSale);
+  const [
+    conflictingCustomerPaymentIntentIds,
+    setConflictingCustomerPaymentIntentIds,
+  ] = useState<string[]>([]);
+  const [conflictingCollectInspections, setConflictingCollectInspections] =
+    useState<Record<string, ConflictingCollectInspection>>({});
+  const [keyOnlyCustomerPaymentStart, setKeyOnlyCustomerPaymentStart] =
+    useState<PendingCustomerPaymentStart | null>(null);
+  const [
+    keyOnlyCustomerPaymentRecovering,
+    setKeyOnlyCustomerPaymentRecovering,
+  ] = useState(false);
+  const [volatileCustomerPaymentIntentId, setVolatileCustomerPaymentIntentId] =
+    useState<string | null>(null);
+  const currentCollectCheckout = useRef<{
+    productId: string | null;
+    planId: string | null;
+  }>({ productId: null, planId: null });
   const customerPaymentStartInFlight = useRef(false);
   const customerPaymentStartStorageKey =
     !isStaffSale && session?.userId
       ? `${CUSTOMER_PAYMENT_START_STORAGE_PREFIX}:${orgId}:${session.userId}`
       : "";
-  const collectPolling = useRef(false);
+  const collectPollingIntentIds = useRef(new Set<string>());
+  const collectOperationVersion = useRef(0);
+  const collectOperationIntentId = useRef<string | null>(null);
+  const collectMounted = useRef(false);
   const collectConfirmationInFlight = useRef<string | null>(null);
+  const keyOnlyCustomerPaymentRecoveryInFlight = useRef(false);
+  const keyOnlyCustomerPaymentRecoveryVersion = useRef(0);
+  const conflictingCollectInspectionVersion = useRef(new Map<string, number>());
+  const conflictingCollectInspectionContextVersion = useRef(0);
+  const volatileCustomerPaymentRecovery =
+    useRef<VolatileCustomerPaymentRecovery | null>(null);
+  const collectRecoveryPersistenceFailedIntentIds = useRef(new Set<string>());
   const [collectPollingActive, setCollectPollingActive] = useState(false);
   const [collectPollingStartedAt, setCollectPollingStartedAt] = useState<
     number | null
@@ -477,6 +561,41 @@ function JoinFlow() {
               1_000,
           ),
         );
+
+  useEffect(() => {
+    collectMounted.current = true;
+    return () => {
+      collectMounted.current = false;
+      collectOperationVersion.current += 1;
+      conflictingCollectInspectionContextVersion.current += 1;
+      keyOnlyCustomerPaymentRecoveryVersion.current += 1;
+      collectRecoveryPersistenceFailedIntentIds.current.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    // A status response for a prior customer or organization must never take
+    // over the newly selected checkout.
+    collectOperationVersion.current += 1;
+    collectOperationIntentId.current = null;
+    conflictingCollectInspectionContextVersion.current += 1;
+    keyOnlyCustomerPaymentRecoveryVersion.current += 1;
+    conflictingCollectInspectionVersion.current.clear();
+    collectRecoveryPersistenceFailedIntentIds.current.clear();
+    setConflictingCollectInspections({});
+    setKeyOnlyCustomerPaymentStart(null);
+    setKeyOnlyCustomerPaymentRecovering(false);
+    const volatileRecovery = volatileCustomerPaymentRecovery.current;
+    if (
+      volatileRecovery &&
+      (volatileRecovery.organizationId !== orgId ||
+        volatileRecovery.customerUserId !== session?.userId)
+    ) {
+      volatileCustomerPaymentRecovery.current = null;
+      setVolatileCustomerPaymentIntentId(null);
+    }
+    setCollectPollingActive(false);
+  }, [orgId, session?.userId]);
 
   const [pendingCounterTerminalPayment, setPendingCounterTerminalPayment] =
     useState<PendingCounterTerminalPayment | null>(null);
@@ -508,6 +627,13 @@ function JoinFlow() {
   const clearPendingCustomerCollectPayment = useCallback(() => {
     setCollectPendingIntentId(null);
     setPendingCustomerCollectPayment(null);
+    setCustomerPaymentRecoveryBlocked(false);
+    setConflictingCustomerPaymentIntentIds([]);
+    setConflictingCollectInspections({});
+    setKeyOnlyCustomerPaymentStart(null);
+    setVolatileCustomerPaymentIntentId(null);
+    volatileCustomerPaymentRecovery.current = null;
+    collectRecoveryPersistenceFailedIntentIds.current.clear();
     if (customerCollectPaymentStorageKey) {
       void storage.removeItem(customerCollectPaymentStorageKey);
     }
@@ -547,51 +673,51 @@ function JoinFlow() {
 
   /*
 
-   * --------------------------------------------------------------
+    * --------------------------------------------------------------
 
-   * Load product / customer / OrganizationUser
+    * Load product / customer / OrganizationUser
 
-   * --------------------------------------------------------------
+    * --------------------------------------------------------------
 
-   *
+    *
 
-   * IMPORTANT:
+    * IMPORTANT:
 
-   *
+    *
 
-   * Do NOT use:
+    * Do NOT use:
 
-   *
+    *
 
-   *   services.membershipProduct.getProduct(pid)
+    *   services.membershipProduct.getProduct(pid)
 
-   *
+    *
 
-   * for this flow.
+    * for this flow.
 
-   *
+    *
 
-   * The membership catalogue is loaded for the selected organization.
+    * The membership catalogue is loaded for the selected organization.
 
-   *
+    *
 
-   * Therefore we load the organization catalogue and resolve the
+    * Therefore we load the organization catalogue and resolve the
 
-   * selected product from that catalogue.
+    * selected product from that catalogue.
 
-   *
+    *
 
-   * Benefits are handled the same way:
+    * Benefits are handled the same way:
 
-   *
+    *
 
-   *   listByOrganization(orgId)
+    *   listByOrganization(orgId)
 
-   *
+    *
 
-   * and then filtered against product.benefitIds.
+    * and then filtered against product.benefitIds.
 
-   */
+    */
 
   useEffect(() => {
     let mounted = true;
@@ -613,13 +739,13 @@ function JoinFlow() {
 
         /*
 
-         * --------------------------------------------------------
+          * --------------------------------------------------------
 
-         * 1. Load organization membership catalogue
+          * 1. Load organization membership catalogue
 
-         * --------------------------------------------------------
+          * --------------------------------------------------------
 
-         */
+          */
 
         const membershipProducts =
           await services.customerData.membershipProducts(orgId);
@@ -628,11 +754,11 @@ function JoinFlow() {
 
         /*
 
-         * If no product was supplied, preserve the existing
+          * If no product was supplied, preserve the existing
 
-         * behaviour of selecting the first available product.
+          * behaviour of selecting the first available product.
 
-         */
+          */
 
         if (!pid) {
           pid = membershipProducts[0]?.id;
@@ -646,11 +772,11 @@ function JoinFlow() {
 
         /*
 
-         * Resolve the product from the organization-scoped
+          * Resolve the product from the organization-scoped
 
-         * server-backed catalogue.
+          * server-backed catalogue.
 
-         */
+          */
 
         const prod = membershipProducts.find(
           (item) => item.id === pid && !item.isDeleted,
@@ -662,29 +788,29 @@ function JoinFlow() {
 
         /*
 
-         * --------------------------------------------------------
+          * --------------------------------------------------------
 
-         * 2. Load organization benefits
+          * 2. Load organization benefits
 
-         * --------------------------------------------------------
+          * --------------------------------------------------------
 
-         *
+          *
 
-         * Do not use services.benefit.listByProduct(pid) here.
+          * Do not use services.benefit.listByProduct(pid) here.
 
-         *
+          *
 
-         * The organization-scoped list contains the Benefits assigned
+          * The organization-scoped list contains the Benefits assigned
 
-         * to the selected membership product.
+          * to the selected membership product.
 
-         *
+          *
 
-         * The organization-scoped method is the correct persisted
+          * The organization-scoped method is the correct persisted
 
-         * data path.
+          * data path.
 
-         */
+          */
 
         const organizationBenefits =
           await services.customerData.benefits(orgId);
@@ -696,35 +822,35 @@ function JoinFlow() {
 
         /*
 
-         * --------------------------------------------------------
+          * --------------------------------------------------------
 
-         * 3. Resolve customer
+          * 3. Resolve customer
 
-         * --------------------------------------------------------
+          * --------------------------------------------------------
 
-         */
+          */
 
         /*
 
-         * --------------------------------------------------------
+          * --------------------------------------------------------
 
-         * 3. Resolve canonical customer / OrganizationUser
+          * 3. Resolve canonical customer / OrganizationUser
 
-         * --------------------------------------------------------
+          * --------------------------------------------------------
 
-         *
+          *
 
-         * Counter passes the canonical User ID as customerId.
+          * Counter passes the canonical User ID as customerId.
 
-         *
+          *
 
-         * Do not use services.customer.getCustomer(customerId) here.
+          * Do not use services.customer.getCustomer(customerId) here.
 
-         * Resolve the User first, then create the lightweight Customer
+          * Resolve the User first, then create the lightweight Customer
 
-         * view used by JoinFlow.
+          * view used by JoinFlow.
 
-         */
+          */
 
         let cust: Customer | null = null;
 
@@ -880,6 +1006,18 @@ function JoinFlow() {
 
   const plan = product?.plans[0];
 
+  useEffect(() => {
+    currentCollectCheckout.current = {
+      productId: product?.id ?? null,
+      planId: plan?.id ?? null,
+    };
+  }, [plan?.id, product?.id]);
+
+  useEffect(() => {
+    keyOnlyCustomerPaymentRecoveryVersion.current += 1;
+    setKeyOnlyCustomerPaymentRecovering(false);
+  }, [explicitOfferId, orgId, plan?.id, product?.id, session?.userId]);
+
   const intervalLabel = plan ? getSubscriptionPeriodLabel(plan) : "";
 
   const priceText = plan
@@ -888,13 +1026,13 @@ function JoinFlow() {
 
   /*
 
-   * --------------------------------------------------------------
+    * --------------------------------------------------------------
 
-   * Country selection
+    * Country selection
 
-   * --------------------------------------------------------------
+    * --------------------------------------------------------------
 
-   */
+    */
 
   const selectCountry = (country: CountryOption) => {
     setSelectedCountry(country);
@@ -905,13 +1043,13 @@ function JoinFlow() {
 
   /*
 
-   * --------------------------------------------------------------
+    * --------------------------------------------------------------
 
-   * OTP - SEND
+    * OTP - SEND
 
-   * --------------------------------------------------------------
+    * --------------------------------------------------------------
 
-   */
+    */
 
   const sendOtp = useCallback(async () => {
     try {
@@ -947,35 +1085,35 @@ function JoinFlow() {
 
   /*
 
-   * --------------------------------------------------------------
+    * --------------------------------------------------------------
 
-   * OTP - VERIFY
+    * OTP - VERIFY
 
-   * --------------------------------------------------------------
+    * --------------------------------------------------------------
 
-   *
+    *
 
-   * IMPORTANT:
+    * IMPORTANT:
 
-   *
+    *
 
-   * services.auth.verifyOtp() returns:
+    * services.auth.verifyOtp() returns:
 
-   *
+    *
 
-   *   { verified: true }
+    *   { verified: true }
 
-   *
+    *
 
-   * It deliberately does NOT return customerId.
+    * It deliberately does NOT return customerId.
 
-   *
+    *
 
-   * Customer identity is resolved by the customer registration
+    * Customer identity is resolved by the customer registration
 
-   * service after OTP authentication.
+    * service after OTP authentication.
 
-   */
+    */
 
   const verifyOtp = useCallback(async () => {
     try {
@@ -1537,38 +1675,70 @@ function JoinFlow() {
   ]);
 
   const checkCollectPayment = useCallback(
-    async (intentId: string, pollingStartedAt = Date.now()) => {
-      if (collectPolling.current) return;
-      collectPolling.current = true;
-      setCollectPollingStartedAt(pollingStartedAt);
-      setCollectNow(Date.now());
-      setCollectPollingActive(true);
-      setCollectPendingIntentId(intentId);
-      setCollectConfirmationState({ kind: "processing" });
-      setOtpError(undefined);
-      setStep("processing");
+    async (
+      intentId: string,
+      pollingStartedAt = Date.now(),
+      initialConfirmation?: PaymentConfirmation,
+    ) => {
+      if (collectPollingIntentIds.current.has(intentId)) return;
+
+      const operationVersion = ++collectOperationVersion.current;
+      collectOperationIntentId.current = intentId;
+      collectPollingIntentIds.current.add(intentId);
+      const isCurrent = () =>
+        collectMounted.current &&
+        collectOperationVersion.current === operationVersion &&
+        collectOperationIntentId.current === intentId;
+      const applyIfCurrent = (apply: () => void) => {
+        if (isCurrent()) apply();
+      };
+
+      applyIfCurrent(() => {
+        setCollectPollingStartedAt(pollingStartedAt);
+        setCollectNow(Date.now());
+        setCollectPollingActive(true);
+        setCollectPendingIntentId(intentId);
+        setCollectConfirmationState({ kind: "processing" });
+        setOtpError(undefined);
+        setStep("processing");
+      });
       let unresolvedOutcome: CollectConfirmationUiState = {
         kind: "attention",
         message:
           "Payment is still processing. Check its status before trying another purchase.",
       };
+      let firstConfirmation = initialConfirmation;
       try {
         for (;;) {
+          if (!isCurrent()) return;
           if (
             Date.now() - pollingStartedAt >=
             CUSTOMER_COLLECT_PAYMENT_AUTO_POLL_WINDOW_MS
           ) {
             unresolvedOutcome = {
               kind: "attention",
+              title: "We're still confirming your payment",
               message:
-                "Unable to confirm payment status. Your payment attempt is preserved; please check its status before trying again.",
+                "We haven't been able to finish confirming your membership. If your bank shows a charge, please don't make another payment. Your payment reference has been saved, and you can check its status again.",
             };
             break;
           }
-          const confirmed = await services.customerData.paymentStatus(
-            orgId,
-            intentId,
-          );
+          const confirmed =
+            firstConfirmation ??
+            (await services.customerData.paymentStatus(orgId, intentId));
+          firstConfirmation = undefined;
+          if (!isCurrent()) return;
+          if (confirmed.payment.providerCode !== "POYNT_COLLECT") {
+            // This storage key is shared by customer checkout providers. Only
+            // Collect intents belong to this recovery flow. Do not clear a
+            // mismatched saved record or offer another charge from it.
+            unresolvedOutcome = {
+              kind: "attention",
+              message:
+                "A saved payment attempt uses a different payment method and needs recovery before another purchase.",
+            };
+            break;
+          }
           if (
             confirmed.payment.status === "SUCCEEDED" &&
             confirmed.subscription
@@ -1600,21 +1770,33 @@ function JoinFlow() {
           ) {
             clearPendingCustomerCollectPayment();
             setCollectPayment(null);
-            const message = "Payment was not approved. No membership was created.";
+            const message =
+              "Payment was not approved. No membership was created.";
             setCollectConfirmationState({ kind: "failed", message });
             setOtpError(message);
             setStep("review");
             return;
           }
           if (confirmed.payment.status === "PENDING") {
-            // The server has confirmed the intent has not been claimed for charging.
-            // Do not automatically resubmit or silently reopen payment entry.
+            // A PENDING intent can be reopened only for the same plan. The
+            // intent remains authoritative; a stale screen must not present
+            // card entry for a different plan merely because totals match.
+            const matchesCurrentPlan =
+              currentCollectCheckout.current.planId !== null &&
+              confirmed.payment.membershipPlanId ===
+                currentCollectCheckout.current.planId;
+            const canReturnToPayment =
+              matchesCurrentPlan &&
+              !collectRecoveryPersistenceFailedIntentIds.current.has(intentId);
             setCollectPendingIntentId(intentId);
             setCollectConfirmationState({
               kind: "attention",
-              message:
-                "Payment not completed. Your previous payment attempt is still awaiting payment. You can return to the secure checkout using this same payment intent.",
-              canReturnToPayment: true,
+              message: !matchesCurrentPlan
+                ? "A previous payment attempt is for a different membership plan. Resolve that payment before starting another purchase."
+                : !canReturnToPayment
+                  ? "This payment intent could not be saved for durable recovery. Its status can be checked, but secure card entry remains blocked; contact support before trying again."
+                  : "Payment not completed. Your previous payment attempt is still awaiting payment. You can return to the secure checkout using this same payment intent.",
+              canReturnToPayment,
             });
             setStep("processing");
             return;
@@ -1650,35 +1832,54 @@ function JoinFlow() {
           };
         }
       } finally {
-        collectPolling.current = false;
-        setCollectPollingActive(false);
+        collectPollingIntentIds.current.delete(intentId);
+        applyIfCurrent(() => setCollectPollingActive(false));
       }
-      setCollectPendingIntentId(intentId);
-      setCollectConfirmationState(unresolvedOutcome);
-      setStep("processing");
+      applyIfCurrent(() => {
+        setCollectPendingIntentId(intentId);
+        setCollectConfirmationState(unresolvedOutcome);
+        setStep("processing");
+      });
     },
-    [
-      clearPendingCustomerCollectPayment,
-      explicitOfferId,
-      finishSubscription,
-      orgId,
-      plan,
-    ],
+    [clearPendingCustomerCollectPayment, finishSubscription, orgId],
   );
 
   const returnToPendingCollectPayment = useCallback(
     async (intentId: string) => {
-      if (collectPolling.current) return;
-      collectPolling.current = true;
-      setCollectPollingActive(true);
-      setCollectConfirmationState({ kind: "processing" });
-      setOtpError(undefined);
+      if (collectPollingIntentIds.current.has(intentId)) return;
+
+      const operationVersion = ++collectOperationVersion.current;
+      collectOperationIntentId.current = intentId;
+      collectPollingIntentIds.current.add(intentId);
+      const isCurrent = () =>
+        collectMounted.current &&
+        collectOperationVersion.current === operationVersion &&
+        collectOperationIntentId.current === intentId;
+      const applyIfCurrent = (apply: () => void) => {
+        if (isCurrent()) apply();
+      };
+
+      applyIfCurrent(() => {
+        setCollectPollingActive(true);
+        setCollectConfirmationState({ kind: "processing" });
+        setOtpError(undefined);
+      });
       try {
         // Never open payment entry without rechecking the authoritative status.
         const status = await services.customerData.paymentStatus(
           orgId,
           intentId,
         );
+        if (!isCurrent()) return;
+        if (status.payment.providerCode !== "POYNT_COLLECT") {
+          setCollectConfirmationState({
+            kind: "attention",
+            message:
+              "This payment is not a Poynt Collect checkout. Check its status before continuing.",
+          });
+          setStep("processing");
+          return;
+        }
         if (status.payment.status !== "PENDING") {
           if (status.payment.status === "SUCCEEDED" && status.subscription) {
             clearPendingCustomerCollectPayment();
@@ -1702,13 +1903,12 @@ function JoinFlow() {
             return;
           }
           if (
-            ["FAILED", "CANCELED", "CANCELLED"].includes(
-              status.payment.status,
-            )
+            ["FAILED", "CANCELED", "CANCELLED"].includes(status.payment.status)
           ) {
             clearPendingCustomerCollectPayment();
             setCollectPayment(null);
-            const message = "Payment was not approved. No membership was created.";
+            const message =
+              "Payment was not approved. No membership was created.";
             setCollectConfirmationState({ kind: "failed", message });
             setOtpError(message);
             setStep("review");
@@ -1723,7 +1923,17 @@ function JoinFlow() {
           setStep("processing");
           return;
         }
-        if (!plan || Platform.OS !== "web") {
+        if (!plan || status.payment.membershipPlanId !== plan.id) {
+          setCollectConfirmationState({
+            kind: "attention",
+            message:
+              "A previous payment attempt is for a different membership plan. Resolve that payment before starting another purchase.",
+          });
+          setCollectPendingIntentId(intentId);
+          setStep("processing");
+          return;
+        }
+        if (Platform.OS !== "web") {
           setCollectConfirmationState({
             kind: "attention",
             message:
@@ -1737,6 +1947,7 @@ function JoinFlow() {
           plan.id,
           explicitOfferId || undefined,
         );
+        if (!isCurrent()) return;
         if (
           !Number.isFinite(quote.totalAmount) ||
           Math.round(quote.totalAmount * 100) !==
@@ -1754,6 +1965,7 @@ function JoinFlow() {
           orgId,
           intentId,
         );
+        if (!isCurrent()) return;
         setPurchaseQuote(quote);
         setCollectPayment({
           paymentIntentId: intentId,
@@ -1764,15 +1976,17 @@ function JoinFlow() {
         setCollectConfirmationState({ kind: "idle" });
         setStep("collectCard");
       } catch {
-        setCollectConfirmationState({
-          kind: "attention",
-          message:
-            "We couldn't reopen checkout. Your payment intent is preserved; check its status before trying again.",
+        applyIfCurrent(() => {
+          setCollectConfirmationState({
+            kind: "attention",
+            message:
+              "We couldn't reopen checkout. Your payment intent is preserved; check its status before trying again.",
+          });
+          setStep("processing");
         });
-        setStep("processing");
       } finally {
-        collectPolling.current = false;
-        setCollectPollingActive(false);
+        collectPollingIntentIds.current.delete(intentId);
+        applyIfCurrent(() => setCollectPollingActive(false));
       }
     },
     [
@@ -1783,6 +1997,251 @@ function JoinFlow() {
       plan,
     ],
   );
+
+  const inspectConflictingCollectPayment = useCallback(
+    async (intentId: string) => {
+      const contextVersion = conflictingCollectInspectionContextVersion.current;
+      const inspectionVersion =
+        (conflictingCollectInspectionVersion.current.get(intentId) ?? 0) + 1;
+      conflictingCollectInspectionVersion.current.set(
+        intentId,
+        inspectionVersion,
+      );
+      const isCurrent = () =>
+        collectMounted.current &&
+        conflictingCollectInspectionContextVersion.current === contextVersion &&
+        conflictingCollectInspectionVersion.current.get(intentId) ===
+          inspectionVersion;
+
+      setConflictingCollectInspections((current) => ({
+        ...current,
+        [intentId]: { kind: "checking" },
+      }));
+      try {
+        const status = await services.customerData.paymentStatus(
+          orgId,
+          intentId,
+        );
+        if (!isCurrent()) return;
+        const outcome =
+          status.payment.status === "SUCCEEDED"
+            ? status.subscription
+              ? "has completed with a membership."
+              : "has succeeded and is awaiting membership activation."
+            : ["FAILED", "CANCELED", "CANCELLED"].includes(
+                  status.payment.status,
+                )
+              ? "has a terminal payment result."
+              : `is ${status.payment.status.toLowerCase()}.`;
+        setConflictingCollectInspections((current) => ({
+          ...current,
+          [intentId]: {
+            kind: "result",
+            message: `Saved payment ${intentId} ${outcome} The conflicting records remain preserved; contact support to resolve them before another purchase.`,
+          },
+        }));
+      } catch {
+        if (!isCurrent()) return;
+        setConflictingCollectInspections((current) => ({
+          ...current,
+          [intentId]: {
+            kind: "error",
+            message:
+              "Unable to read this saved payment. The conflicting records remain preserved; contact support before another purchase.",
+          },
+        }));
+      }
+    },
+    [orgId],
+  );
+
+  const recoverKeyOnlyCustomerPayment = useCallback(async () => {
+    const attempt = keyOnlyCustomerPaymentStart;
+    if (!attempt || !session?.userId || !product || !plan) return;
+    if (keyOnlyCustomerPaymentRecoveryInFlight.current) return;
+
+    if (
+      attempt.planId !== plan.id ||
+      attempt.offerId !== (explicitOfferId || "")
+    ) {
+      setCollectConfirmationState({
+        kind: "attention",
+        message:
+          "The saved payment key does not match this membership checkout. It remains preserved; contact support before another purchase.",
+      });
+      return;
+    }
+
+    keyOnlyCustomerPaymentRecoveryInFlight.current = true;
+    const recoveryVersion = ++keyOnlyCustomerPaymentRecoveryVersion.current;
+    const recoveryOrganizationId = orgId;
+    const recoveryCustomerUserId = session.userId;
+    const isCurrent = () =>
+      collectMounted.current &&
+      keyOnlyCustomerPaymentRecoveryVersion.current === recoveryVersion &&
+      recoveryOrganizationId === orgId &&
+      recoveryCustomerUserId === session?.userId;
+
+    setKeyOnlyCustomerPaymentRecovering(true);
+    setCollectConfirmationState({ kind: "processing" });
+    try {
+      const quote = await services.customerData.purchaseQuote(
+        orgId,
+        plan.id,
+        attempt.offerId || undefined,
+      );
+      if (!isCurrent()) return;
+      if (
+        !quote ||
+        !Number.isFinite(quote.totalAmount) ||
+        Math.round(quote.totalAmount * 100) !== attempt.quotedMinor
+      ) {
+        throw new Error(
+          "The saved payment key no longer matches the authoritative membership price.",
+        );
+      }
+      const intent = await services.customerData.startAuthenticatedPayment(
+        orgId,
+        plan.id,
+        attempt.key,
+        product.id,
+        attempt.offerId || undefined,
+      );
+      if (!isCurrent()) return;
+      if (
+        intent.membershipPlanId !== plan.id ||
+        Math.round(intent.amount * 100) !== attempt.quotedMinor
+      ) {
+        throw new Error(
+          "The recovered payment does not match the original checkout. It remains blocked for support review.",
+        );
+      }
+
+      const recoveredAttempt = {
+        ...attempt,
+        paymentIntentId: intent.paymentIntentId,
+      };
+      volatileCustomerPaymentRecovery.current = {
+        ...recoveredAttempt,
+        organizationId: orgId,
+        customerUserId: session.userId,
+        providerCode: intent.providerCode,
+      };
+      setVolatileCustomerPaymentIntentId(intent.paymentIntentId);
+
+      if (
+        intent.providerCode === "POYNT_COLLECT" &&
+        ["SUCCEEDED", "FAILED", "CANCELED", "CANCELLED"].includes(intent.status)
+      ) {
+        setKeyOnlyCustomerPaymentStart(null);
+        setCollectPendingIntentId(intent.paymentIntentId);
+        await checkCollectPayment(intent.paymentIntentId);
+        return;
+      }
+
+      if (!isCurrent()) return;
+      const persisted = await storage.setItem(
+        customerPaymentStartStorageKey,
+        recoveredAttempt,
+      );
+      if (!isCurrent()) return;
+      if (!persisted) {
+        setKeyOnlyCustomerPaymentStart(null);
+        if (intent.providerCode === "POYNT_COLLECT") {
+          collectRecoveryPersistenceFailedIntentIds.current.add(
+            intent.paymentIntentId,
+          );
+          setCollectPendingIntentId(intent.paymentIntentId);
+        }
+        setCollectConfirmationState({
+          kind: "attention",
+          message:
+            "The recovered payment ID could not be saved. Its status can be checked, but payment entry remains blocked; contact support before trying again.",
+        });
+        return;
+      }
+
+      collectRecoveryPersistenceFailedIntentIds.current.delete(
+        intent.paymentIntentId,
+      );
+      volatileCustomerPaymentRecovery.current = null;
+      setVolatileCustomerPaymentIntentId(null);
+      setKeyOnlyCustomerPaymentStart(null);
+      if (intent.providerCode !== "POYNT_COLLECT") {
+        setCollectConfirmationState({
+          kind: "attention",
+          message:
+            "The recovered payment uses another payment method. Its ID is saved, but this checkout will not resume it automatically.",
+        });
+        return;
+      }
+
+      const status = await services.customerData.paymentStatus(
+        orgId,
+        intent.paymentIntentId,
+      );
+      if (!isCurrent()) return;
+      if (
+        status.payment.paymentIntentId !== intent.paymentIntentId ||
+        status.payment.providerCode !== "POYNT_COLLECT" ||
+        status.payment.membershipPlanId !== plan.id
+      ) {
+        throw new Error(
+          "The recovered payment status does not match this checkout. It remains blocked for support review.",
+        );
+      }
+      setCustomerPaymentRecoveryBlocked(false);
+      await checkCollectPayment(intent.paymentIntentId, Date.now(), status);
+    } catch (error) {
+      if (!isCurrent()) return;
+      setCollectConfirmationState({
+        kind: "attention",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Unable to recover the saved payment. It remains preserved; contact support before another purchase.",
+      });
+    } finally {
+      keyOnlyCustomerPaymentRecoveryInFlight.current = false;
+      // Guard cleanup is intentionally independent from checkout result state.
+      // A context change cannot begin another key-only recovery while this one
+      // is in flight, so releasing the button here cannot overwrite a newer
+      // recovery operation.
+      if (collectMounted.current) {
+        setKeyOnlyCustomerPaymentRecovering(false);
+      }
+    }
+  }, [
+    checkCollectPayment,
+    customerPaymentStartStorageKey,
+    explicitOfferId,
+    keyOnlyCustomerPaymentStart,
+    orgId,
+    plan,
+    product,
+    session?.userId,
+  ]);
+
+  const inspectVolatileCustomerPayment = useCallback(async () => {
+    const recovery = volatileCustomerPaymentRecovery.current;
+    if (
+      !recovery ||
+      recovery.organizationId !== orgId ||
+      recovery.customerUserId !== session?.userId
+    ) {
+      return;
+    }
+    if (recovery.providerCode !== "POYNT_COLLECT") {
+      setCollectConfirmationState({
+        kind: "attention",
+        message:
+          "This saved payment needs support review. It will not be resumed automatically.",
+      });
+      return;
+    }
+    setCollectPendingIntentId(recovery.paymentIntentId);
+    await checkCollectPayment(recovery.paymentIntentId);
+  }, [checkCollectPayment, orgId, session?.userId]);
 
   const confirmCollectNonce = useCallback(
     async (
@@ -1800,6 +2259,12 @@ function JoinFlow() {
       }
 
       collectConfirmationInFlight.current = intentId;
+      const operationVersion = ++collectOperationVersion.current;
+      collectOperationIntentId.current = intentId;
+      const isCurrent = () =>
+        collectMounted.current &&
+        collectOperationVersion.current === operationVersion &&
+        collectOperationIntentId.current === intentId;
       try {
         if (
           !isStaffSale &&
@@ -1817,7 +2282,22 @@ function JoinFlow() {
             pollingWindowStartedAt: Date.now(),
           };
           setPendingCustomerCollectPayment(pending);
-          void storage.setItem(customerCollectPaymentStorageKey, pending);
+          setCustomerPaymentRecoveryBlocked(true);
+          const persisted = await storage.setItem(
+            customerCollectPaymentStorageKey,
+            pending,
+          );
+          if (!isCurrent()) return false;
+          if (!persisted) {
+            setCollectPendingIntentId(intentId);
+            setCollectConfirmationState({
+              kind: "attention",
+              message:
+                "Unable to save payment recovery data. Your card was not submitted; contact support or try again after reopening checkout.",
+            });
+            setStep("processing");
+            return false;
+          }
         }
         setCollectPendingIntentId(intentId);
         setCollectConfirmationState({ kind: "processing" });
@@ -1831,6 +2311,7 @@ function JoinFlow() {
             nonce,
             method,
           );
+          if (!isCurrent()) return false;
           if (
             confirmed.payment.status === "SUCCEEDED" &&
             confirmed.subscription
@@ -1859,6 +2340,7 @@ function JoinFlow() {
                 orgId,
                 intentId,
               );
+              if (!isCurrent()) return false;
               if (status.payment.status === "PENDING") {
                 // The server has not claimed the intent for charging.
                 // Do not automatically reopen payment entry: show an actionable error.
@@ -1876,6 +2358,7 @@ function JoinFlow() {
           // Any other failure may be a timeout after charge submission.
           // Keep the intent and reconcile rather than retrying the nonce.
         }
+        if (!isCurrent()) return false;
         await checkCollectPayment(intentId);
         return false;
       } finally {
@@ -1902,41 +2385,228 @@ function JoinFlow() {
     if (
       isStaffSale ||
       !session?.userId ||
-      !product ||
-      !plan ||
-      !customerCollectPaymentStorageKey
+      !customerCollectPaymentStorageKey ||
+      !customerPaymentStartStorageKey
     ) {
       setRestoringCustomerCollectPayment(false);
+      setCustomerPaymentRecoveryBlocked(false);
+      setConflictingCustomerPaymentIntentIds([]);
+      setConflictingCollectInspections({});
+      setKeyOnlyCustomerPaymentStart(null);
+      setVolatileCustomerPaymentIntentId(null);
+      volatileCustomerPaymentRecovery.current = null;
+      return;
+    }
+
+    // Do not decide whether a saved intent belongs to another plan until the
+    // asynchronous membership/product load has resolved the current checkout.
+    if (loading || !product || !plan) {
+      setRestoringCustomerCollectPayment(true);
+      setCustomerPaymentRecoveryBlocked(true);
       return;
     }
 
     let active = true;
     setRestoringCustomerCollectPayment(true);
-    void storage
-      .getItem<PendingCustomerCollectPayment | null>(
-        customerCollectPaymentStorageKey,
-        null,
-      )
-      .then((saved) => {
-        if (!active || !saved) return;
-        const matchesCurrentCheckout =
-          saved.organizationId === orgId &&
-          saved.customerUserId === session.userId &&
-          saved.membershipProductId === product.id &&
-          saved.subscriptionPlanId === plan.id;
-        if (!matchesCurrentCheckout) {
-          void storage.removeItem(customerCollectPaymentStorageKey);
+    setCustomerPaymentRecoveryBlocked(true);
+    void (async () => {
+      let savedCollect: PendingCustomerCollectPayment | null;
+      let savedStart: PendingCustomerPaymentStart | null;
+      try {
+        [savedCollect, savedStart] = await Promise.all([
+          storage.getItem<PendingCustomerCollectPayment | null>(
+            customerCollectPaymentStorageKey,
+            null,
+          ),
+          storage.getItem<PendingCustomerPaymentStart | null>(
+            customerPaymentStartStorageKey,
+            null,
+          ),
+        ]);
+      } catch {
+        if (!active) return;
+        setCollectPayment(null);
+        setCollectConfirmationState({
+          kind: "attention",
+          message:
+            "Unable to read saved payment recovery data. No new payment will be started; contact support or try checking again after reopening this checkout.",
+        });
+        setStep("processing");
+        return;
+      }
+      if (!active) return;
+
+      const hasMalformedCollect =
+        savedCollect !== null && !isPendingCustomerCollectPayment(savedCollect);
+      const hasMalformedStart =
+        savedStart !== null && !isPendingCustomerPaymentStart(savedStart);
+      if (hasMalformedCollect || hasMalformedStart) {
+        // Storage is never authoritative. Leave an unparseable record in place
+        // and require recovery instead of deleting an intent that may still need
+        // server-side reconciliation.
+        setCollectPayment(null);
+        setCollectConfirmationState({
+          kind: "attention",
+          message:
+            "A saved payment attempt cannot be safely read. It remains preserved; contact support before starting another purchase.",
+        });
+        setStep("processing");
+        return;
+      }
+
+      setConflictingCustomerPaymentIntentIds([]);
+      setConflictingCollectInspections({});
+      setKeyOnlyCustomerPaymentStart(null);
+
+      const collect = savedCollect ?? undefined;
+      const start = savedStart ?? undefined;
+      if (
+        collect &&
+        start?.paymentIntentId &&
+        collect.paymentIntentId !== start.paymentIntentId
+      ) {
+        // Do not select one of two saved intents or clear either record. They
+        // could represent separate unresolved charge attempts.
+        setCollectPayment(null);
+        setConflictingCustomerPaymentIntentIds([
+          collect.paymentIntentId,
+          start.paymentIntentId,
+        ]);
+        setConflictingCollectInspections({});
+        setCollectConfirmationState({
+          kind: "attention",
+          message:
+            "Multiple saved payment attempts need recovery. You can inspect each status below, but contact support before another purchase.",
+        });
+        setStep("processing");
+        return;
+      }
+
+      const intentId = collect?.paymentIntentId ?? start?.paymentIntentId;
+      if (!intentId) {
+        if (start) {
+          // This deliberately requires an explicit customer action. The SQL
+          // start function reuses this key's immutable Commerce checkout and
+          // existing payment intent; restoration must never post it on its own.
+          setKeyOnlyCustomerPaymentStart(start);
+          setCollectPayment(null);
+          setCollectConfirmationState({
+            kind: "attention",
+            message:
+              "A previous checkout has a recovery key but no saved payment ID. Recover that same payment before another purchase.",
+          });
+          setStep("processing");
           return;
         }
-        setPendingCustomerCollectPayment(saved);
-        setCollectPendingIntentId(saved.paymentIntentId);
+        setCustomerPaymentRecoveryBlocked(false);
+        return;
+      }
+
+      if (
+        collect &&
+        (collect.organizationId !== orgId ||
+          collect.customerUserId !== session.userId)
+      ) {
         setCollectPayment(null);
+        setCollectConfirmationState({
+          kind: "attention",
+          message:
+            "A saved payment attempt belongs to a different customer context. It remains preserved; contact support before another purchase.",
+        });
         setStep("processing");
-        void checkCollectPayment(saved.paymentIntentId, Date.now());
-      })
-      .finally(() => {
-        if (active) setRestoringCustomerCollectPayment(false);
-      });
+        return;
+      }
+
+      setCollectPayment(null);
+      setCollectPendingIntentId(intentId);
+
+      if (collect) {
+        setPendingCustomerCollectPayment(collect);
+        setStep("processing");
+        // Preserve the original bounded polling window after refresh.
+        void checkCollectPayment(intentId, collect.pollingWindowStartedAt);
+        return;
+      }
+
+      // A payment-start-only record may exist after the server created an
+      // intent but before Collect recovery context was persisted. Read its
+      // authoritative status before exposing any new payment action.
+      try {
+        const status = await services.customerData.paymentStatus(
+          orgId,
+          intentId,
+        );
+        if (!active) return;
+        if (status.payment.providerCode !== "POYNT_COLLECT") {
+          // Other providers retain their existing payment-start/idempotency
+          // behavior. This recovery flow must not take over their checkout.
+          setCustomerPaymentRecoveryBlocked(false);
+          return;
+        }
+
+        const currentCheckout = currentCollectCheckout.current;
+        if (
+          ["PENDING", "PROCESSING"].includes(status.payment.status) &&
+          currentCheckout.productId &&
+          currentCheckout.planId &&
+          start?.planId === currentCheckout.planId &&
+          status.payment.membershipPlanId === currentCheckout.planId
+        ) {
+          // No original confirmation timestamp exists in payment-start. This
+          // bounded window begins at recovery and is persisted for later
+          // refreshes; it does not claim to be the original submission time.
+          const recovered: PendingCustomerCollectPayment = {
+            organizationId: orgId,
+            customerUserId: session.userId,
+            paymentIntentId: intentId,
+            membershipProductId: currentCheckout.productId,
+            subscriptionPlanId: currentCheckout.planId,
+            pollingWindowStartedAt: Date.now(),
+          };
+          const persisted = await storage.setItem(
+            customerCollectPaymentStorageKey,
+            recovered,
+          );
+          if (!active) return;
+          if (!persisted) {
+            collectRecoveryPersistenceFailedIntentIds.current.add(intentId);
+            setCollectPendingIntentId(intentId);
+            setCollectConfirmationState({
+              kind: "attention",
+              message:
+                "Unable to save payment recovery data. No new payment will be started; check the existing payment again or contact support.",
+            });
+            setStep("processing");
+            return;
+          }
+          collectRecoveryPersistenceFailedIntentIds.current.delete(intentId);
+          setPendingCustomerCollectPayment(recovered);
+          setStep("processing");
+          void checkCollectPayment(
+            intentId,
+            recovered.pollingWindowStartedAt,
+            status,
+          );
+          return;
+        }
+
+        // The status can still be safely reconciled, but do not write a
+        // Collect record using a currently selected product/plan that does not
+        // match the immutable intent.
+        setStep("processing");
+        void checkCollectPayment(intentId, Date.now(), status);
+      } catch {
+        if (!active) return;
+        setCollectConfirmationState({
+          kind: "attention",
+          message:
+            "Unable to restore payment status. Your payment attempt is preserved; check its status before trying again.",
+        });
+        setStep("processing");
+      }
+    })().finally(() => {
+      if (active) setRestoringCustomerCollectPayment(false);
+    });
 
     return () => {
       active = false;
@@ -1944,7 +2614,9 @@ function JoinFlow() {
   }, [
     checkCollectPayment,
     customerCollectPaymentStorageKey,
+    customerPaymentStartStorageKey,
     isStaffSale,
+    loading,
     orgId,
     plan,
     product,
@@ -2188,7 +2860,9 @@ function JoinFlow() {
 
       if (
         !isStaffSale &&
-        (restoringCustomerCollectPayment || pendingCustomerCollectPayment)
+        (restoringCustomerCollectPayment ||
+          pendingCustomerCollectPayment ||
+          customerPaymentRecoveryBlocked)
       ) {
         setStep("processing");
         return;
@@ -2350,14 +3024,32 @@ function JoinFlow() {
             "Cannot secure this payment attempt without a customer session.",
           );
         }
+        const customerUserId = session?.userId;
+        if (!customerUserId) {
+          throw new Error(
+            "Cannot secure this payment attempt without a customer session.",
+          );
+        }
         const quotedMinor = Math.round(latestQuote.totalAmount * 100);
         const offerId = explicitOfferId || "";
         // Durable key is written BEFORE the network call. Retrying an unknown
         // response reuses the same frozen Commerce checkout and payment intent.
-        let attempt = await storage.getItem<PendingCustomerPaymentStart | null>(
-          customerPaymentStartStorageKey,
-          null,
-        );
+        let attempt: PendingCustomerPaymentStart | null;
+        try {
+          attempt = await storage.getItem<PendingCustomerPaymentStart | null>(
+            customerPaymentStartStorageKey,
+            null,
+          );
+        } catch {
+          setCustomerPaymentRecoveryBlocked(true);
+          setCollectConfirmationState({
+            kind: "attention",
+            message:
+              "Unable to read payment recovery data safely. No payment was started; reopen checkout before trying again.",
+          });
+          setStep("processing");
+          return;
+        }
         if (
           attempt &&
           (attempt.planId !== plan.id ||
@@ -2382,7 +3074,18 @@ function JoinFlow() {
             offerId,
             quotedMinor,
           };
-          await storage.setItem(customerPaymentStartStorageKey, attempt);
+          if (
+            !(await storage.setItem(customerPaymentStartStorageKey, attempt))
+          ) {
+            setCustomerPaymentRecoveryBlocked(true);
+            setCollectConfirmationState({
+              kind: "attention",
+              message:
+                "Unable to save this payment attempt safely. No payment was started; reopen checkout before trying again.",
+            });
+            setStep("processing");
+            return;
+          }
         }
         const intent = await services.customerData.startAuthenticatedPayment(
           orgId,
@@ -2392,11 +3095,42 @@ function JoinFlow() {
           explicitOfferId || undefined,
         );
 
-        // Persist the returned intent for post-refresh reconciliation, too.
-        await storage.setItem(customerPaymentStartStorageKey, {
+        volatileCustomerPaymentRecovery.current = {
           ...attempt,
+          organizationId: orgId,
+          customerUserId,
           paymentIntentId: intent.paymentIntentId,
-        });
+          providerCode: intent.providerCode,
+        };
+        setVolatileCustomerPaymentIntentId(intent.paymentIntentId);
+
+        // Persist the returned intent for post-refresh reconciliation, too.
+        if (
+          !(await storage.setItem(customerPaymentStartStorageKey, {
+            ...attempt,
+            paymentIntentId: intent.paymentIntentId,
+          }))
+        ) {
+          if (intent.providerCode === "POYNT_COLLECT") {
+            collectRecoveryPersistenceFailedIntentIds.current.add(
+              intent.paymentIntentId,
+            );
+            setCollectPendingIntentId(intent.paymentIntentId);
+          }
+          setCustomerPaymentRecoveryBlocked(true);
+          setCollectConfirmationState({
+            kind: "attention",
+            message:
+              "Your payment intent was created but could not be saved for recovery. Do not submit payment; contact support before trying again.",
+          });
+          setStep("processing");
+          return;
+        }
+        collectRecoveryPersistenceFailedIntentIds.current.delete(
+          intent.paymentIntentId,
+        );
+        volatileCustomerPaymentRecovery.current = null;
+        setVolatileCustomerPaymentIntentId(null);
 
         // Never mount a payment form or wallet if the amount the backend is about
         // to charge differs from the latest price breakdown shown to the user.
@@ -2460,11 +3194,24 @@ function JoinFlow() {
               pollingWindowStartedAt: Date.now(),
             };
             setPendingCustomerCollectPayment(pending);
-            await storage.setItem(customerCollectPaymentStorageKey, pending);
-            await storage.setItem(
-              `${CUSTOMER_COLLECT_PAYMENT_RETURN_STORAGE_PREFIX}:${session.userId}`,
-              pending,
-            );
+            setCollectPendingIntentId(intent.paymentIntentId);
+            setCustomerPaymentRecoveryBlocked(true);
+            const [savedRecovery, savedReturn] = await Promise.all([
+              storage.setItem(customerCollectPaymentStorageKey, pending),
+              storage.setItem(
+                `${CUSTOMER_COLLECT_PAYMENT_RETURN_STORAGE_PREFIX}:${session.userId}`,
+                pending,
+              ),
+            ]);
+            if (!savedRecovery || !savedReturn) {
+              setCollectConfirmationState({
+                kind: "attention",
+                message:
+                  "Unable to save payment recovery data. The secure checkout was not opened; contact support or reopen checkout before trying again.",
+              });
+              setStep("processing");
+              return;
+            }
             const checkout =
               await services.customerData.createCollectBrowserCheckout(
                 orgId,
@@ -2573,6 +3320,8 @@ function JoinFlow() {
     restoringCustomerCollectPayment,
 
     pendingCustomerCollectPayment,
+
+    customerPaymentRecoveryBlocked,
 
     purchaseOtpVerified,
 
@@ -2689,13 +3438,13 @@ function JoinFlow() {
 
   /*
 
-   * --------------------------------------------------------------
+    * --------------------------------------------------------------
 
-   * Navigation
+    * Navigation
 
-   * --------------------------------------------------------------
+    * --------------------------------------------------------------
 
-   */
+    */
 
   const close = () => {
     if (step === "success") {
@@ -2720,17 +3469,17 @@ function JoinFlow() {
 
   /*
 
-   * Temporary/demo customer experience.
+    * Temporary/demo customer experience.
 
-   *
+    *
 
-   * This is intentionally used for BOTH direct and staff-assisted
+    * This is intentionally used for BOTH direct and staff-assisted
 
-   * purchases so we can demonstrate the newly created customer's
+    * purchases so we can demonstrate the newly created customer's
 
-   * actual subscription experience to the client.
+    * actual subscription experience to the client.
 
-   */
+    */
 
   const goToMemberships = async () => {
     await refreshCustomers();
@@ -2750,13 +3499,13 @@ function JoinFlow() {
 
   /*
 
-   * Staff sale: Done returns to Counter.
+    * Staff sale: Done returns to Counter.
 
-   *
+    *
 
-   * Direct customer purchase does not need this action.
+    * Direct customer purchase does not need this action.
 
-   */
+    */
 
   const goToCounter = () => {
     router.replace({
@@ -2786,13 +3535,13 @@ function JoinFlow() {
 
   /*
 
-   * --------------------------------------------------------------
+    * --------------------------------------------------------------
 
-   * Loading
+    * Loading
 
-   * --------------------------------------------------------------
+    * --------------------------------------------------------------
 
-   */
+    */
 
   if (loading) {
     return (
@@ -2812,13 +3561,13 @@ function JoinFlow() {
 
   /*
 
-   * --------------------------------------------------------------
+    * --------------------------------------------------------------
 
-   * Load error
+    * Load error
 
-   * --------------------------------------------------------------
+    * --------------------------------------------------------------
 
-   */
+    */
 
   if (loadError || !product || !plan) {
     return (
@@ -2851,13 +3600,13 @@ function JoinFlow() {
 
   /*
 
-   * --------------------------------------------------------------
+    * --------------------------------------------------------------
 
-   * MAIN
+    * MAIN
 
-   * --------------------------------------------------------------
+    * --------------------------------------------------------------
 
-   */
+    */
 
   return (
     <Screen
@@ -3426,7 +4175,13 @@ function JoinFlow() {
                 : t("join.payAndSubscribe")
             }
             fullWidth
-            disabled={!isStaffSale && !session?.userId}
+            disabled={
+              (!isStaffSale && !session?.userId) ||
+              (!isStaffSale &&
+                (restoringCustomerCollectPayment ||
+                  pendingCustomerCollectPayment !== null ||
+                  customerPaymentRecoveryBlocked))
+            }
             onPress={payAndSubscribe}
             testID="join-pay"
           />
@@ -3681,11 +4436,13 @@ function JoinFlow() {
                 {collectConfirmationState.message}
               </Text>
             </View>
-          ) : collectPendingIntentId &&
+          ) : (collectPendingIntentId ||
+              conflictingCustomerPaymentIntentIds.length > 0) &&
             collectConfirmationState.kind === "attention" ? (
             <View style={{ gap: theme.spacing.sm }}>
               <Text variant="bodyStrong" color="text">
-                Payment status needs your attention.
+                {collectConfirmationState.title ??
+                  "Payment status needs your attention."}
               </Text>
               <Text variant="bodySmall" color="textMuted">
                 {collectConfirmationState.message}
@@ -3745,6 +4502,56 @@ function JoinFlow() {
                 testID="join-collect-check-status"
               />
             </>
+          ) : conflictingCustomerPaymentIntentIds.length > 0 ? (
+            <>
+              {conflictingCustomerPaymentIntentIds.map((intentId, index) => (
+                <View key={intentId} style={{ gap: theme.spacing.xs }}>
+                  <Button
+                    label={
+                      conflictingCollectInspections[intentId]?.kind ===
+                      "checking"
+                        ? `Checking Saved Payment ${index + 1}`
+                        : `Check Saved Payment ${index + 1} Status`
+                    }
+                    fullWidth
+                    disabled={
+                      conflictingCollectInspections[intentId]?.kind ===
+                      "checking"
+                    }
+                    onPress={() =>
+                      void inspectConflictingCollectPayment(intentId)
+                    }
+                    testID={`join-collect-conflict-check-${index + 1}`}
+                  />
+                  {conflictingCollectInspections[intentId]?.kind !==
+                    "checking" &&
+                  conflictingCollectInspections[intentId]?.message ? (
+                    <Text variant="bodySmall" color="textMuted">
+                      {conflictingCollectInspections[intentId]?.message}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+            </>
+          ) : keyOnlyCustomerPaymentStart ? (
+            <Button
+              label={
+                keyOnlyCustomerPaymentRecovering
+                  ? "Recovering Saved Payment"
+                  : "Recover Saved Payment"
+              }
+              fullWidth
+              disabled={keyOnlyCustomerPaymentRecovering}
+              onPress={() => void recoverKeyOnlyCustomerPayment()}
+              testID="join-collect-recover-key-only-payment"
+            />
+          ) : volatileCustomerPaymentIntentId ? (
+            <Button
+              label="Check Payment Status"
+              fullWidth
+              onPress={() => void inspectVolatileCustomerPayment()}
+              testID="join-collect-check-volatile-payment"
+            />
           ) : collectPendingIntentId &&
             collectConfirmationState.kind === "attention" ? (
             <>

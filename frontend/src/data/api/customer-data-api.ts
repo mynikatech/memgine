@@ -32,6 +32,12 @@ import { BenefitApi } from "./benefit-api";
 import { OfferApi } from "./offer-api";
 import { StoreApi } from "./store-api";
 
+console.log("[W39 MODULE LOADED]", {
+  mode: process.env.EXPO_PUBLIC_W39_TEST_MODE,
+  isDev: __DEV__,
+  hostname: typeof window !== "undefined" ? window.location.hostname : "N/A",
+});
+
 const base = (organizationId: ID) =>
   `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}`;
 
@@ -292,7 +298,9 @@ export class CustomerDataApi {
   homeBootstrap(): Promise<ApiResult<CustomerHomeBootstrap>> {
     return httpClient.get("/api/v1/customer/home/bootstrap");
   }
-  membershipSummary(organizationId: ID): Promise<ApiResult<CustomerMembershipSummary>> {
+  membershipSummary(
+    organizationId: ID,
+  ): Promise<ApiResult<CustomerMembershipSummary>> {
     return httpClient.get(`${base(organizationId)}/membership-summary`);
   }
   purchase(
@@ -384,16 +392,49 @@ export class CustomerDataApi {
     );
   }
 
-  confirmCollectPayment(
+  async confirmCollectPayment(
     organizationId: ID,
     paymentIntentId: ID,
     nonce: string,
     method: PoyntCollectPaymentMethod = "card",
   ): Promise<ApiResult<PaymentConfirmation>> {
-    return httpClient.post(
+    // W39 TEMPORARY TEST — local development only.
+    // Options: "delay", "lost", "off"
+    const w39Mode = (process.env.EXPO_PUBLIC_W39_TEST_MODE ?? "off") as
+      | "delay"
+      | "lost"
+      | "off";
+
+    const isLocalWebTest =
+      __DEV__ &&
+      typeof window !== "undefined" &&
+      ["localhost", "127.0.0.1"].includes(window.location.hostname);
+
+    console.log("[W39] confirmCollectPayment ENTERED", {
+      isLocalWebTest,
+      w39Mode,
+    });
+
+    const response = await httpClient.post<
+      { nonce: string; method: PoyntCollectPaymentMethod },
+      PaymentConfirmation
+    >(
       `${collectPaymentPath(organizationId, paymentIntentId)}/poynt-collect/confirm`,
       { nonce, method },
     );
+
+    if (isLocalWebTest && w39Mode !== "off" && response.success) {
+      console.log("[W39] Successful API response. Delaying 45 seconds.");
+
+      await new Promise<void>((resolve) => setTimeout(resolve, 45_000));
+
+      if (w39Mode === "lost") {
+        console.log("[W39] Simulating lost response.");
+        throw new Error("W39 simulated confirmation response timeout");
+      }
+    }
+
+    return response;
   }
 
   paymentStatus(
