@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 164-commerce-remote-dispatch-recovery
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/164-commerce-remote-dispatch-recovery.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

@@ -472,4 +472,9 @@ data class CommerceCatalogConfigurationWriteDto(
 @Serializable
 data class CommerceRemoteTerminalPaymentStartRequest(val posDeviceId: String)
 @Serializable
-data class CommerceRemoteTerminalPaymentDispatchDto(val commerceTransactionId: String, val referenceId: String, val status: String)
+data class CommerceRemoteTerminalPaymentDispatchDto(
+    val commerceTransactionId: String,
+    val referenceId: String,
+    val status: String,
+    val dispatchState: String? = null
+)

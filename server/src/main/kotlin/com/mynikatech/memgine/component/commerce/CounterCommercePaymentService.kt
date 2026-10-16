@@ -276,9 +276,13 @@ class CounterCommercePaymentService(
         val provider = providers.remoteTerminalPaymentProvider(route.providerCode)
             ?: throw BadRequestException("Commerce provider does not support remote terminal payment")
 
-        val posDeviceId = sql().resolvePosDevice(organizationId, storeId, staffId, actorUserId)
+        activeRemoteTerminalDispatchDto(organizationId, transaction.transactionId, actorUserId)?.let {
+            return@translate it
+        }
+
         val integrationId = transaction.integrationConfigurationId
             ?: throw BadRequestException("Commerce transaction integration is unavailable")
+        val posDeviceId = sql().resolvePosDevice(organizationId, storeId, staffId, actorUserId)
         val terminalTarget = terminalBindingResolver.resolve(organizationId, integrationId, posDeviceId)
         val reference = "MRP-${UUID.randomUUID()}"
         val row = sql().beginRemoteTerminalPayment(
@@ -289,21 +293,29 @@ class CounterCommercePaymentService(
             actorUserId
         )
 
-        if (!row.alreadyDispatched) {
-            dispatchRemotePayment(
-                provider,
+        if (row.alreadyDispatched) {
+            return@translate remoteTerminalDispatchDto(
                 organizationId,
-                actorUserId,
                 transaction.transactionId,
-                row,
-                terminalTarget
+                row.providerReferenceId,
+                actorUserId
             )
         }
 
-        CommerceRemoteTerminalPaymentDispatchDto(
-            commerceTransactionId = transaction.transactionId,
-            referenceId = row.providerReferenceId,
-            status = "PROVIDER_IN_PROGRESS"
+        dispatchRemotePayment(
+            provider,
+            organizationId,
+            actorUserId,
+            transaction.transactionId,
+            row,
+            terminalTarget
+        )
+
+        remoteTerminalDispatchDto(
+            organizationId,
+            transaction.transactionId,
+            row.providerReferenceId,
+            actorUserId
         )
     }
 
@@ -494,27 +506,33 @@ class CounterCommercePaymentService(
         if (checkout.providerCode.uppercase() != "POYNT") {
             throw BadRequestException("Configured redemption provider does not support Poynt terminal payment")
         }
-        if (checkout.commerceStatus != "ORDER_CREATED") {
+        if (checkout.commerceStatus !in setOf("ORDER_CREATED", "PROVIDER_IN_PROGRESS")) {
             throw ConflictException("Counter redemption is not ready for terminal payment")
         }
         if ((checkout.totalMinor ?: 0L) <= 0L) {
             throw BadRequestException("Counter redemption does not require terminal payment")
         }
-        if (!sql().isRedemptionPricingAcknowledged(checkout.commerceTransactionId, actorUserId)) {
+        if (checkout.commerceStatus == "ORDER_CREATED" &&
+            !sql().isRedemptionPricingAcknowledged(checkout.commerceTransactionId, actorUserId)
+        ) {
             throw ConflictException("Counter redemption price reconciliation is incomplete")
+        }
+
+        activeRemoteTerminalDispatchDto(organizationId, checkout.commerceTransactionId, actorUserId)?.let {
+            return@translate it
         }
 
         val provider = providers.remoteTerminalPaymentProvider("POYNT")
             ?: throw BadRequestException("Commerce provider does not support remote terminal payment")
 
+        val integrationId = checkout.integrationConfigurationId
+            ?: throw BadRequestException("Commerce transaction integration is unavailable")
         val posDeviceId = sql().resolvePosDevice(
             organizationId,
             storeId,
             staffId,
             actorUserId
         )
-        val integrationId = checkout.integrationConfigurationId
-            ?: throw BadRequestException("Commerce transaction integration is unavailable")
         val terminalTarget = terminalBindingResolver.resolve(organizationId, integrationId, posDeviceId)
         val reference = "RDP-${UUID.randomUUID()}"
         val row = sql().beginRedemptionRemoteTerminalPayment(
@@ -525,21 +543,29 @@ class CounterCommercePaymentService(
             actorUserId
         )
 
-        if (!row.alreadyDispatched) {
-            dispatchRemotePayment(
-                provider,
+        if (row.alreadyDispatched) {
+            return@translate remoteTerminalDispatchDto(
                 organizationId,
-                actorUserId,
                 checkout.commerceTransactionId,
-                row,
-                terminalTarget
+                row.providerReferenceId,
+                actorUserId
             )
         }
 
-        CommerceRemoteTerminalPaymentDispatchDto(
-            commerceTransactionId = checkout.commerceTransactionId,
-            referenceId = row.providerReferenceId,
-            status = "PROVIDER_IN_PROGRESS"
+        dispatchRemotePayment(
+            provider,
+            organizationId,
+            actorUserId,
+            checkout.commerceTransactionId,
+            row,
+            terminalTarget
+        )
+
+        remoteTerminalDispatchDto(
+            organizationId,
+            checkout.commerceTransactionId,
+            row.providerReferenceId,
+            actorUserId
         )
     }
 
@@ -1217,6 +1243,38 @@ class CounterCommercePaymentService(
         sql().markRemotePaymentDispatched(row.providerReferenceId)
     }
 
+    private fun remoteTerminalDispatchDto(
+        organizationId: String,
+        transactionId: String,
+        referenceId: String,
+        actorUserId: String
+    ) = CommerceRemoteTerminalPaymentDispatchDto(
+        commerceTransactionId = transactionId,
+        referenceId = referenceId,
+        status = "PROVIDER_IN_PROGRESS",
+        dispatchState = sql().remoteTerminalPaymentAttemptState(
+            organizationId,
+            transactionId,
+            referenceId,
+            actorUserId
+        )
+    )
+
+    private fun activeRemoteTerminalDispatchDto(
+        organizationId: String,
+        transactionId: String,
+        actorUserId: String
+    ): CommerceRemoteTerminalPaymentDispatchDto? =
+        sql().activeRemoteTerminalPaymentAttempt(organizationId, transactionId, actorUserId)
+            ?.let { attempt ->
+                CommerceRemoteTerminalPaymentDispatchDto(
+                    commerceTransactionId = transactionId,
+                    referenceId = attempt.providerReferenceId,
+                    status = "PROVIDER_IN_PROGRESS",
+                    dispatchState = attempt.providerStatus
+                )
+            }
+
     private fun transaction(
         organizationId: String,
         transactionId: String,
@@ -1602,6 +1660,22 @@ interface CounterCommercePaymentSql {
         @Bind("referenceId") referenceId: String,
         @Bind("actorUserId") actorUserId: String
     ): CounterCommerceRemotePaymentStartRow
+
+    @SqlQuery("SELECT * FROM commerce_get_active_remote_terminal_payment_attempt(:organizationId,:transactionId,:actorUserId)")
+    @RegisterBeanMapper(CommerceRemotePaymentAttemptRow::class)
+    fun activeRemoteTerminalPaymentAttempt(
+        @Bind("organizationId") organizationId: String,
+        @Bind("transactionId") transactionId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): CommerceRemotePaymentAttemptRow?
+
+    @SqlQuery("SELECT commerce_get_remote_terminal_payment_attempt_state(:organizationId,:transactionId,:referenceId,:actorUserId)")
+    fun remoteTerminalPaymentAttemptState(
+        @Bind("organizationId") organizationId: String,
+        @Bind("transactionId") transactionId: String,
+        @Bind("referenceId") referenceId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): String
 
     /*
      * Counter redemption Commerce functions (migration 135).

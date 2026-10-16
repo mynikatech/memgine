@@ -385,6 +385,11 @@ interface CommerceSql {
     @SqlQuery("SELECT * FROM commerce_begin_remote_terminal_payment(:organizationId,:transactionId,:posDeviceId,:referenceId,:actorUserId)")
     @RegisterBeanMapper(CommerceRemotePaymentStartRow::class)
     fun beginRemoteTerminalPayment(@Bind("organizationId") organizationId:String,@Bind("transactionId") transactionId:String,@Bind("posDeviceId") posDeviceId:String,@Bind("referenceId") referenceId:String,@Bind("actorUserId") actorUserId:String): CommerceRemotePaymentStartRow
+    @SqlQuery("SELECT * FROM commerce_get_active_remote_terminal_payment_attempt(:organizationId,:transactionId,:actorUserId)")
+    @RegisterBeanMapper(CommerceRemotePaymentAttemptRow::class)
+    fun activeRemoteTerminalPaymentAttempt(@Bind("organizationId") organizationId:String,@Bind("transactionId") transactionId:String,@Bind("actorUserId") actorUserId:String): CommerceRemotePaymentAttemptRow?
+    @SqlQuery("SELECT commerce_get_remote_terminal_payment_attempt_state(:organizationId,:transactionId,:referenceId,:actorUserId)")
+    fun remoteTerminalPaymentAttemptState(@Bind("organizationId") organizationId:String,@Bind("transactionId") transactionId:String,@Bind("referenceId") referenceId:String,@Bind("actorUserId") actorUserId:String): String
     @SqlQuery("SELECT commerce_mark_remote_payment_dispatched(:referenceId)")
     fun markRemotePaymentDispatched(@Bind("referenceId") referenceId:String): Boolean
     @SqlQuery("SELECT commerce_record_remote_payment_callback(:referenceId,:callbackStatus,:providerTransactionId,:transactionStatus,:amountMinor,:currencyCode,:providerBusinessId,:providerStoreId)")
@@ -426,6 +431,11 @@ data class CommerceTransactionAdjustmentRow(
 data class CommerceTransactionRedemptionRow(var associationId: String = "", var transactionId: String = "", var redemptionTransactionId: String = "", var redemptionStatus: String = "", var versionNo: Int = 1)
 
 // Phase 3D-A remote terminal bridge rows.
+data class CommerceRemotePaymentAttemptRow(
+    var providerReferenceId: String = "",
+    var providerStatus: String = ""
+)
+
 data class CommerceRemotePaymentStartRow(
     var alreadyDispatched: Boolean = false, var integrationConfigurationId: String = "",
     var providerOrderId: String = "", var amountMinor: Long = 0, var currencyCode: String = "",

@@ -499,14 +499,45 @@ class CommerceService(
         val transaction = sql.transaction(org, tx, actorUserId) ?: throw NotFoundException("Commerce transaction was not found")
         val integration = transaction.integrationConfigurationId?.let { id -> sql.integrations(org, actorUserId).firstOrNull { it.integrationConfigurationId == id } } ?: throw BadRequestException("Commerce transaction integration is unavailable")
         val provider = providers.remoteTerminalPaymentProvider(integration.providerCode) ?: throw BadRequestException("Commerce provider does not support remote terminal payment")
-        val terminalTarget = terminalBindingResolver.resolve(org, integration.integrationConfigurationId, request.posDeviceId)
         val device = request.posDeviceId.trim()
+        if (device.isBlank()) throw BadRequestException("POS device is required")
+        sql.activeRemoteTerminalPaymentAttempt(org, tx, actorUserId)?.let { attempt ->
+            return@translate CommerceRemoteTerminalPaymentDispatchDto(
+                tx,
+                attempt.providerReferenceId,
+                "PROVIDER_IN_PROGRESS",
+                attempt.providerStatus
+            )
+        }
+        val terminalTarget = terminalBindingResolver.resolve(org, integration.integrationConfigurationId, device)
         val reference = "MRP-" + java.util.UUID.randomUUID().toString()
         val row = sql.beginRemoteTerminalPayment(org, tx, device, reference, actorUserId)
-        if (row.alreadyDispatched) return@translate CommerceRemoteTerminalPaymentDispatchDto(tx, row.providerReferenceId, "PROVIDER_IN_PROGRESS")
+        if (row.alreadyDispatched) {
+            return@translate CommerceRemoteTerminalPaymentDispatchDto(
+                tx,
+                row.providerReferenceId,
+                "PROVIDER_IN_PROGRESS",
+                sql.remoteTerminalPaymentAttemptState(
+                    org,
+                    tx,
+                    row.providerReferenceId,
+                    actorUserId
+                )
+            )
+        }
         provider.dispatchRemoteTerminalPayment(CommerceRemoteTerminalPaymentRequest(org,row.integrationConfigurationId,actorUserId,row.providerOrderId,row.amountMinor,row.currencyCode,row.providerReferenceId,terminalTarget,callbackUrl,callbackHeaderName,callbackHeaderValue,ttlSeconds))
         sql.markRemotePaymentDispatched(row.providerReferenceId)
-        CommerceRemoteTerminalPaymentDispatchDto(tx, row.providerReferenceId, "PROVIDER_IN_PROGRESS")
+        CommerceRemoteTerminalPaymentDispatchDto(
+            tx,
+            row.providerReferenceId,
+            "PROVIDER_IN_PROGRESS",
+            sql.remoteTerminalPaymentAttemptState(
+                org,
+                tx,
+                row.providerReferenceId,
+                actorUserId
+            )
+        )
     }
     internal fun recordRemoteTerminalPaymentCallback(callback: PoyntPaymentBridgeCallback) = translate {
         val candidate = callback.usableTransaction()
