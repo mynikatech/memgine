@@ -98,6 +98,8 @@ class PoyntCollectConfirmationSecurityTest {
         val result = fixture.service.confirmCollectAndFinalize("ORG-1", "PAY-1", "CUSTOMER-1", "nonce")
         assertEquals("SUCCEEDED", result.first.status)
         assertEquals("TX-1", result.first.providerReferenceId)
+        assertEquals("TX-1", fixture.capture.transactionId.get())
+        assertEquals(listOf("capture", "finalize"), fixture.events)
         fixture.service.confirmCollectAndFinalize("ORG-1", "PAY-1", "CUSTOMER-1", "nonce-again")
         assertEquals(1, fixture.transport.charges.get())
         assertEquals(1, fixture.tokenLookups.get())
@@ -151,6 +153,27 @@ class PoyntCollectConfirmationSecurityTest {
         assertEquals(0, fixture.transport.charges.get())
     }
 
+    @Test fun `mocked rejected charge claim never invokes the provider charge`() {
+        val fixture = Fixture(SUCCESS, claimAllowed = false)
+        assertFailsWith<ConflictException> {
+            fixture.service.confirmCollectAndFinalize("ORG-1", "PAY-1", "CUSTOMER-1", "nonce")
+        }
+        assertEquals("PENDING", fixture.sql.status.get())
+        assertEquals(1, fixture.sql.claimAttempts.get())
+        assertEquals(0, fixture.transport.charges.get())
+    }
+
+    @Test fun `mocked capture evidence remains recorded when finalization is unavailable`() {
+        val fixture = Fixture(SUCCESS, finalizationAvailable = false)
+        assertFailsWith<ConflictException> {
+            fixture.service.confirmCollectAndFinalize("ORG-1", "PAY-1", "CUSTOMER-1", "nonce")
+        }
+        assertEquals("TX-1", fixture.capture.transactionId.get())
+        assertEquals(listOf("capture", "finalize"), fixture.events)
+        assertEquals("PROCESSING", fixture.sql.status.get())
+        assertEquals(1, fixture.transport.charges.get())
+    }
+
     @Test fun `timeout stays PROCESSING and a second confirm does not redispatch`() {
         val fixture = Fixture(SUCCESS, timeout = true)
         val error = assertFailsWith<ConflictException> {
@@ -184,9 +207,9 @@ class PoyntCollectConfirmationSecurityTest {
             initialReference = "TX-1",
             lookupBody = """{"transactions":[${SUCCESS}]}"""
         )
-        val result = fixture.service.getConfirmation("ORG-1", "PAY-1", "CUSTOMER-1")
-        assertEquals("SUCCEEDED", result.first.status)
-        assertEquals("TX-1", result.first.providerReferenceId)
+        val result = fixture.service.reconcileCollectAndGet("ORG-1", "PAY-1", "CUSTOMER-1")
+        assertEquals("SUCCEEDED", result.payment.status)
+        assertEquals("TX-1", result.payment.providerReferenceId)
         assertEquals(0, fixture.transport.charges.get())
         assertEquals(1, fixture.transport.gets.get())
         assertEquals(1, fixture.sql.successFinalizations.get())
@@ -199,14 +222,14 @@ class PoyntCollectConfirmationSecurityTest {
             initialReference = "TX-1",
             lookupBody = """{"transactions":[]}"""
         )
-        val result = fixture.service.getConfirmation("ORG-1", "PAY-1", "CUSTOMER-1")
-        assertEquals("PROCESSING", result.first.status)
+        val result = fixture.service.reconcileCollectAndGet("ORG-1", "PAY-1", "CUSTOMER-1")
+        assertEquals("PROCESSING", result.payment.status)
         assertEquals(0, fixture.transport.charges.get())
         assertEquals(1, fixture.transport.gets.get())
         assertEquals(0, fixture.sql.successFinalizations.get())
     }
 
-    @Test fun `concurrent confirm cannot issue two POSTs`() {
+    @Test fun `mocked claim guard prevents a second service dispatch`() {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
         val fixture = Fixture(SUCCESS, entered = entered, release = release)
@@ -239,11 +262,18 @@ class PoyntCollectConfirmationSecurityTest {
         sdkUrl: String = "https://collect.commerce.ote-godaddy.com/sdk.js",
         configuredProviderCode: String = "POYNT_COLLECT",
         initialStatus: String = "PENDING",
-            initialReference: String? = null,
+        initialReference: String? = null,
         lookupBody: String? = null,
-        tokenizationBody: String = TOKENIZED
+        tokenizationBody: String = TOKENIZED,
+        claimAllowed: Boolean = true,
+        finalizationAvailable: Boolean = true
     ) {
-        val sql = FakeSql(intentProviderCode, initialStatus, initialReference)
+        val events = mutableListOf<String>()
+        val capture = FakeCaptureSql(events)
+        val sql = FakeSql(
+            intentProviderCode, initialStatus, initialReference,
+            claimAllowed, finalizationAvailable, events
+        )
         val transport = FakeTransport(body, timeout, entered, release, lookupBody, tokenizationBody)
         val tokenLookups = AtomicInteger()
         private val provider = PoyntCollectPaymentProvider("https://services-ote.poynt.net", transport) {
@@ -255,18 +285,22 @@ class PoyntCollectConfirmationSecurityTest {
             Jdbi.create("jdbc:postgresql://unused/memgine"), "dev",
             PaymentConfig(configuredProviderCode, "", "", "https://checkout.example.test", "", "", "",
                 "https://api.sb.moneris.io", "2026-08-14", "", ""),
-            sql.proxy, provider, sdkUrl
+            sql.proxy, provider, sdkUrl, capture
         )
     }
 
     private class FakeSql(
         private val intentProviderCode: String,
         initialStatus: String,
-        initialReference: String?
+        initialReference: String?,
+        private val claimAllowed: Boolean,
+        private val finalizationAvailable: Boolean,
+        private val events: MutableList<String>
     ) {
         val status = AtomicReference(initialStatus)
         val reference = AtomicReference(initialReference)
         val claims = AtomicInteger()
+        val claimAttempts = AtomicInteger()
         val configurationReads = AtomicInteger()
         val successFinalizations = AtomicInteger()
         val failures = AtomicInteger()
@@ -297,7 +331,11 @@ class PoyntCollectConfirmationSecurityTest {
                     configurationReads.incrementAndGet()
                     PoyntCollectConfigurationRow("INT-1", "ORG-1", "APP-1", "BUS-1", "STORE-1", "secret-ref", "CAD")
                 }
-                "claimCollectCharge" -> status.compareAndSet("PENDING", "PROCESSING").also { if (it) claims.incrementAndGet() }
+                "claimCollectCharge" -> {
+                    claimAttempts.incrementAndGet()
+                    (claimAllowed && status.compareAndSet("PENDING", "PROCESSING"))
+                        .also { if (it) claims.incrementAndGet() }
+                }
                 "setProviderReference" -> {
                     val supplied = args?.get(2) as String
                     reference.compareAndSet(null, supplied)
@@ -305,8 +343,11 @@ class PoyntCollectConfirmationSecurityTest {
                 }
                 "confirmProviderSuccess" -> {
                     successFinalizations.incrementAndGet()
-                    status.set("SUCCEEDED")
-                    CounterPaymentFinalizationRow()
+                    events += "finalize"
+                    if (finalizationAvailable) {
+                        status.set("SUCCEEDED")
+                        CounterPaymentFinalizationRow()
+                    } else null
                 }
                 "recordProviderFailure" -> {
                     failures.incrementAndGet()
@@ -317,6 +358,29 @@ class PoyntCollectConfirmationSecurityTest {
                 else -> error("Unexpected PaymentSql call: ${method.name}")
             }
         } as PaymentSql
+    }
+
+    private class FakeCaptureSql(private val events: MutableList<String>) : PoyntCollectCaptureSql {
+        val transactionId = AtomicReference<String?>(null)
+
+        override fun recordVerifiedCapture(
+            organizationId: String,
+            intentId: String,
+            actorUserId: String,
+            transactionId: String,
+            amountMinor: Long,
+            currencyCode: String
+        ): Boolean {
+            this.transactionId.set(transactionId)
+            events += "capture"
+            return true
+        }
+
+        override fun hasVerifiedCapture(
+            organizationId: String,
+            intentId: String,
+            actorUserId: String
+        ): Boolean = transactionId.get() != null
     }
 
     private class FakeTransport(

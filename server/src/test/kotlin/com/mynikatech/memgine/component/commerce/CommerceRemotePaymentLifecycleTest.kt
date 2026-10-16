@@ -12,7 +12,11 @@ class CommerceRemotePaymentLifecycleTest {
         override val providerCode = "POYNT"
         override val capabilities = setOf(CommerceCapability.REMOTE_PAYMENT)
         var calls = 0
-        override fun dispatchRemoteTerminalPayment(request: CommerceRemoteTerminalPaymentRequest) { calls++ }
+        var events: MutableList<String>? = null
+        override fun dispatchRemoteTerminalPayment(request: CommerceRemoteTerminalPaymentRequest) {
+            calls++
+            events?.add("dispatch")
+        }
     }
     @Test fun `duplicate active dispatch does not post twice`() {
         val state = State(activeAttempt = true); val provider = Provider()
@@ -55,6 +59,15 @@ class CommerceRemotePaymentLifecycleTest {
         assertEquals(1, provider.calls); assertEquals("ref", state.dispatchedReference)
         assertEquals("DISPATCHED", dispatch.dispatchState)
     }
+    @Test fun `fresh remote attempt is begun before provider dispatch`() {
+        val events = mutableListOf<String>()
+        val state = State(events = events)
+        val provider = Provider().also { it.events = events }
+        service(state, provider).startRemoteTerminalPayment(
+            "org", "tx", com.mynikatech.memgine.net.dto.CommerceRemoteTerminalPaymentStartRequest("device"), "actor"
+        )
+        assertEquals(listOf("begin", "dispatch", "marked"), events)
+    }
     @Test fun `received started cancelled and failed callbacks normalize through SQL`() {
         val state=State(); val service=service(state, Provider())
         listOf("RECEIVED","STARTED","CANCELED").forEach { status -> service.recordRemoteTerminalPaymentCallback(PoyntPaymentBridgeCallback("ref",status,emptyList())) }
@@ -79,7 +92,8 @@ class CommerceRemotePaymentLifecycleTest {
     }
     private class State(
         private val activeAttempt: Boolean = false,
-        private val beginReturnsExisting: Boolean = false
+        private val beginReturnsExisting: Boolean = false,
+        private val events: MutableList<String>? = null
     ) {
         var dispatchedReference:String?=null; var callbackStatus:String?=null
         var beginCalls = 0
@@ -93,9 +107,15 @@ class CommerceRemotePaymentLifecycleTest {
             } else null
             "beginRemoteTerminalPayment" -> {
                 beginCalls++
+                events?.add("begin")
                 CommerceRemotePaymentStartRow(beginReturnsExisting,"integration","order",600,"CAD","business","store","terminal","ref")
             }
-            "markRemotePaymentDispatched" -> { dispatchedReference=args!![0] as String; remotePaymentState = "DISPATCHED"; true }
+            "markRemotePaymentDispatched" -> {
+                dispatchedReference=args!![0] as String
+                remotePaymentState = "DISPATCHED"
+                events?.add("marked")
+                true
+            }
             "remoteTerminalPaymentAttemptState" -> remotePaymentState
             "recordRemotePaymentCallback" -> { callbackStatus=args!![1] as String; true }
             else -> throw UnsupportedOperationException(method.name)
