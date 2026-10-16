@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 163-commerce-payment-callback-replay
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/163-commerce-payment-callback-replay.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
