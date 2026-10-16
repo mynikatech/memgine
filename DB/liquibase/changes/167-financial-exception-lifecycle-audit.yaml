@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 167-financial-exception-lifecycle-audit
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/167-financial-exception-lifecycle-audit.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

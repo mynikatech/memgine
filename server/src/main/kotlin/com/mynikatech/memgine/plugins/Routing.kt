@@ -27,6 +27,8 @@ import com.mynikatech.memgine.component.counter.counterRoutes
 import com.mynikatech.memgine.component.payment.PaymentService
 import com.mynikatech.memgine.component.payment.PoyntCollectPaymentProvider
 import com.mynikatech.memgine.component.payment.paymentRoutes
+import com.mynikatech.memgine.component.payment.FinancialExceptionService
+import com.mynikatech.memgine.component.payment.financialExceptionRoutes
 import com.mynikatech.memgine.component.notificationconfiguration.NotificationConfigurationService
 import com.mynikatech.memgine.component.notificationconfiguration.notificationConfigurationRoutes
 import com.mynikatech.memgine.component.notification.NotificationService
@@ -204,6 +206,7 @@ fun Application.configureRouting(
     )
     val paymentService = PaymentService(database.jdbi, config.server.environment, config.payment,
         collectProvider = collectProvider, collectSdkUrl = config.poynt.collectSdkUrl)
+    val financialExceptionService = FinancialExceptionService(database.jdbi)
     val customerService = CustomerService(database.jdbi.onDemand(CustomerSql::class.java),
         membershipProductService, benefitService, storeService, organizationService, customerDevIdentityEnabled, businessOtpService, paymentService)
     val poyntCommerceProvider = PoyntCommerceProvider(
@@ -304,6 +307,7 @@ fun Application.configureRouting(
             counterRoutes(counterService, counterCommercePaymentService)
             counterRedemptionCheckoutRoutes(counterCommercePaymentService)
             paymentRoutes(paymentService, activityAuditService)
+            financialExceptionRoutes(financialExceptionService)
             notificationConfigurationRoutes(notificationConfigurationService)
             notificationRoutes(notificationService)
             integrationConfigurationRoutes(integrationConfigurationService)

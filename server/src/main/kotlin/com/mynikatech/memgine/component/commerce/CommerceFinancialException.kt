@@ -19,6 +19,13 @@ interface CommerceFinancialExceptionSql {
         @Bind("actorUserId") actorUserId: String
     ): String?
 
+    @SqlQuery("SELECT financial_exception_record_recovery_failure(:organizationId, NULL, :transactionId, :actorUserId, :recoveryAttemptId)")
+    fun recordCounterRecoveryFailure(
+        @Bind("organizationId") organizationId: String,
+        @Bind("transactionId") transactionId: String,
+        @Bind("actorUserId") actorUserId: String,
+        @Bind("recoveryAttemptId") recoveryAttemptId: String
+    ): Boolean
     @SqlQuery("SELECT commerce_recover_counter_financial_exception(:organizationId, :transactionId, :actorUserId)")
     fun recoverCounterFulfillment(
         @Bind("organizationId") organizationId: String,

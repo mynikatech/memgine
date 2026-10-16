@@ -64,6 +64,24 @@ class CounterCommercePaymentService(
     private fun financialExceptionSql(): CommerceFinancialExceptionSql =
         jdbi.onDemand(CommerceFinancialExceptionSql::class.java)
 
+    private fun recoverCounterFulfillmentAsActor(
+        organizationId: String,
+        transactionId: String,
+        actorUserId: String
+    ): String? = jdbi.inTransaction<String?, Exception> { handle ->
+        // These settings are transaction-local, so a pooled connection cannot
+        // attribute a later operation to this Counter actor.
+        handle.createQuery("SELECT set_config('memgine.financial_exception_actor', :value, true)")
+            .bind("value", actorUserId)
+            .mapTo(String::class.java)
+            .one()
+        handle.createQuery("SELECT set_config('memgine.financial_exception_origin', 'COUNTER', true)")
+            .mapTo(String::class.java)
+            .one()
+        handle.attach(CommerceFinancialExceptionSql::class.java)
+            .recoverCounterFulfillment(organizationId, transactionId, actorUserId)
+    }
+
     /*
      * -------------------------------------------------------------------------
      * Existing Counter membership payment flow
@@ -640,14 +658,36 @@ class CounterCommercePaymentService(
     ): String? = translate {
         // Keep this call separate from recovery: if finalization rolls back,
         // the durable financial-exception case remains available for review.
-        DurableFinancialExceptionRecovery(
-            establishCase = {
-                financialExceptionSql().openCounterCaseForRecovery(organizationId, transactionId, actorUserId)
-            },
-            finalizeFulfillment = {
-                financialExceptionSql().recoverCounterFulfillment(organizationId, transactionId, actorUserId)
+        var caseEstablished = false
+        val recoveryAttemptId = "FRA_${UUID.randomUUID()}"
+        try {
+            DurableFinancialExceptionRecovery(
+                establishCase = {
+                    financialExceptionSql().openCounterCaseForRecovery(organizationId, transactionId, actorUserId)
+                    caseEstablished = true
+                },
+                finalizeFulfillment = {
+                    recoverCounterFulfillmentAsActor(organizationId, transactionId, actorUserId)
+                }
+            ).recover()?.also { recordCompletion(it, actorUserId) }
+        } catch (error: Exception) {
+            if (caseEstablished) {
+                try {
+                    financialExceptionSql().recordCounterRecoveryFailure(
+                        organizationId,
+                        transactionId,
+                        actorUserId,
+                        recoveryAttemptId
+                    )
+                } catch (_: Exception) {
+                    logger.warn(
+                        "Financial exception RECOVERY_FAILED audit persistence failed; recoveryAttemptId={}",
+                        recoveryAttemptId
+                    )
+                }
             }
-        ).recover()?.also { recordCompletion(it, actorUserId) }
+            throw error
+        }
     }
     fun finalizeRemoteTerminalPayment(referenceId: String) = translate {
         val normalizedReference = referenceId.trim()

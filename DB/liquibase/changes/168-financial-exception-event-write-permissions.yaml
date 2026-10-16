@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 168-financial-exception-event-write-permissions
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/168-financial-exception-event-write-permissions.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

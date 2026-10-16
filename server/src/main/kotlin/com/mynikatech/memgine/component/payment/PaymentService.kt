@@ -32,6 +32,7 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.net.URI
 import org.postgresql.util.PSQLException
+import org.slf4j.LoggerFactory
 
 data class BrowserCollectCheckout(
     val browserToken: String,
@@ -49,6 +50,7 @@ class PaymentService(
     private val collectCaptureSqlOverride: PoyntCollectCaptureSql? = null,
     private val collectExceptionSqlOverride: PoyntCollectFinancialExceptionSql? = null
 ) {
+    private val logger = LoggerFactory.getLogger(PaymentService::class.java)
     private val testProvider = TestPaymentProvider(environment in setOf("local", "dev", "development"))
     private val stripeProvider = StripePaymentProvider(paymentConfig)
     private val monerisProvider = MonerisPaymentProvider(paymentConfig)
@@ -64,6 +66,30 @@ class PaymentService(
     private fun collectExceptionSql() = collectExceptionSqlOverride ?: jdbi.onDemand(PoyntCollectFinancialExceptionSql::class.java)
     private val checkoutRandom = SecureRandom()
     private val browserCheckoutTtlMinutes = 10L
+
+    private fun recoverCollectFulfillmentAsCustomer(
+        organizationId: String,
+        intentId: String,
+        actorUserId: String
+    ): CounterPaymentFinalizationRow? {
+        // Test overrides intentionally exercise the recovery function directly.
+        // Runtime recovery sets transaction-local attribution on the same handle
+        // that performs the state transition observed by migration 167's trigger.
+        if (collectExceptionSqlOverride != null) {
+            return collectExceptionSql().recoverCapturedUnfulfilledPayment(organizationId, intentId, actorUserId)
+        }
+        return jdbi.inTransaction<CounterPaymentFinalizationRow?, Exception> { handle ->
+            handle.createQuery("SELECT set_config('memgine.financial_exception_actor', :value, true)")
+                .bind("value", actorUserId)
+                .mapTo(String::class.java)
+                .one()
+            handle.createQuery("SELECT set_config('memgine.financial_exception_origin', 'CUSTOMER', true)")
+                .mapTo(String::class.java)
+                .one()
+            handle.attach(PoyntCollectFinancialExceptionSql::class.java)
+                .recoverCapturedUnfulfilledPayment(organizationId, intentId, actorUserId)
+        }
+    }
 
     /** Pricing comes from the database so every checkout uses the same tax rule. */
     fun quoteMembership(org: String, planId: String): MembershipPurchaseQuoteDto {
@@ -463,17 +489,34 @@ class PaymentService(
         }
         // This separate transaction preserves the review case if finalization
         // below fails and its transaction rolls back.
-        DurableFinancialExceptionRecovery(
-            establishCase = {
-                translate { collectExceptionSql().openCapturedUnfulfilledCase(org, intentId, actorUserId) }
-            },
-            finalizeFulfillment = {
-                translate {
-                    collectExceptionSql().recoverCapturedUnfulfilledPayment(org, intentId, actorUserId)
-                        ?: throw ConflictException("Membership fulfillment was unavailable")
+        var caseEstablished = false
+        val recoveryAttemptId = "FRA_${UUID.randomUUID()}"
+        try {
+            DurableFinancialExceptionRecovery(
+                establishCase = {
+                    translate { collectExceptionSql().openCapturedUnfulfilledCase(org, intentId, actorUserId) }
+                    caseEstablished = true
+                },
+                finalizeFulfillment = {
+                    translate {
+                        recoverCollectFulfillmentAsCustomer(org, intentId, actorUserId)
+                            ?: throw ConflictException("Membership fulfillment was unavailable")
+                    }
+                }
+            ).recover()
+        } catch (error: Exception) {
+            if (caseEstablished) {
+                try {
+                    collectExceptionSql().recordRecoveryFailure(org, intentId, actorUserId, recoveryAttemptId)
+                } catch (_: Exception) {
+                    logger.warn(
+                        "Financial exception RECOVERY_FAILED audit persistence failed; recoveryAttemptId={}",
+                        recoveryAttemptId
+                    )
                 }
             }
-        ).recover()
+            throw error
+        }
         syncCommercePaymentResult(org, intentId, actorUserId)
         return getConfirmation(org, intentId, actorUserId)
     }
