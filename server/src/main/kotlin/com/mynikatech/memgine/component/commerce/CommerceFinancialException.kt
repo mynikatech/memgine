@@ -11,8 +11,36 @@ import org.jdbi.v3.sqlobject.statement.SqlQuery
 interface CommerceFinancialExceptionSql {
     @SqlQuery("SELECT commerce_open_remote_terminal_financial_exception(:referenceId)")
     fun openRemoteTerminalCase(@Bind("referenceId") referenceId: String): String?
+
+    @SqlQuery("SELECT commerce_open_counter_financial_exception_for_recovery(:organizationId, :transactionId, :actorUserId)")
+    fun openCounterCaseForRecovery(
+        @Bind("organizationId") organizationId: String,
+        @Bind("transactionId") transactionId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): String?
+
+    @SqlQuery("SELECT commerce_recover_counter_financial_exception(:organizationId, :transactionId, :actorUserId)")
+    fun recoverCounterFulfillment(
+        @Bind("organizationId") organizationId: String,
+        @Bind("transactionId") transactionId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): String?
 }
 
+/**
+ * Keeps durable exception persistence outside the transaction that replays
+ * fulfillment. Callers must establish evidence first; finalization remains
+ * entirely in the existing idempotent domain functions.
+ */
+internal class DurableFinancialExceptionRecovery<T>(
+    private val establishCase: () -> Unit,
+    private val finalizeFulfillment: () -> T
+) {
+    fun recover(): T {
+        establishCase()
+        return finalizeFulfillment()
+    }
+}
 internal class RemoteTerminalFinancialExceptionFinalizer(
     private val finalizePayment: (String) -> String?,
     private val openExceptionCase: (String) -> String?,

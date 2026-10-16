@@ -102,7 +102,19 @@ fun Route.paymentRoutes(service: PaymentService, audit: ActivityAuditService) {
             recordCompletedPurchase(audit, organizationId, actorUserId, result.payment to result.subscription)
             call.respond(ApiResponse.success(result, call.callId))
         }
-        post("/{paymentIntentId}/cancel") {
+        // P4-B: explicit fulfillment-only recovery. The service/SQL verifies
+        // customer ownership and durable verified capture before finalizing.
+        post("/{paymentIntentId}/recover-fulfillment") {
+            val organizationId = call.parameters["organizationId"]
+                ?: throw BadRequestException("Organization id is required")
+            val paymentIntentId = call.parameters["paymentIntentId"]
+                ?: throw BadRequestException("Payment intent id is required")
+            val actorUserId = call.authenticatedPrincipal().userId
+            val result = service.recoverCollectFulfillment(organizationId, paymentIntentId, actorUserId)
+            recordCompletedPurchase(audit, organizationId, actorUserId, result)
+            call.respond(ApiResponse.success(PaymentConfirmationDto(result.first, result.second), call.callId))
+        }   
+            post("/{paymentIntentId}/cancel") {
             val organizationId = call.parameters["organizationId"]
                 ?: throw BadRequestException("Organization id is required")
             val paymentIntentId = call.parameters["paymentIntentId"]

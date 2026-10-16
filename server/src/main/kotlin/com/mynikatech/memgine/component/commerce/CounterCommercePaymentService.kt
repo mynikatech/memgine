@@ -628,6 +628,27 @@ class CounterCommercePaymentService(
         redemptionCheckoutDto(updated, actorUserId)
     }
 
+    /**
+     * Replays only the existing Counter finalizer from a verified, persisted
+     * remote-terminal capture. The SQL functions authorize the actor and never
+     * open a provider dispatch path.
+     */
+    fun recoverRemoteTerminalFulfillment(
+        organizationId: String,
+        transactionId: String,
+        actorUserId: String
+    ): String? = translate {
+        // Keep this call separate from recovery: if finalization rolls back,
+        // the durable financial-exception case remains available for review.
+        DurableFinancialExceptionRecovery(
+            establishCase = {
+                financialExceptionSql().openCounterCaseForRecovery(organizationId, transactionId, actorUserId)
+            },
+            finalizeFulfillment = {
+                financialExceptionSql().recoverCounterFulfillment(organizationId, transactionId, actorUserId)
+            }
+        ).recover()?.also { recordCompletion(it, actorUserId) }
+    }
     fun finalizeRemoteTerminalPayment(referenceId: String) = translate {
         val normalizedReference = referenceId.trim()
         RemoteTerminalFinancialExceptionFinalizer(

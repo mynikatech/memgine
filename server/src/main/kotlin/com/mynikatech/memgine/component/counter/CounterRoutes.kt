@@ -1,6 +1,7 @@
 package com.mynikatech.memgine.component.counter
 
 import com.mynikatech.memgine.exception.BadRequestException
+import com.mynikatech.memgine.component.commerce.CounterCommercePaymentService
 import com.mynikatech.memgine.model.common.ApiResponse
 import com.mynikatech.memgine.net.dto.*
 import com.mynikatech.memgine.security.authenticatedPrincipal
@@ -14,7 +15,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 
-fun Route.counterRoutes(service: CounterService) {
+fun Route.counterRoutes(service: CounterService, commercePaymentService: CounterCommercePaymentService) {
     route("/organizations/{organizationId}/counter") {
         post("/customers/lookup") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
@@ -202,6 +203,17 @@ fun Route.counterRoutes(service: CounterService) {
             ))
         }
 
+        // P4-B: fulfillment-only recovery for a verified Counter capture.
+        // Counter authorization is enforced by the route gate and again in SQL.
+        post("/commerce-transactions/{transactionId}/recover-fulfillment") {
+            val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            val transactionId = call.parameters["transactionId"]
+                ?: throw BadRequestException("Commerce transaction id is required")
+            val recovered = commercePaymentService.recoverRemoteTerminalFulfillment(
+                org, transactionId, call.authenticatedPrincipal().userId
+            ) ?: throw BadRequestException("Counter fulfillment is unavailable")
+            call.respond(ApiResponse.success(mapOf("commerceTransactionId" to recovered), call.callId))
+        }
         // Phone/manual redemption uses one action-bound OTP. QR remains OTP-free.
         post("/redemptions") {
             throw BadRequestException("Counter redemption requires business OTP verification")

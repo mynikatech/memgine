@@ -301,7 +301,7 @@ fun Application.configureRouting(
             redemptionRoutes(redemptionService)
             customerRoutes(customerService)
             customerSelfServiceRoutes(customerService, redemptionService)
-            counterRoutes(counterService)
+            counterRoutes(counterService, counterCommercePaymentService)
             counterRedemptionCheckoutRoutes(counterCommercePaymentService)
             paymentRoutes(paymentService, activityAuditService)
             notificationConfigurationRoutes(notificationConfigurationService)

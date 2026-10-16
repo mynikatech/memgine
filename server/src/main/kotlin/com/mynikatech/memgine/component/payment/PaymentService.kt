@@ -6,6 +6,7 @@ import com.mynikatech.memgine.exception.NotFoundException
 import com.mynikatech.memgine.exception.ForbiddenException
 import com.mynikatech.memgine.exception.ApiException
 import com.mynikatech.memgine.component.organization.OrganizationSql
+import com.mynikatech.memgine.component.commerce.DurableFinancialExceptionRecovery
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -444,6 +445,38 @@ class PaymentService(
         )
     }
 
+    /**
+     * Replays only Memgine fulfillment from already persisted, verified Collect
+     * capture evidence. It deliberately has no provider/token/charge path.
+     */
+    fun recoverCollectFulfillment(
+        org: String,
+        intentId: String,
+        actorUserId: String
+    ): Pair<PaymentIntentDto, CounterPurchaseResult?> {
+        val current = get(org, intentId, actorUserId)
+        if (current.providerCode != "POYNT_COLLECT") {
+            throw BadRequestException("Payment is not a Poynt Collect payment")
+        }
+        if (current.finalizedSubscriptionId != null) {
+            return getConfirmation(org, intentId, actorUserId)
+        }
+        // This separate transaction preserves the review case if finalization
+        // below fails and its transaction rolls back.
+        DurableFinancialExceptionRecovery(
+            establishCase = {
+                translate { collectExceptionSql().openCapturedUnfulfilledCase(org, intentId, actorUserId) }
+            },
+            finalizeFulfillment = {
+                translate {
+                    collectExceptionSql().recoverCapturedUnfulfilledPayment(org, intentId, actorUserId)
+                        ?: throw ConflictException("Membership fulfillment was unavailable")
+                }
+            }
+        ).recover()
+        syncCommercePaymentResult(org, intentId, actorUserId)
+        return getConfirmation(org, intentId, actorUserId)
+    }
     /**
      * Resolves an ambiguous Collect result using the stable Poynt request ID.
      * It never sends a second charge and intentionally leaves PROCESSING intact

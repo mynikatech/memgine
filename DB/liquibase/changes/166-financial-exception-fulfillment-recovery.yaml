@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 166-financial-exception-fulfillment-recovery
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/166-financial-exception-fulfillment-recovery.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

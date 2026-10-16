@@ -152,7 +152,7 @@ private fun protectOrganizationPath(
 
     if (resource == "payments" &&
         method == HttpMethod.Post &&
-        parts.getOrNull(6) == "reconcile") {
+        parts.getOrNull(6) in setOf("reconcile", "recover-fulfillment")) {
         // Allow an authenticated customer to request reconciliation.
         // PaymentService.get() enforces ownership of the payment intent.
         if (principal == null) {

@@ -14,6 +14,13 @@ interface PoyntCollectFinancialExceptionSql {
         @Bind("actorUserId") actorUserId: String
     ): String
 
+    @SqlQuery("SELECT * FROM payment_recover_collect_financial_exception(:organizationId, :intentId, :actorUserId)")
+    @RegisterBeanMapper(CounterPaymentFinalizationRow::class)
+    fun recoverCapturedUnfulfilledPayment(
+        @Bind("organizationId") organizationId: String,
+        @Bind("intentId") intentId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): CounterPaymentFinalizationRow?
     @SqlQuery("SELECT * FROM payment_get_collect_financial_exception(:organizationId, :intentId, :actorUserId)")
     @RegisterBeanMapper(PoyntCollectFinancialExceptionRow::class)
     fun getCustomerCase(
