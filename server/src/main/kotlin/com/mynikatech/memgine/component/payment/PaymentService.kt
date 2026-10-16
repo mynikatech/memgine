@@ -224,7 +224,13 @@ class PaymentService(
             customerUserId
         ) ?: throw ConflictException("Payment was not started") }
         requireCustomerPaymentProvider(intent.providerCode)
-        return checkoutForProvider(intent, org, returnContext, customerUserId)
+        // A persisted PROCESSING/SUCCEEDED intent returned by the database guard
+        // is recovery-only. Never create another provider checkout from it.
+        return if (intent.status == "PENDING") {
+            checkoutForProvider(intent, org, returnContext, customerUserId)
+        } else {
+            intent
+        }
     }
 
     fun get(org: String, intentId: String, actorUserId: String): PaymentIntentDto = translate {
@@ -871,7 +877,10 @@ class PaymentService(
                     val databaseMessage: String? = postgres?.serverErrorMessage?.message
                     val safeMessage: String? = when (databaseMessage) {
                         "Membership Offer is unavailable",
-                        "Membership Offer is not eligible for this purchase" -> databaseMessage
+                        "Membership Offer is not eligible for this purchase",
+                        "Customer already has an active subscription for this membership",
+                        "Existing membership payment requires review before another purchase",
+                        "Existing membership payment terms require review before another purchase" -> databaseMessage
                         else -> null
                     }
                     throw BadRequestException(

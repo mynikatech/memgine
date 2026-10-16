@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 162-customer-membership-payment-start-safety
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/162-customer-membership-payment-start-safety.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

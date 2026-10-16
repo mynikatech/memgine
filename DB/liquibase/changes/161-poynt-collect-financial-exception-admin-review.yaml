@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 161-poynt-collect-financial-exception-admin-review
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/161-poynt-collect-financial-exception-admin-review.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+
