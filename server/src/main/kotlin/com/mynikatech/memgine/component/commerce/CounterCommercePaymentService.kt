@@ -61,6 +61,9 @@ class CounterCommercePaymentService(
     private fun sql(): CounterCommercePaymentSql =
         jdbi.onDemand(CounterCommercePaymentSql::class.java)
 
+    private fun financialExceptionSql(): CommerceFinancialExceptionSql =
+        jdbi.onDemand(CommerceFinancialExceptionSql::class.java)
+
     /*
      * -------------------------------------------------------------------------
      * Existing Counter membership payment flow
@@ -627,9 +630,18 @@ class CounterCommercePaymentService(
 
     fun finalizeRemoteTerminalPayment(referenceId: String) = translate {
         val normalizedReference = referenceId.trim()
-        sql().finalizeRemoteTerminalPayment(normalizedReference)?.also {
-            recordRemoteTerminalCompletion(normalizedReference)
-        }
+        RemoteTerminalFinancialExceptionFinalizer(
+            finalizePayment  = { sql().finalizeRemoteTerminalPayment(normalizedReference) },
+            openExceptionCase = { financialExceptionSql().openRemoteTerminalCase(normalizedReference) },
+            recordCompletion = { recordRemoteTerminalCompletion(normalizedReference) },
+            reportExceptionFailure = {
+                logger.error(
+                    "Financial exception persistence failed after Counter fulfillment failure; " +
+                        "providerReferenceId={}; requires reconciliation",
+                    normalizedReference
+                )
+            }
+        ).finalize(normalizedReference)
     }
 
     /*

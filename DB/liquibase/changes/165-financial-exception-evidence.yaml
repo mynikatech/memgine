@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 165-financial-exception-evidence
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/165-financial-exception-evidence.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
