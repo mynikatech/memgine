@@ -38,6 +38,8 @@ import com.mynikatech.memgine.component.notification.NotificationDispatchService
 import com.mynikatech.memgine.component.notification.NotificationDispatchSql
 import com.mynikatech.memgine.component.notification.SnsExternalNotificationPublisher
 import com.mynikatech.memgine.component.notification.UnavailableExternalNotificationPublisher
+import com.mynikatech.memgine.component.support.SupportService
+import com.mynikatech.memgine.component.support.supportRoutes
 import com.mynikatech.memgine.component.integrationconfiguration.IntegrationConfigurationService
 import com.mynikatech.memgine.component.integrationconfiguration.integrationConfigurationRoutes
 import com.mynikatech.memgine.component.commerce.CommerceService
@@ -207,6 +209,7 @@ fun Application.configureRouting(
     val paymentService = PaymentService(database.jdbi, config.server.environment, config.payment,
         collectProvider = collectProvider, collectSdkUrl = config.poynt.collectSdkUrl)
     val financialExceptionService = FinancialExceptionService(database.jdbi)
+    val supportService = SupportService(database.jdbi)
     val customerService = CustomerService(database.jdbi.onDemand(CustomerSql::class.java),
         membershipProductService, benefitService, storeService, organizationService, customerDevIdentityEnabled, businessOtpService, paymentService)
     val poyntCommerceProvider = PoyntCommerceProvider(
@@ -308,6 +311,7 @@ fun Application.configureRouting(
             counterRedemptionCheckoutRoutes(counterCommercePaymentService)
             paymentRoutes(paymentService, activityAuditService)
             financialExceptionRoutes(financialExceptionService)
+            supportRoutes(supportService)
             notificationConfigurationRoutes(notificationConfigurationService)
             notificationRoutes(notificationService)
             integrationConfigurationRoutes(integrationConfigurationService)

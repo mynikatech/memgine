@@ -186,6 +186,16 @@ export const APP_ROUTES = {
 
     cards: "/customer/cards",
 
+    support: "/customer/support",
+
+    newSupportRequest: (organizationId?: string) =>
+      organizationId
+        ? `/customer/support/new?organizationId=${encodeURIComponent(organizationId)}`
+        : "/customer/support/new",
+
+    supportRequest: (requestId: string) =>
+      `/customer/support/${encodeURIComponent(requestId)}`,
+
     profile: "/customer/profile",
   },
 

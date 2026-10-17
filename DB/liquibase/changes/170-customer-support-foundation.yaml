@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 170-customer-support-foundation
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/170-customer-support-foundation.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

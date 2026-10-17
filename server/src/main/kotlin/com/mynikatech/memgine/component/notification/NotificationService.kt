@@ -8,7 +8,7 @@ class NotificationService(private val sql:NotificationSql) {
   if (recipientId.isBlank() || eventType.isBlank() || eventType.length>100 || title.isBlank() || title.length>200 || message.isBlank()) throw BadRequestException("Invalid notification")
   return sql.create(UUID.randomUUID().toString(),organizationId,recipientId,eventType,title,message,context)
  }
- fun list(recipientId:String):List<NotificationDto> = sql.list(recipientId)
+ fun list(recipientId:String, limit:Int? = null, offset:Int? = null):List<NotificationDto> = sql.list(recipientId,(limit ?: 50).coerceIn(1,100),(offset ?: 0).coerceAtLeast(0))
  fun unreadCount(recipientId:String):Int = sql.unread(recipientId)
  fun markRead(id:String,recipientId:String) { if (!sql.markRead(id,recipientId)) throw NotFoundException("Notification was not found") }
  fun markAllRead(recipientId:String):Int = sql.markAllRead(recipientId)

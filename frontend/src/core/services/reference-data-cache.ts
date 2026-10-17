@@ -7,6 +7,7 @@ import type {
   CountryReference,
   ReferenceDataItem,
   ReferenceDataService,
+  SupportIssueTypeReferenceDataItem,
   RegionReference,
 } from "./reference-data";
 
@@ -287,6 +288,18 @@ export class CachedReferenceDataService implements ReferenceDataService {
   async listIntegrationTypes(): Promise<ReferenceDataItem[]> {
     return this.getOrLoad(`${CACHE_PREFIX}.integration-types`, () =>
       this.source.listIntegrationTypes(),
+    );
+  }
+
+  async listSupportCategories(): Promise<ReferenceDataItem[]> {
+    return this.getOrLoad(`${CACHE_PREFIX}.support-categories`, () =>
+      this.source.listSupportCategories(),
+    );
+  }
+
+  async listSupportIssueTypes(): Promise<SupportIssueTypeReferenceDataItem[]> {
+    return this.getOrLoad(`${CACHE_PREFIX}.support-issue-types`, () =>
+      this.source.listSupportIssueTypes(),
     );
   }
 }

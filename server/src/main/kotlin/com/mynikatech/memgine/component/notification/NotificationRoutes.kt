@@ -7,7 +7,7 @@ import io.ktor.server.plugins.callid.callId
 import io.ktor.server.response.respond
 import io.ktor.server.routing.*
 fun Route.notificationRoutes(service:NotificationService) = route("/notifications") {
- get { call.respond(ApiResponse.success(service.list(call.authenticatedPrincipal().userId),call.callId)) }
+ get { call.respond(ApiResponse.success(service.list(call.authenticatedPrincipal().userId,call.request.queryParameters["limit"]?.toIntOrNull(),call.request.queryParameters["offset"]?.toIntOrNull()),call.callId)) }
  get("/unread-count") { call.respond(ApiResponse.success(NotificationUnreadCountDto(service.unreadCount(call.authenticatedPrincipal().userId)),call.callId)) }
  post("/{notificationId}/read") { service.markRead(call.parameters["notificationId"] ?: throw com.mynikatech.memgine.exception.BadRequestException("Notification id is required"),call.authenticatedPrincipal().userId); call.respond(ApiResponse.success(mapOf("updated" to true),call.callId)) }
  post("/read-all") { call.respond(ApiResponse.success(mapOf("updated" to service.markAllRead(call.authenticatedPrincipal().userId)),call.callId)) }

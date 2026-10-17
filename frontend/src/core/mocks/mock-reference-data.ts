@@ -3,6 +3,7 @@ import type {
   CountryReference,
   ReferenceDataItem,
   ReferenceDataService,
+  SupportIssueTypeReferenceDataItem,
   RegionReference,
 } from "../services/reference-data";
 
@@ -110,6 +111,14 @@ export class InMemoryReferenceDataService implements ReferenceDataService {
 
   async listIntegrationTypes(): Promise<ReferenceDataItem[]> {
     return this.activeReferenceItems(INTEGRATION_TYPES);
+  }
+
+  async listSupportCategories(): Promise<ReferenceDataItem[]> {
+    return [];
+  }
+
+  async listSupportIssueTypes(): Promise<SupportIssueTypeReferenceDataItem[]> {
+    return [];
   }
 
   private activeReferenceItems(

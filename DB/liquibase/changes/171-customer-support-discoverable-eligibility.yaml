@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 171-customer-support-discoverable-eligibility
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/171-customer-support-discoverable-eligibility.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

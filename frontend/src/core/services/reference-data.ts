@@ -13,8 +13,14 @@ export interface ReferenceDataItem {
   id: ID;
   code: string;
   name: string;
+  description?: string | null;
   displayOrder: number;
   active: boolean;
+}
+
+export interface SupportIssueTypeReferenceDataItem extends ReferenceDataItem {
+  categoryId: ID;
+  categoryCode: string;
 }
 
 /**
@@ -100,4 +106,8 @@ export interface ReferenceDataService {
   listCurrencies(): Promise<ReferenceDataItem[]>;
 
   listIntegrationTypes(): Promise<ReferenceDataItem[]>;
+
+  listSupportCategories(): Promise<ReferenceDataItem[]>;
+
+  listSupportIssueTypes(): Promise<SupportIssueTypeReferenceDataItem[]>;
 }

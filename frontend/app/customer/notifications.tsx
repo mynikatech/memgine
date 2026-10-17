@@ -7,6 +7,17 @@ import { services } from "@/src/core";
 import type { AppNotification } from "@/src/data/api/notification-api";
 import { useTheme } from "@/src/providers";
 import { Text } from "@/src/ui";
+import { APP_ROUTES } from "@/src/constants/navigation";
+
+function supportRequestId(notification: AppNotification): string | null {
+  if (!notification.context) return null;
+  try {
+    const context = JSON.parse(notification.context) as { supportRequestId?: unknown };
+    return typeof context.supportRequestId === "string" ? context.supportRequestId : null;
+  } catch {
+    return null;
+  }
+}
 
 export default function Notifications() {
   const router = useRouter();
@@ -109,6 +120,10 @@ export default function Notifications() {
               if (!notification.readAt) {
                 await services.inAppNotifications.markRead(notification.id);
                 void load();
+              }
+              const requestId = supportRequestId(notification);
+              if (requestId) {
+                router.push(APP_ROUTES.customer.supportRequest(requestId) as never);
               }
             }}
             style={{

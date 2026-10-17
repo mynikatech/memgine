@@ -5,6 +5,7 @@ import type {
   CountryReference,
   ReferenceDataItem,
   ReferenceDataService,
+  SupportIssueTypeReferenceDataItem,
   RegionReference,
 } from "./reference-data";
 
@@ -19,6 +20,8 @@ type ReferenceDataSnapshot = {
   benefitTypes: ReferenceDataItem[];
   currencies: ReferenceDataItem[];
   integrationTypes: ReferenceDataItem[];
+  supportCategories: ReferenceDataItem[];
+  supportIssueTypes: SupportIssueTypeReferenceDataItem[];
   countries: CountryReference[];
   regions: RegionReference[];
   cities: CityReference[];
@@ -126,6 +129,14 @@ export class ServerReferenceDataService implements ReferenceDataService {
 
   async listIntegrationTypes(): Promise<ReferenceDataItem[]> {
     return this.getSnapshot().integrationTypes;
+  }
+
+  async listSupportCategories(): Promise<ReferenceDataItem[]> {
+    return this.getSnapshot().supportCategories;
+  }
+
+  async listSupportIssueTypes(): Promise<SupportIssueTypeReferenceDataItem[]> {
+    return this.getSnapshot().supportIssueTypes;
   }
 
   async listCountries(): Promise<CountryReference[]> {

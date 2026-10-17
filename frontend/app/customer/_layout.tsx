@@ -1,7 +1,7 @@
 import { Slot } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, Tabs } from "expo-router";
-import { Platform } from "react-native";
+import { Platform, useWindowDimensions } from "react-native";
 
 import { useAuth, useTheme, useTranslation } from "@/src/providers";
 
@@ -13,6 +13,8 @@ export default function CustomerLayout() {
   const theme = useTheme();
   const { t } = useTranslation();
   const { loading, session } = useAuth();
+  const { width } = useWindowDimensions();
+  const useDesktopNavigation = Platform.OS === "web" && width >= 900;
 
   if (!loading && !session)
     return (
@@ -29,8 +31,15 @@ export default function CustomerLayout() {
         tabBarInactiveTintColor: theme.colors.textMuted,
         tabBarStyle: {
           backgroundColor: theme.colors.background,
-          borderTopColor: theme.colors.border,
+          ...(useDesktopNavigation
+            ? {
+                width: 224,
+                borderRightColor: theme.colors.border,
+                borderTopWidth: 0,
+              }
+            : { borderTopColor: theme.colors.border }),
         },
+        tabBarPosition: useDesktopNavigation ? "left" : "bottom",
         tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
       }}
     >
@@ -62,6 +71,20 @@ export default function CustomerLayout() {
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
               name={focused ? "person" : "person-outline"}
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="support"
+        options={{
+          title: "Support",
+          tabBarButtonTestID: "customer-tab-support",
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? "help-circle" : "help-circle-outline"}
               size={size}
               color={color}
             />

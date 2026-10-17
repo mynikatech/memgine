@@ -3,7 +3,8 @@ package com.mynikatech.memgine.component.referencedata
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class ReferenceDataItemDto(val id: String, val code: String, val name: String, val displayOrder: Int, val active: Boolean)
+data class ReferenceDataItemDto(val id: String, val code: String, val name: String, val description: String? = null, val displayOrder: Int, val active: Boolean)
+@Serializable data class SupportIssueTypeReferenceDataDto(val id: String, val categoryId: String, val categoryCode: String, val code: String, val name: String, val description: String? = null, val displayOrder: Int, val active: Boolean)
 
 @Serializable
 data class CountryReferenceDataDto(
@@ -29,6 +30,8 @@ data class ReferenceDataSnapshot(
     val benefitTypes: List<ReferenceDataItemDto> = emptyList(),
     val currencies: List<ReferenceDataItemDto> = emptyList(),
     val integrationTypes: List<ReferenceDataItemDto> = emptyList(),
+    val supportCategories: List<ReferenceDataItemDto> = emptyList(),
+    val supportIssueTypes: List<SupportIssueTypeReferenceDataDto> = emptyList(),
     val countries: List<CountryReferenceDataDto> = emptyList(),
     val regions: List<RegionReferenceDataDto> = emptyList(),
     val cities: List<CityReferenceDataDto> = emptyList()

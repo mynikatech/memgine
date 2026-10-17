@@ -67,6 +67,7 @@ import type { CustomerExperienceReleaseService } from "./customer-experience-rel
 import type { NotificationService } from "./notification";
 import { OrganizationMaintenanceService } from "./organization-maintenance-service";
 import { ServerNotificationService } from "./notification-service.server";
+import { CustomerSupportService } from "./customer-support-service";
 
 const organizationService: OrganizationService = new LocalOrganizationService(
   mockServices.organization,
@@ -162,6 +163,7 @@ const customerPreferenceService = new LocalCustomerPreferenceService(
   apis.customerPreference,
 );
 const inAppNotifications = new ServerNotificationService();
+const customerSupport = new CustomerSupportService();
 
 export type MemgineServices = {
   organization: OrganizationService;
@@ -190,6 +192,7 @@ export type MemgineServices = {
   customerExperienceRelease: CustomerExperienceReleaseService;
   notification: NotificationService;
   inAppNotifications: ServerNotificationService;
+  customerSupport: CustomerSupportService;
   product: ProductService;
   customerPreference: import("./service-contracts.profile-referral.additions").CustomerPreferenceService;
   referral: import("./service-contracts.profile-referral.additions").ReferralService;
@@ -230,6 +233,7 @@ export const services: MemgineServices = {
   customerExperienceRelease: customerExperienceReleaseService,
   notification: mockNotificationService,
   inAppNotifications,
+  customerSupport,
   product: productService,
   customerPreference: customerPreferenceService,
   referral: referralService,
