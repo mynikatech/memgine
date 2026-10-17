@@ -22,6 +22,8 @@ import {
 } from "@/src/data/api/org-admin-transaction-api";
 import { OrgAdminCustomerApi } from "@/src/data/api/org-admin-customer-api";
 import { OrgAdminCustomerService } from "./org-admin-customer-service";
+import { FinancialExceptionApi } from "@/src/data/api/financial-exception-api";
+import { FinancialExceptionService } from "./financial-exception-service";
 import { CounterApi } from "@/src/data/api/counter-api";
 import { CounterService } from "./counter-service";
 import { CustomerDataApi } from "@/src/data/api/customer-data-api";
@@ -146,6 +148,9 @@ const orgAdminTransactions = new OrgAdminTransactionReadService(
 const orgAdminCustomers = new OrgAdminCustomerService(
   new OrgAdminCustomerApi(),
 );
+const financialExceptions = new FinancialExceptionService(
+  new FinancialExceptionApi(),
+);
 const counter = new CounterService(new CounterApi());
 const customerData = new CustomerDataService(new CustomerDataApi());
 const organizationMaintenance = new OrganizationMaintenanceService(
@@ -171,6 +176,7 @@ export type MemgineServices = {
   redemption: RedemptionService;
   orgAdminTransactions: OrgAdminTransactionReadService;
   orgAdminCustomers: OrgAdminCustomerService;
+  financialExceptions: FinancialExceptionService;
   counter: CounterService;
   customerData: CustomerDataService;
   organizationMaintenance: OrganizationMaintenanceService;
@@ -210,6 +216,7 @@ export const services: MemgineServices = {
   redemption: redemptionService,
   orgAdminTransactions,
   orgAdminCustomers,
+  financialExceptions,
   counter,
   customerData,
   organizationMaintenance,

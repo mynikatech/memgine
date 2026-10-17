@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 169-financial-exception-admin-recovery
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/169-financial-exception-admin-recovery.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
