@@ -26,6 +26,7 @@ import com.mynikatech.memgine.component.counter.CounterService
 import com.mynikatech.memgine.component.counter.counterRoutes
 import com.mynikatech.memgine.component.payment.PaymentService
 import com.mynikatech.memgine.component.payment.PoyntCollectPaymentProvider
+import com.mynikatech.memgine.component.payment.PoyntCollectRefundAdapter
 import com.mynikatech.memgine.component.payment.paymentRoutes
 import com.mynikatech.memgine.component.payment.PaymentRefundService
 import com.mynikatech.memgine.component.payment.paymentRefundRoutes
@@ -210,7 +211,15 @@ fun Application.configureRouting(
     )
     val paymentService = PaymentService(database.jdbi, config.server.environment, config.payment,
         collectProvider = collectProvider, collectSdkUrl = config.poynt.collectSdkUrl)
-    val paymentRefundService = PaymentRefundService(database.jdbi)
+    val paymentRefundService = PaymentRefundService(
+        database.jdbi,
+        poyntCollectRefundAdapter = PoyntCollectRefundAdapter(
+            config.poynt.collectBaseUrl,
+            PoyntCloudHttpTransport(config.poynt.collectBaseUrl, config.poynt.apiVersion),
+            poyntTokens::token
+        ),
+        poyntCollectRefundDispatchEnabled = config.poynt.refundDispatchEnabled
+    )
     val financialExceptionService = FinancialExceptionService(database.jdbi)
     val supportService = SupportService(database.jdbi)
     val customerService = CustomerService(database.jdbi.onDemand(CustomerSql::class.java),

@@ -35,6 +35,8 @@ class PoyntCollectPaymentProviderTest {
 
         assertTrue(result.approved)
         assertEquals("TX-1", result.transactionId)
+        assertEquals("BUS-1", result.verifiedBusinessId)
+        assertEquals("STORE-1", result.verifiedStoreId)
         assertEquals(2, transport.posts.size)
         assertEquals(
             URI.create("https://services-ote.poynt.net/businesses/BUS-1/cards/tokenize"),
@@ -67,6 +69,20 @@ class PoyntCollectPaymentProviderTest {
             "voided" to "false",
             "authOnly" to "false"
         ))).approved)
+    }
+
+    @Test
+    fun `captured SALE without merchant context remains payable but has no refund merchant evidence`() {
+        val response = sale().replace(
+            "\"context\":{\"businessId\":\"BUS-1\",\"storeId\":\"STORE-1\"},",
+            ""
+        )
+
+        val result = classify(response)
+
+        assertTrue(result.approved)
+        assertNull(result.verifiedBusinessId)
+        assertNull(result.verifiedStoreId)
     }
 
     @Test

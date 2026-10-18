@@ -578,7 +578,8 @@ class PaymentService(
                 translate {
                     collectCaptureSql().recordVerifiedCapture(
                         org, intentId, actorUserId, result.transactionId,
-                        amountMinor(current.amount), current.currencyCode
+                        amountMinor(current.amount), current.currencyCode,
+                        result.verifiedBusinessId, result.verifiedStoreId
                     )
                 }
             } catch (_: Exception) {
@@ -782,7 +783,8 @@ class PaymentService(
             val recordedCapture = translate {
                 collectCaptureSql().recordVerifiedCapture(
                     org, intentId, actorUserId, result.transactionId,
-                    amountMinor(current.amount), current.currencyCode
+                    amountMinor(current.amount), current.currencyCode,
+                    result.verifiedBusinessId, result.verifiedStoreId
                 )
             }
             if (!recordedCapture) {

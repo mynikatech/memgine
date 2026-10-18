@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 179-poynt-collect-refund-reference-recovery
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/179-poynt-collect-refund-reference-recovery.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

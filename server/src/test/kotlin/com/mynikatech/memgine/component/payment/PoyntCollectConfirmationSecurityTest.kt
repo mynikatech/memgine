@@ -369,7 +369,9 @@ class PoyntCollectConfirmationSecurityTest {
             actorUserId: String,
             transactionId: String,
             amountMinor: Long,
-            currencyCode: String
+            currencyCode: String,
+            verifiedBusinessId: String?,
+            verifiedStoreId: String?
         ): Boolean {
             this.transactionId.set(transactionId)
             events += "capture"

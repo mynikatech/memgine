@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 178-payment-refund-return-type-fix
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/178-payment-refund-return-type-fix.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

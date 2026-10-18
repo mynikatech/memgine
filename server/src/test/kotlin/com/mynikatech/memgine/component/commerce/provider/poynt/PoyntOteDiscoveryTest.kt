@@ -254,6 +254,16 @@ fun inspectPendingCounterTerminalPayment() {
         val response = transport.get(uri, authorization)
         println("\n=== $label ===")
         println("HTTP status: ${response.statusCode}")
+        if (response.statusCode !in 200..299) {
+            val error = runCatching {
+                Json.parseToJsonElement(response.body).jsonObject
+            }.getOrNull()
+
+            println("Poynt error code: ${safeDiagnosticField(error, "code")}")
+            println("Poynt error message: ${safeDiagnosticField(error, "message")}")
+            println("Poynt developer message: ${safeDiagnosticField(error, "developerMessage")}")
+            return
+        }
 
         val root = runCatching {
             Json.parseToJsonElement(response.body)
@@ -380,6 +390,135 @@ if (order != null) {
 
     println("\nDiagnostic complete. No payment was initiated.")
 }
+
+
+@Test
+fun inspectExistingCollectRefund() {
+    if (System.getenv("POYNT_REFUND_DIAGNOSTIC") != "true") {
+        println("Poynt refund diagnostic: SKIPPED")
+        return
+    }
+
+    val refundId = "7346ba72-f803-4359-afaa-3920c5b066b6"
+    val attemptId = "PRA_301533e3-b234-489c-9035-3b659e9f2750"
+
+    val token = accessToken()
+    val transport = PoyntCloudHttpTransport(poyntBaseUrl, "1.2")
+    val authorization = "${token.tokenType} ${token.value}"
+
+    fun field(obj: JsonObject?, key: String): String =
+        (obj?.get(key) as? JsonPrimitive)
+            ?.content
+            ?.replace(Regex("[\\r\\n\\t]"), " ")
+            ?.take(100)
+            ?: "NOT_EXPOSED"
+
+    fun inspect(label: String, uri: URI) {
+        val response = transport.get(uri, authorization)
+
+        println("\n=== $label ===")
+        println("HTTP status: ${response.statusCode}")
+        
+         if (response.statusCode !in 200..299) {
+        val error = runCatching {
+            Json.parseToJsonElement(response.body).jsonObject
+        }.getOrNull()
+
+        println("Poynt error code: ${safeDiagnosticField(error, "code")}")
+        println("Poynt error message: ${safeDiagnosticField(error, "message")}")
+        println("Poynt developer message: ${safeDiagnosticField(error, "developerMessage")}")
+        return
+    }
+
+        val root = runCatching {
+            Json.parseToJsonElement(response.body)
+        }.getOrNull()
+
+        if (root == null) {
+            println("Response: EMPTY_OR_NON_JSON")
+            return
+        }
+
+        println("Root type: ${root::class.simpleName}")
+
+        val records = when (root) {
+            is JsonArray ->
+                root.mapNotNull { it as? JsonObject }
+
+            is JsonObject -> {
+                println("Root keys: ${root.keys.sorted()}")
+                val array = root["transactions"] as? JsonArray
+                if (array != null) {
+                    array.mapNotNull { it as? JsonObject }
+                } else {
+                    listOf(root)
+                }
+            }
+
+            else -> emptyList()
+        }
+
+        println("Returned records: ${records.size}")
+
+        records.take(5).forEachIndexed { index, txn ->
+            val processor = txn["processorResponse"] as? JsonObject
+            val amounts = txn["amounts"] as? JsonObject
+            val context = txn["context"] as? JsonObject
+
+            println("\nRecord ${index + 1}")
+            println("Transaction keys: ${txn.keys.sorted()}")
+            println("ID: ${field(txn, "id")}")
+            println("Action: ${field(txn, "action")}")
+            println("Status: ${field(txn, "status")}")
+            println("Parent ID: ${field(txn, "parentId")}")
+            println("Original request ID: ${field(txn, "originalRequestId")}")
+
+            println("Amounts keys: ${amounts?.keys?.sorted()}")
+            println("Currency: ${field(amounts, "currency")}")
+            println("Transaction amount: ${field(amounts, "transactionAmount")}")
+            println("Order amount: ${field(amounts, "orderAmount")}")
+
+            println("Processor keys: ${processor?.keys?.sorted()}")
+            println("Processor status: ${field(processor, "status")}")
+            println("Processor approved amount: ${field(processor, "approvedAmount")}")
+
+            println("Business matches: ${field(context, "businessId") == businessId}")
+            println("Store matches: ${field(context, "storeId") == expectedStoreId}")
+
+            println("Matches known refund ID: ${field(txn, "id") == refundId}")
+            println("Matches attempt ID: ${field(txn, "originalRequestId") == attemptId}")
+        }
+    }
+
+    inspect(
+        "REFUND BY TRANSACTION ID",
+        transport.transactionByIdUri(businessId, refundId)
+    )
+
+    inspect(
+        "REFUND BY ORIGINAL REQUEST ID",
+        transport.transactionsByOriginalRequestIdUri(businessId, attemptId)
+    )
+
+    // Direct transaction lookup - GET only
+    inspect(
+        "DIRECT REFUND TRANSACTION LOOKUP",
+        URI.create(
+            "$poyntBaseUrl/businesses/$businessId/transactions/$refundId"
+        )
+    )
+    inspect(
+        "TRANSACTIONS IN DATE WINDOW",
+        URI.create(
+            "$poyntBaseUrl/businesses/$businessId/transactions" +
+                "?startAt=2026-10-18T00%3A00%3A00Z" +
+                "&endAt=2026-10-20T00%3A00%3A00Z"
+        )
+    )
+
+    println("\nRead-only refund diagnostic complete.")
+}
+
 
 
     private fun accessToken(): PoyntAccessToken {

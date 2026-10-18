@@ -218,6 +218,21 @@ private fun protectOrganizationPath(
         throw ForbiddenException("Access is not permitted")
     }
 
+    if (
+        resource == "payments" &&
+        method == HttpMethod.Get &&
+        parts.size == 8 &&
+        parts[6] == "poynt-collect" &&
+        parts[7] == "config"
+    ) {
+        // The payment service and configuration function verify that the
+        // authenticated customer owns this exact CUSTOMER_SESSION intent.
+        if (principal == null) {
+            throw UnauthorizedException("Authentication is required")
+        }
+        return
+    }
+
     require(principal, "ORG_ADMIN_ACCESS", organizationId)
 }
 

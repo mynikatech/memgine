@@ -328,7 +328,13 @@ data class AppConfig(
                         "memgine.poynt.paymentBridgeTtlSeconds",
                         "MEMGINE_POYNT_PAYMENT_BRIDGE_TTL_SECONDS",
                         "45"
-                    ).toLong()
+                    ).toLong(),
+
+                    refundDispatchEnabled = value(
+                        "memgine.poynt.refundDispatchEnabled",
+                        "MEMGINE_POYNT_REFUND_DISPATCH_ENABLED",
+                        "false"
+                    ).toBooleanStrictOrNull() ?: false
                 ),
 
                 assets = AssetStorageConfig(
@@ -389,7 +395,8 @@ data class PoyntCommerceConfig(
     val paymentBridgeCallbackUrl: String,
     val paymentBridgeCallbackHeaderName: String,
     val paymentBridgeCallbackHeaderValue: String,
-    val paymentBridgeTtlSeconds: Long
+    val paymentBridgeTtlSeconds: Long,
+    val refundDispatchEnabled: Boolean
 )
 
 data class PaymentConfig(

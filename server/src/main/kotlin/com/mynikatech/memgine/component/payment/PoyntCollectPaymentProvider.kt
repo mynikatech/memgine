@@ -21,7 +21,9 @@ import org.slf4j.LoggerFactory
 data class PoyntCollectResult(
     val transactionId: String,
     val approved: Boolean,
-    val definiteDecline: Boolean = false
+    val definiteDecline: Boolean = false,
+    val verifiedBusinessId: String? = null,
+    val verifiedStoreId: String? = null
 )
 
 /** Remote Collect uses the existing Poynt cloud OAuth token, not the terminal bridge. */
@@ -282,12 +284,13 @@ class PoyntCollectPaymentProvider(
         if (configuration == null) return rejected("missing Poynt configuration")
 
         val context = root["context"] as? JsonObject
-            ?: return rejected("missing transaction context")
-        if (strictString(context, "businessId") != configuration.businessId) {
-            return rejected("business mismatch")
-        }
-        if (strictString(context, "storeId") != configuration.providerStoreId) {
-            return rejected("store mismatch")
+        if (context != null) {
+            if (strictString(context, "businessId") != configuration.businessId) {
+                return rejected("business mismatch")
+            }
+            if (strictString(context, "storeId") != configuration.providerStoreId) {
+                return rejected("store mismatch")
+            }
         }
 
         val amounts = root["amounts"] as? JsonObject
@@ -326,7 +329,12 @@ class PoyntCollectPaymentProvider(
         val approvedAmount = processor?.let { strictMinorAmount(it, "approvedAmount") }
         if (approvedAmount != expectedAmountMinor) return rejected("approved amount mismatch")
 
-        return PoyntCollectResult(id, true)
+        return PoyntCollectResult(
+            transactionId = id,
+            approved = true,
+            verifiedBusinessId = context?.let { strictString(it, "businessId") },
+            verifiedStoreId = context?.let { strictString(it, "storeId") }
+        )
     }
 
     private fun strictString(value: JsonObject, key: String): String? =

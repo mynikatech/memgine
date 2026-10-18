@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 177-poynt-collect-refund-execution
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/177-poynt-collect-refund-execution.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
