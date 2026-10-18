@@ -21,6 +21,7 @@ export default function NewCustomerSupportRequest() {
   const [categories, setCategories] = useState<ReferenceDataItem[]>([]);
   const [issueTypes, setIssueTypes] = useState<SupportIssueTypeReferenceDataItem[]>([]);
   const [organizationId, setOrganizationId] = useState("");
+  const [destination, setDestination] = useState<"BUSINESS" | "PLATFORM">("BUSINESS");
   const [category, setCategory] = useState("");
   const [issueType, setIssueType] = useState("");
   const [subject, setSubject] = useState("");
@@ -57,10 +58,17 @@ export default function NewCustomerSupportRequest() {
   }, [customersLoading, load]);
 
   const selectedCategory = categories.find((item) => item.code === category);
-  const availableIssueTypes = useMemo(
-    () => issueTypes.filter((item) => item.categoryId === selectedCategory?.id),
-    [issueTypes, selectedCategory?.id],
-  );
+  const availableCategories = useMemo(() => destination === "PLATFORM" ? categories.filter((item) => item.code === "ACCOUNT" || item.code === "GENERAL") : categories, [categories, destination]);
+  const availableIssueTypes = useMemo(() => issueTypes.filter((item) => item.categoryId === selectedCategory?.id), [issueTypes, selectedCategory?.id]);
+
+  const changeDestination = (value: string) => {
+    const next = value as "BUSINESS" | "PLATFORM";
+    setDestination(next);
+    setOrganizationId("");
+    setCategory("");
+    setIssueType("");
+    setErrors({});
+  };
 
   const changeCategory = (value: string) => {
     setCategory(value);
@@ -72,7 +80,7 @@ export default function NewCustomerSupportRequest() {
     const nextErrors: FormErrors = {};
     const cleanedSubject = subject.trim();
     const cleanedDescription = description.trim();
-    if (!organizationId) nextErrors.organizationId = "Select a business.";
+    if (destination === "BUSINESS" && !organizationId) nextErrors.organizationId = "Select a business.";
     if (!category) nextErrors.category = "Select a category.";
     if (!issueType) nextErrors.issueType = "Select an issue type.";
     if (!cleanedSubject) nextErrors.subject = "Enter a subject.";
@@ -83,7 +91,7 @@ export default function NewCustomerSupportRequest() {
     if (Object.keys(nextErrors).length) return;
     setSubmitting(true);
     try {
-      const created = await services.customerSupport.create({ organizationId, category, issueType, subject: cleanedSubject, description: cleanedDescription });
+      const created = await services.customerSupport.create({ organizationId: destination === "BUSINESS" ? organizationId : null, destination, category, issueType, subject: cleanedSubject, description: cleanedDescription });
       router.replace(APP_ROUTES.customer.supportRequest(created.supportRequestId) as never);
     } catch (cause) {
       setLoadError(cause instanceof Error ? cause.message : "We could not confirm your request. Check Support Requests before submitting again.");
@@ -123,8 +131,9 @@ export default function NewCustomerSupportRequest() {
         }}
       >
         {loadError ? <View style={{ gap: theme.spacing.sm }}><Text variant="bodySmall" color="danger">{loadError}</Text><Button label="Retry" variant="secondary" onPress={() => void load()} /></View> : null}
-        <ReferenceSelect label="Business" required value={organizationId} items={organizations} onChange={(value) => { setOrganizationId(value); setErrors((current) => ({ ...current, organizationId: undefined })); }} placeholder="Select a business" error={errors.organizationId} getItemId={(item) => item.organizationId} renderItemLabel={(item) => item.displayName || item.name} />
-        <ReferenceSelect label="Support category" required value={category} items={categories} onChange={changeCategory} placeholder="Select a category" error={errors.category} getItemId={(item) => item.code} renderItemLabel={(item) => item.name} />
+        <ReferenceSelect label="Support destination" required value={destination} items={["BUSINESS", "PLATFORM"]} onChange={changeDestination} getItemId={(item) => item} renderItemLabel={(item) => item === "BUSINESS" ? "Business Support" : "Memgine Support"} />
+        {destination === "BUSINESS" ? <ReferenceSelect label="Business" required value={organizationId} items={organizations} onChange={(value) => { setOrganizationId(value); setErrors((current) => ({ ...current, organizationId: undefined })); }} placeholder="Select a business" error={errors.organizationId} getItemId={(item) => item.organizationId} renderItemLabel={(item) => item.displayName || item.name} /> : <Text variant="bodySmall" color="textMuted">This request goes directly to Memgine Support.</Text>}
+        <ReferenceSelect label="Support category" required value={category} items={availableCategories} onChange={changeCategory} placeholder="Select a category" error={errors.category} getItemId={(item) => item.code} renderItemLabel={(item) => item.name} />
         <ReferenceSelect label="Issue type" required value={issueType} items={availableIssueTypes} onChange={(value) => { setIssueType(value); setErrors((current) => ({ ...current, issueType: undefined })); }} placeholder={category ? "Select an issue type" : "Select a category first"} disabled={!category} error={errors.issueType} getItemId={(item) => item.code} renderItemLabel={(item) => item.name} />
         <Input label="Subject" required value={subject} onChangeText={(value) => { setSubject(value); setErrors((current) => ({ ...current, subject: undefined })); }} maxLength={200} error={errors.subject} placeholder="Briefly describe what you need help with" />
         <TextArea label="Description" required value={description} onChangeText={(value) => { setDescription(value); setErrors((current) => ({ ...current, description: undefined })); }} maxLength={8000} error={errors.description} placeholder="Include any details that will help us investigate." />

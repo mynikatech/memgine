@@ -70,11 +70,14 @@ export class CustomerSupportService {
   async paymentExceptionCandidates(organizationId: ID, requestId: ID): Promise<PaymentExceptionCandidate[]> { return this.unwrap(await this.api.paymentExceptionCandidates(organizationId, requestId)); }
   async escalatePaymentInvestigation(organizationId: ID, requestId: ID, request: EscalatePaymentInvestigation): Promise<ID> { return this.unwrap(await this.api.escalatePaymentInvestigation(organizationId, requestId, request)).investigationId; }
   async linkPaymentException(organizationId: ID, requestId: ID, financialExceptionId: ID): Promise<ID> { return this.unwrap(await this.api.linkPaymentException(organizationId, requestId, financialExceptionId)).investigationId; }
-  async platformList(filters: { organizationId?: ID; category?: string; status?: string; priority?: string; limit?: number; offset?: number } = {}): Promise<OrganizationSupportRequest[]> {
+  async platformList(filters: { organizationId?: ID; category?: string; status?: string; priority?: string; destination?: "BUSINESS" | "PLATFORM"; limit?: number; offset?: number } = {}): Promise<OrganizationSupportRequest[]> {
     return this.unwrap(await this.api.platformList(filters));
   }
   async platformDetail(requestId: ID): Promise<OrganizationSupportRequestDetail> {
     return this.unwrap(await this.api.platformDetail(requestId));
+  }
+  async updatePlatform(requestId: ID, request: UpdateOrganizationSupportRequest): Promise<void> {
+    this.unwrap(await this.api.updatePlatform(requestId, request));
   }
   async platformMessage(requestId: ID, message: string, kind: "note" | "recommendation" | "reply"): Promise<void> {
     this.unwrap(await this.api.platformMessage(requestId, message, kind));

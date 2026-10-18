@@ -33,10 +33,11 @@ fun Route.supportRoutes(service:SupportService) {
   patch("/{requestId}") { val org=call.parameters["organizationId"]?:throw BadRequestException("Organization id is required"); call.respond(ApiResponse.success(mapOf("updated" to service.update(org,call.authenticatedPrincipal().userId,call.supportId(),call.receive())),call.callId)) }
  }
  route("/platform/support-requests") {
-  get { call.respond(ApiResponse.success(service.platformList(call.authenticatedPrincipal().userId,call.request.queryParameters["organizationId"],call.request.queryParameters["category"],call.request.queryParameters["status"],call.request.queryParameters["priority"],call.request.queryParameters["limit"]?.toIntOrNull(),call.request.queryParameters["offset"]?.toIntOrNull()),call.callId)) }
+  get { call.respond(ApiResponse.success(service.platformList(call.authenticatedPrincipal().userId,call.request.queryParameters["organizationId"],call.request.queryParameters["category"],call.request.queryParameters["status"],call.request.queryParameters["priority"],call.request.queryParameters["destination"],call.request.queryParameters["limit"]?.toIntOrNull(),call.request.queryParameters["offset"]?.toIntOrNull()),call.callId)) }
   get("/{requestId}") { call.respond(ApiResponse.success(service.platformDetail(call.authenticatedPrincipal().userId,call.supportId()),call.callId)) }
   post("/{requestId}/notes") { call.respond(ApiResponse.success(mapOf("created" to service.platformMessage(call.authenticatedPrincipal().userId,call.supportId(),call.receive<AddSupportMessageDto>(),false)),call.callId)) }
   post("/{requestId}/recommendations") { call.respond(ApiResponse.success(mapOf("created" to service.platformMessage(call.authenticatedPrincipal().userId,call.supportId(),call.receive<AddSupportMessageDto>(),true)),call.callId)) }
   post("/{requestId}/replies") { call.respond(ApiResponse.success(mapOf("created" to service.platformReply(call.authenticatedPrincipal().userId,call.supportId(),call.receive<AddSupportMessageDto>())),call.callId)) }
+  patch("/{requestId}") { call.respond(ApiResponse.success(mapOf("updated" to service.platformUpdate(call.authenticatedPrincipal().userId,call.supportId(),call.receive<UpdateSupportRequestDto>())),call.callId)) }
  }
 }

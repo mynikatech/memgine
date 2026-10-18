@@ -42,7 +42,8 @@ export default function CustomerSupportInbox() {
     }, [load]),
   );
 
-  const businessName = (organizationId: string) => {
+  const businessName = (organizationId?: string | null) => {
+    if (!organizationId) return "Memgine Support";
     const match = landing?.discoverableOrganizations.find(
       (organization) => organization.organizationId === organizationId,
     );
@@ -80,7 +81,7 @@ export default function CustomerSupportInbox() {
                 <Text variant="caption" color="textMuted">{request.ticketNumber}</Text>
               </View>
               <Text variant="bodyStrong" color="text">{request.subject}</Text>
-              <Text variant="bodySmall" color="textSecondary">{businessName(request.organizationId)} · {request.category.replaceAll("_", " ")} · {request.issueType.replaceAll("_", " ")}</Text>
+              <Text variant="bodySmall" color="textSecondary">{request.supportDestination === "PLATFORM" ? "Memgine Support" : businessName(request.organizationId)} · {request.category.replaceAll("_", " ")} · {request.issueType.replaceAll("_", " ")}</Text>
               <Text variant="bodySmall" color="textMuted" numberOfLines={2}>{request.description}</Text>
               <Text variant="caption" color="textMuted">Updated {new Date(request.updatedAt).toLocaleString()}</Text>
             </Card>

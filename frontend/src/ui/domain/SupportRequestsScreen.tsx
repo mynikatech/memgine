@@ -82,6 +82,7 @@ export function SupportRequestsScreen({
   const [source, setSource] = useState("");
   const [assigned, setAssigned] = useState("");
   const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
+  const [destination, setDestination] = useState("");
   const [organizations, setOrganizations] = useState<
     { id: string; name: string }[]
   >([]);
@@ -120,6 +121,7 @@ export function SupportRequestsScreen({
               category: category || undefined,
               status: status || undefined,
               priority: priority || undefined,
+              destination: destination as "BUSINESS" | "PLATFORM" || undefined,
             })
           : services.customerSupport.organizationList(scopedOrganizationId, {
               category: category || undefined,
@@ -150,7 +152,7 @@ export function SupportRequestsScreen({
     } finally {
       setLoading(false);
     }
-  }, [isPlatform, scopedOrganizationId, selectedOrganizationId, category, status, priority]);
+  }, [isPlatform, scopedOrganizationId, selectedOrganizationId, category, status, priority, destination]);
   useEffect(() => {
     let active = true;
 
@@ -387,17 +389,18 @@ export function SupportRequestsScreen({
     setSaving(true);
     setDetailError(null);
     try {
-      await services.customerSupport.updateOrganization(
-        scopedOrganizationId,
-        detail.request.supportRequestId,
-        {
+      const request = {
           status: editStatus,
           priority: editPriority,
           assignedToUserId: editAssignee || undefined,
           resolutionSummary: resolution.trim() || undefined,
           versionNo: detail.request.versionNo,
-        },
-      );
+        };
+      if (isPlatform) {
+        await services.customerSupport.updatePlatform(detail.request.supportRequestId, request);
+      } else {
+        await services.customerSupport.updateOrganization(scopedOrganizationId, detail.request.supportRequestId, request);
+      }
       await refreshDetail();
     } catch (cause) {
       const message =
@@ -429,9 +432,10 @@ export function SupportRequestsScreen({
     assignees.find((item) => item.userId === id)?.name ??
     (id ? "Assigned administrator" : "Unassigned");
   const operationalFieldsLocked =
-    !isPlatform &&
-    (detail?.request.status === "RESOLVED" || detail?.request.status === "CLOSED");
+    (detail?.request.status === "RESOLVED" || detail?.request.status === "CLOSED") &&
+    (!isPlatform || detail?.request.supportDestination === "PLATFORM");
   const requestClosed = detail?.request.status === "CLOSED";
+  const isPlatformTicket = detail?.request.supportDestination === "PLATFORM";
   const columns = useMemo<DataTableColumn<OrganizationSupportRequest>[]>(
     () => [
       {
@@ -572,16 +576,19 @@ export function SupportRequestsScreen({
           renderItemLabel={(item) => item.name}
         />
         {isPlatform ? (
-          <ReferenceSelect
-            label="Organization"
-            value={selectedOrganizationId}
-            allowClear
-            placeholder="All organizations"
-            items={organizations}
-            onChange={setSelectedOrganizationId}
-            getItemId={(item) => item.id}
-            renderItemLabel={(item) => item.name}
-          />
+          <>
+            <ReferenceSelect label="Destination" value={destination} allowClear placeholder="All support" items={["PLATFORM", "BUSINESS"]} onChange={setDestination} getItemId={(item) => item} renderItemLabel={(item) => item === "PLATFORM" ? "Memgine Support" : "Business Support"} />
+            <ReferenceSelect
+              label="Organization"
+              value={selectedOrganizationId}
+              allowClear
+              placeholder="All organizations"
+              items={organizations}
+              onChange={setSelectedOrganizationId}
+              getItemId={(item) => item.id}
+              renderItemLabel={(item) => item.name}
+            />
+          </>
         ) : (
           <>
             <ReferenceSelect
@@ -649,7 +656,7 @@ export function SupportRequestsScreen({
                 {detail.request.subject}
               </Text>
               <Text variant="bodySmall" color="textMuted">
-                Customer account · {label(detail.request.source)} · Opened{" "}
+                {detail.request.supportDestination === "PLATFORM" ? "Memgine Support" : "Customer account"} · {label(detail.request.source)} · Opened{" "}
                 {new Date(detail.request.createdAt).toLocaleString()}
               </Text>
               <Text variant="body" color="text">
@@ -691,7 +698,7 @@ export function SupportRequestsScreen({
                   </View>
                 ))}
             </View>
-            {!isPlatform ? <View style={{ gap: theme.spacing.sm }}>
+            {(!isPlatform || isPlatformTicket) ? <View style={{ gap: theme.spacing.sm }}>
               <Text variant="h3" color="text">
                 Reply to customer
               </Text>
@@ -880,7 +887,7 @@ export function SupportRequestsScreen({
                 ) : null}
               </View>
             ) : null}
-            {!isPlatform ? <View style={{ gap: theme.spacing.sm }}>
+            {(!isPlatform || isPlatformTicket) ? <View style={{ gap: theme.spacing.sm }}>
               <Text variant="h3" color="text">
                 Manage request
               </Text>
@@ -902,7 +909,7 @@ export function SupportRequestsScreen({
                 getItemId={(item) => item}
                 renderItemLabel={label}
               />
-              <ReferenceSelect
+              {!isPlatformTicket ? <ReferenceSelect
                 label="Assign to"
                 value={editAssignee}
                 items={assignees}
@@ -911,7 +918,7 @@ export function SupportRequestsScreen({
                 disabled={operationalFieldsLocked}
                 getItemId={(item) => item.userId}
                 renderItemLabel={(item) => item.name}
-              />
+              /> : null}
               <TextArea
                 label="Resolution summary"
                 value={resolution}

@@ -5,13 +5,14 @@ import type { ApiResult } from "./result";
 
 export type CustomerSupportRequest = {
   supportRequestId: ID;
-  organizationId: ID;
+  organizationId?: ID | null;
   ticketNumber: string;
   category: string;
   issueType: string;
   subject: string;
   description: string;
   source: string;
+  supportDestination: "BUSINESS" | "PLATFORM";
   status: string;
   priority: string;
   resolutionSummary?: string | null;
@@ -104,7 +105,8 @@ export type EscalatePaymentInvestigation = {
 };
 
 export type CreateCustomerSupportRequest = {
-  organizationId: ID;
+  organizationId?: ID | null;
+  destination: "BUSINESS" | "PLATFORM";
   category: string;
   issueType: string;
   subject: string;
@@ -251,6 +253,7 @@ export class CustomerSupportApi {
       category?: string;
       status?: string;
       priority?: string;
+      destination?: "BUSINESS" | "PLATFORM";
       limit?: number;
       offset?: number;
     } = {},
@@ -265,6 +268,16 @@ export class CustomerSupportApi {
 
   platformDetail(requestId: ID): Promise<ApiResult<OrganizationSupportRequestDetail>> {
     return httpClient.get(`/api/v1/platform/support-requests/${encodeURIComponent(requestId)}`);
+  }
+
+  updatePlatform(
+    requestId: ID,
+    request: UpdateOrganizationSupportRequest,
+  ): Promise<ApiResult<{ updated: boolean }>> {
+    return httpClient.patch(
+      `/api/v1/platform/support-requests/${encodeURIComponent(requestId)}`,
+      request,
+    );
   }
 
   platformMessage(

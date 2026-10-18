@@ -2,7 +2,7 @@ package com.mynikatech.memgine.component.support
 
 import kotlinx.serialization.Serializable
 
-@Serializable data class CreateSupportRequestDto(val organizationId: String, val category: String, val issueType: String, val subject: String, val description: String)
+@Serializable data class CreateSupportRequestDto(val organizationId: String? = null, val destination: String = "BUSINESS", val category: String, val issueType: String, val subject: String, val description: String)
 @Serializable data class AddSupportMessageDto(val messageBody: String)
 @Serializable data class ReopenSupportRequestDto(val reason: String)
 @Serializable data class SubmitSupportFeedbackDto(val rating: String? = null, val comment: String? = null)
@@ -10,9 +10,9 @@ import kotlinx.serialization.Serializable
 @Serializable data class SupportRequestCreatedDto(val supportRequestId: String, val ticketNumber: String)
 
 @Serializable data class SupportRequestDto(
-    var supportRequestId: String = "", var organizationId: String = "", var customerUserId: String = "",
+    var supportRequestId: String = "", var organizationId: String? = null, var customerUserId: String = "",
     var ticketNumber: String = "", var category: String = "", var issueType: String = "", var subject: String = "",
-    var description: String = "", var source: String = "", var status: String = "", var priority: String = "",
+    var description: String = "", var source: String = "", var supportDestination: String = "BUSINESS", var status: String = "", var priority: String = "",
     var assignedToUserId: String? = null, var resolutionSummary: String? = null, var createdAt: String = "",
     var updatedAt: String = "", var resolvedAt: String? = null, var closedAt: String? = null, var versionNo: Int = 0
 )

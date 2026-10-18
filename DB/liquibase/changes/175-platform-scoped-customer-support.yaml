@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 175-platform-scoped-customer-support
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/175-platform-scoped-customer-support.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

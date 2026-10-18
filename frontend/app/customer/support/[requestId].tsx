@@ -170,9 +170,11 @@ export default function CustomerSupportRequestDetails() {
     );
   if (!detail) return null;
   const request = detail.request;
-  const business = landing?.discoverableOrganizations.find(
-    (item) => item.organizationId === request.organizationId,
-  );
+  const business = request.organizationId
+    ? landing?.discoverableOrganizations.find(
+        (item) => item.organizationId === request.organizationId,
+      )
+    : undefined;
   const isResolved = request.status === "RESOLVED";
   const isClosed = request.status === "CLOSED";
 
@@ -186,7 +188,9 @@ export default function CustomerSupportRequestDetails() {
           <Header
             title={request.ticketNumber}
             subtitle={
-              business?.displayName || business?.name || "Support request"
+              request.supportDestination === "PLATFORM"
+                ? "Memgine Support"
+                : business?.displayName || business?.name || "Support request"
             }
             left={
               <Button
