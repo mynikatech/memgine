@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 176-central-payment-refunds
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/176-central-payment-refunds.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

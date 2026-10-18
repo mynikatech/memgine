@@ -75,7 +75,10 @@ dependencies {
     // -------------------------
 
     testImplementation(kotlin("test"))
+    testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.liquibase)
 }
+
 
 kotlin {
     jvmToolchain(21)

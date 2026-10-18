@@ -19,6 +19,7 @@ argon2 = "2.11"
 stripe = "29.5.0"
 java-jwt = "4.5.0"
 bouncycastle = "1.80"
+testcontainers = "1.20.6"
 
 [libraries]
 
@@ -99,6 +100,7 @@ argon2-jvm = { module = "de.mkammerer:argon2-jvm", version.ref = "argon2" }
 stripe-java = { module = "com.stripe:stripe-java", version.ref = "stripe" }
 java-jwt = { module = "com.auth0:java-jwt", version.ref = "java-jwt" }
 bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
+testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
 
 [plugins]
 
