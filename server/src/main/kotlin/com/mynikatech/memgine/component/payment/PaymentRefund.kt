@@ -193,13 +193,14 @@ class PaymentRefundService(
     }
 
     fun verifyPoyntCollectReference(
+        organizationId: String,
         refundId: String,
         request: PoyntCollectVerifiedReferenceRequestDto,
         actor: String
     ): PoyntCollectReferenceVerificationDto {
-        validateRecoveryRequest(refundId, request)
+        validateRecoveryRequest(organizationId, refundId, request)
         val context = sql().platformPoyntCollectRecoveryContext(
-            request.organizationId, refundId, request.paymentRefundAttemptId, actor
+            organizationId, refundId, request.paymentRefundAttemptId, actor
         ) ?: throw BadRequestException("Collect refund recovery is not available")
         val result = poyntCollectRefundAdapter?.verifyProviderReference(
             request(context), request.providerTransactionId.trim()
@@ -209,7 +210,7 @@ class PaymentRefundService(
             result.providerReference == request.providerTransactionId.trim()
         ) {
             return sql().recordPoyntCollectReferenceVerification(
-                "PRV_${UUID.randomUUID()}", request.organizationId, refundId,
+                "PRV_${UUID.randomUUID()}", organizationId, refundId,
                 request.paymentRefundAttemptId, request.providerTransactionId.trim(),
                 result.providerOriginalRequestId, request.attestation.trim(), actor
             ) ?: throw BadRequestException("Collect refund verification could not be recorded")
@@ -218,24 +219,26 @@ class PaymentRefundService(
     }
 
     fun confirmPoyntCollectReference(
+        organizationId: String,
         refundId: String,
         request: PoyntCollectVerifiedReferenceConfirmationDto,
         actor: String
     ): PaymentRefundExecutionStatusDto {
-        if (refundId.isBlank() || request.organizationId.isBlank() ||
+        if (organizationId.isBlank() || refundId.isBlank() || request.organizationId != organizationId ||
             request.paymentRefundAttemptId.isBlank() || request.verificationId.isBlank()
         ) throw BadRequestException("Collect refund recovery confirmation is invalid")
         return sql().confirmPoyntCollectReference(
-            request.organizationId, refundId, request.paymentRefundAttemptId,
+            organizationId, refundId, request.paymentRefundAttemptId,
             request.verificationId, actor
         ) ?: throw BadRequestException("Collect refund recovery confirmation is unavailable")
     }
 
     private fun validateRecoveryRequest(
+        organizationId: String,
         refundId: String,
         request: PoyntCollectVerifiedReferenceRequestDto
     ) {
-        if (refundId.isBlank() || request.organizationId.isBlank() ||
+        if (organizationId.isBlank() || refundId.isBlank() || request.organizationId != organizationId ||
             request.paymentRefundAttemptId.isBlank() ||
             request.providerTransactionId.length !in 1..160 ||
             request.attestation.trim().length !in 10..1000

@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 180-poynt-collect-refund-recovery-org-privileges
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/180-poynt-collect-refund-recovery-org-privileges.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
