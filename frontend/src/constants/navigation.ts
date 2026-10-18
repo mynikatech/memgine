@@ -89,6 +89,8 @@ export const APP_ROUTES = {
 
     paymentConfiguration: "/platform-admin/payment-configuration",
 
+    supportRequests: "/platform-admin/support-requests",
+
     platformSettings: "/platform-admin/platform-settings",
   },
 
@@ -501,6 +503,14 @@ export const PLATFORM_ADMIN_ROUTES: AdminRoute[] = [
     href: APP_ROUTES.platformAdmin.paymentConfiguration,
 
     icon: "cash-outline",
+  },
+
+  {
+    title: "Support Requests",
+
+    href: APP_ROUTES.platformAdmin.supportRequests,
+
+    icon: "help-buoy-outline",
   },
 
   {

@@ -222,4 +222,38 @@ export class CustomerSupportApi {
       { financialExceptionId },
     );
   }
+
+  platformList(
+    filters: {
+      organizationId?: ID;
+      category?: string;
+      status?: string;
+      priority?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ): Promise<ApiResult<OrganizationSupportRequest[]>> {
+    const query = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== "") query.set(key, String(value));
+    });
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return httpClient.get(`/api/v1/platform/support-requests${suffix}`);
+  }
+
+  platformDetail(requestId: ID): Promise<ApiResult<OrganizationSupportRequestDetail>> {
+    return httpClient.get(`/api/v1/platform/support-requests/${encodeURIComponent(requestId)}`);
+  }
+
+  platformMessage(
+    requestId: ID,
+    messageBody: string,
+    kind: "note" | "recommendation" | "reply",
+  ): Promise<ApiResult<{ created: boolean }>> {
+    const action = kind === "note" ? "notes" : kind === "recommendation" ? "recommendations" : "replies";
+    return httpClient.post(
+      `/api/v1/platform/support-requests/${encodeURIComponent(requestId)}/${action}`,
+      { messageBody },
+    );
+  }
 }
