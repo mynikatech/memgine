@@ -428,6 +428,10 @@ export function SupportRequestsScreen({
   const assigneeName = (id?: string | null) =>
     assignees.find((item) => item.userId === id)?.name ??
     (id ? "Assigned administrator" : "Unassigned");
+  const operationalFieldsLocked =
+    !isPlatform &&
+    (detail?.request.status === "RESOLVED" || detail?.request.status === "CLOSED");
+  const requestClosed = detail?.request.status === "CLOSED";
   const columns = useMemo<DataTableColumn<OrganizationSupportRequest>[]>(
     () => [
       {
@@ -725,6 +729,15 @@ export function SupportRequestsScreen({
                       gap: theme.spacing.xs,
                     }}
                   >
+                    <Text variant="bodyStrong" color="text">
+                      {message.authorRole === "PLATFORM_ADMIN"
+                        ? "Platform Support"
+                        : message.authorRole === "ORG_ADMIN"
+                          ? "Business Support"
+                          : "Support"}
+                      {" — "}
+                      {message.authorName?.trim() || "Support team member"}
+                    </Text>
                     <Text variant="body" color="text">
                       {message.messageBody}
                     </Text>
@@ -874,8 +887,9 @@ export function SupportRequestsScreen({
               <ReferenceSelect
                 label="Status"
                 value={editStatus}
-                items={statuses}
+                items={detail.request.status === "RESOLVED" ? ["RESOLVED", "CLOSED"] : statuses}
                 onChange={setEditStatus}
+                disabled={requestClosed}
                 getItemId={(item) => item}
                 renderItemLabel={label}
               />
@@ -884,6 +898,7 @@ export function SupportRequestsScreen({
                 value={editPriority}
                 items={priorities}
                 onChange={setEditPriority}
+                disabled={operationalFieldsLocked}
                 getItemId={(item) => item}
                 renderItemLabel={label}
               />
@@ -893,6 +908,7 @@ export function SupportRequestsScreen({
                 items={assignees}
                 onChange={setEditAssignee}
                 placeholder="Select administrator"
+                disabled={operationalFieldsLocked}
                 getItemId={(item) => item.userId}
                 renderItemLabel={(item) => item.name}
               />
@@ -902,12 +918,19 @@ export function SupportRequestsScreen({
                 onChangeText={setResolution}
                 placeholder="Required when resolving this request"
                 maxLength={2000}
+                editable={!operationalFieldsLocked}
               />
-              <Button
-                label={saving ? "Saving…" : "Save changes"}
-                disabled={saving}
+              {!requestClosed ? <Button
+                label={saving ? "Saving…" : detail.request.status === "RESOLVED" ? "Close request" : "Save changes"}
+                disabled={saving || (detail.request.status === "RESOLVED" && editStatus !== "CLOSED")}
                 onPress={() => void update()}
-              />
+              /> : <Text variant="bodySmall" color="textMuted">Operational fields are locked after closure.</Text>}
+            </View> : null}
+            {detail.feedback ? <View style={{ gap: theme.spacing.xs }}>
+              <Text variant="h3" color="text">Customer Feedback</Text>
+              {detail.feedback.rating ? <Text variant="bodyStrong" color="text">{label(detail.feedback.rating)}</Text> : null}
+              {detail.feedback.feedbackComment ? <Text variant="body" color="text">{detail.feedback.feedbackComment}</Text> : null}
+              <Text variant="caption" color="textMuted">Submitted {new Date(detail.feedback.submittedAt).toLocaleString()}</Text>
             </View> : null}
             <View style={{ gap: theme.spacing.sm }}>
               <Text variant="h3" color="text">

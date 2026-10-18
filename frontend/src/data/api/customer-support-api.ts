@@ -29,7 +29,9 @@ export type OrganizationSupportRequest = CustomerSupportRequest & {
 export type CustomerSupportMessage = {
   supportMessageId: ID;
   supportRequestId: ID;
+  authorUserId: ID;
   authorRole: string;
+  authorName?: string | null;
   messageType: string;
   messageBody: string;
   isInternal: boolean;
@@ -45,16 +47,25 @@ export type CustomerSupportEvent = {
   description: string;
   createdAt: string;
 };
+export type SupportRequestFeedback = {
+  feedbackId: ID;
+  supportRequestId: ID;
+  rating?: string | null;
+  feedbackComment?: string | null;
+  submittedAt: string;
+};
 
 export type CustomerSupportRequestDetail = {
   request: CustomerSupportRequest;
   messages: CustomerSupportMessage[];
   events: CustomerSupportEvent[];
+  feedback?: SupportRequestFeedback | null;
 };
 export type OrganizationSupportRequestDetail = {
   request: OrganizationSupportRequest;
   messages: CustomerSupportMessage[];
   events: CustomerSupportEvent[];
+  feedback?: SupportRequestFeedback | null;
 };
 export type UpdateOrganizationSupportRequest = {
   status?: string;
@@ -130,6 +141,17 @@ export class CustomerSupportApi {
     return httpClient.post(`${this.base}/${encodeURIComponent(id)}/reopen`, {
       reason,
     });
+  }
+
+  close(id: ID): Promise<ApiResult<{ updated: boolean }>> {
+    return httpClient.post(`${this.base}/${encodeURIComponent(id)}/close`, {});
+  }
+
+  submitFeedback(
+    id: ID,
+    feedback: { rating?: string; comment?: string },
+  ): Promise<ApiResult<{ submitted: boolean }>> {
+    return httpClient.post(`${this.base}/${encodeURIComponent(id)}/feedback`, feedback);
   }
 
   organizationList(

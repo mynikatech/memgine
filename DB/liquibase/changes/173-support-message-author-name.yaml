@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 173-support-message-author-name
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/173-support-message-author-name.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

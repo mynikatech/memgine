@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 174-support-request-closure-feedback
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/174-support-request-closure-feedback.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

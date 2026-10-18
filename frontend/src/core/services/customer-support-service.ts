@@ -40,6 +40,17 @@ export class CustomerSupportService {
     this.unwrap(await this.api.reopen(id, reason));
   }
 
+  async close(id: ID): Promise<void> {
+    this.unwrap(await this.api.close(id));
+  }
+
+  async submitFeedback(
+    id: ID,
+    feedback: { rating?: string; comment?: string },
+  ): Promise<void> {
+    this.unwrap(await this.api.submitFeedback(id, feedback));
+  }
+
   async organizationList(organizationId: ID, filters: { category?: string; status?: string; priority?: string; limit?: number; offset?: number } = {}): Promise<OrganizationSupportRequest[]> {
     return this.unwrap(await this.api.organizationList(organizationId, filters));
   }

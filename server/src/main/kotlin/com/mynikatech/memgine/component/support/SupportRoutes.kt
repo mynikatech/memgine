@@ -17,6 +17,8 @@ fun Route.supportRoutes(service:SupportService) {
   get("/{requestId}") { call.respond(ApiResponse.success(service.customerDetail(call.authenticatedPrincipal().userId,call.supportId()),call.callId)) }
   post("/{requestId}/messages") { call.respond(ApiResponse.success(mapOf("created" to service.customerMessage(call.authenticatedPrincipal().userId,call.supportId(),call.receive<AddSupportMessageDto>())),call.callId)) }
   post("/{requestId}/reopen") { call.respond(ApiResponse.success(mapOf("updated" to service.reopen(call.authenticatedPrincipal().userId,call.supportId(),call.receive<ReopenSupportRequestDto>())),call.callId)) }
+  post("/{requestId}/close") { call.respond(ApiResponse.success(mapOf("updated" to service.close(call.authenticatedPrincipal().userId,call.supportId())),call.callId)) }
+  post("/{requestId}/feedback") { call.respond(ApiResponse.success(mapOf("submitted" to service.submitFeedback(call.authenticatedPrincipal().userId,call.supportId(),call.receive<SubmitSupportFeedbackDto>())),call.callId)) }
  }
  route("/organizations/{organizationId}/support-requests") {
   get { val org=call.parameters["organizationId"]?:throw BadRequestException("Organization id is required"); call.respond(ApiResponse.success(service.orgList(org,call.authenticatedPrincipal().userId,call.request.queryParameters["category"],call.request.queryParameters["status"],call.request.queryParameters["priority"],call.request.queryParameters["limit"]?.toIntOrNull(),call.request.queryParameters["offset"]?.toIntOrNull()),call.callId)) }
