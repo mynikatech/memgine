@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 172-support-payment-investigations
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/172-support-payment-investigations.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

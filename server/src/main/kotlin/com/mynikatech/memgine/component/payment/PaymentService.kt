@@ -7,6 +7,7 @@ import com.mynikatech.memgine.exception.ForbiddenException
 import com.mynikatech.memgine.exception.ApiException
 import com.mynikatech.memgine.component.organization.OrganizationSql
 import com.mynikatech.memgine.component.commerce.DurableFinancialExceptionRecovery
+import com.mynikatech.memgine.component.support.PaymentExceptionSupportLinkService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -64,6 +65,7 @@ class PaymentService(
     private fun sql() = paymentSqlOverride ?: jdbi.onDemand(PaymentSql::class.java)
     private fun collectCaptureSql() = collectCaptureSqlOverride ?: jdbi.onDemand(PoyntCollectCaptureSql::class.java)
     private fun collectExceptionSql() = collectExceptionSqlOverride ?: jdbi.onDemand(PoyntCollectFinancialExceptionSql::class.java)
+    private val paymentExceptionSupportLinkService by lazy { PaymentExceptionSupportLinkService(jdbi) }
     private val checkoutRandom = SecureRandom()
     private val browserCheckoutTtlMinutes = 10L
 
@@ -457,7 +459,14 @@ class PaymentService(
         if (hasCapture && payment.status == "PROCESSING" &&
             payment.finalizedSubscriptionId == null && subscription == null
         ) {
-            translate { collectExceptionSql().openCapturedUnfulfilledCase(org, intentId, actorUserId) }
+            val exceptionId = translate { collectExceptionSql().openCapturedUnfulfilledCase(org, intentId, actorUserId) }
+            if (collectExceptionSqlOverride == null) {
+                try {
+                    paymentExceptionSupportLinkService.processVerifiedException(exceptionId)
+                } catch (_: Exception) {
+                    logger.warn("Verified financial-exception support linkage failed; exceptionId={}", exceptionId)
+                }
+            }
         }
         val outcome = when {
             payment.status == "SUCCEEDED" && subscription != null -> "FULFILLED"

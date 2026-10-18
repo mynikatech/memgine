@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import type { AdminRoute } from "@/src/constants/navigation";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
 import { useAuth } from "@/src/providers/AuthProvider";
@@ -26,9 +26,16 @@ type Props = {
   subtitle: string;
   icon: keyof typeof Ionicons.glyphMap;
   items: AdminRoute[];
+  notificationAction?: ReactNode;
 };
 
-export function AdminShell({ title, subtitle, icon, items }: Props) {
+export function AdminShell({
+  title,
+  subtitle,
+  icon,
+  items,
+  notificationAction,
+}: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const pathname = usePathname();
@@ -180,6 +187,7 @@ export function AdminShell({ title, subtitle, icon, items }: Props) {
             <Nav />
           </ScrollView>
           <View style={styles.accountActions}>
+            {notificationAction}
             <Pressable
               onPress={() => router.push("/profile" as never)}
               style={styles.accountAction}
@@ -215,6 +223,7 @@ export function AdminShell({ title, subtitle, icon, items }: Props) {
             <Brand />
 
             <View style={styles.mobileAccountActions}>
+              {notificationAction}
               <Pressable
                 onPress={() => router.push("/profile" as never)}
                 style={styles.mobileAccountAction}

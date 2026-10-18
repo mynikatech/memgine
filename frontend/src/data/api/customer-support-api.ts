@@ -20,6 +20,11 @@ export type CustomerSupportRequest = {
   resolvedAt?: string | null;
   closedAt?: string | null;
 };
+export type OrganizationSupportRequest = CustomerSupportRequest & {
+  customerUserId: ID;
+  assignedToUserId?: ID | null;
+  versionNo: number;
+};
 
 export type CustomerSupportMessage = {
   supportMessageId: ID;
@@ -27,6 +32,7 @@ export type CustomerSupportMessage = {
   authorRole: string;
   messageType: string;
   messageBody: string;
+  isInternal: boolean;
   createdAt: string;
 };
 
@@ -44,6 +50,46 @@ export type CustomerSupportRequestDetail = {
   request: CustomerSupportRequest;
   messages: CustomerSupportMessage[];
   events: CustomerSupportEvent[];
+};
+export type OrganizationSupportRequestDetail = {
+  request: OrganizationSupportRequest;
+  messages: CustomerSupportMessage[];
+  events: CustomerSupportEvent[];
+};
+export type UpdateOrganizationSupportRequest = {
+  status?: string;
+  priority?: string;
+  assignedToUserId?: ID;
+  resolutionSummary?: string;
+  versionNo: number;
+};
+export type PaymentInvestigation = {
+  investigationId: ID;
+  supportRequestId: ID;
+  financialExceptionId?: ID | null;
+  source: string;
+  state: string;
+  escalationReason: string;
+  paymentReference?: string | null;
+  investigationDescription?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+export type PaymentExceptionCandidate = {
+  financialExceptionId: ID;
+  paymentIntentId?: ID | null;
+  commerceTransactionId?: ID | null;
+  providerReferenceId?: string | null;
+  amountMinor: number;
+  currencyCode: string;
+  caseStatus: string;
+  fulfillmentOutcome: string;
+  openedAt: string;
+};
+export type EscalatePaymentInvestigation = {
+  reason: string;
+  paymentReference?: string;
+  description?: string;
 };
 
 export type CreateCustomerSupportRequest = {
@@ -71,7 +117,10 @@ export class CustomerSupportApi {
     return httpClient.get(`${this.base}/${encodeURIComponent(id)}`);
   }
 
-  addMessage(id: ID, messageBody: string): Promise<ApiResult<{ created: boolean }>> {
+  addMessage(
+    id: ID,
+    messageBody: string,
+  ): Promise<ApiResult<{ created: boolean }>> {
     return httpClient.post(`${this.base}/${encodeURIComponent(id)}/messages`, {
       messageBody,
     });
@@ -81,5 +130,96 @@ export class CustomerSupportApi {
     return httpClient.post(`${this.base}/${encodeURIComponent(id)}/reopen`, {
       reason,
     });
+  }
+
+  organizationList(
+    organizationId: ID,
+    filters: {
+      category?: string;
+      status?: string;
+      priority?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ): Promise<ApiResult<OrganizationSupportRequest[]>> {
+    const query = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== "") query.set(key, String(value));
+    });
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return httpClient.get(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/support-requests${suffix}`,
+    );
+  }
+
+  organizationDetail(
+    organizationId: ID,
+    requestId: ID,
+  ): Promise<ApiResult<OrganizationSupportRequestDetail>> {
+    return httpClient.get(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/support-requests/${encodeURIComponent(requestId)}`,
+    );
+  }
+
+  organizationMessage(
+    organizationId: ID,
+    requestId: ID,
+    messageBody: string,
+    internal = false,
+  ): Promise<ApiResult<{ created: boolean }>> {
+    const action = internal ? "internal-notes" : "messages";
+    return httpClient.post(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/support-requests/${encodeURIComponent(requestId)}/${action}`,
+      { messageBody },
+    );
+  }
+
+  updateOrganization(
+    organizationId: ID,
+    requestId: ID,
+    request: UpdateOrganizationSupportRequest,
+  ): Promise<ApiResult<{ updated: boolean }>> {
+    return httpClient.patch(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/support-requests/${encodeURIComponent(requestId)}`,
+      request,
+    );
+  }
+
+  paymentInvestigation(
+    organizationId: ID,
+    requestId: ID,
+  ): Promise<ApiResult<PaymentInvestigation | null>> {
+    return httpClient.get<PaymentInvestigation | null>(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/support-requests/${encodeURIComponent(requestId)}/payment-investigation`,
+      true,
+    );
+  }
+  paymentExceptionCandidates(
+    organizationId: ID,
+    requestId: ID,
+  ): Promise<ApiResult<PaymentExceptionCandidate[]>> {
+    return httpClient.get(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/support-requests/${encodeURIComponent(requestId)}/payment-exception-candidates`,
+    );
+  }
+  escalatePaymentInvestigation(
+    organizationId: ID,
+    requestId: ID,
+    request: EscalatePaymentInvestigation,
+  ): Promise<ApiResult<{ investigationId: ID }>> {
+    return httpClient.post(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/support-requests/${encodeURIComponent(requestId)}/payment-investigation`,
+      request,
+    );
+  }
+  linkPaymentException(
+    organizationId: ID,
+    requestId: ID,
+    financialExceptionId: ID,
+  ): Promise<ApiResult<{ investigationId: ID }>> {
+    return httpClient.post(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/support-requests/${encodeURIComponent(requestId)}/payment-exception-link`,
+      { financialExceptionId },
+    );
   }
 }

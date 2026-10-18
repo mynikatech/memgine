@@ -1,20 +1,17 @@
-import { Slot } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, Tabs } from "expo-router";
-import { Platform, useWindowDimensions } from "react-native";
+import { Platform } from "react-native";
 
 import { useAuth, useTheme, useTranslation } from "@/src/providers";
 
 /**
- * Customer shell — mobile-first bottom tabs. Frozen navigation: Home / My Cards
- * / Profile. Active tint comes from the active business brand via the theme.
+ * Customer shell — consistent bottom navigation on web, Android, and iOS.
+ * Support is one top-level tab; its nested screens use stack navigation.
  */
 export default function CustomerLayout() {
   const theme = useTheme();
   const { t } = useTranslation();
   const { loading, session } = useAuth();
-  const { width } = useWindowDimensions();
-  const useDesktopNavigation = Platform.OS === "web" && width >= 900;
 
   if (!loading && !session)
     return (
@@ -31,16 +28,13 @@ export default function CustomerLayout() {
         tabBarInactiveTintColor: theme.colors.textMuted,
         tabBarStyle: {
           backgroundColor: theme.colors.background,
-          ...(useDesktopNavigation
-            ? {
-                width: 224,
-                borderRightColor: theme.colors.border,
-                borderTopWidth: 0,
-              }
-            : { borderTopColor: theme.colors.border }),
+          borderTopColor: theme.colors.border,
         },
-        tabBarPosition: useDesktopNavigation ? "left" : "bottom",
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
+        tabBarPosition: "bottom",
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: "600",
+        },
       }}
     >
       <Tabs.Screen
@@ -49,6 +43,7 @@ export default function CustomerLayout() {
           href: null,
         }}
       />
+
       <Tabs.Screen
         name="cards"
         options={{
@@ -63,6 +58,7 @@ export default function CustomerLayout() {
           ),
         }}
       />
+
       <Tabs.Screen
         name="profile"
         options={{
@@ -77,6 +73,7 @@ export default function CustomerLayout() {
           ),
         }}
       />
+
       <Tabs.Screen
         name="support"
         options={{
@@ -91,11 +88,21 @@ export default function CustomerLayout() {
           ),
         }}
       />
+
       <Tabs.Screen
         name="notifications"
-        options={{ href: null, title: "Notifications" }}
+        options={{
+          href: null,
+          title: "Notifications",
+        }}
       />
-      <Tabs.Screen name="branding-preview" options={{ href: null }} />
+
+      <Tabs.Screen
+        name="branding-preview"
+        options={{
+          href: null,
+        }}
+      />
     </Tabs>
   );
 }

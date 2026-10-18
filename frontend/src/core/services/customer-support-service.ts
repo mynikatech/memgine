@@ -4,6 +4,12 @@ import {
   type CreateCustomerSupportRequest,
   type CustomerSupportRequest,
   type CustomerSupportRequestDetail,
+  type OrganizationSupportRequest,
+  type OrganizationSupportRequestDetail,
+  type UpdateOrganizationSupportRequest,
+  type PaymentInvestigation,
+  type PaymentExceptionCandidate,
+  type EscalatePaymentInvestigation,
 } from "@/src/data/api/customer-support-api";
 
 export class CustomerSupportService {
@@ -33,4 +39,24 @@ export class CustomerSupportService {
   async reopen(id: ID, reason: string): Promise<void> {
     this.unwrap(await this.api.reopen(id, reason));
   }
+
+  async organizationList(organizationId: ID, filters: { category?: string; status?: string; priority?: string; limit?: number; offset?: number } = {}): Promise<OrganizationSupportRequest[]> {
+    return this.unwrap(await this.api.organizationList(organizationId, filters));
+  }
+
+  async organizationDetail(organizationId: ID, requestId: ID): Promise<OrganizationSupportRequestDetail> {
+    return this.unwrap(await this.api.organizationDetail(organizationId, requestId));
+  }
+
+  async organizationMessage(organizationId: ID, requestId: ID, message: string, internal = false): Promise<void> {
+    this.unwrap(await this.api.organizationMessage(organizationId, requestId, message, internal));
+  }
+
+  async updateOrganization(organizationId: ID, requestId: ID, request: UpdateOrganizationSupportRequest): Promise<void> {
+    this.unwrap(await this.api.updateOrganization(organizationId, requestId, request));
+  }
+  async paymentInvestigation(organizationId: ID, requestId: ID): Promise<PaymentInvestigation | null> { return this.unwrap(await this.api.paymentInvestigation(organizationId, requestId)); }
+  async paymentExceptionCandidates(organizationId: ID, requestId: ID): Promise<PaymentExceptionCandidate[]> { return this.unwrap(await this.api.paymentExceptionCandidates(organizationId, requestId)); }
+  async escalatePaymentInvestigation(organizationId: ID, requestId: ID, request: EscalatePaymentInvestigation): Promise<ID> { return this.unwrap(await this.api.escalatePaymentInvestigation(organizationId, requestId, request)).investigationId; }
+  async linkPaymentException(organizationId: ID, requestId: ID, financialExceptionId: ID): Promise<ID> { return this.unwrap(await this.api.linkPaymentException(organizationId, requestId, financialExceptionId)).investigationId; }
 }

@@ -26,3 +26,9 @@ import kotlinx.serialization.Serializable
     var actorUserId: String? = null, var actorRole: String = "", var description: String = "", var createdAt: String = ""
 )
 @Serializable data class SupportRequestDetailDto(val request: SupportRequestDto, val messages: List<SupportMessageDto>, val events: List<SupportEventDto>)
+
+@Serializable data class PaymentInvestigationDto(var investigationId:String="",var supportRequestId:String="",var financialExceptionId:String?=null,var source:String="",var state:String="",var escalationReason:String="",var paymentReference:String?=null,var investigationDescription:String?=null,var createdAt:String="",var updatedAt:String="")
+@Serializable data class PaymentExceptionCandidateDto(var financialExceptionId:String="",var paymentIntentId:String?=null,var commerceTransactionId:String?=null,var providerReferenceId:String?=null,var amountMinor:Long=0,var currencyCode:String="",var caseStatus:String="",var fulfillmentOutcome:String="",var openedAt:String="")
+@Serializable data class EscalatePaymentInvestigationDto(val reason:String,val paymentReference:String?=null,val description:String?=null)
+@Serializable data class LinkPaymentExceptionDto(val financialExceptionId:String)
+@Serializable data class UpdatePaymentInvestigationDto(val state:String,val reason:String)

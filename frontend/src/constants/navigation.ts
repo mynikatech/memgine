@@ -134,6 +134,12 @@ export const APP_ROUTES = {
     paymentExceptions: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/payment-exceptions`,
 
+    supportRequests: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/support-requests`,
+
+    notifications: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/notifications`,
+
     redemptions: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/redemptions`,
 
@@ -388,6 +394,11 @@ export const createOrgAdminRoutes = (organizationId: string): AdminRoute[] => [
     title: "Payment Exceptions",
     href: APP_ROUTES.orgAdmin.paymentExceptions(organizationId),
     icon: "alert-circle-outline",
+  },
+  {
+    title: "Support Requests",
+    href: APP_ROUTES.orgAdmin.supportRequests(organizationId),
+    icon: "help-circle-outline",
   },
 
   {

@@ -14,6 +14,9 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 
 fun Route.financialExceptionRoutes(service: FinancialExceptionService) {
+    route("/platform/financial-exceptions/support-link-reconciliation") {
+        post { call.respond(ApiResponse.success(service.reconcileSupportLinks(call.request.queryParameters["limit"]?.toIntOrNull()), call.callId)) }
+    }
     route("/organizations/{organizationId}/financial-exceptions") {
         get { val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required"); call.respond(ApiResponse.success(service.list(org, call.authenticatedPrincipal().userId), call.callId)) }
         get("/{financialExceptionId}") { val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required"); val id = call.parameters["financialExceptionId"] ?: throw BadRequestException("Financial exception id is required"); val detail = service.detail(org, id, call.authenticatedPrincipal().userId) ?: throw NotFoundException("Financial exception was not found"); call.respond(ApiResponse.success(detail, call.callId)) }

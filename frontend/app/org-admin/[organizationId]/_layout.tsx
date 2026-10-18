@@ -3,6 +3,7 @@ import { useLocalSearchParams } from "expo-router";
 import { createOrgAdminRoutes } from "@/src/constants/navigation";
 import { BusinessProvider } from "@/src/providers";
 import { AdminShell } from "@/src/ui/admin/AdminShell";
+import { OrgAdminNotificationBell } from "@/src/ui/domain/OrgAdminNotificationBell";
 import { AuthGuard } from "@/src/ui/auth/AuthGuard";
 
 export default function OrganizationScopedOrgAdminLayout() {
@@ -29,6 +30,9 @@ export default function OrganizationScopedOrgAdminLayout() {
           subtitle="Business Console"
           icon="business-outline"
           items={createOrgAdminRoutes(organizationId)}
+          notificationAction={
+            <OrgAdminNotificationBell organizationId={organizationId} />
+          }
         />
       </BusinessProvider>
     </AuthGuard>

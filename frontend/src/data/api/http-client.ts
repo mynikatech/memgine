@@ -54,8 +54,16 @@ export async function saveNativeSessionToken(
 }
 
 export class HttpClient {
-  async get<TResponse>(path: string): Promise<ApiResult<TResponse>> {
-    return this.request<never, TResponse>("GET", path);
+  async get<TResponse>(
+    path: string,
+    allowEmptyResponse = false,
+  ): Promise<ApiResult<TResponse>> {
+    return this.request<never, TResponse>(
+      "GET",
+      path,
+      undefined,
+      allowEmptyResponse,
+    );
   }
 
   async post<TRequest, TResponse>(
@@ -72,6 +80,13 @@ export class HttpClient {
     return this.request<TRequest, TResponse>("PUT", path, body);
   }
 
+  async patch<TRequest, TResponse>(
+    path: string,
+    body: TRequest,
+  ): Promise<ApiResult<TResponse>> {
+    return this.request<TRequest, TResponse>("PATCH", path, body);
+  }
+
   delete<TResponse>(path: string): Promise<ApiResult<TResponse>>;
   delete<TRequest, TResponse>(
     path: string,
@@ -85,9 +100,10 @@ export class HttpClient {
   }
 
   private async request<TRequest, TResponse>(
-    method: "GET" | "POST" | "PUT" | "DELETE",
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     body?: TRequest,
+    allowEmptyResponse = false,
   ): Promise<ApiResult<TResponse>> {
     let response: Response;
     const nativeToken = await currentNativeSessionToken();
@@ -138,6 +154,10 @@ export class HttpClient {
     }
 
     if (payload.data == null) {
+      if (allowEmptyResponse) {
+        return apiSuccess(null as TResponse);
+      }
+
       return apiFailure(
         "EMPTY_SERVER_RESPONSE",
         "The server returned an empty response.",

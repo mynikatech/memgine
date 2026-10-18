@@ -22,4 +22,9 @@ class SupportService(private val jdbi: Jdbi) {
     fun platformReply(actor:String,id:String,request:AddSupportMessageDto)=sql().addMessage("SMSG-"+UUID.randomUUID(),id,actor,"PLATFORM_ADMIN","PLATFORM_REPLY",request.messageBody,false)
     fun reopen(actor:String,id:String,request:ReopenSupportRequestDto)=sql().reopen(id,actor,request.reason)
     fun update(org:String,actor:String,id:String,request:UpdateSupportRequestDto)=sql().update(id,org,actor,request.status,request.priority,request.assignedToUserId,request.resolutionSummary,request.versionNo)
+    fun paymentInvestigation(org:String,actor:String,id:String)=sql().paymentInvestigation(id,org,actor)
+    fun paymentExceptionCandidates(org:String,actor:String,id:String)=sql().paymentExceptionCandidates(id,org,actor)
+    fun escalatePaymentInvestigation(org:String,actor:String,id:String,request:EscalatePaymentInvestigationDto)=sql().escalatePaymentInvestigation(id,org,actor,request.reason,request.paymentReference,request.description)
+    fun linkPaymentException(org:String,actor:String,id:String,request:LinkPaymentExceptionDto)=sql().linkPaymentException(id,org,actor,request.financialExceptionId)
+    fun transitionPaymentInvestigation(org:String,actor:String,id:String,request:UpdatePaymentInvestigationDto)=sql().transitionPaymentInvestigation(id,org,actor,request.state,request.reason)
 }

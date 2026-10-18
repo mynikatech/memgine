@@ -5,6 +5,7 @@ import org.jdbi.v3.core.Jdbi
 import org.jdbi.v3.sqlobject.config.RegisterBeanMapper
 import org.jdbi.v3.sqlobject.customizer.Bind
 import org.jdbi.v3.sqlobject.statement.SqlQuery
+import com.mynikatech.memgine.component.support.PaymentExceptionSupportLinkService
 
 @Serializable
 data class FinancialExceptionSummaryDto(
@@ -54,4 +55,5 @@ class FinancialExceptionService(private val jdbi: Jdbi) {
     fun detail(org: String, id: String, actor: String) = sql().detail(org, id, actor)
     fun events(org: String, id: String, actor: String) = sql().events(org, id, actor)
     fun transition(org: String, id: String, request: FinancialExceptionTransitionRequest, actor: String) = sql().transition(org, id, request.newStatus, request.reason, actor)
+    fun reconcileSupportLinks(limit: Int?) = PaymentExceptionSupportLinkService(jdbi).reconcileEligible(limit ?: 50)
 }
