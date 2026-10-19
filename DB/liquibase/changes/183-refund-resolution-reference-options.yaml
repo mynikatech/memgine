@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 183-refund-resolution-reference-options
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/183-refund-resolution-reference-options.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

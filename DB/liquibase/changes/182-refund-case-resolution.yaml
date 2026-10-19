@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 182-refund-case-resolution
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/182-refund-case-resolution.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

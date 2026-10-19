@@ -5,6 +5,8 @@ import type { ReferenceDataItem } from "@/src/core/services/reference-data";
 import { apis } from "@/src/data/data-registry";
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { services } from "@/src/core/services/service-registry";
+import { RefundResolutionPanel } from "@/src/ui/domain/RefundResolutionPanel";
+import { CaseResolutionSelector } from "@/src/ui/domain/CaseResolutionSelector";
 import type {
   OrganizationSupportRequest,
   OrganizationSupportRequestDetail,
@@ -103,6 +105,7 @@ export function SupportRequestsScreen({
   const [editPriority, setEditPriority] = useState("");
   const [editAssignee, setEditAssignee] = useState("");
   const [resolution, setResolution] = useState("");
+  const [refundResolutionAction, setRefundResolutionAction] = useState("");
   const [investigation, setInvestigation] =
     useState<PaymentInvestigation | null>(null);
   const [candidates, setCandidates] = useState<PaymentExceptionCandidate[]>([]);
@@ -121,7 +124,8 @@ export function SupportRequestsScreen({
               category: category || undefined,
               status: status || undefined,
               priority: priority || undefined,
-              destination: destination as "BUSINESS" | "PLATFORM" || undefined,
+              destination:
+                (destination as "BUSINESS" | "PLATFORM") || undefined,
             })
           : services.customerSupport.organizationList(scopedOrganizationId, {
               category: category || undefined,
@@ -152,7 +156,15 @@ export function SupportRequestsScreen({
     } finally {
       setLoading(false);
     }
-  }, [isPlatform, scopedOrganizationId, selectedOrganizationId, category, status, priority, destination]);
+  }, [
+    isPlatform,
+    scopedOrganizationId,
+    selectedOrganizationId,
+    category,
+    status,
+    priority,
+    destination,
+  ]);
   useEffect(() => {
     let active = true;
 
@@ -198,13 +210,16 @@ export function SupportRequestsScreen({
 
   const open = async (request: OrganizationSupportRequest) => {
     setSelected(request);
+    setRefundResolutionAction("");
     setDetail(null);
     setDetailError(null);
     setReply("");
     setNote("");
     try {
       const loaded = isPlatform
-        ? await services.customerSupport.platformDetail(request.supportRequestId)
+        ? await services.customerSupport.platformDetail(
+            request.supportRequestId,
+          )
         : await services.customerSupport.organizationDetail(
             scopedOrganizationId,
             request.supportRequestId,
@@ -304,15 +319,18 @@ export function SupportRequestsScreen({
     }
 
     let cancelled = false;
-    void (isPlatform
-      ? services.customerSupport.platformDetail(requestedRequestId)
-      : services.customerSupport.organizationDetail(
-          scopedOrganizationId,
-          requestedRequestId,
-        ))
+    void (
+      isPlatform
+        ? services.customerSupport.platformDetail(requestedRequestId)
+        : services.customerSupport.organizationDetail(
+            scopedOrganizationId,
+            requestedRequestId,
+          )
+    )
       .then((loaded) => {
         if (cancelled) return;
         setSelected(loaded.request);
+        setRefundResolutionAction("");
         setDetail(loaded);
         setDetailError(null);
         setReply("");
@@ -390,16 +408,23 @@ export function SupportRequestsScreen({
     setDetailError(null);
     try {
       const request = {
-          status: editStatus,
-          priority: editPriority,
-          assignedToUserId: editAssignee || undefined,
-          resolutionSummary: resolution.trim() || undefined,
-          versionNo: detail.request.versionNo,
-        };
+        status: editStatus,
+        priority: editPriority,
+        assignedToUserId: editAssignee || undefined,
+        resolutionSummary: resolution.trim() || undefined,
+        versionNo: detail.request.versionNo,
+      };
       if (isPlatform) {
-        await services.customerSupport.updatePlatform(detail.request.supportRequestId, request);
+        await services.customerSupport.updatePlatform(
+          detail.request.supportRequestId,
+          request,
+        );
       } else {
-        await services.customerSupport.updateOrganization(scopedOrganizationId, detail.request.supportRequestId, request);
+        await services.customerSupport.updateOrganization(
+          scopedOrganizationId,
+          detail.request.supportRequestId,
+          request,
+        );
       }
       await refreshDetail();
     } catch (cause) {
@@ -432,7 +457,8 @@ export function SupportRequestsScreen({
     assignees.find((item) => item.userId === id)?.name ??
     (id ? "Assigned administrator" : "Unassigned");
   const operationalFieldsLocked =
-    (detail?.request.status === "RESOLVED" || detail?.request.status === "CLOSED") &&
+    (detail?.request.status === "RESOLVED" ||
+      detail?.request.status === "CLOSED") &&
     (!isPlatform || detail?.request.supportDestination === "PLATFORM");
   const requestClosed = detail?.request.status === "CLOSED";
   const isPlatformTicket = detail?.request.supportDestination === "PLATFORM";
@@ -577,7 +603,18 @@ export function SupportRequestsScreen({
         />
         {isPlatform ? (
           <>
-            <ReferenceSelect label="Destination" value={destination} allowClear placeholder="All support" items={["PLATFORM", "BUSINESS"]} onChange={setDestination} getItemId={(item) => item} renderItemLabel={(item) => item === "PLATFORM" ? "Memgine Support" : "Business Support"} />
+            <ReferenceSelect
+              label="Destination"
+              value={destination}
+              allowClear
+              placeholder="All support"
+              items={["PLATFORM", "BUSINESS"]}
+              onChange={setDestination}
+              getItemId={(item) => item}
+              renderItemLabel={(item) =>
+                item === "PLATFORM" ? "Memgine Support" : "Business Support"
+              }
+            />
             <ReferenceSelect
               label="Organization"
               value={selectedOrganizationId}
@@ -656,7 +693,10 @@ export function SupportRequestsScreen({
                 {detail.request.subject}
               </Text>
               <Text variant="bodySmall" color="textMuted">
-                {detail.request.supportDestination === "PLATFORM" ? "Memgine Support" : "Customer account"} · {label(detail.request.source)} · Opened{" "}
+                {detail.request.supportDestination === "PLATFORM"
+                  ? "Memgine Support"
+                  : "Customer account"}{" "}
+                · {label(detail.request.source)} · Opened{" "}
                 {new Date(detail.request.createdAt).toLocaleString()}
               </Text>
               <Text variant="body" color="text">
@@ -698,25 +738,27 @@ export function SupportRequestsScreen({
                   </View>
                 ))}
             </View>
-            {(!isPlatform || isPlatformTicket) ? <View style={{ gap: theme.spacing.sm }}>
-              <Text variant="h3" color="text">
-                Reply to customer
-              </Text>
-              <Text variant="caption" color="textMuted">
-                The customer will see this reply.
-              </Text>
-              <TextArea
-                value={reply}
-                onChangeText={setReply}
-                placeholder="Write a customer-visible reply"
-                maxLength={8000}
-              />
-              <Button
-                label={saving ? "Sending…" : "Send reply"}
-                disabled={saving || !reply.trim()}
-                onPress={() => void send("reply")}
-              />
-            </View> : null}
+            {!isPlatform || isPlatformTicket ? (
+              <View style={{ gap: theme.spacing.sm }}>
+                <Text variant="h3" color="text">
+                  Reply to customer
+                </Text>
+                <Text variant="caption" color="textMuted">
+                  The customer will see this reply.
+                </Text>
+                <TextArea
+                  value={reply}
+                  onChangeText={setReply}
+                  placeholder="Write a customer-visible reply"
+                  maxLength={8000}
+                />
+                <Button
+                  label={saving ? "Sending…" : "Send reply"}
+                  disabled={saving || !reply.trim()}
+                  onPress={() => void send("reply")}
+                />
+              </View>
+            ) : null}
             <View style={{ gap: theme.spacing.sm }}>
               <Text variant="h3" color="text">
                 Internal investigation
@@ -887,58 +929,130 @@ export function SupportRequestsScreen({
                 ) : null}
               </View>
             ) : null}
-            {(!isPlatform || isPlatformTicket) ? <View style={{ gap: theme.spacing.sm }}>
-              <Text variant="h3" color="text">
-                Manage request
-              </Text>
-              <ReferenceSelect
-                label="Status"
-                value={editStatus}
-                items={detail.request.status === "RESOLVED" ? ["RESOLVED", "CLOSED"] : statuses}
-                onChange={setEditStatus}
-                disabled={requestClosed}
-                getItemId={(item) => item}
-                renderItemLabel={label}
-              />
-              <ReferenceSelect
-                label="Priority"
-                value={editPriority}
-                items={priorities}
-                onChange={setEditPriority}
-                disabled={operationalFieldsLocked}
-                getItemId={(item) => item}
-                renderItemLabel={label}
-              />
-              {!isPlatformTicket ? <ReferenceSelect
-                label="Assign to"
-                value={editAssignee}
-                items={assignees}
-                onChange={setEditAssignee}
-                placeholder="Select administrator"
-                disabled={operationalFieldsLocked}
-                getItemId={(item) => item.userId}
-                renderItemLabel={(item) => item.name}
-              /> : null}
-              <TextArea
-                label="Resolution summary"
-                value={resolution}
-                onChangeText={setResolution}
-                placeholder="Required when resolving this request"
-                maxLength={2000}
-                editable={!operationalFieldsLocked}
-              />
-              {!requestClosed ? <Button
-                label={saving ? "Saving…" : detail.request.status === "RESOLVED" ? "Close request" : "Save changes"}
-                disabled={saving || (detail.request.status === "RESOLVED" && editStatus !== "CLOSED")}
-                onPress={() => void update()}
-              /> : <Text variant="bodySmall" color="textMuted">Operational fields are locked after closure.</Text>}
-            </View> : null}
-            {detail.feedback ? <View style={{ gap: theme.spacing.xs }}>
-              <Text variant="h3" color="text">Customer Feedback</Text>
-              {detail.feedback.rating ? <Text variant="bodyStrong" color="text">{label(detail.feedback.rating)}</Text> : null}
-              {detail.feedback.feedbackComment ? <Text variant="body" color="text">{detail.feedback.feedbackComment}</Text> : null}
-              <Text variant="caption" color="textMuted">Submitted {new Date(detail.feedback.submittedAt).toLocaleString()}</Text>
-            </View> : null}
+            {!isPlatform || isPlatformTicket ? (
+              <View style={{ gap: theme.spacing.sm }}>
+                <Text variant="h3" color="text">
+                  Manage request
+                </Text>
+                <ReferenceSelect
+                  label="Status"
+                  value={editStatus}
+                  items={
+                    detail.request.status === "RESOLVED"
+                      ? ["RESOLVED", "CLOSED"]
+                      : statuses
+                  }
+                  onChange={setEditStatus}
+                  disabled={requestClosed}
+                  getItemId={(item) => item}
+                  renderItemLabel={label}
+                />
+                <ReferenceSelect
+                  label="Priority"
+                  value={editPriority}
+                  items={priorities}
+                  onChange={setEditPriority}
+                  disabled={operationalFieldsLocked}
+                  getItemId={(item) => item}
+                  renderItemLabel={label}
+                />
+                {!isPlatformTicket ? (
+                  <ReferenceSelect
+                    label="Assign to"
+                    value={editAssignee}
+                    items={assignees}
+                    onChange={setEditAssignee}
+                    placeholder="Select administrator"
+                    disabled={operationalFieldsLocked}
+                    getItemId={(item) => item.userId}
+                    renderItemLabel={(item) => item.name}
+                  />
+                ) : null}
+                <TextArea
+                  label="Resolution summary"
+                  value={resolution}
+                  onChangeText={setResolution}
+                  placeholder="Required when resolving this request"
+                  maxLength={2000}
+                  editable={!operationalFieldsLocked}
+                />
+                {!requestClosed ? (
+                  <Button
+                    label={
+                      saving
+                        ? "Saving…"
+                        : detail.request.status === "RESOLVED"
+                          ? "Close request"
+                          : "Save changes"
+                    }
+                    disabled={
+                      saving ||
+                      (detail.request.status === "RESOLVED" &&
+                        editStatus !== "CLOSED")
+                    }
+                    onPress={() => void update()}
+                  />
+                ) : (
+                  <Text variant="bodySmall" color="textMuted">
+                    Operational fields are locked after closure.
+                  </Text>
+                )}
+              </View>
+            ) : null}
+            {!isPlatform && detail.request.status !== "CLOSED" && (
+              <View style={{ gap: theme.spacing.md }}>
+                <CaseResolutionSelector
+                  key={`${detail.request.supportRequestId}:resolution`}
+                  organizationId={scopedOrganizationId}
+                  scope="SUPPORT"
+                  action={refundResolutionAction}
+                  onActionChange={setRefundResolutionAction}
+                />
+
+                {refundResolutionAction === "REFUND" && (
+                  <RefundResolutionPanel
+                    key={`${detail.request.supportRequestId}:refund`}
+                    organizationId={scopedOrganizationId}
+                    supportRequestId={detail.request.supportRequestId}
+                    paymentIntentId={
+                      candidates.find(
+                        (candidate) =>
+                          candidate.financialExceptionId ===
+                          investigation?.financialExceptionId,
+                      )?.paymentIntentId
+                    }
+                    currencyCode={
+                      candidates.find(
+                        (candidate) =>
+                          candidate.financialExceptionId ===
+                          investigation?.financialExceptionId,
+                      )?.currencyCode
+                    }
+                  />
+                )}
+              </View>
+            )}
+            {detail.feedback ? (
+              <View style={{ gap: theme.spacing.xs }}>
+                <Text variant="h3" color="text">
+                  Customer Feedback
+                </Text>
+                {detail.feedback.rating ? (
+                  <Text variant="bodyStrong" color="text">
+                    {label(detail.feedback.rating)}
+                  </Text>
+                ) : null}
+                {detail.feedback.feedbackComment ? (
+                  <Text variant="body" color="text">
+                    {detail.feedback.feedbackComment}
+                  </Text>
+                ) : null}
+                <Text variant="caption" color="textMuted">
+                  Submitted{" "}
+                  {new Date(detail.feedback.submittedAt).toLocaleString()}
+                </Text>
+              </View>
+            ) : null}
             <View style={{ gap: theme.spacing.sm }}>
               <Text variant="h3" color="text">
                 Activity history

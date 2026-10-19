@@ -129,7 +129,19 @@ data class PoyntBridgeReferenceConfirmationDto(
 
 @RegisterBeanMapper(PaymentRefundSummaryDto::class)
 @RegisterBeanMapper(PaymentRefundDetailDto::class)
+@Serializable
+data class RefundResolutionOptionDto(
+    var code: String = "", var type: String = "", var name: String = "",
+    var description: String? = null, var displayOrder: Int = 0
+)
+
 interface PaymentRefundSql {
+    @SqlQuery("SELECT * FROM refund_resolution_reference_options(:organizationId,:actorUserId,:scope)")
+    @RegisterBeanMapper(RefundResolutionOptionDto::class)
+    fun resolutionOptions(@Bind("organizationId") organizationId: String,
+        @Bind("actorUserId") actorUserId: String,
+        @Bind("scope") scope: String): List<RefundResolutionOptionDto>
+
     @SqlQuery("SELECT * FROM payment_refund_request(:refundId,:organizationId,:paymentIntentId,:amountMinor,:reasonCode,:explanation,:supportRequestId,:financialExceptionId,:idempotencyKey,:actorUserId)")
     fun request(@Bind("refundId") refundId: String, @Bind("organizationId") organizationId: String, @Bind("paymentIntentId") paymentIntentId: String, @Bind("amountMinor") amountMinor: Long, @Bind("reasonCode") reasonCode: String, @Bind("explanation") explanation: String?, @Bind("supportRequestId") supportRequestId: String?, @Bind("financialExceptionId") financialExceptionId: String?, @Bind("idempotencyKey") idempotencyKey: String, @Bind("actorUserId") actorUserId: String): PaymentRefundSummaryDto?
     @SqlQuery("SELECT * FROM payment_refund_request_commerce(:refundId,:organizationId,:commerceTransactionId,:amountMinor,:reasonCode,:explanation,:supportRequestId,:idempotencyKey,:actorUserId)")
@@ -160,6 +172,11 @@ interface PaymentRefundSql {
         @Bind("attemptId") attemptId:String,@Bind("verificationId") verificationId:String,
         @Bind("actorUserId") actor:String):PaymentRefundExecutionStatusDto?
     @SqlQuery("SELECT * FROM payment_refund_list(:organizationId,:actorUserId)") fun list(@Bind("organizationId") organizationId: String, @Bind("actorUserId") actorUserId: String): List<PaymentRefundSummaryDto>
+    @SqlQuery("SELECT * FROM payment_refund_case_list(:organizationId,:actorUserId,:supportRequestId,:financialExceptionId)")
+    fun caseList(@Bind("organizationId") organizationId: String,
+                 @Bind("actorUserId") actorUserId: String,
+                 @Bind("supportRequestId") supportRequestId: String?,
+                 @Bind("financialExceptionId") financialExceptionId: String?): List<PaymentRefundSummaryDto>
     @SqlQuery("SELECT * FROM payment_refund_detail(:organizationId,:refundId,:actorUserId)") fun detail(@Bind("organizationId") organizationId: String, @Bind("refundId") refundId: String, @Bind("actorUserId") actorUserId: String): PaymentRefundDetailDto?
     @SqlQuery("SELECT * FROM payment_refund_platform_list(:actorUserId)") fun platformList(@Bind("actorUserId") actorUserId: String): List<PaymentRefundSummaryDto>
     @SqlQuery("SELECT * FROM payment_refund_claim_poynt_collect_execution(:organizationId,:refundId,:attemptId,:actorUserId)")
@@ -210,6 +227,9 @@ class PaymentRefundService(
     private val poyntBridgeTtlSeconds: Long = 45L
 ) {
     private fun sql() = jdbi.onDemand(PaymentRefundSql::class.java)
+    fun resolutionOptions(org: String, actor: String, scope: String): List<RefundResolutionOptionDto> =
+        sql().resolutionOptions(org, actor, scope)
+
     fun request(org: String, request: PaymentRefundRequestDto, actor: String): PaymentRefundSummaryDto {
         val intentId = request.paymentIntentId?.trim().orEmpty()
         val commerceId = request.commerceTransactionId?.trim().orEmpty()
@@ -229,6 +249,10 @@ class PaymentRefundService(
         } ?: throw BadRequestException("Refund request could not be created")
     }
     fun list(org: String, actor: String) = sql().list(org, actor)
+    fun listBySupportRequest(org: String, supportRequestId: String, actor: String) =
+        sql().caseList(org, actor, supportRequestId, null)
+    fun listByFinancialException(org: String, financialExceptionId: String, actor: String) =
+        sql().caseList(org, actor, null, financialExceptionId)
     fun platformList(actor: String) = sql().platformList(actor)
     fun detail(org: String, id: String, actor: String) = sql().detail(org, id, actor) ?: throw BadRequestException("Refund request was not found")
 

@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 186-fix-business-support-discovery
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/186-fix-business-support-discovery.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

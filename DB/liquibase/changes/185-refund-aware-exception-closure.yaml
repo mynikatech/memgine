@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 185-refund-aware-exception-closure
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/185-refund-aware-exception-closure.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

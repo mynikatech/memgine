@@ -19,6 +19,19 @@ fun Route.paymentRefundRoutes(service: PaymentRefundService) {
     }
     route("/organizations/{organizationId}/payment-refunds") {
         get { call.respond(ApiResponse.success(service.list(organizationId(call), call.authenticatedPrincipal().userId), call.callId)) }
+        get("/resolution-options") {
+            val scope = call.request.queryParameters["scope"] ?: "SUPPORT"
+            call.respond(ApiResponse.success(service.resolutionOptions(organizationId(call), call.authenticatedPrincipal().userId, scope), call.callId))
+        }
+
+        get("/by-support/{supportRequestId}") {
+            val supportId = call.parameters["supportRequestId"] ?: throw BadRequestException("Support request id is required")
+            call.respond(ApiResponse.success(service.listBySupportRequest(organizationId(call), supportId, call.authenticatedPrincipal().userId), call.callId))
+        }
+        get("/by-financial-exception/{financialExceptionId}") {
+            val exceptionId = call.parameters["financialExceptionId"] ?: throw BadRequestException("Financial exception id is required")
+            call.respond(ApiResponse.success(service.listByFinancialException(organizationId(call), exceptionId, call.authenticatedPrincipal().userId), call.callId))
+        }
         post { call.respond(ApiResponse.success(service.request(organizationId(call), call.receive(), call.authenticatedPrincipal().userId), call.callId)) }
         get("/{refundId}") { val id=call.parameters["refundId"] ?: throw BadRequestException("Refund id is required"); call.respond(ApiResponse.success(service.detail(organizationId(call),id,call.authenticatedPrincipal().userId),call.callId)) }
         get("/{refundId}/execution") { val id=call.parameters["refundId"] ?: throw BadRequestException("Refund id is required"); call.respond(ApiResponse.success(service.executionStatus(organizationId(call),id,call.authenticatedPrincipal().userId),call.callId)) }
