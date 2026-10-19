@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 190-captured-processing-refund-eligibility
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/190-captured-processing-refund-eligibility.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

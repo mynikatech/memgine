@@ -36,7 +36,8 @@ data class PaymentRefundRequestDto(
     val supportRequestId: String? = null,
     val financialExceptionId: String? = null,
     val idempotencyKey: String,
-    val commerceTransactionId: String? = null
+    val commerceTransactionId: String? = null,
+    val resolutionAction: String = "REFUND"
 )
 @Serializable
 data class PaymentRefundSummaryDto(
@@ -216,6 +217,7 @@ class PaymentRefundService(
     private val jdbi: Jdbi,
     private val approvalPolicy: PaymentRefundApprovalPolicy = MvpAutoApprovePaymentRefundPolicy,
     private val poyntCollectRefundAdapter: PoyntCollectRefundAdapter? = null,
+    private val originalCaptureVerifier: PoyntOriginalCaptureVerifier? = null,
     private val poyntCollectRefundDispatchEnabled: Boolean = false,
     private val poyntBridgeRefundDispatchEnabled: Boolean = false,
     private val poyntBridgeRefundClient: PoyntPaymentBridgeClient? = null,
@@ -227,6 +229,7 @@ class PaymentRefundService(
     private val poyntBridgeTtlSeconds: Long = 45L
 ) {
     private fun sql() = jdbi.onDemand(PaymentRefundSql::class.java)
+    private val refundWorkflow by lazy { RefundWorkflowCoordinator(jdbi, originalCaptureVerifier) }
     fun resolutionOptions(org: String, actor: String, scope: String): List<RefundResolutionOptionDto> =
         sql().resolutionOptions(org, actor, scope)
 
@@ -239,14 +242,56 @@ class PaymentRefundService(
         if (commerceId.isNotBlank() && !request.financialExceptionId.isNullOrBlank()) {
             throw BadRequestException("Financial exceptions are not supported for commerce refunds")
         }
+        if (request.resolutionAction !in setOf("REFUND", "REFUND_AND_CANCEL")) {
+            throw BadRequestException("Unsupported refund resolution action")
+        }
         check(approvalPolicy.decide(request, actor) == PaymentRefundApprovalDecision.AUTO_APPROVED) {
             "The configured refund approval policy is not supported by the MVP ledger"
         }
-        return if (intentId.isNotBlank()) {
-            sql().request("PRF_${UUID.randomUUID()}", org, intentId, request.amountMinor, request.reasonCode, request.explanation, request.supportRequestId, request.financialExceptionId, request.idempotencyKey, actor)
-        } else {
-            sql().requestCommerce("PRF_${UUID.randomUUID()}", org, commerceId, request.amountMinor, request.reasonCode, request.explanation, request.supportRequestId, request.idempotencyKey, actor)
-        } ?: throw BadRequestException("Refund request could not be created")
+        return try {
+            if (request.resolutionAction == "REFUND_AND_CANCEL") {
+                refundWorkflow.requestAndCancel(org, "PRF_${UUID.randomUUID()}", request, actor)
+                    ?: throw BadRequestException("Refund and cancellation request could not be created")
+            } else if (intentId.isNotBlank()) {
+                sql().request("PRF_${UUID.randomUUID()}", org, intentId, request.amountMinor,
+                    request.reasonCode, request.explanation, request.supportRequestId,
+                    request.financialExceptionId, request.idempotencyKey, actor)
+                    ?: throw BadRequestException("Refund request could not be created")
+            } else {
+                sql().requestCommerce("PRF_${UUID.randomUUID()}", org, commerceId, request.amountMinor,
+                    request.reasonCode, request.explanation, request.supportRequestId,
+                    request.idempotencyKey, actor)
+                    ?: throw BadRequestException("Refund request could not be created")
+            }
+        } catch (error: org.jdbi.v3.core.statement.UnableToExecuteStatementException) {
+            // Known business validation errors become stable HTTP 400/409 responses,
+            // not unhandled 500s or raw SQL diagnostics in the Org Admin UI.
+            var root: Throwable? = error
+            while (root != null && root !is org.postgresql.util.PSQLException) root = root.cause
+            val pg = root as? org.postgresql.util.PSQLException
+            when (pg?.sqlState) {
+                "23505" -> throw com.mynikatech.memgine.exception.ConflictException(
+                    "This refund or membership cancellation has already been requested. Refresh the case before retrying.")
+                "22023", "23514" -> {
+                    val detail = pg.message.orEmpty()
+                    val message = when {
+                        detail.contains("No membership is linked", ignoreCase = true) ->
+                            "This payment does not have an associated membership. Select Refund customer instead."
+                        detail.contains("Refund amount exceeds", ignoreCase = true) ->
+                            "The requested amount is greater than the remaining refundable balance."
+                        detail.contains("Original captured payment", ignoreCase = true) ||
+                            detail.contains("capture is not verified", ignoreCase = true) ->
+                            "The original payment is not verified as captured. Review its transaction details before refunding."
+                        detail.contains("Financial exception", ignoreCase = true) ->
+                            "The selected payment does not match this financial exception. Refresh the case."
+                        else -> "This refund cannot be created until the original payment and membership details have been verified."
+                    }
+                    throw BadRequestException(message)
+                }
+                else -> throw error
+            }
+        }
+
     }
     fun list(org: String, actor: String) = sql().list(org, actor)
     fun listBySupportRequest(org: String, supportRequestId: String, actor: String) =
@@ -392,6 +437,13 @@ class PaymentRefundService(
         if (!poyntCollectRefundDispatchEnabled) {
             throw BadRequestException("Poynt Collect refund dispatch is disabled")
         }
+        // Verify original provider capture BEFORE claiming a refund attempt.
+        // READY is the only dispatchable state; existing PENDING/UNKNOWN attempts
+        // are handled by the established idempotent claim/reconciliation logic.
+        if (detail(org, id, actor).executionStatus == "READY") {
+            val verification = refundWorkflow.verifyBeforeCollectExecution(org, id, actor)
+            if (!verification.eligible) throw BadRequestException(verification.message)
+        }
         val claim = sql().claimPoyntCollectExecution(org, id, "PRA_${UUID.randomUUID()}", actor)
             ?: throw BadRequestException("Collect refund execution is not available")
         if (!claim.dispatchRequired) return executionStatus(claim)
@@ -501,7 +553,24 @@ class PaymentRefundService(
         outcome: PaymentRefundProviderOutcome,
         providerReference: String?,
         actor: String
-    ): PaymentRefundExecutionStatusDto = sql().recordPoyntCollectOutcome(
-        org, refundId, context.paymentRefundAttemptId, outcome.name, providerReference, actor
-    ) ?: throw BadRequestException("Collect refund outcome could not be recorded")
+    ): PaymentRefundExecutionStatusDto {
+        val result = sql().recordPoyntCollectOutcome(
+            org, refundId, context.paymentRefundAttemptId, outcome.name, providerReference, actor
+        ) ?: throw BadRequestException("Collect refund outcome could not be recorded")
+        // Financial success is committed first. Cancellation failure must never
+        // roll back or obscure a completed provider refund.
+        if (result.executionStatus == "SUCCEEDED") {
+            refundWorkflow.completeIfRefundSucceeded(org, refundId, actor, result.executionStatus)
+        }
+        return result
+    }
+
+    fun membershipAction(org: String, refundId: String, actor: String): MembershipCancellationRow? =
+        refundWorkflow.membershipAction(org, refundId, actor)
+
+    /** Explicit, idempotent retry after callback or independent reconciliation. */
+    fun completeMembershipAction(org: String, refundId: String, actor: String): MembershipCancellationRow? {
+        val status = executionStatus(org, refundId, actor)
+        return refundWorkflow.completeIfRefundSucceeded(org, refundId, actor, status.executionStatus)
+    }
 }

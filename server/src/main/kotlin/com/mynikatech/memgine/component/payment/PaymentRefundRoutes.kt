@@ -35,6 +35,14 @@ fun Route.paymentRefundRoutes(service: PaymentRefundService) {
         post { call.respond(ApiResponse.success(service.request(organizationId(call), call.receive(), call.authenticatedPrincipal().userId), call.callId)) }
         get("/{refundId}") { val id=call.parameters["refundId"] ?: throw BadRequestException("Refund id is required"); call.respond(ApiResponse.success(service.detail(organizationId(call),id,call.authenticatedPrincipal().userId),call.callId)) }
         get("/{refundId}/execution") { val id=call.parameters["refundId"] ?: throw BadRequestException("Refund id is required"); call.respond(ApiResponse.success(service.executionStatus(organizationId(call),id,call.authenticatedPrincipal().userId),call.callId)) }
+        get("/{refundId}/membership-action") {
+            val id = call.parameters["refundId"] ?: throw BadRequestException("Refund id is required")
+            call.respond(ApiResponse.success(service.membershipAction(organizationId(call), id, call.authenticatedPrincipal().userId), call.callId))
+        }
+        post("/{refundId}/complete-membership-action") {
+            val id = call.parameters["refundId"] ?: throw BadRequestException("Refund id is required")
+            call.respond(ApiResponse.success(service.completeMembershipAction(organizationId(call), id, call.authenticatedPrincipal().userId), call.callId))
+        }
         post("/{refundId}/execute") { val id=call.parameters["refundId"] ?: throw BadRequestException("Refund id is required"); call.respond(ApiResponse.success(service.execute(organizationId(call),id,call.authenticatedPrincipal().userId),call.callId)) }
         post("/{refundId}/reconcile") { val id=call.parameters["refundId"] ?: throw BadRequestException("Refund id is required"); call.respond(ApiResponse.success(service.reconcile(organizationId(call),id,call.authenticatedPrincipal().userId),call.callId)) }
         route("/{refundId}/poynt-bridge") {

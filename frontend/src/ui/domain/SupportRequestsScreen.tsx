@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ScrollView, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
 import type { ReferenceDataItem } from "@/src/core/services/reference-data";
 import { apis } from "@/src/data/data-registry";
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { services } from "@/src/core/services/service-registry";
 import { RefundResolutionPanel } from "@/src/ui/domain/RefundResolutionPanel";
+import type { LinkedRefund } from "@/src/data/api/refund-resolution-api";
 import { CaseResolutionSelector } from "@/src/ui/domain/CaseResolutionSelector";
 import type {
   OrganizationSupportRequest,
@@ -27,7 +28,6 @@ import {
   Text,
   TextArea,
 } from "@/src/ui";
-
 const statuses = [
   "OPEN",
   "IN_PROGRESS",
@@ -56,8 +56,68 @@ const isInternalSupportMessage = (
   message.messageType === "PLATFORM_RECOMMENDATION";
 type Assignee = { userId: string; name: string };
 
-export type SupportRequestsScope = "organization" | "platform";
+function SupportSection({
+  title,
+  subtitle,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  const theme = useTheme();
+  return (
+    <View
+      style={{
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        borderRadius: theme.radius.md,
+        overflow: "hidden",
+        backgroundColor: theme.colors.surface,
+      }}
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        onPress={onToggle}
+        style={{
+          paddingHorizontal: theme.spacing.md,
+          paddingVertical: theme.spacing.md,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: theme.spacing.sm,
+          backgroundColor: theme.colors.surfaceAlt,
+        }}
+      >
+        <View style={{ flex: 1, gap: 3 }}>
+          <Text variant="bodyStrong" color="text">
+            {title}
+          </Text>
+          {!!subtitle && (
+            <Text variant="caption" color="textMuted">
+              {subtitle}
+            </Text>
+          )}
+        </View>
+        <Text variant="bodyStrong" color="textMuted">
+          {open ? "−" : "+"}
+        </Text>
+      </Pressable>
+      {open && (
+        <View style={{ padding: theme.spacing.md, gap: theme.spacing.md }}>
+          {children}
+        </View>
+      )}
+    </View>
+  );
+}
 
+export type SupportRequestsScope = "organization" | "platform";
 export function SupportRequestsScreen({
   scope,
   organizationId,
@@ -98,6 +158,9 @@ export function SupportRequestsScreen({
     null,
   );
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [manageValidationError, setManageValidationError] = useState<
+    string | null
+  >(null);
   const [saving, setSaving] = useState(false);
   const [reply, setReply] = useState("");
   const [note, setNote] = useState("");
@@ -106,13 +169,54 @@ export function SupportRequestsScreen({
   const [editAssignee, setEditAssignee] = useState("");
   const [resolution, setResolution] = useState("");
   const [refundResolutionAction, setRefundResolutionAction] = useState("");
+  const [linkedRefundInfo, setLinkedRefundInfo] = useState<{
+    count: number;
+    action: "REFUND" | "REFUND_AND_CANCEL" | null;
+    hasSucceeded: boolean;
+  } | null>(null);
+  const handleRefundsLoaded = useCallback((refunds: LinkedRefund[]) => {
+    const recordedActions = refunds.map((refund) => {
+      // Older refund APIs may not expose the persisted action. Do not infer
+      // REFUND from the presence of a refund: it may be REFUND_AND_CANCEL.
+      const action = (refund as LinkedRefund & { resolutionAction?: string })
+        .resolutionAction;
+      return action === "REFUND" || action === "REFUND_AND_CANCEL"
+        ? action
+        : null;
+    });
+    const action =
+      recordedActions.length > 0 &&
+      recordedActions.every((value) => value === recordedActions[0])
+        ? recordedActions[0]
+        : null;
+    setLinkedRefundInfo({
+      count: refunds.length,
+      action,
+      hasSucceeded: refunds.some(
+        (refund) => refund.executionStatus === "SUCCEEDED",
+      ),
+    });
+  }, []);
+  const recordedRefundAction = linkedRefundInfo?.count
+    ? linkedRefundInfo.action
+    : null;
+  const effectiveRefundAction = recordedRefundAction || refundResolutionAction;
+  const hasRecordedRefund = (linkedRefundInfo?.count ?? 0) > 0;
+  const [sections, setSections] = useState({
+    conversation: true,
+    notes: false,
+    manage: false,
+    resolution: true,
+    activity: false,
+  });
+  const toggleSection = (key: keyof typeof sections) =>
+    setSections((previous) => ({ ...previous, [key]: !previous[key] }));
   const [investigation, setInvestigation] =
     useState<PaymentInvestigation | null>(null);
   const [candidates, setCandidates] = useState<PaymentExceptionCandidate[]>([]);
   const [investigationReason, setInvestigationReason] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
   const [investigationDescription, setInvestigationDescription] = useState("");
-
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -167,7 +271,6 @@ export function SupportRequestsScreen({
   ]);
   useEffect(() => {
     let active = true;
-
     void services.referenceData
       .listSupportCategories()
       .then((items) => {
@@ -178,12 +281,10 @@ export function SupportRequestsScreen({
       .catch((error) => {
         console.error("Unable to load support categories", error);
       });
-
     return () => {
       active = false;
     };
   }, []);
-
   useEffect(() => {
     if (!isPlatform) return;
     let active = true;
@@ -203,14 +304,21 @@ export function SupportRequestsScreen({
       active = false;
     };
   }, [isPlatform]);
-
   useEffect(() => {
     void load();
   }, [load]);
-
   const open = async (request: OrganizationSupportRequest) => {
     setSelected(request);
+    setManageValidationError(null);
     setRefundResolutionAction("");
+    setLinkedRefundInfo(null);
+    setSections({
+      conversation: true,
+      notes: false,
+      manage: false,
+      resolution: true,
+      activity: false,
+    });
     setDetail(null);
     setDetailError(null);
     setReply("");
@@ -252,7 +360,6 @@ export function SupportRequestsScreen({
       );
     }
   };
-
   const escalateInvestigation = async () => {
     if (!detail || !investigationReason.trim() || saving) return;
     setSaving(true);
@@ -278,7 +385,6 @@ export function SupportRequestsScreen({
       setSaving(false);
     }
   };
-
   const linkException = async (exceptionId: string) => {
     if (!detail || saving) return;
     setSaving(true);
@@ -300,7 +406,6 @@ export function SupportRequestsScreen({
       setSaving(false);
     }
   };
-
   useEffect(() => {
     if (
       !requestedRequestId ||
@@ -308,7 +413,6 @@ export function SupportRequestsScreen({
     ) {
       return;
     }
-
     openedNotificationRequestId.current = requestedRequestId;
     const request = rows.find(
       (row) => row.supportRequestId === requestedRequestId,
@@ -317,7 +421,6 @@ export function SupportRequestsScreen({
       void open(request);
       return;
     }
-
     let cancelled = false;
     void (
       isPlatform
@@ -331,6 +434,7 @@ export function SupportRequestsScreen({
         if (cancelled) return;
         setSelected(loaded.request);
         setRefundResolutionAction("");
+        setLinkedRefundInfo(null);
         setDetail(loaded);
         setDetailError(null);
         setReply("");
@@ -352,21 +456,25 @@ export function SupportRequestsScreen({
             : "Unable to load the request.",
         );
       });
-
     return () => {
       cancelled = true;
     };
   }, [isPlatform, scopedOrganizationId, requestedRequestId, rows]);
-
   const refreshDetail = async () => {
     if (!selected) return;
     await Promise.all([load(), open(selected)]);
   };
-
   const send = async (kind: "reply" | "note" | "recommendation") => {
     const internal = kind !== "reply";
     const body = (internal ? note : reply).trim();
-    if (!detail || !body || saving) return;
+    if (
+      !detail ||
+      !body ||
+      saving ||
+      detail.request.status === "RESOLVED" ||
+      detail.request.status === "CLOSED"
+    )
+      return;
     setSaving(true);
     setDetailError(null);
     try {
@@ -395,16 +503,18 @@ export function SupportRequestsScreen({
       setSaving(false);
     }
   };
-
   const update = async () => {
     if (!detail || saving) return;
     if (editStatus === "RESOLVED" && !resolution.trim()) {
-      setDetailError(
-        "A meaningful resolution summary is required to resolve this request.",
+      setManageValidationError(
+        "Enter a resolution summary before marking this request resolved.",
       );
+      setDetailError(null);
+      setSections((previous) => ({ ...previous, manage: true }));
       return;
     }
     setSaving(true);
+    setManageValidationError(null);
     setDetailError(null);
     try {
       const request = {
@@ -443,7 +553,6 @@ export function SupportRequestsScreen({
       setSaving(false);
     }
   };
-
   const filtered = useMemo(
     () =>
       rows.filter(
@@ -543,7 +652,6 @@ export function SupportRequestsScreen({
     ],
     [isPlatform, organizations],
   );
-
   return (
     <ScrollView
       contentContainerStyle={{
@@ -675,7 +783,11 @@ export function SupportRequestsScreen({
       <Modal
         visible={selected !== null}
         onClose={() => !saving && setSelected(null)}
-        title={detail?.request.ticketNumber ?? "Support request"}
+        title={
+          detail
+            ? `${detail.request.ticketNumber} · ${label(detail.request.status)}`
+            : "Support request"
+        }
         scrollable
       >
         {detailError ? (
@@ -688,332 +800,429 @@ export function SupportRequestsScreen({
         ) : null}
         {detail ? (
           <View style={{ gap: theme.spacing.lg }}>
-            <View style={{ gap: theme.spacing.xs }}>
-              <Text variant="h3" color="text">
-                {detail.request.subject}
-              </Text>
-              <Text variant="bodySmall" color="textMuted">
-                {detail.request.supportDestination === "PLATFORM"
-                  ? "Memgine Support"
-                  : "Customer account"}{" "}
-                · {label(detail.request.source)} · Opened{" "}
-                {new Date(detail.request.createdAt).toLocaleString()}
-              </Text>
-              <Text variant="body" color="text">
-                {detail.request.description}
-              </Text>
-            </View>
-            <View style={{ gap: theme.spacing.sm }}>
-              <Text variant="h3" color="text">
-                Customer-visible conversation
-              </Text>
-              {detail.messages
-                .filter((message) => !isInternalSupportMessage(message))
-                .map((message) => (
-                  <View
-                    key={message.supportMessageId}
-                    style={{
-                      padding: theme.spacing.md,
-                      backgroundColor:
-                        message.authorRole === "CUSTOMER"
-                          ? theme.colors.primarySoft
-                          : theme.colors.surfaceAlt,
-                      borderRadius: theme.radius.md,
-                      gap: theme.spacing.xs,
-                    }}
-                  >
-                    <Text variant="bodyStrong" color="text">
-                      {message.authorRole === "CUSTOMER"
-                        ? "Customer"
-                        : message.authorRole === "ORG_ADMIN"
-                          ? "Business support"
-                          : "Memgine Support"}
-                    </Text>
-                    <Text variant="body" color="text">
-                      {message.messageBody}
-                    </Text>
-                    <Text variant="caption" color="textMuted">
-                      {new Date(message.createdAt).toLocaleString()}
-                    </Text>
-                  </View>
-                ))}
-            </View>
-            {!isPlatform || isPlatformTicket ? (
-              <View style={{ gap: theme.spacing.sm }}>
+            <SupportSection
+              title="01  Issue & conversation"
+              subtitle={`${detail.messages.filter((m) => !isInternalSupportMessage(m)).length} messages · ${label(detail.request.status)}`}
+              open={sections.conversation}
+              onToggle={() => toggleSection("conversation")}
+            >
+              <View style={{ gap: theme.spacing.xs }}>
                 <Text variant="h3" color="text">
-                  Reply to customer
+                  {detail.request.subject}
                 </Text>
-                <Text variant="caption" color="textMuted">
-                  The customer will see this reply.
+                <Text variant="bodySmall" color="textMuted">
+                  {detail.request.supportDestination === "PLATFORM"
+                    ? "Memgine Support"
+                    : "Customer account"}{" "}
+                  · {label(detail.request.source)} · Opened{" "}
+                  {new Date(detail.request.createdAt).toLocaleString()}
                 </Text>
-                <TextArea
-                  value={reply}
-                  onChangeText={setReply}
-                  placeholder="Write a customer-visible reply"
-                  maxLength={8000}
-                />
-                <Button
-                  label={saving ? "Sending…" : "Send reply"}
-                  disabled={saving || !reply.trim()}
-                  onPress={() => void send("reply")}
-                />
+                <Text variant="body" color="text">
+                  {detail.request.description}
+                </Text>
               </View>
-            ) : null}
-            <View style={{ gap: theme.spacing.sm }}>
-              <Text variant="h3" color="text">
-                Internal investigation
-              </Text>
-              <Text variant="caption" color="warning">
-                Internal note — not visible to the customer
-              </Text>
-              {detail.messages
-                .filter(isInternalSupportMessage)
-                .map((message) => (
-                  <View
-                    key={message.supportMessageId}
-                    style={{
-                      padding: theme.spacing.md,
-                      backgroundColor: theme.colors.warningSoft,
-                      borderRadius: theme.radius.md,
-                      gap: theme.spacing.xs,
-                    }}
-                  >
-                    <Text variant="bodyStrong" color="text">
-                      {message.authorRole === "PLATFORM_ADMIN"
-                        ? "Platform Support"
-                        : message.authorRole === "ORG_ADMIN"
-                          ? "Business Support"
-                          : "Support"}
-                      {" — "}
-                      {message.authorName?.trim() || "Support team member"}
-                    </Text>
-                    <Text variant="body" color="text">
-                      {message.messageBody}
-                    </Text>
-                    <Text variant="caption" color="textMuted">
-                      {new Date(message.createdAt).toLocaleString()}
-                    </Text>
-                  </View>
-                ))}
-              <TextArea
-                value={note}
-                onChangeText={setNote}
-                placeholder="Add an internal investigation note"
-                maxLength={8000}
-              />
-              <Button
-                label={saving ? "Saving…" : "Add internal note"}
-                variant="secondary"
-                disabled={saving || !note.trim()}
-                onPress={() => void send("note")}
-              />
-              {isPlatform ? (
-                <Button
-                  label={saving ? "Saving…" : "Add platform recommendation"}
-                  variant="secondary"
-                  disabled={saving || !note.trim()}
-                  onPress={() => void send("recommendation")}
-                />
-              ) : null}
-            </View>
-            {!isPlatform && detail.request.category === "PAYMENT" ? (
               <View style={{ gap: theme.spacing.sm }}>
-                <Text variant="h3" color="text">
-                  Payment Investigation
-                </Text>
-                {investigation ? (
-                  <View style={{ gap: theme.spacing.xs }}>
-                    <Text variant="bodyStrong" color="text">
-                      {label(investigation.state)}
-                    </Text>
-                    <Text variant="bodySmall" color="textMuted">
-                      {investigation.escalationReason}
-                    </Text>
-                    {investigation.paymentReference ? (
-                      <Text variant="caption" color="textMuted">
-                        Reference: {investigation.paymentReference}
+                {detail.messages
+                  .filter((message) => !isInternalSupportMessage(message))
+                  .map((message) => (
+                    <View
+                      key={message.supportMessageId}
+                      style={{
+                        padding: theme.spacing.md,
+                        backgroundColor:
+                          message.authorRole === "CUSTOMER"
+                            ? theme.colors.primarySoft
+                            : theme.colors.surfaceAlt,
+                        borderRadius: theme.radius.md,
+                        gap: theme.spacing.xs,
+                      }}
+                    >
+                      <Text variant="bodyStrong" color="text">
+                        {message.authorRole === "CUSTOMER"
+                          ? "Customer"
+                          : message.authorRole === "ORG_ADMIN"
+                            ? "Business support"
+                            : "Memgine Support"}
                       </Text>
-                    ) : null}
-                    {investigation.financialExceptionId ? (
-                      <Button
-                        label="View linked exception"
-                        variant="secondary"
-                        onPress={() =>
-                          router.push(
-                            `${APP_ROUTES.orgAdmin.paymentExceptions(scopedOrganizationId)}?financialExceptionId=${encodeURIComponent(investigation.financialExceptionId!)}` as never,
-                          )
-                        }
-                      />
-                    ) : null}
-                  </View>
-                ) : (
-                  <>
-                    <Text variant="bodySmall" color="textMuted">
-                      Escalate this customer-reported payment concern for
-                      internal review. This does not create a verified financial
-                      exception or charge the customer.
+                      <Text variant="body" color="text">
+                        {message.messageBody}
+                      </Text>
+                      <Text variant="caption" color="textMuted">
+                        {new Date(message.createdAt).toLocaleString()}
+                      </Text>
+                    </View>
+                  ))}
+              </View>
+              {!isPlatform || isPlatformTicket ? (
+                <View style={{ gap: theme.spacing.sm }}>
+                  <Text variant="h3" color="text">
+                    Reply to customer
+                  </Text>
+                  <Text variant="caption" color="textMuted">
+                    The customer will see this reply.
+                  </Text>
+                  <TextArea
+                    value={reply}
+                    onChangeText={setReply}
+                    placeholder="Write a customer-visible reply"
+                    maxLength={8000}
+                    editable={!operationalFieldsLocked}
+                  />
+                  <Button
+                    label={saving ? "Sending…" : "Send reply"}
+                    disabled={
+                      saving || operationalFieldsLocked || !reply.trim()
+                    }
+                    onPress={() => void send("reply")}
+                  />
+                </View>
+              ) : null}
+            </SupportSection>
+            <SupportSection
+              title="02  Internal notes"
+              subtitle={`${detail.messages.filter(isInternalSupportMessage).length} staff-only notes`}
+              open={sections.notes}
+              onToggle={() => toggleSection("notes")}
+            >
+              <View style={{ gap: theme.spacing.sm }}>
+                <Text variant="caption" color="warning">
+                  Internal note — not visible to the customer
+                </Text>
+                {detail.messages
+                  .filter(isInternalSupportMessage)
+                  .map((message) => (
+                    <View
+                      key={message.supportMessageId}
+                      style={{
+                        padding: theme.spacing.md,
+                        backgroundColor: theme.colors.warningSoft,
+                        borderRadius: theme.radius.md,
+                        gap: theme.spacing.xs,
+                      }}
+                    >
+                      <Text variant="bodyStrong" color="text">
+                        {message.authorRole === "PLATFORM_ADMIN"
+                          ? "Platform Support"
+                          : message.authorRole === "ORG_ADMIN"
+                            ? "Business Support"
+                            : "Support"}
+                        {" — "}
+                        {message.authorName?.trim() || "Support team member"}
+                      </Text>
+                      <Text variant="body" color="text">
+                        {message.messageBody}
+                      </Text>
+                      <Text variant="caption" color="textMuted">
+                        {new Date(message.createdAt).toLocaleString()}
+                      </Text>
+                    </View>
+                  ))}
+                <TextArea
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="Add an internal investigation note"
+                  maxLength={8000}
+                  editable={!operationalFieldsLocked}
+                />
+                <Button
+                  label={saving ? "Saving…" : "Add internal note"}
+                  variant="secondary"
+                  disabled={saving || operationalFieldsLocked || !note.trim()}
+                  onPress={() => void send("note")}
+                />
+                {isPlatform ? (
+                  <Button
+                    label={saving ? "Saving…" : "Add platform recommendation"}
+                    variant="secondary"
+                    disabled={saving || operationalFieldsLocked || !note.trim()}
+                    onPress={() => void send("recommendation")}
+                  />
+                ) : null}
+              </View>
+            </SupportSection>
+            <SupportSection
+              title="03  Manage request"
+              subtitle={
+                manageValidationError
+                  ? "Action required · Resolution summary"
+                  : `Current status: ${label(detail.request.status)}${operationalFieldsLocked ? " · Read only" : ""}`
+              }
+              open={sections.manage}
+              onToggle={() => toggleSection("manage")}
+            >
+              {!isPlatform || isPlatformTicket ? (
+                <View style={{ gap: theme.spacing.sm }}>
+                  <ReferenceSelect
+                    label="Status"
+                    value={editStatus}
+                    items={
+                      detail.request.status === "RESOLVED"
+                        ? ["RESOLVED", "CLOSED"]
+                        : statuses
+                    }
+                    onChange={(value) => {
+                      setEditStatus(value);
+                      setManageValidationError(null);
+                    }}
+                    disabled={requestClosed}
+                    getItemId={(item) => item}
+                    renderItemLabel={label}
+                  />
+                  <ReferenceSelect
+                    label="Priority"
+                    value={editPriority}
+                    items={priorities}
+                    onChange={setEditPriority}
+                    disabled={operationalFieldsLocked}
+                    getItemId={(item) => item}
+                    renderItemLabel={label}
+                  />
+                  {!isPlatformTicket ? (
+                    <ReferenceSelect
+                      label="Assign to"
+                      value={editAssignee}
+                      items={assignees}
+                      onChange={setEditAssignee}
+                      placeholder="Select administrator"
+                      disabled={operationalFieldsLocked}
+                      getItemId={(item) => item.userId}
+                      renderItemLabel={(item) => item.name}
+                    />
+                  ) : null}
+                  <TextArea
+                    label="Resolution summary"
+                    value={resolution}
+                    onChangeText={(value) => {
+                      setResolution(value);
+                      setManageValidationError(null);
+                    }}
+                    placeholder="Required when resolving this request"
+                    maxLength={2000}
+                    editable={!operationalFieldsLocked}
+                  />
+                  {manageValidationError ? (
+                    <Text variant="bodySmall" color="danger">
+                      {manageValidationError}
                     </Text>
-                    <TextArea
-                      label="Reason for escalation"
-                      value={investigationReason}
-                      onChangeText={setInvestigationReason}
-                      placeholder="Explain why financial review is needed"
-                      maxLength={500}
-                    />
-                    <Input
-                      label="Payment or order reference (optional)"
-                      value={paymentReference}
-                      onChangeText={setPaymentReference}
-                      placeholder="Receipt, payment, order, or attempt reference"
-                      editable={!saving}
-                    />
-                    <TextArea
-                      label="Investigation details (optional)"
-                      value={investigationDescription}
-                      onChangeText={setInvestigationDescription}
-                      placeholder="Known supporting identifiers or context"
-                      maxLength={2000}
-                    />
+                  ) : null}
+                  {!requestClosed ? (
                     <Button
                       label={
                         saving
-                          ? "Escalating…"
-                          : "Escalate to Payment Investigation"
+                          ? "Saving…"
+                          : detail.request.status === "RESOLVED"
+                            ? "Close request"
+                            : "Save changes"
                       }
-                      disabled={saving || !investigationReason.trim()}
-                      onPress={() => void escalateInvestigation()}
+                      disabled={
+                        saving ||
+                        (detail.request.status === "RESOLVED" &&
+                          editStatus !== "CLOSED")
+                      }
+                      onPress={() => void update()}
                     />
-                  </>
-                )}
-                {candidates.length > 0 ? (
-                  <View style={{ gap: theme.spacing.xs }}>
-                    <Text variant="bodyStrong" color="text">
-                      Existing verified exceptions
+                  ) : (
+                    <Text variant="bodySmall" color="textMuted">
+                      Operational fields are locked after closure.
                     </Text>
-                    {candidates.map((candidate) => (
-                      <View
-                        key={candidate.financialExceptionId}
-                        style={{
-                          padding: theme.spacing.sm,
-                          borderWidth: 1,
-                          borderColor: theme.colors.border,
-                          borderRadius: theme.radius.sm,
-                          gap: theme.spacing.xs,
-                        }}
-                      >
-                        <Text variant="body" color="text">
-                          {candidate.currencyCode}{" "}
-                          {(candidate.amountMinor / 100).toFixed(2)} ·{" "}
-                          {label(candidate.caseStatus)}
-                        </Text>
+                  )}
+                </View>
+              ) : null}
+            </SupportSection>
+            <SupportSection
+              title="04  Resolution & refund"
+              subtitle={
+                operationalFieldsLocked
+                  ? "Read-only after resolution"
+                  : "Choose and complete a resolution"
+              }
+              open={sections.resolution}
+              onToggle={() => toggleSection("resolution")}
+            >
+              {!isPlatform && detail.request.category === "PAYMENT" ? (
+                <View style={{ gap: theme.spacing.sm }}>
+                  <Text variant="h3" color="text">
+                    Payment Investigation
+                  </Text>
+                  {investigation ? (
+                    <View style={{ gap: theme.spacing.xs }}>
+                      <Text variant="bodyStrong" color="text">
+                        {label(investigation.state)}
+                      </Text>
+                      <Text variant="bodySmall" color="textMuted">
+                        {investigation.escalationReason}
+                      </Text>
+                      {investigation.paymentReference ? (
                         <Text variant="caption" color="textMuted">
-                          {candidate.providerReferenceId ||
-                            candidate.paymentIntentId ||
-                            candidate.financialExceptionId}
+                          Reference: {investigation.paymentReference}
                         </Text>
+                      ) : null}
+                      {investigation.financialExceptionId ? (
                         <Button
-                          label="Link verified exception"
+                          label="View linked exception"
                           variant="secondary"
-                          disabled={
-                            saving ||
-                            investigation?.financialExceptionId ===
-                              candidate.financialExceptionId
-                          }
+                          disabled={operationalFieldsLocked}
                           onPress={() =>
-                            void linkException(candidate.financialExceptionId)
+                            router.push(
+                              `${APP_ROUTES.orgAdmin.paymentExceptions(scopedOrganizationId)}?financialExceptionId=${encodeURIComponent(investigation.financialExceptionId!)}` as never,
+                            )
                           }
                         />
+                      ) : null}
+                    </View>
+                  ) : !operationalFieldsLocked ? (
+                    <>
+                      <Text variant="bodySmall" color="textMuted">
+                        Escalate this customer-reported payment concern for
+                        internal review. This does not create a verified
+                        financial exception or charge the customer.
+                      </Text>
+                      <TextArea
+                        label="Reason for escalation"
+                        value={investigationReason}
+                        onChangeText={setInvestigationReason}
+                        placeholder="Explain why financial review is needed"
+                        maxLength={500}
+                      />
+                      <Input
+                        label="Payment or order reference (optional)"
+                        value={paymentReference}
+                        onChangeText={setPaymentReference}
+                        placeholder="Receipt, payment, order, or attempt reference"
+                        editable={!saving}
+                      />
+                      <TextArea
+                        label="Investigation details (optional)"
+                        value={investigationDescription}
+                        onChangeText={setInvestigationDescription}
+                        placeholder="Known supporting identifiers or context"
+                        maxLength={2000}
+                      />
+                      <Button
+                        label={
+                          saving
+                            ? "Escalating…"
+                            : "Escalate to Payment Investigation"
+                        }
+                        disabled={saving || !investigationReason.trim()}
+                        onPress={() => void escalateInvestigation()}
+                      />
+                    </>
+                  ) : (
+                    <Text variant="bodySmall" color="textMuted">
+                      Investigation is read-only.
+                    </Text>
+                  )}
+                  {candidates.length > 0 ? (
+                    <View style={{ gap: theme.spacing.xs }}>
+                      <Text variant="bodyStrong" color="text">
+                        Existing verified exceptions
+                      </Text>
+                      {candidates.map((candidate) => (
+                        <View
+                          key={candidate.financialExceptionId}
+                          style={{
+                            padding: theme.spacing.sm,
+                            borderWidth: 1,
+                            borderColor: theme.colors.border,
+                            borderRadius: theme.radius.sm,
+                            gap: theme.spacing.xs,
+                          }}
+                        >
+                          <Text variant="body" color="text">
+                            {candidate.currencyCode}{" "}
+                            {(candidate.amountMinor / 100).toFixed(2)} ·{" "}
+                            {label(candidate.caseStatus)}
+                          </Text>
+                          <Text variant="caption" color="textMuted">
+                            {candidate.providerReferenceId ||
+                              candidate.paymentIntentId ||
+                              candidate.financialExceptionId}
+                          </Text>
+                          <Button
+                            label="Link verified exception"
+                            variant="secondary"
+                            disabled={
+                              saving ||
+                              operationalFieldsLocked ||
+                              investigation?.financialExceptionId ===
+                                candidate.financialExceptionId
+                            }
+                            onPress={() =>
+                              void linkException(candidate.financialExceptionId)
+                            }
+                          />
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+              {!isPlatform && (
+                <View style={{ gap: theme.spacing.md }}>
+                  {hasRecordedRefund ? (
+                    <View style={{ gap: theme.spacing.xs }}>
+                      <Text variant="bodyStrong" color="text">
+                        Resolution decision
+                      </Text>
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: theme.colors.border,
+                          borderRadius: theme.radius.md,
+                          padding: theme.spacing.md,
+                          backgroundColor: theme.colors.surfaceAlt,
+                        }}
+                      >
+                        <Text variant="bodyStrong" color="text">
+                          {recordedRefundAction === "REFUND"
+                            ? "Refund customer"
+                            : recordedRefundAction === "REFUND_AND_CANCEL"
+                              ? "Refund and cancel membership"
+                              : "Refund recorded"}
+                        </Text>
+                        {recordedRefundAction === null && (
+                          <Text variant="caption" color="textMuted">
+                            The saved refund action is not provided by this API.
+                            View the refund below; do not assume membership
+                            cancellation.
+                          </Text>
+                        )}
+                        {linkedRefundInfo?.hasSucceeded && (
+                          <Text variant="caption" color="textMuted">
+                            Financial resolution locked because a refund has
+                            been processed. The completed refund cannot be
+                            changed or cancelled here.
+                          </Text>
+                        )}
                       </View>
-                    ))}
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
-            {!isPlatform || isPlatformTicket ? (
-              <View style={{ gap: theme.spacing.sm }}>
-                <Text variant="h3" color="text">
-                  Manage request
-                </Text>
-                <ReferenceSelect
-                  label="Status"
-                  value={editStatus}
-                  items={
-                    detail.request.status === "RESOLVED"
-                      ? ["RESOLVED", "CLOSED"]
-                      : statuses
-                  }
-                  onChange={setEditStatus}
-                  disabled={requestClosed}
-                  getItemId={(item) => item}
-                  renderItemLabel={label}
-                />
-                <ReferenceSelect
-                  label="Priority"
-                  value={editPriority}
-                  items={priorities}
-                  onChange={setEditPriority}
-                  disabled={operationalFieldsLocked}
-                  getItemId={(item) => item}
-                  renderItemLabel={label}
-                />
-                {!isPlatformTicket ? (
-                  <ReferenceSelect
-                    label="Assign to"
-                    value={editAssignee}
-                    items={assignees}
-                    onChange={setEditAssignee}
-                    placeholder="Select administrator"
-                    disabled={operationalFieldsLocked}
-                    getItemId={(item) => item.userId}
-                    renderItemLabel={(item) => item.name}
-                  />
-                ) : null}
-                <TextArea
-                  label="Resolution summary"
-                  value={resolution}
-                  onChangeText={setResolution}
-                  placeholder="Required when resolving this request"
-                  maxLength={2000}
-                  editable={!operationalFieldsLocked}
-                />
-                {!requestClosed ? (
-                  <Button
-                    label={
-                      saving
-                        ? "Saving…"
-                        : detail.request.status === "RESOLVED"
-                          ? "Close request"
-                          : "Save changes"
-                    }
-                    disabled={
-                      saving ||
-                      (detail.request.status === "RESOLVED" &&
-                        editStatus !== "CLOSED")
-                    }
-                    onPress={() => void update()}
-                  />
-                ) : (
-                  <Text variant="bodySmall" color="textMuted">
-                    Operational fields are locked after closure.
-                  </Text>
-                )}
-              </View>
-            ) : null}
-            {!isPlatform && detail.request.status !== "CLOSED" && (
-              <View style={{ gap: theme.spacing.md }}>
-                <CaseResolutionSelector
-                  key={`${detail.request.supportRequestId}:resolution`}
-                  organizationId={scopedOrganizationId}
-                  scope="SUPPORT"
-                  action={refundResolutionAction}
-                  onActionChange={setRefundResolutionAction}
-                />
-
-                {refundResolutionAction === "REFUND" && (
+                    </View>
+                  ) : !operationalFieldsLocked ? (
+                    <CaseResolutionSelector
+                      key={`${detail.request.supportRequestId}:resolution`}
+                      organizationId={scopedOrganizationId}
+                      scope="SUPPORT"
+                      action={refundResolutionAction}
+                      onActionChange={setRefundResolutionAction}
+                    />
+                  ) : (
+                    <Text variant="bodySmall" color="textMuted">
+                      No refund resolution recorded.
+                    </Text>
+                  )}
                   <RefundResolutionPanel
+                    readOnly={operationalFieldsLocked}
+                    onRefundsLoaded={handleRefundsLoaded}
+                    canCreate={
+                      !!effectiveRefundAction &&
+                      (!hasRecordedRefund || !!recordedRefundAction)
+                    }
                     key={`${detail.request.supportRequestId}:refund`}
                     organizationId={scopedOrganizationId}
                     supportRequestId={detail.request.supportRequestId}
+                    resolutionAction={
+                      effectiveRefundAction as "REFUND" | "REFUND_AND_CANCEL"
+                    }
                     paymentIntentId={
                       candidates.find(
                         (candidate) =>
@@ -1029,9 +1238,9 @@ export function SupportRequestsScreen({
                       )?.currencyCode
                     }
                   />
-                )}
-              </View>
-            )}
+                </View>
+              )}
+            </SupportSection>
             {detail.feedback ? (
               <View style={{ gap: theme.spacing.xs }}>
                 <Text variant="h3" color="text">
@@ -1053,28 +1262,32 @@ export function SupportRequestsScreen({
                 </Text>
               </View>
             ) : null}
-            <View style={{ gap: theme.spacing.sm }}>
-              <Text variant="h3" color="text">
-                Activity history
-              </Text>
-              {detail.events.map((event) => (
-                <View
-                  key={event.eventId}
-                  style={{
-                    borderLeftWidth: 2,
-                    borderLeftColor: theme.colors.border,
-                    paddingLeft: theme.spacing.md,
-                  }}
-                >
-                  <Text variant="bodySmall" color="text">
-                    {event.description}
-                  </Text>
-                  <Text variant="caption" color="textMuted">
-                    {new Date(event.createdAt).toLocaleString()}
-                  </Text>
-                </View>
-              ))}
-            </View>
+            <SupportSection
+              title="05  Activity history"
+              subtitle={`${detail.events.length} events`}
+              open={sections.activity}
+              onToggle={() => toggleSection("activity")}
+            >
+              <View style={{ gap: theme.spacing.sm }}>
+                {detail.events.map((event) => (
+                  <View
+                    key={event.eventId}
+                    style={{
+                      borderLeftWidth: 2,
+                      borderLeftColor: theme.colors.border,
+                      paddingLeft: theme.spacing.md,
+                    }}
+                  >
+                    <Text variant="bodySmall" color="text">
+                      {event.description}
+                    </Text>
+                    <Text variant="caption" color="textMuted">
+                      {new Date(event.createdAt).toLocaleString()}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </SupportSection>
           </View>
         ) : null}
       </Modal>

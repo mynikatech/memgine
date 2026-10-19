@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 192-refund-preflight-and-action-read
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/192-refund-preflight-and-action-read.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

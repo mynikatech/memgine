@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefundResolutionPanel } from "@/src/ui/domain/RefundResolutionPanel";
 
 import { CaseResolutionSelector } from "@/src/ui/domain/CaseResolutionSelector";
+import { PaymentExceptionTransactionDetails } from "@/src/ui/domain/PaymentExceptionTransactionDetails";
 import {
   refundResolutionApi,
   type LinkedRefund,
@@ -1026,6 +1027,10 @@ function OrganizationPaymentExceptions({
 
                   {detail.caseStatus !== "CLOSED" && (
                     <View style={styles.sectionCard}>
+                      <PaymentExceptionTransactionDetails
+                        organizationId={organizationId}
+                        paymentIntentId={detail.paymentIntentId}
+                      />
                       <CaseResolutionSelector
                         key={`${detail.financialExceptionId}:resolution`}
                         organizationId={organizationId}
@@ -1037,7 +1042,8 @@ function OrganizationPaymentExceptions({
                     </View>
                   )}
 
-                  {caseResolutionAction === "REFUND" &&
+                  {(caseResolutionAction === "REFUND" ||
+                    caseResolutionAction === "REFUND_AND_CANCEL") &&
                     detail.paymentIntentId &&
                     detail.caseStatus !== "CLOSED" && (
                       <View style={styles.sectionCard}>
@@ -1045,6 +1051,11 @@ function OrganizationPaymentExceptions({
                           key={`${detail.financialExceptionId}:refund`}
                           organizationId={organizationId}
                           financialExceptionId={detail.financialExceptionId}
+                          resolutionAction={
+                            caseResolutionAction as
+                              | "REFUND"
+                              | "REFUND_AND_CANCEL"
+                          }
                           paymentIntentId={detail.paymentIntentId}
                           currencyCode={detail.currencyCode}
                           suggestedAmountMinor={detail.amountMinor}

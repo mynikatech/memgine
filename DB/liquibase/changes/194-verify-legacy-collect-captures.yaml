@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 194-verify-legacy-collect-captures
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/194-verify-legacy-collect-captures.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

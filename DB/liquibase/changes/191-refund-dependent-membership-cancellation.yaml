@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 191-refund-dependent-membership-cancellation
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/191-refund-dependent-membership-cancellation.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

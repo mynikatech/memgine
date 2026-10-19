@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 193-enable-refund-and-cancel
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/193-enable-refund-and-cancel.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

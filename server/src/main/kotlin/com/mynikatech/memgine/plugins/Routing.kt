@@ -29,6 +29,7 @@ import com.mynikatech.memgine.component.payment.PoyntCollectPaymentProvider
 import com.mynikatech.memgine.component.payment.PoyntCollectRefundAdapter
 import com.mynikatech.memgine.component.payment.paymentRoutes
 import com.mynikatech.memgine.component.payment.PaymentRefundService
+import com.mynikatech.memgine.component.payment.PoyntOriginalCaptureVerifier
 import com.mynikatech.memgine.component.payment.paymentRefundRoutes
 import com.mynikatech.memgine.component.payment.FinancialExceptionService
 import com.mynikatech.memgine.component.payment.financialExceptionRoutes
@@ -216,6 +217,10 @@ fun Application.configureRouting(
         database.jdbi,
         poyntCollectRefundAdapter = PoyntCollectRefundAdapter(
             config.poynt.collectBaseUrl,
+            PoyntCloudHttpTransport(config.poynt.collectBaseUrl, config.poynt.apiVersion),
+            poyntTokens::token
+        ),
+        originalCaptureVerifier = PoyntOriginalCaptureVerifier(
             PoyntCloudHttpTransport(config.poynt.collectBaseUrl, config.poynt.apiVersion),
             poyntTokens::token
         ),

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
+import { CustomerPaymentSelector } from "@/src/ui/domain/CustomerPaymentSelector";
+import type { InvestigatedPayment } from "@/src/data/api/transaction-investigation-api";
 import { Button, Input, ReferenceSelect, Text, TextArea } from "@/src/ui";
 import {
   refundResolutionApi,
@@ -7,9 +9,6 @@ import {
   type RefundRequest,
   type ResolutionOption,
 } from "@/src/data/api/refund-resolution-api";
-
-import { CustomerPaymentSelector } from "@/src/ui/domain/CustomerPaymentSelector";
-import type { InvestigatedPayment } from "@/src/data/api/transaction-investigation-api";
 const fmt = (minor: number, currency: string) =>
   `${currency} ${(minor / 100).toFixed(2)}`;
 const unwrap = <T,>(response: {
@@ -21,7 +20,6 @@ const unwrap = <T,>(response: {
     throw new Error(response.error?.message ?? "Refund operation failed.");
   return response.data as T;
 };
-
 /** The server is authoritative: the panel cannot approve, fake success, or bypass refund eligibility. */
 export function RefundResolutionPanel({
   organizationId,
@@ -31,6 +29,10 @@ export function RefundResolutionPanel({
   commerceTransactionId,
   currencyCode,
   suggestedAmountMinor,
+  resolutionAction = "REFUND",
+  readOnly = false,
+  canCreate = true,
+  onRefundsLoaded,
 }: {
   organizationId: string;
   supportRequestId?: string;
@@ -39,11 +41,18 @@ export function RefundResolutionPanel({
   commerceTransactionId?: string | null;
   currencyCode?: string;
   suggestedAmountMinor?: number;
+  resolutionAction?: "REFUND" | "REFUND_AND_CANCEL";
+  readOnly?: boolean;
+  canCreate?: boolean;
+  onRefundsLoaded?: (refunds: LinkedRefund[]) => void;
 }) {
   const [refunds, setRefunds] = useState<LinkedRefund[]>([]);
   const [amount, setAmount] = useState("");
   const [selectedPayment, setSelectedPayment] =
     useState<InvestigatedPayment | null>(null);
+  const [membershipActionStatus, setMembershipActionStatus] = useState<
+    Record<string, string>
+  >({});
   const [reason, setReason] = useState("");
   const [reasons, setReasons] = useState<ResolutionOption[]>([]);
   const [explanation, setExplanation] = useState("");
@@ -51,6 +60,8 @@ export function RefundResolutionPanel({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [confirm, setConfirm] = useState<string | null>(null);
+  const [showNewRefund, setShowNewRefund] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const keyRef = useRef<string | null>(null);
   useEffect(() => {
     let active = true;
@@ -83,8 +94,10 @@ export function RefundResolutionPanel({
           organizationId,
           financialExceptionId!,
         );
-    setRefunds(unwrap(result));
-  }, [organizationId, supportRequestId, financialExceptionId]);
+    const loaded = unwrap(result);
+    setRefunds(loaded);
+    onRefundsLoaded?.(loaded);
+  }, [organizationId, supportRequestId, financialExceptionId, onRefundsLoaded]);
   useEffect(() => {
     setRefunds([]);
     setError("");
@@ -96,13 +109,56 @@ export function RefundResolutionPanel({
     );
   }, [load]);
   const resolvedIntentId =
-    paymentIntentId || selectedPayment?.paymentIntentId || "";
+    selectedPayment?.paymentIntentId || paymentIntentId || "";
+  const activeCurrency = selectedPayment?.currencyCode || currencyCode;
+  const onPaymentSelect = (payment: InvestigatedPayment | null) => {
+    setSelectedPayment(payment);
+    keyRef.current = null;
+    setAmount("");
+  };
+  const checkMembershipAction = async (refundId: string) => {
+    try {
+      const result = unwrap(
+        await refundResolutionApi.completeMembershipAction(
+          organizationId,
+          refundId,
+        ),
+      );
+      setMembershipActionStatus((previous) => ({
+        ...previous,
+        [refundId]: result?.actionStatus ?? "NO_CANCELLATION",
+      }));
+      setMessage(
+        result?.actionStatus === "COMPLETED"
+          ? "Refund confirmed and linked membership cancelled."
+          : result?.actionStatus === "NEEDS_REVIEW"
+            ? "Refund completed, but membership cancellation needs review. Do not issue another refund."
+            : "Membership cancellation is waiting for a verified successful refund.",
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to check linked membership cancellation.",
+      );
+    }
+  };
   const create = async () => {
-    if (busy) return;
+    if (busy || readOnly) return;
     setError("");
     setMessage("");
     if (!reason || !reasons.some((item) => item.code === reason)) {
       setError("Choose a refund reason from reference data.");
+      return;
+    }
+    if (
+      resolutionAction === "REFUND_AND_CANCEL" &&
+      selectedPayment &&
+      !selectedPayment.subscriptionId
+    ) {
+      setError(
+        "This payment has no linked membership. Choose Refund customer instead.",
+      );
       return;
     }
     if (!!resolvedIntentId === !!commerceTransactionId) {
@@ -130,16 +186,6 @@ export function RefundResolutionPanel({
     }
     if (!keyRef.current)
       keyRef.current = `case-refund-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    if (
-      supportRequestId &&
-      !paymentIntentId &&
-      selectedPayment?.paymentStatus !== "SUCCEEDED"
-    ) {
-      setError(
-        "Select a verified successful payment; payment status will be rechecked by the server.",
-      );
-      return;
-    }
     const body: RefundRequest = {
       paymentIntentId: resolvedIntentId || undefined,
       commerceTransactionId: commerceTransactionId || undefined,
@@ -149,15 +195,15 @@ export function RefundResolutionPanel({
       supportRequestId,
       financialExceptionId: resolvedIntentId ? financialExceptionId : undefined,
       idempotencyKey: keyRef.current,
+      resolutionAction,
     };
     setBusy(true);
     try {
       unwrap(await refundResolutionApi.create(organizationId, body));
       keyRef.current = null;
       setAmount("");
-      setMessage(
-        "Refund created and auto-approved. Execution is a separate action.",
-      );
+      setShowNewRefund(false);
+      setMessage("Refund request created. Confirm execution below when ready.");
       await load();
     } catch (cause) {
       setError(
@@ -171,7 +217,7 @@ export function RefundResolutionPanel({
     refund: LinkedRefund,
     operation: "execute" | "reconcile",
   ) => {
-    if (busy) return;
+    if (busy || readOnly) return;
     setBusy(true);
     setError("");
     setMessage("");
@@ -189,8 +235,15 @@ export function RefundResolutionPanel({
             );
       const status = unwrap(result);
       setMessage(
-        `Refund status: ${status.executionStatus}. Verify provider outcome before closing the case.`,
+        status.executionStatus === "SUCCEEDED"
+          ? "Refund confirmed successful."
+          : `Refund status: ${status.executionStatus}. Do not close the case until it is confirmed successful.`,
       );
+      if (
+        status.executionStatus === "SUCCEEDED" &&
+        resolutionAction === "REFUND_AND_CANCEL"
+      )
+        await checkMembershipAction(refund.paymentRefundId);
       await load();
     } catch (cause) {
       setError(
@@ -200,144 +253,292 @@ export function RefundResolutionPanel({
       setBusy(false);
     }
   };
+  const latest = refunds[0] ?? null;
+  const hasOutstanding = refunds.some((r) =>
+    ["READY", "PENDING", "UNKNOWN_REQUIRES_RECONCILIATION"].includes(
+      r.executionStatus,
+    ),
+  );
+  const allowNew =
+    !readOnly &&
+    canCreate &&
+    !hasOutstanding &&
+    (refunds.length === 0 || showNewRefund);
   return (
-    <View style={{ gap: 12, paddingVertical: 12 }}>
-      <Text variant="h3" color="text">
-        Refund resolution
-      </Text>
-      <Text variant="caption" color="textMuted">
-        Only authorized administrators can request refunds. Creating a refund
-        does not send money; provider execution requires confirmation.
-      </Text>
-      {refunds.map((r) => (
+    <View style={{ gap: 14 }}>
+      {!latest && !canCreate && (
+        <Text variant="bodySmall" color="textMuted">
+          No refund is currently linked to this request. Select a refund
+          resolution to create one.
+        </Text>
+      )}
+      {!!latest &&
+        refunds.map((r, i) => (
+          <View
+            key={r.paymentRefundId}
+            style={{
+              borderWidth: 1,
+              borderColor: "#9AA5B555",
+              borderRadius: 12,
+              padding: 14,
+              gap: 10,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: 8,
+              }}
+            >
+              <View style={{ gap: 3 }}>
+                <Text variant="caption" color="textMuted">
+                  {i === 0 ? "Latest refund" : "Earlier refund"}
+                </Text>
+                <Text variant="h3" color="text">
+                  {fmt(r.refundAmountMinor, r.currencyCode)}
+                </Text>
+              </View>
+              <Text variant="bodyStrong" color="text">
+                {r.executionStatus === "SUCCEEDED"
+                  ? "✓ Completed"
+                  : r.executionStatus.replaceAll("_", " ")}
+              </Text>
+            </View>
+            {r.executionStatus === "SUCCEEDED" ? (
+              <Text variant="bodySmall" color="textMuted">
+                Refund verified successful.
+                {resolutionAction === "REFUND"
+                  ? " Membership unchanged."
+                  : resolutionAction === "REFUND_AND_CANCEL"
+                    ? " Review dependent membership status where applicable."
+                    : ""}
+              </Text>
+            ) : r.executionStatus === "READY" ? (
+              <>
+                <Text variant="bodySmall" color="textMuted">
+                  Refund request created and approved. No money has been
+                  returned yet.
+                </Text>
+                {!readOnly && (
+                  <>
+                    {confirm === r.paymentRefundId && (
+                      <Text variant="bodySmall" color="text">
+                        Confirm returning{" "}
+                        {fmt(r.refundAmountMinor, r.currencyCode)} to the
+                        customer. This may move funds.
+                      </Text>
+                    )}
+                    <Button
+                      label={
+                        confirm === r.paymentRefundId
+                          ? `Confirm refund · ${fmt(r.refundAmountMinor, r.currencyCode)}`
+                          : "Continue to refund confirmation"
+                      }
+                      disabled={busy}
+                      onPress={() =>
+                        confirm === r.paymentRefundId
+                          ? void action(r, "execute")
+                          : setConfirm(r.paymentRefundId)
+                      }
+                    />
+                    {confirm === r.paymentRefundId && (
+                      <Button
+                        label="Back"
+                        variant="outline"
+                        onPress={() => setConfirm(null)}
+                      />
+                    )}
+                  </>
+                )}
+              </>
+            ) : ["PENDING", "UNKNOWN_REQUIRES_RECONCILIATION"].includes(
+                r.executionStatus,
+              ) ? (
+              <>
+                <Text variant="bodySmall" color="textMuted">
+                  Refund outcome requires confirmation. Do not create or send
+                  another refund.
+                </Text>
+                {!readOnly && (
+                  <Button
+                    label="Check refund status"
+                    variant="outline"
+                    disabled={busy}
+                    onPress={() => void action(r, "reconcile")}
+                  />
+                )}
+              </>
+            ) : (
+              <Text variant="bodySmall" color="textMuted">
+                Review this refund before creating another request.
+              </Text>
+            )}
+            {resolutionAction === "REFUND_AND_CANCEL" &&
+              r.executionStatus === "SUCCEEDED" && (
+                <>
+                  {!!membershipActionStatus[r.paymentRefundId] && (
+                    <Text variant="bodySmall" color="textMuted">
+                      Membership:{" "}
+                      {membershipActionStatus[r.paymentRefundId].replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    </Text>
+                  )}
+                  {!readOnly && (
+                    <Button
+                      label="Check linked membership cancellation"
+                      variant="outline"
+                      disabled={busy}
+                      onPress={() =>
+                        void checkMembershipAction(r.paymentRefundId)
+                      }
+                    />
+                  )}
+                </>
+              )}
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setShowDetails(!showDetails)}
+            >
+              <Text variant="caption" color="textMuted">
+                {showDetails
+                  ? "Hide transaction reference"
+                  : "View transaction reference"}
+              </Text>
+            </Pressable>
+            {showDetails && (
+              <Text variant="caption" color="textMuted">
+                {r.paymentRefundId} · {r.originalProviderCode} ·{" "}
+                {r.approvalStatus}
+              </Text>
+            )}
+          </View>
+        ))}
+      {allowNew && (
         <View
-          key={r.paymentRefundId}
           style={{
-            padding: 10,
-            gap: 6,
+            gap: 12,
+            padding: 14,
             borderWidth: 1,
-            borderColor: "#88888855",
-            borderRadius: 8,
+            borderColor: "#9AA5B555",
+            borderRadius: 12,
           }}
         >
           <Text variant="bodyStrong" color="text">
-            {fmt(r.refundAmountMinor, r.currencyCode)} — {r.executionStatus}
+            {resolutionAction === "REFUND_AND_CANCEL"
+              ? "Refund and cancel membership"
+              : "Refund customer"}
           </Text>
-          <Text variant="caption" color="textMuted">
-            {r.paymentRefundId} · {r.originalProviderCode} · {r.approvalStatus}
-          </Text>
-          {r.executionStatus === "READY" && (
-            <Button
-              label={
-                confirm === r.paymentRefundId
-                  ? "Confirm provider refund"
-                  : "Execute refund"
-              }
-              disabled={busy}
-              onPress={() =>
-                confirm === r.paymentRefundId
-                  ? void action(r, "execute")
-                  : setConfirm(r.paymentRefundId)
-              }
+          {!!supportRequestId && (
+            <CustomerPaymentSelector
+              organizationId={organizationId}
+              supportRequestId={supportRequestId}
+              onSelect={onPaymentSelect}
             />
           )}
-          {confirm === r.paymentRefundId && (
-            <Button
-              label="Cancel"
-              variant="outline"
-              onPress={() => setConfirm(null)}
-            />
-          )}
-          {(r.executionStatus === "PENDING" ||
-            r.executionStatus === "UNKNOWN_REQUIRES_RECONCILIATION") && (
-            <Button
-              label="Check payment status"
-              disabled={busy}
-              variant="outline"
-              onPress={() => void action(r, "reconcile")}
-            />
+          {resolvedIntentId || commerceTransactionId ? (
+            <>
+              <Text variant="bodySmall" color="textMuted">
+                Original payment{" "}
+                {selectedPayment
+                  ? fmt(
+                      selectedPayment.amountMinor,
+                      selectedPayment.currencyCode,
+                    )
+                  : suggestedAmountMinor != null && activeCurrency
+                    ? fmt(suggestedAmountMinor, activeCurrency)
+                    : activeCurrency || ""}
+              </Text>
+              {resolutionAction === "REFUND_AND_CANCEL" && (
+                <Text variant="caption" color="textMuted">
+                  The linked membership will be cancelled only after verified
+                  refund success.
+                </Text>
+              )}
+              <Input
+                label={`Refund amount${activeCurrency ? ` (${activeCurrency})` : ""}`}
+                value={amount}
+                onChangeText={(v) => {
+                  setAmount(v);
+                  keyRef.current = null;
+                }}
+                placeholder="0.00"
+                keyboardType="decimal-pad"
+              />
+              <ReferenceSelect
+                label="Reason"
+                value={reason}
+                items={reasons}
+                getItemId={(v) => v.code}
+                renderItemLabel={(v) => v.name}
+                onChange={(v) => {
+                  setReason(v);
+                  keyRef.current = null;
+                }}
+              />
+              <TextArea
+                label="Details (optional unless required by reason)"
+                value={explanation}
+                onChangeText={(v) => {
+                  setExplanation(v);
+                  keyRef.current = null;
+                }}
+                placeholder="Brief explanation"
+                maxLength={500}
+              />
+              <Button
+                label={busy ? "Processing…" : "Create refund request"}
+                disabled={
+                  busy ||
+                  !amount.trim() ||
+                  !reason ||
+                  (resolutionAction === "REFUND_AND_CANCEL" &&
+                    !!selectedPayment &&
+                    !selectedPayment.subscriptionId)
+                }
+                onPress={() => void create()}
+              />
+            </>
+          ) : (
+            <Text variant="bodySmall" color="textMuted">
+              Select the customer&apos;s original payment to continue.
+            </Text>
           )}
         </View>
-      ))}
-      {supportRequestId && !paymentIntentId && !commerceTransactionId && (
-        <CustomerPaymentSelector
-          organizationId={organizationId}
-          supportRequestId={supportRequestId}
-          onSelect={(payment) => {
-            setSelectedPayment(payment);
-            keyRef.current = null;
-            setConfirm(null);
-            setAmount("");
-          }}
-        />
-      )}
-      {resolvedIntentId || commerceTransactionId ? (
-        <>
-          <Text variant="caption" color="textMuted">
-            Original: {paymentIntentId || commerceTransactionId}
-            {currencyCode ? ` · ${currencyCode}` : ""}
-            {suggestedAmountMinor != null && currencyCode
-              ? ` · recorded ${fmt(suggestedAmountMinor, currencyCode)}`
-              : ""}
-          </Text>
-          <Input
-            label="Refund amount (major units)"
-            value={amount}
-            onChangeText={(v) => {
-              setAmount(v);
-              keyRef.current = null;
-            }}
-            placeholder="0.00"
-            keyboardType="decimal-pad"
-          />
-          <ReferenceSelect
-            label="Refund reason"
-            value={reason}
-            items={reasons}
-            getItemId={(v) => v.code}
-            renderItemLabel={(v) => v.name}
-            onChange={(v) => {
-              setReason(v);
-              keyRef.current = null;
-            }}
-          />
-          <TextArea
-            value={explanation}
-            onChangeText={(v) => {
-              setExplanation(v);
-              keyRef.current = null;
-            }}
-            placeholder="Reason/details for audit"
-            maxLength={500}
-          />
-          <Button
-            label={busy ? "Processing…" : "Create auto-approved refund"}
-            disabled={busy || !amount.trim() || !reason}
-            onPress={() => void create()}
-          />
-        </>
-      ) : (
-        <Text variant="caption" color="textMuted">
-          Identify a successful original payment in the investigation before
-          initiating a refund.
-        </Text>
       )}
       {!!error && (
-        <Text variant="bodySmall" color="text">
+        <Text variant="bodySmall" color="danger">
           {error}
         </Text>
       )}
       {!!message && (
-        <Text variant="bodySmall" color="text">
+        <Text variant="bodySmall" color="textMuted">
           {message}
         </Text>
       )}
-      <Button
-        label="Refresh refunds"
-        variant="outline"
-        disabled={busy}
-        onPress={() => void load().catch((e) => setError(String(e)))}
-      />
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        {!readOnly && canCreate && !hasOutstanding && refunds.length > 0 && (
+          <Button
+            label={showNewRefund ? "Cancel new request" : "New refund"}
+            variant="outline"
+            onPress={() => setShowNewRefund(!showNewRefund)}
+          />
+        )}
+        <Button
+          label="Refresh refund status"
+          variant="outline"
+          disabled={busy}
+          onPress={() =>
+            void load().catch((e) =>
+              setError(e instanceof Error ? e.message : String(e)),
+            )
+          }
+        />
+      </View>
     </View>
   );
 }
