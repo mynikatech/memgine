@@ -1,5 +1,7 @@
 package com.mynikatech.memgine.component.commerce
 
+import com.mynikatech.memgine.component.payment.PaymentRefundService
+import com.mynikatech.memgine.component.payment.PoyntPaymentBridgeRefundCallbackParser
 import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.exception.ForbiddenException
 import com.mynikatech.memgine.model.common.ApiResponse
@@ -35,7 +37,8 @@ fun Route.poyntPaymentBridgeCallbackRoutes(
     service: CommerceService,
     counterPaymentService: CounterCommercePaymentService,
     headerName: String,
-    headerValue: String
+    headerValue: String,
+    paymentRefundService: PaymentRefundService? = null
 ) {
     route("/commerce/providers/poynt/payment-bridge") {
         post("/callback") {
@@ -48,6 +51,18 @@ fun Route.poyntPaymentBridgeCallbackRoutes(
             val callback = PoyntPaymentBridgeCallbackParser.parse(body)
             service.recordRemoteTerminalPaymentCallback(callback)
             counterPaymentService.finalizeRemoteTerminalPayment(callback.referenceId)
+            call.respond(ApiResponse.success(true, call.callId))
+        }
+        post("/refund-callback") {
+            if (headerName.isBlank() || headerValue.isBlank()) throw ForbiddenException("Poynt refund callback is unavailable")
+            PoyntPaymentBridgeCallbackSecurity.authenticate(call.request.headers[headerName], headerValue)
+            val body = PoyntPaymentBridgeCallbackSecurity.decode(
+                call.receive<ByteArray>(), call.request.headers["Content-Encoding"]
+            )
+            val callback = PoyntPaymentBridgeRefundCallbackParser.parse(body)
+            val refundService = paymentRefundService ?: throw ForbiddenException("Poynt refund callback is unavailable")
+            refundService.recordPoyntBridgeCallback(callback)
+            // This route never calls sale finalization or membership fulfillment.
             call.respond(ApiResponse.success(true, call.callId))
         }
     }

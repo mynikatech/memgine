@@ -22,8 +22,22 @@ fun Route.paymentRefundRoutes(service: PaymentRefundService) {
         post { call.respond(ApiResponse.success(service.request(organizationId(call), call.receive(), call.authenticatedPrincipal().userId), call.callId)) }
         get("/{refundId}") { val id=call.parameters["refundId"] ?: throw BadRequestException("Refund id is required"); call.respond(ApiResponse.success(service.detail(organizationId(call),id,call.authenticatedPrincipal().userId),call.callId)) }
         get("/{refundId}/execution") { val id=call.parameters["refundId"] ?: throw BadRequestException("Refund id is required"); call.respond(ApiResponse.success(service.executionStatus(organizationId(call),id,call.authenticatedPrincipal().userId),call.callId)) }
-        post("/{refundId}/execute") { val id=call.parameters["refundId"] ?: throw BadRequestException("Refund id is required"); call.respond(ApiResponse.success(service.executePoyntCollect(organizationId(call),id,call.authenticatedPrincipal().userId),call.callId)) }
-        post("/{refundId}/reconcile") { val id=call.parameters["refundId"] ?: throw BadRequestException("Refund id is required"); call.respond(ApiResponse.success(service.reconcilePoyntCollect(organizationId(call),id,call.authenticatedPrincipal().userId),call.callId)) }
+        post("/{refundId}/execute") { val id=call.parameters["refundId"] ?: throw BadRequestException("Refund id is required"); call.respond(ApiResponse.success(service.execute(organizationId(call),id,call.authenticatedPrincipal().userId),call.callId)) }
+        post("/{refundId}/reconcile") { val id=call.parameters["refundId"] ?: throw BadRequestException("Refund id is required"); call.respond(ApiResponse.success(service.reconcile(organizationId(call),id,call.authenticatedPrincipal().userId),call.callId)) }
+        route("/{refundId}/poynt-bridge") {
+            post("/verify-reference") {
+                val refundId=call.parameters["refundId"] ?: throw BadRequestException("Refund id is required")
+                call.respond(ApiResponse.success(service.verifyPoyntBridgeReference(
+                    organizationId(call),refundId,call.receive<PoyntBridgeReferenceVerificationRequestDto>(),
+                    call.authenticatedPrincipal().userId),call.callId))
+            }
+            post("/confirm-reference") {
+                val refundId=call.parameters["refundId"] ?: throw BadRequestException("Refund id is required")
+                call.respond(ApiResponse.success(service.confirmPoyntBridgeReference(
+                    organizationId(call),refundId,call.receive<PoyntBridgeReferenceConfirmationDto>(),
+                    call.authenticatedPrincipal().userId),call.callId))
+            }
+        }
         route("/{refundId}/poynt-collect") {
             post("/verify-reference") {
                 val refundId = call.parameters["refundId"] ?: throw BadRequestException("Refund id is required")

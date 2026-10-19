@@ -2,6 +2,8 @@ package com.mynikatech.memgine.component.payment
 
 import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.component.commerce.provider.poynt.PoyntCatalogConfiguration
+import com.mynikatech.memgine.component.commerce.provider.poynt.PoyntPaymentBridgeClient
+import com.mynikatech.memgine.component.commerce.provider.poynt.PoyntBridgeRefundDispatchRequest
 import kotlinx.serialization.Serializable
 import org.jdbi.v3.core.Jdbi
 import org.jdbi.v3.sqlobject.config.RegisterBeanMapper
@@ -27,13 +29,14 @@ class UnsupportedPaymentRefundProvider(override val providerCode: String) : Paym
 
 @Serializable
 data class PaymentRefundRequestDto(
-    val paymentIntentId: String,
+    val paymentIntentId: String? = null,
     val amountMinor: Long,
     val reasonCode: String,
     val explanation: String? = null,
     val supportRequestId: String? = null,
     val financialExceptionId: String? = null,
-    val idempotencyKey: String
+    val idempotencyKey: String,
+    val commerceTransactionId: String? = null
 )
 @Serializable
 data class PaymentRefundSummaryDto(
@@ -73,6 +76,14 @@ data class PaymentRefundExecutionDto(
     var recoveryAmbiguous: Boolean = false
 )
 
+data class PaymentBridgeRefundExecutionDto(
+    var paymentRefundId: String = "", var paymentRefundAttemptId: String = "", var dispatchRequired: Boolean = false,
+    var attemptStatus: String = "", var providerReference: String? = null, var originalCaptureId: String = "",
+    var refundAmountMinor: Long = 0, var currencyCode: String = "", var integrationConfigurationId: String? = null,
+    var businessId: String? = null, var providerStoreId: String? = null,
+    var providerDeviceId: String? = null, var targetPosDeviceId: String? = null
+)
+
 @Serializable
 data class PaymentRefundExecutionStatusDto(
     var paymentRefundId: String = "",
@@ -106,11 +117,48 @@ data class PoyntCollectReferenceVerificationDto(
     var verifiedAt: String = ""
 )
 
+@Serializable
+data class PoyntBridgeReferenceVerificationRequestDto(
+    val organizationId:String,val paymentRefundAttemptId:String,
+    val providerTransactionId:String,val attestation:String
+)
+@Serializable
+data class PoyntBridgeReferenceConfirmationDto(
+    val organizationId:String,val paymentRefundAttemptId:String,val verificationId:String
+)
+
 @RegisterBeanMapper(PaymentRefundSummaryDto::class)
 @RegisterBeanMapper(PaymentRefundDetailDto::class)
 interface PaymentRefundSql {
     @SqlQuery("SELECT * FROM payment_refund_request(:refundId,:organizationId,:paymentIntentId,:amountMinor,:reasonCode,:explanation,:supportRequestId,:financialExceptionId,:idempotencyKey,:actorUserId)")
     fun request(@Bind("refundId") refundId: String, @Bind("organizationId") organizationId: String, @Bind("paymentIntentId") paymentIntentId: String, @Bind("amountMinor") amountMinor: Long, @Bind("reasonCode") reasonCode: String, @Bind("explanation") explanation: String?, @Bind("supportRequestId") supportRequestId: String?, @Bind("financialExceptionId") financialExceptionId: String?, @Bind("idempotencyKey") idempotencyKey: String, @Bind("actorUserId") actorUserId: String): PaymentRefundSummaryDto?
+    @SqlQuery("SELECT * FROM payment_refund_request_commerce(:refundId,:organizationId,:commerceTransactionId,:amountMinor,:reasonCode,:explanation,:supportRequestId,:idempotencyKey,:actorUserId)")
+    fun requestCommerce(@Bind("refundId") refundId: String, @Bind("organizationId") organizationId: String, @Bind("commerceTransactionId") commerceTransactionId: String, @Bind("amountMinor") amountMinor: Long, @Bind("reasonCode") reasonCode: String, @Bind("explanation") explanation: String?, @Bind("supportRequestId") supportRequestId: String?, @Bind("idempotencyKey") idempotencyKey: String, @Bind("actorUserId") actorUserId: String): PaymentRefundSummaryDto?
+    @SqlQuery("SELECT * FROM payment_refund_claim_poynt_bridge_execution(:organizationId,:refundId,:attemptId,:actorUserId)")
+    @RegisterBeanMapper(PaymentBridgeRefundExecutionDto::class)
+    fun claimPoyntBridgeExecution(@Bind("organizationId") organizationId:String,@Bind("refundId") refundId:String,@Bind("attemptId") attemptId:String,@Bind("actorUserId") actor:String): PaymentBridgeRefundExecutionDto?
+    @SqlQuery("SELECT * FROM payment_refund_record_poynt_bridge_outcome(:organizationId,:refundId,:attemptId,:outcome,:providerReference,:actorUserId)")
+    @RegisterBeanMapper(PaymentRefundExecutionStatusDto::class)
+    fun recordPoyntBridgeOutcome(@Bind("organizationId") organizationId:String,@Bind("refundId") refundId:String,@Bind("attemptId") attemptId:String,@Bind("outcome") outcome:String,@Bind("providerReference") providerReference:String?,@Bind("actorUserId") actor:String): PaymentRefundExecutionStatusDto?
+    @SqlQuery("SELECT * FROM payment_refund_poynt_bridge_execution_status(:organizationId,:refundId,:actorUserId)")
+    @RegisterBeanMapper(PaymentRefundExecutionStatusDto::class)
+    fun poyntBridgeExecutionStatus(@Bind("organizationId") organizationId:String,@Bind("refundId") refundId:String,@Bind("actorUserId") actor:String):PaymentRefundExecutionStatusDto?
+    @SqlQuery("SELECT * FROM payment_refund_poynt_bridge_context(:organizationId,:refundId,:actorUserId)")
+    @RegisterBeanMapper(PaymentBridgeRefundExecutionDto::class)
+    fun poyntBridgeContext(@Bind("organizationId") organizationId:String,@Bind("refundId") refundId:String,@Bind("actorUserId") actor:String):PaymentBridgeRefundExecutionDto?
+    @SqlQuery("SELECT * FROM payment_refund_record_poynt_bridge_callback(:attemptId,:outcome,:providerRefundId,:originalTransactionId,:amountMinor,:currencyCode,:businessId,:storeId)")
+    @RegisterBeanMapper(PaymentRefundExecutionStatusDto::class)
+    fun bridgeCallback(@Bind("attemptId") attemptId:String,@Bind("outcome") outcome:String,@Bind("providerRefundId") providerRefundId:String?,@Bind("originalTransactionId") originalTransactionId:String?,@Bind("amountMinor") amountMinor:Long?,@Bind("currencyCode") currencyCode:String?,@Bind("businessId") businessId:String?,@Bind("storeId") storeId:String?):PaymentRefundExecutionStatusDto?
+    @SqlQuery("SELECT * FROM payment_refund_bridge_record_verification(:verificationId,:organizationId,:refundId,:attemptId,:providerReference,:attestation,:actorUserId)")
+    @RegisterBeanMapper(PoyntCollectReferenceVerificationDto::class)
+    fun bridgeRecordVerification(@Bind("verificationId") verificationId:String,@Bind("organizationId") organizationId:String,
+        @Bind("refundId") refundId:String,@Bind("attemptId") attemptId:String,@Bind("providerReference") providerReference:String,
+        @Bind("attestation") attestation:String,@Bind("actorUserId") actor:String):PoyntCollectReferenceVerificationDto?
+    @SqlQuery("SELECT * FROM payment_refund_bridge_confirm_verified(:organizationId,:refundId,:attemptId,:verificationId,:actorUserId)")
+    @RegisterBeanMapper(PaymentRefundExecutionStatusDto::class)
+    fun bridgeConfirmVerification(@Bind("organizationId") organizationId:String,@Bind("refundId") refundId:String,
+        @Bind("attemptId") attemptId:String,@Bind("verificationId") verificationId:String,
+        @Bind("actorUserId") actor:String):PaymentRefundExecutionStatusDto?
     @SqlQuery("SELECT * FROM payment_refund_list(:organizationId,:actorUserId)") fun list(@Bind("organizationId") organizationId: String, @Bind("actorUserId") actorUserId: String): List<PaymentRefundSummaryDto>
     @SqlQuery("SELECT * FROM payment_refund_detail(:organizationId,:refundId,:actorUserId)") fun detail(@Bind("organizationId") organizationId: String, @Bind("refundId") refundId: String, @Bind("actorUserId") actorUserId: String): PaymentRefundDetailDto?
     @SqlQuery("SELECT * FROM payment_refund_platform_list(:actorUserId)") fun platformList(@Bind("actorUserId") actorUserId: String): List<PaymentRefundSummaryDto>
@@ -151,23 +199,170 @@ class PaymentRefundService(
     private val jdbi: Jdbi,
     private val approvalPolicy: PaymentRefundApprovalPolicy = MvpAutoApprovePaymentRefundPolicy,
     private val poyntCollectRefundAdapter: PoyntCollectRefundAdapter? = null,
-    private val poyntCollectRefundDispatchEnabled: Boolean = false
+    private val poyntCollectRefundDispatchEnabled: Boolean = false,
+    private val poyntBridgeRefundDispatchEnabled: Boolean = false,
+    private val poyntBridgeRefundClient: PoyntPaymentBridgeClient? = null,
+    private val poyntBridgeTerminalCheck: ((String,String,String,String,String,String)->Boolean)? = null,
+    private val poyntBridgeConfiguration: ((String,String,String)->PoyntCatalogConfiguration?)? = null,
+    private val poyntBridgeRefundCallbackUrl: String = "",
+    private val poyntBridgeCallbackHeaderName: String = "",
+    private val poyntBridgeCallbackHeaderValue: String = "",
+    private val poyntBridgeTtlSeconds: Long = 45L
 ) {
     private fun sql() = jdbi.onDemand(PaymentRefundSql::class.java)
     fun request(org: String, request: PaymentRefundRequestDto, actor: String): PaymentRefundSummaryDto {
-        if (request.paymentIntentId.isBlank() || request.idempotencyKey.isBlank()) throw BadRequestException("Payment and idempotency key are required")
+        val intentId = request.paymentIntentId?.trim().orEmpty()
+        val commerceId = request.commerceTransactionId?.trim().orEmpty()
+        if ((intentId.isBlank() == commerceId.isBlank()) || request.idempotencyKey.isBlank()) {
+            throw BadRequestException("Exactly one payment or commerce transaction and an idempotency key are required")
+        }
+        if (commerceId.isNotBlank() && !request.financialExceptionId.isNullOrBlank()) {
+            throw BadRequestException("Financial exceptions are not supported for commerce refunds")
+        }
         check(approvalPolicy.decide(request, actor) == PaymentRefundApprovalDecision.AUTO_APPROVED) {
             "The configured refund approval policy is not supported by the MVP ledger"
         }
-        return sql().request("PRF_${UUID.randomUUID()}", org, request.paymentIntentId, request.amountMinor, request.reasonCode, request.explanation, request.supportRequestId, request.financialExceptionId, request.idempotencyKey, actor) ?: throw BadRequestException("Refund request could not be created")
+        return if (intentId.isNotBlank()) {
+            sql().request("PRF_${UUID.randomUUID()}", org, intentId, request.amountMinor, request.reasonCode, request.explanation, request.supportRequestId, request.financialExceptionId, request.idempotencyKey, actor)
+        } else {
+            sql().requestCommerce("PRF_${UUID.randomUUID()}", org, commerceId, request.amountMinor, request.reasonCode, request.explanation, request.supportRequestId, request.idempotencyKey, actor)
+        } ?: throw BadRequestException("Refund request could not be created")
     }
     fun list(org: String, actor: String) = sql().list(org, actor)
     fun platformList(actor: String) = sql().platformList(actor)
     fun detail(org: String, id: String, actor: String) = sql().detail(org, id, actor) ?: throw BadRequestException("Refund request was not found")
 
     fun executionStatus(org: String, id: String, actor: String): PaymentRefundExecutionStatusDto =
-        sql().poyntCollectExecutionStatus(org, id, actor)
-            ?: throw BadRequestException("Collect refund execution is not available")
+        when (detail(org,id,actor).originalProviderCode) {
+            "POYNT_PAYMENT_BRIDGE" -> sql().poyntBridgeExecutionStatus(org,id,actor)
+            "POYNT_COLLECT" -> sql().poyntCollectExecutionStatus(org,id,actor)
+            else -> null
+        } ?: throw BadRequestException("Refund execution is not available")
+
+    fun execute(org:String,id:String,actor:String):PaymentRefundExecutionStatusDto =
+        when (detail(org,id,actor).originalProviderCode) {
+            "POYNT_PAYMENT_BRIDGE" -> executePoyntBridge(org,id,actor)
+            "POYNT_COLLECT" -> executePoyntCollect(org,id,actor)
+            else -> throw BadRequestException("Refund provider is not supported")
+        }
+
+    fun reconcile(org:String,id:String,actor:String):PaymentRefundExecutionStatusDto =
+        when (detail(org,id,actor).originalProviderCode) {
+            "POYNT_PAYMENT_BRIDGE" -> reconcilePoyntBridge(org,id,actor)
+            "POYNT_COLLECT" -> reconcilePoyntCollect(org,id,actor)
+            else -> throw BadRequestException("Refund provider is not supported")
+        }
+
+    fun executePoyntBridge(org:String,id:String,actor:String):PaymentRefundExecutionStatusDto {
+        if (!poyntBridgeRefundDispatchEnabled) throw BadRequestException("Payment Bridge refund dispatch is disabled")
+        val existing = detail(org,id,actor)
+        if (existing.originalProviderCode != "POYNT_PAYMENT_BRIDGE" || existing.commerceTransactionId.isNullOrBlank())
+            throw BadRequestException("Payment Bridge refund is not available")
+        // Validate configuration and historical identities BEFORE an irreversible claim.
+        val contextConfig = existing.originalProviderTransactionReference ?: throw BadRequestException("Original provider reference is unavailable")
+        val configuredClient = poyntBridgeRefundClient ?: throw BadRequestException("Bridge refund provider unavailable")
+        val context = sql().claimPoyntBridgeExecution(org,id,"PRA_${UUID.randomUUID()}",actor)
+            ?: throw BadRequestException("Bridge refund execution claim unavailable")
+        if (!context.dispatchRequired) return executionStatus(org,id,actor)
+        fun unknown():PaymentRefundExecutionStatusDto = sql().recordPoyntBridgeOutcome(org,id,context.paymentRefundAttemptId,
+            "UNKNOWN_REQUIRES_RECONCILIATION",null,actor)
+            ?: throw BadRequestException("Could not record uncertain Bridge refund outcome")
+        try {
+            val integrationId=context.integrationConfigurationId ?: return unknown()
+            val config=poyntBridgeConfiguration?.invoke(org,integrationId,actor) ?: return unknown()
+            if (config.organizationId!=org || config.businessId!=context.businessId || config.providerStoreId!=context.providerStoreId ||
+                config.merchantCurrencyCode.uppercase()!=context.currencyCode.uppercase() ||
+                context.originalCaptureId!=contextConfig ||
+                context.providerDeviceId.isNullOrBlank() || context.providerStoreId.isNullOrBlank() ||
+                context.targetPosDeviceId.isNullOrBlank() ||
+                (poyntBridgeTerminalCheck?.invoke(org,integrationId,context.targetPosDeviceId!!,
+                    context.businessId!!,context.providerStoreId!!,context.providerDeviceId!!) != true) ||
+                poyntBridgeRefundCallbackUrl.isBlank() || poyntBridgeCallbackHeaderName.isBlank() ||
+                poyntBridgeCallbackHeaderValue.isBlank() || poyntBridgeTtlSeconds<=0) return unknown()
+            // Cloud-message accepted means dispatched only; financial success is callback-driven.
+            configuredClient.dispatchRefund(config, PoyntBridgeRefundDispatchRequest(
+                context.originalCaptureId,context.paymentRefundAttemptId,context.refundAmountMinor,
+                context.currencyCode,config.businessId,context.providerStoreId!!,context.providerDeviceId!!,
+                poyntBridgeRefundCallbackUrl,poyntBridgeCallbackHeaderName,poyntBridgeCallbackHeaderValue,poyntBridgeTtlSeconds))
+            // Claim already persisted PENDING before dispatch. Callback may have arrived first.
+            return executionStatus(org,id,actor)
+        } catch (_:Exception) {
+            // The POST may have reached the terminal; never resend automatically.
+            val current = executionStatus(org,id,actor)
+            if (current.executionStatus == "SUCCEEDED") return current
+            return unknown()
+        }
+    }
+
+    fun verifyPoyntBridgeReference(org:String,id:String,body:PoyntBridgeReferenceVerificationRequestDto,
+        actor:String):PoyntCollectReferenceVerificationDto {
+        if (body.organizationId!=org || body.paymentRefundAttemptId.isBlank() ||
+            body.providerTransactionId.trim().length !in 1..160 || body.attestation.trim().length !in 10..1000)
+            throw BadRequestException("Bridge refund verification request is invalid")
+        val detail=detail(org,id,actor)
+        if (detail.originalProviderCode!="POYNT_PAYMENT_BRIDGE" || detail.executionStatus!="UNKNOWN_REQUIRES_RECONCILIATION")
+            throw BadRequestException("Bridge refund is not awaiting reference verification")
+        val context=sql().poyntBridgeContext(org,id,actor)
+            ?: throw BadRequestException("Bridge refund execution context missing")
+        if (context.paymentRefundAttemptId!=body.paymentRefundAttemptId)
+            throw BadRequestException("Bridge refund attempt reference mismatch")
+        val integrationId=context.integrationConfigurationId ?:throw BadRequestException("Bridge integration missing")
+        val config=poyntBridgeConfiguration?.invoke(org,integrationId,actor)
+            ?:throw BadRequestException("Bridge provider verification unavailable")
+        if (config.organizationId!=org || config.businessId!=context.businessId ||
+            config.providerStoreId!=context.providerStoreId ||
+            !((poyntBridgeRefundClient?.verifyRefundReference(config,context.originalCaptureId,
+                context.paymentRefundAttemptId,context.refundAmountMinor,context.currencyCode,
+                body.providerTransactionId.trim())) ?: false))
+            throw BadRequestException("Independent Bridge refund provider evidence could not be verified")
+        return sql().bridgeRecordVerification("PRV_${UUID.randomUUID()}",org,id,
+            context.paymentRefundAttemptId,body.providerTransactionId.trim(),body.attestation.trim(),actor)
+            ?:throw BadRequestException("Bridge refund verification could not be persisted")
+    }
+
+    fun confirmPoyntBridgeReference(org:String,id:String,body:PoyntBridgeReferenceConfirmationDto,
+        actor:String):PaymentRefundExecutionStatusDto {
+        if (body.organizationId!=org || body.paymentRefundAttemptId.isBlank() || body.verificationId.isBlank())
+            throw BadRequestException("Bridge recovery confirmation is invalid")
+        return sql().bridgeConfirmVerification(org,id,body.paymentRefundAttemptId,body.verificationId,actor)
+            ?: throw BadRequestException("Bridge recovery confirmation is not available")
+    }
+
+    fun reconcilePoyntBridge(org:String,id:String,actor:String):PaymentRefundExecutionStatusDto {
+        val context=sql().poyntBridgeContext(org,id,actor)
+            ?: throw BadRequestException("Bridge refund has no execution attempt")
+        val current=executionStatus(org,id,actor)
+        if(current.executionStatus !in setOf("PENDING","UNKNOWN_REQUIRES_RECONCILIATION")) return current
+        val integrationId=context.integrationConfigurationId ?:return current
+        val config=poyntBridgeConfiguration?.invoke(org,integrationId,actor) ?:return current
+        if(config.organizationId!=org || config.businessId!=context.businessId ||
+            config.providerStoreId!=context.providerStoreId) return current
+        val client=poyntBridgeRefundClient ?:return current
+        // Both provider operations are HTTP GET, never refund POST.
+        val reference=client.lookupRefundReference(config,context.paymentRefundAttemptId) ?:return current
+        if(!client.verifyRefundReference(config,context.originalCaptureId,
+            context.paymentRefundAttemptId,context.refundAmountMinor,context.currencyCode,reference)) return current
+        return sql().bridgeCallback(context.paymentRefundAttemptId,"SUCCEEDED",reference,
+            context.originalCaptureId,context.refundAmountMinor,context.currencyCode,
+            context.businessId,context.providerStoreId) ?:current
+    }
+
+    fun recordPoyntBridgeCallback(callback:PoyntBridgeRefundCallback):PaymentRefundExecutionStatusDto? {
+        if (callback.status in setOf("RECEIVED","STARTED")) return null
+        val tx=callback.usableRefundTransaction()
+        val verified=(callback.status=="PROCESSED" && tx!=null && tx.status=="REFUNDED" &&
+          tx.action=="REFUND" && tx.id.isNotBlank() && !tx.authOnly &&
+          tx.parentId!=null && tx.processorStatus=="Successful" &&
+          !tx.invalidApprovedAmount && (tx.approvedAmount==null || tx.approvedAmount==tx.amountMinor) &&
+          tx.amountMinor!=null && tx.amountMinor>0 && tx.currencyCode!=null &&
+          tx.businessId!=null && tx.storeId!=null)
+        return sql().bridgeCallback(callback.referenceId,
+            if(verified) "SUCCEEDED" else "UNKNOWN_REQUIRES_RECONCILIATION",
+            if(verified) tx?.id else null,if(verified) tx?.parentId else null,
+            if(verified) tx?.amountMinor else null,
+            if(verified) tx?.currencyCode else null,if(verified) tx?.businessId else null,
+            if(verified) tx?.storeId else null)
+    }
 
     fun executePoyntCollect(org: String, id: String, actor: String): PaymentRefundExecutionStatusDto {
         if (!poyntCollectRefundDispatchEnabled) {

@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 181-poynt-payment-bridge-refunds
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/181-poynt-payment-bridge-refunds.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
