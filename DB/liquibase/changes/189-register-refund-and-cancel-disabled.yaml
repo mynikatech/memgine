@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 189-register-refund-and-cancel-disabled
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/189-register-refund-and-cancel-disabled.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

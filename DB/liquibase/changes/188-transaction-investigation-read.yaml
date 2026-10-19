@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 188-transaction-investigation-read
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/188-transaction-investigation-read.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

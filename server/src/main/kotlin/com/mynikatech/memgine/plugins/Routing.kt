@@ -34,6 +34,7 @@ import com.mynikatech.memgine.component.payment.FinancialExceptionService
 import com.mynikatech.memgine.component.payment.financialExceptionRoutes
 import com.mynikatech.memgine.component.notificationconfiguration.NotificationConfigurationService
 import com.mynikatech.memgine.component.notificationconfiguration.notificationConfigurationRoutes
+import com.mynikatech.memgine.component.payment.orgTransactionInvestigationRoutes
 import com.mynikatech.memgine.component.notification.NotificationService
 import com.mynikatech.memgine.component.notification.NotificationSql
 import com.mynikatech.memgine.component.notification.notificationRoutes
@@ -324,6 +325,7 @@ fun Application.configureRouting(
             paymentRoutes(paymentService, activityAuditService)
             paymentRefundRoutes(paymentRefundService)
             financialExceptionRoutes(financialExceptionService)
+            orgTransactionInvestigationRoutes(database.jdbi)
             supportRoutes(supportService)
             notificationConfigurationRoutes(notificationConfigurationService)
             notificationRoutes(notificationService)
