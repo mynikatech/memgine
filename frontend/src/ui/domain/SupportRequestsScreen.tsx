@@ -6,6 +6,7 @@ import { apis } from "@/src/data/data-registry";
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { services } from "@/src/core/services/service-registry";
 import { RefundResolutionPanel } from "@/src/ui/domain/RefundResolutionPanel";
+import { SupportRedemptionResolution } from "@/src/ui/domain/SupportRedemptionResolution";
 import type { LinkedRefund } from "@/src/data/api/refund-resolution-api";
 import { CaseResolutionSelector } from "@/src/ui/domain/CaseResolutionSelector";
 import type {
@@ -1237,6 +1238,13 @@ export function SupportRequestsScreen({
                           investigation?.financialExceptionId,
                       )?.currencyCode
                     }
+                  />
+                  <SupportRedemptionResolution
+                    key={`${detail.request.supportRequestId}:redemption-resolution`}
+                    organizationId={scopedOrganizationId}
+                    supportRequestId={detail.request.supportRequestId}
+                    customerUserId={detail.request.customerUserId}
+                    readOnly={operationalFieldsLocked}
                   />
                 </View>
               )}

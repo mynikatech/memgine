@@ -1,110 +1,86 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { services } from "@/src/core";
-import type { OrgAdminRedemption } from "@/src/data/api/org-admin-transaction-api";
 import { useBusiness } from "@/src/providers";
-import { DataTable, type DataTableColumn, Input, Text } from "@/src/ui";
-import { RedemptionResolutionPanel } from "@/src/ui/domain/RedemptionResolutionPanel";
+import { DataTable, Input, Text, type DataTableColumn } from "@/src/ui";
+import {
+  redemptionResolutionApi,
+  type RedemptionResolutionCandidate,
+} from "@/src/data/api/redemption-resolution-api";
+import { RedemptionDetails } from "@/src/ui/domain/RedemptionDetails";
 
-function formatDateTime(value: string): string {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
-}
-
-function Detail({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.detail}>
-      <Text variant="caption" color="textMuted">
-        {label}
-      </Text>
-      <Text variant="body" color="text">
-        {value}
-      </Text>
-    </View>
-  );
-}
+const date = (value: string) => {
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleString();
+};
+const paid = (row: RedemptionResolutionCandidate) =>
+  (row.paymentAmountMinor ?? 0) > 0
+    ? `${row.currencyCode ?? ""} ${((row.paymentAmountMinor ?? 0) / 100).toFixed(2)}`
+    : "No charge";
 
 export default function OrgAdminRedemptions() {
   const { organization } = useBusiness();
   return (
-    <OrganizationRedemptions
+    <RedemptionsByOrganization
       key={organization.id}
       organizationId={organization.id}
     />
   );
 }
-
-function OrganizationRedemptions({
+function RedemptionsByOrganization({
   organizationId,
 }: {
   organizationId: string;
 }) {
-  const [rows, setRows] = useState<OrgAdminRedemption[]>([]);
+  const [rows, setRows] = useState<RedemptionResolutionCandidate[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<OrgAdminRedemption | null>(null);
-  const [reload, setReload] = useState(0);
-
-  useEffect(() => {
-    let current = true;
+  const [error, setError] = useState("");
+  const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
-    setRows([]);
-    setSelected(null);
-    void services.orgAdminTransactions
-      .listRedemptions(organizationId)
-      .then((data) => {
-        if (current) setRows(data);
-      })
-      .catch((failure: unknown) => {
-        if (current)
-          setError(
-            failure instanceof Error
-              ? failure.message
-              : "Unable to load redemptions.",
-          );
-      })
-      .finally(() => {
-        if (current) setLoading(false);
-      });
-    return () => {
-      current = false;
-    };
-  }, [organizationId, reload]);
-
+    setError("");
+    try {
+      const result = await redemptionResolutionApi.candidates(organizationId);
+      if (!result.success)
+        throw new Error(result.error?.message ?? "Unable to load redemptions");
+      setRows(result.data);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setLoading(false);
+    }
+  }, [organizationId]);
+  useEffect(() => {
+    void load();
+  }, [load]);
   const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return query
-      ? rows.filter((row) =>
-          [
-            row.redemptionNumber,
-            row.id,
-            row.subscriptionNumber,
-            row.customerName,
-            row.customerEmail,
-            row.customerPhone,
-            row.benefitName,
-            row.benefitCode,
-            row.storeName,
-            row.storeCode,
-            row.staffName,
-            row.staffCode,
-            row.statusCode,
-            row.statusName,
-          ].some((value) => value?.toLowerCase().includes(query)),
-        )
-      : rows;
-  }, [rows, search]);
-
-  const columns = useMemo<DataTableColumn<OrgAdminRedemption>[]>(
+    const term = query.trim().toLowerCase();
+    return rows.filter(
+      (row) =>
+        !term ||
+        [
+          row.customerName,
+          row.customerEmail,
+          row.customerPhone,
+          row.subscriptionNumber,
+          row.redemptionNumber,
+          row.itemName,
+          row.itemType,
+          row.itemStatus,
+          row.storeName,
+          row.transactionId,
+        ].some((value) => value?.toLowerCase().includes(term)),
+    );
+  }, [rows, query]);
+  const selected = rows.find((row) => row.itemId === selectedId) ?? null;
+  const columns = useMemo<DataTableColumn<RedemptionResolutionCandidate>[]>(
     () => [
       {
         key: "redemption",
         title: "Redemption",
-        width: 155,
+        width: 165,
         render: (row) => (
-          <Text variant="bodyStrong" color="text" numberOfLines={1}>
+          <Text variant="bodyStrong" color="text">
             {row.redemptionNumber}
           </Text>
         ),
@@ -112,77 +88,76 @@ function OrganizationRedemptions({
       {
         key: "customer",
         title: "Customer",
+        width: 200,
+        render: (row) => (
+          <View style={{ gap: 2 }}>
+            <Text variant="bodyStrong" color="text">
+              {row.customerName}
+            </Text>
+            <Text variant="caption" color="textMuted">
+              {row.customerPhone || row.customerEmail || "—"}
+            </Text>
+          </View>
+        ),
+      },
+      {
+        key: "membership",
+        title: "Subscription",
         width: 140,
         render: (row) => (
-          <Text variant="body" color="text" numberOfLines={1}>
-            {row.customerName}
+          <Text variant="body" color="text">
+            {row.subscriptionNumber || "—"}
           </Text>
         ),
       },
       {
-        key: "subscription",
-        title: "Subscription",
-        width: 150,
+        key: "item",
+        title: "Benefit / Offer",
+        width: 215,
         render: (row) => (
-          <Text variant="body" color="text" numberOfLines={1}>
-            {row.subscriptionNumber}
-          </Text>
-        ),
-      },
-      {
-        key: "benefit",
-        title: "Benefit",
-        width: 190,
-        render: (row) => (
-          <Text variant="body" color="text" numberOfLines={2}>
-            {row.benefitName}
-          </Text>
-        ),
-      },
-      {
-        key: "store",
-        title: "Store",
-        width: 175,
-        render: (row) => (
-          <Text variant="body" color="text" numberOfLines={2}>
-            {row.storeName}
-          </Text>
-        ),
-      },
-      {
-        key: "staff",
-        title: "Staff",
-        width: 175,
-        render: (row) => (
-          <Text variant="body" color="text" numberOfLines={2}>
-            {row.staffName ?? "—"}
-          </Text>
+          <View style={{ gap: 2 }}>
+            <Text variant="bodyStrong" color="text">
+              {row.itemName}
+            </Text>
+            <Text variant="caption" color="textMuted">
+              {row.itemType}
+            </Text>
+          </View>
         ),
       },
       {
         key: "date",
-        title: "Date",
-        width: 150,
+        title: "Redeemed",
+        width: 175,
         render: (row) => (
-          <Text variant="body" color="text" numberOfLines={2}>
-            {formatDateTime(row.redemptionDateTime)}
+          <Text variant="body" color="text">
+            {date(row.redeemedAt)}
+          </Text>
+        ),
+      },
+      {
+        key: "payment",
+        title: "Payment",
+        width: 125,
+        render: (row) => (
+          <Text variant="body" color="text">
+            {paid(row)}
           </Text>
         ),
       },
       {
         key: "status",
         title: "Status",
-        width: 110,
+        width: 125,
         render: (row) => (
-          <Text variant="body" color="text" numberOfLines={1}>
-            {row.statusName}
+          <Text variant="body" color="text">
+            {row.itemStatus}
           </Text>
         ),
       },
     ],
     [],
   );
-
   return (
     <>
       <ScrollView
@@ -190,170 +165,111 @@ function OrganizationRedemptions({
         contentContainerStyle={styles.screen}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
+        <View style={{ gap: 6 }}>
           <Text variant="title" color="text">
             Redemptions
           </Text>
           <Text variant="bodySmall" color="textMuted">
-            View benefit redemption transactions for your organization.
+            Benefits and offers redeemed across your organization. Select View
+            to inspect or resolve a specific redemption.
           </Text>
-          <Pressable
-            disabled={loading}
-            onPress={() => setReload((value) => value + 1)}
-          >
-            <Text variant="bodySmall" color="text">
-              Reload
-            </Text>
-          </Pressable>
         </View>
-        <View style={styles.summary}>
-          <View style={styles.summaryCard}>
+        <View style={{ flexDirection: "row", gap: 16, flexWrap: "wrap" }}>
+          <View style={styles.stat}>
             <Text variant="caption" color="textMuted">
-              Total Redemptions
+              Total items
             </Text>
             <Text variant="h2" color="text">
               {rows.length}
             </Text>
           </View>
-          <View style={styles.summaryCard}>
+          <View style={styles.stat}>
             <Text variant="caption" color="textMuted">
-              Successful
+              Currently consumed
             </Text>
             <Text variant="h2" color="text">
-              {
-                rows.filter((row) => row.statusCode.toUpperCase() === "SUCCESS")
-                  .length
-              }
+              {rows.filter((row) => row.itemStatus === "SUCCESS").length}
+            </Text>
+          </View>
+          <View style={styles.stat}>
+            <Text variant="caption" color="textMuted">
+              Restored
+            </Text>
+            <Text variant="h2" color="text">
+              {rows.filter((row) => row.itemStatus === "REVERSED").length}
             </Text>
           </View>
         </View>
         <Input
-          label="Search Redemptions"
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search redemption, customer, benefit, subscription or status"
+          label="Search redemptions"
+          placeholder="Customer, phone, subscription, offer, transaction..."
+          value={query}
+          onChangeText={setQuery}
         />
-        {loading ? (
-          <View style={styles.center}>
-            <Text variant="body" color="textMuted">
-              Loading redemptions...
-            </Text>
-          </View>
-        ) : error ? (
-          <View style={styles.center}>
-            <Text variant="body" color="text">
-              {error}
-            </Text>
-          </View>
-        ) : (
+        <Pressable
+          onPress={() => {
+            void load();
+          }}
+          disabled={loading}
+        >
+          <Text variant="bodySmall" color="text">
+            Reload
+          </Text>
+        </Pressable>
+        {loading && (
+          <Text variant="bodySmall" color="textMuted">
+            Loading redemptions...
+          </Text>
+        )}
+        {!!error && (
+          <Text variant="bodySmall" color="text">
+            {error}
+          </Text>
+        )}
+        {!loading && !error && (
           <DataTable
             columns={columns}
             data={filtered}
-            keyExtractor={(row) => row.id}
+            keyExtractor={(row) => row.itemId}
             emptyMessage={
-              search.trim()
-                ? "No redemptions match your search."
-                : "No redemptions found for this organization."
+              query
+                ? "No redemptions match this search."
+                : "No completed redemptions found."
             }
-            actions={[{ label: "View", onPress: setSelected }]}
-            minTableWidth={1500}
+            actions={[
+              { label: "View", onPress: (row) => setSelectedId(row.itemId) },
+            ]}
+            minTableWidth={1350}
           />
         )}
-        <RedemptionResolutionPanel organizationId={organizationId} />
       </ScrollView>
       <Modal
-        visible={selected !== null}
+        visible={!!selected}
         transparent
         animationType="fade"
-        onRequestClose={() => setSelected(null)}
+        onRequestClose={() => setSelectedId(null)}
       >
-        {selected && (
+        {!!selected && (
           <View style={styles.overlay}>
             <View style={styles.modal}>
               <View style={styles.modalHeader}>
-                <View>
-                  <Text variant="h2" color="text">
-                    {selected.redemptionNumber}
-                  </Text>
-                  <Text variant="bodySmall" color="textMuted">
-                    Redemption transaction details
-                  </Text>
-                </View>
-                <Pressable onPress={() => setSelected(null)}>
-                  <Text variant="body" color="textMuted">
-                    ✕
+                <Text variant="h2" color="text">
+                  Redemption Details
+                </Text>
+                <Pressable onPress={() => setSelectedId(null)}>
+                  <Text variant="bodyStrong" color="text">
+                    Close ×
                   </Text>
                 </Pressable>
               </View>
-              <ScrollView contentContainerStyle={styles.modalContent}>
-                <View style={styles.detailsGrid}>
-                  <Detail
-                    label="Redemption Number"
-                    value={selected.redemptionNumber}
-                  />
-                  <Detail label="Redemption ID" value={selected.id} />
-                  <Detail
-                    label="Subscription"
-                    value={selected.subscriptionNumber}
-                  />
-                  <Detail
-                    label="Subscription ID"
-                    value={selected.subscriptionId}
-                  />
-                  <Detail label="Customer" value={selected.customerName} />
-                  <Detail
-                    label="Customer Email"
-                    value={selected.customerEmail ?? "—"}
-                  />
-                  <Detail
-                    label="Customer Phone"
-                    value={selected.customerPhone}
-                  />
-                  <Detail label="Benefit" value={selected.benefitName} />
-                  <Detail label="Benefit Code" value={selected.benefitCode} />
-                  <Detail label="Benefit ID" value={selected.benefitId} />
-                  <Detail label="Store" value={selected.storeName} />
-                  <Detail label="Store Code" value={selected.storeCode} />
-                  <Detail label="Store ID" value={selected.storeId} />
-                  <Detail label="Staff" value={selected.staffName ?? "—"} />
-                  <Detail
-                    label="Staff Code"
-                    value={selected.staffCode ?? "—"}
-                  />
-                  <Detail label="Staff ID" value={selected.staffId ?? "—"} />
-                  <Detail
-                    label="Redemption Date & Time"
-                    value={formatDateTime(selected.redemptionDateTime)}
-                  />
-                  <Detail label="Quantity" value={String(selected.quantity)} />
-                  <Detail label="Method" value="Not recorded" />
-                  <Detail label="Status" value={selected.statusName} />
-                  <Detail label="Status Code" value={selected.statusCode} />
-                  <Detail
-                    label="Status ID"
-                    value={selected.redemptionStatusId}
-                  />
-                  <Detail label="Remarks" value={selected.remarks ?? "—"} />
-                  <Detail
-                    label="Created At"
-                    value={formatDateTime(selected.createdAt)}
-                  />
-                  <Detail label="Created By" value={selected.createdBy} />
-                  <Detail
-                    label="Updated At"
-                    value={formatDateTime(selected.updatedAt)}
-                  />
-                  <Detail label="Updated By" value={selected.updatedBy} />
-                  <Detail label="Version" value={String(selected.versionNo)} />
-                </View>
-                <Pressable
-                  style={styles.close}
-                  onPress={() => setSelected(null)}
-                >
-                  <Text variant="body" color="text">
-                    Close
-                  </Text>
-                </Pressable>
+              <ScrollView contentContainerStyle={{ padding: 20 }}>
+                <RedemptionDetails
+                  organizationId={organizationId}
+                  item={selected}
+                  onChanged={() => {
+                    void load();
+                  }}
+                />
               </ScrollView>
             </View>
           </View>
@@ -362,52 +278,38 @@ function OrganizationRedemptions({
     </>
   );
 }
-
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
   screen: { padding: 18, gap: 18 },
-  header: { gap: 4 },
-  summary: { flexDirection: "row", gap: 16 },
-  summaryCard: {
-    width: 190,
-    minHeight: 90,
+  stat: {
+    minWidth: 165,
     borderWidth: 1,
     borderColor: "#d6dce2",
     borderRadius: 10,
-    padding: 16,
+    padding: 14,
     gap: 8,
   },
-  center: { padding: 40, alignItems: "center" },
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
+    backgroundColor: "rgba(0,0,0,0.38)",
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
   },
   modal: {
-    width: "90%",
-    maxWidth: 900,
-    maxHeight: "88%",
     backgroundColor: "white",
+    width: "94%",
+    maxWidth: 950,
+    maxHeight: "92%",
     borderRadius: 12,
     overflow: "hidden",
   },
   modalHeader: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e1e5e9",
     flexDirection: "row",
     justifyContent: "space-between",
-  },
-  modalContent: { padding: 20, gap: 20 },
-  detailsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 18 },
-  detail: { minWidth: 240, flexGrow: 1, gap: 4 },
-  close: {
-    borderWidth: 1,
-    borderColor: "#d6dce2",
-    borderRadius: 8,
-    padding: 12,
     alignItems: "center",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#d6dce2",
   },
 });

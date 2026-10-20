@@ -14,8 +14,20 @@ export type RedemptionResolutionCandidate = {
   commerceTransactionId?: string | null;
   paymentAmountMinor?: number | null;
   currencyCode?: string | null;
+  customerUserId: string;
+  customerName: string;
+  customerEmail?: string | null;
+  customerPhone?: string | null;
+  subscriptionNumber: string;
+  redeemedAt: string;
+  storeName?: string | null;
+  staffName?: string | null;
+  paymentStatus?: string | null;
 };
-export type RedemptionResolutionAction = "RESTORE_ONLY" | "REFUND_ONLY" | "REFUND_AND_RESTORE";
+export type RedemptionResolutionAction =
+  | "RESTORE_ONLY"
+  | "REFUND_ONLY"
+  | "REFUND_AND_RESTORE";
 export type RedemptionResolutionResult = {
   resolutionId: string;
   actionStatus: string;
@@ -26,24 +38,35 @@ export type RedemptionResolutionDetail = {
   actionStatus: string;
   paymentRefundId?: string | null;
 };
-const path = (org: string) => `/api/v1/organizations/${encodeURIComponent(org)}/redemption-resolutions`;
+const path = (org: string) =>
+  `/api/v1/organizations/${encodeURIComponent(org)}/redemption-resolutions`;
 export const redemptionResolutionApi = {
   candidates(org: string): Promise<ApiResult<RedemptionResolutionCandidate[]>> {
     return httpClient.get(path(org));
   },
-  create(org: string, request: {
-    redemptionTransactionItemId: string;
-    action: RedemptionResolutionAction;
-    reasonCode: string;
-    explanation: string;
-    idempotencyKey: string;
-  }): Promise<ApiResult<RedemptionResolutionResult>> {
+  create(
+    org: string,
+    request: {
+      redemptionTransactionItemId: string;
+      action: RedemptionResolutionAction;
+      reasonCode: string;
+      explanation: string;
+      idempotencyKey: string;
+      supportRequestId?: string;
+    },
+  ): Promise<ApiResult<RedemptionResolutionResult>> {
     return httpClient.post(path(org), request);
   },
-  detail(org: string, id: string): Promise<ApiResult<RedemptionResolutionDetail>> {
+  detail(
+    org: string,
+    id: string,
+  ): Promise<ApiResult<RedemptionResolutionDetail>> {
     return httpClient.get(`${path(org)}/${encodeURIComponent(id)}`);
   },
   complete(org: string, id: string): Promise<ApiResult<string>> {
-    return httpClient.post(`${path(org)}/${encodeURIComponent(id)}/complete`, {});
+    return httpClient.post(
+      `${path(org)}/${encodeURIComponent(id)}/complete`,
+      {},
+    );
   },
 };

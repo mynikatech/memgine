@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 200-redemption-resolution-admin-details
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/200-redemption-resolution-admin-details.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

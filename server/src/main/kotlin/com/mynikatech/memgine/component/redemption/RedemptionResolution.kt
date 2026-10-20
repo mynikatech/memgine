@@ -40,7 +40,16 @@ data class RedemptionResolutionCandidate(
     var actionStatus: String? = null,
     var commerceTransactionId: String? = null,
     var paymentAmountMinor: Long? = null,
-    var currencyCode: String? = null
+    var currencyCode: String? = null,
+    var customerUserId: String = "",
+    var customerName: String = "",
+    var customerEmail: String? = null,
+    var customerPhone: String? = null,
+    var subscriptionNumber: String = "",
+    var redeemedAt: String = "",
+    var storeName: String? = null,
+    var staffName: String? = null,
+    var paymentStatus: String? = null
 )
 
 interface RedemptionResolutionSql {
