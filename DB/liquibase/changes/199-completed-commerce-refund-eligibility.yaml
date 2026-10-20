@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 199-completed-commerce-refund-eligibility
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/199-completed-commerce-refund-eligibility.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

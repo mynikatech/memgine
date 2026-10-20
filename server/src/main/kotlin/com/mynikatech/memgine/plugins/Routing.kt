@@ -18,6 +18,9 @@ import com.mynikatech.memgine.component.subscription.subscriptionRoutes
 import com.mynikatech.memgine.component.redemption.RedemptionService
 import com.mynikatech.memgine.component.redemption.RedemptionSql
 import com.mynikatech.memgine.component.redemption.redemptionRoutes
+import com.mynikatech.memgine.component.redemption.RedemptionResolutionSql
+import com.mynikatech.memgine.component.redemption.RedemptionResolutionService
+import com.mynikatech.memgine.component.redemption.redemptionResolutionRoutes
 import com.mynikatech.memgine.component.customer.CustomerService
 import com.mynikatech.memgine.component.customer.CustomerSql
 import com.mynikatech.memgine.component.customer.customerRoutes
@@ -196,6 +199,9 @@ fun Application.configureRouting(
     val redemptionService = RedemptionService(
         database.jdbi.onDemand(RedemptionSql::class.java), activityAuditService
     )
+    val redemptionResolutionService = RedemptionResolutionService(
+    database.jdbi.onDemand(RedemptionResolutionSql::class.java)
+    )
     val notificationConfigurationService = NotificationConfigurationService(database.jdbi)
     val integrationConfigurationService = IntegrationConfigurationService(database.jdbi)
     val poyntCredentials = AwsSecretsManagerPoyntCredentialResolver(config.poynt.secretsRegion)
@@ -330,6 +336,7 @@ fun Application.configureRouting(
             offerRoutes(offerService)
             subscriptionRoutes(subscriptionService)
             redemptionRoutes(redemptionService)
+            redemptionResolutionRoutes(redemptionResolutionService)
             customerRoutes(customerService)
             customerSelfServiceRoutes(customerService, redemptionService)
             counterRoutes(counterService, counterCommercePaymentService)
