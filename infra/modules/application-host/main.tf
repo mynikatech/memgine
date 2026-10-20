@@ -341,6 +341,12 @@ data "aws_iam_policy_document" "ec2" {
   }
 
   statement {
+    sid       = "PublishNotificationEvents"
+    actions   = ["sns:Publish"]
+    resources = [var.notification_events_topic_arn]
+  }
+
+  statement {
     sid       = "ReadApplicationSecrets"
     actions   = ["secretsmanager:GetSecretValue"]
     resources = concat([var.runtime_db_secret_arn], var.additional_secret_arns)

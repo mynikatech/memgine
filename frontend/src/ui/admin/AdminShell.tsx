@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { type ReactNode, useState } from "react";
-import type { AdminRoute } from "@/src/constants/navigation";
+import { APP_ROUTES, type AdminRoute } from "@/src/constants/navigation";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { unauthenticatedLanding } from "@/src/core/auth/auth-navigation";
@@ -199,7 +199,18 @@ export function AdminShell({
               />
               <Text style={styles.accountActionText}>Profile</Text>
             </Pressable>
-
+            <Pressable
+              testID="admin-switch-workspace"
+              onPress={() => router.replace(APP_ROUTES.workspaces as never)}
+              style={styles.accountAction}
+            >
+              <Ionicons
+                name="swap-horizontal-outline"
+                size={18}
+                color={COLORS.textMuted}
+              />
+              <Text style={styles.accountActionText}>Switch Workspace</Text>
+            </Pressable>
             <Pressable
               onPress={() =>
                 void logout().then(() =>
@@ -235,11 +246,22 @@ export function AdminShell({
                 />
                 <Text style={styles.accountActionText}>Profile</Text>
               </Pressable>
-
+              <Pressable
+                testID="admin-mobile-switch-workspace"
+                onPress={() => router.replace(APP_ROUTES.workspaces as never)}
+                style={styles.mobileAccountAction}
+              >
+                <Ionicons
+                  name="swap-horizontal-outline"
+                  size={18}
+                  color={COLORS.textMuted}
+                />
+                <Text style={styles.accountActionText}>Workspace</Text>
+              </Pressable>
               <Pressable
                 onPress={() =>
                   void logout().then(() =>
-                  router.replace(unauthenticatedLanding() as never),
+                    router.replace(unauthenticatedLanding() as never),
                   )
                 }
                 style={styles.mobileAccountAction}

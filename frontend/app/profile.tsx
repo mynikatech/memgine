@@ -5,6 +5,7 @@ import { StyleSheet, View } from "react-native";
 import { unauthenticatedLanding } from "@/src/core/auth/auth-navigation";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { Button, Input, Text } from "@/src/ui";
+import { BusinessSupportNotificationConsent } from "@/src/ui/domain/BusinessSupportNotificationConsent";
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -95,6 +96,8 @@ export default function ProfileScreen() {
             </Text>
           ) : null}
         </View>
+        {/* WhatsApp notifications and consent */}
+        <BusinessSupportNotificationConsent />
       </View>
     </View>
   );

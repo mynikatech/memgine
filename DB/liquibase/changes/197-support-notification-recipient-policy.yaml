@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 197-support-notification-recipient-policy
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/197-support-notification-recipient-policy.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

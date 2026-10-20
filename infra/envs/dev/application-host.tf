@@ -13,18 +13,19 @@ module "application_host" {
   frontend_domain  = var.frontend_domain
   api_domain       = var.api_domain
 
-  instance_type               = var.instance_type
-  db_instance_class           = var.db_instance_class
-  db_engine_version           = var.db_engine_version
-  db_name                     = var.db_name
-  db_master_username          = var.db_master_username
-  db_allocated_storage_gb     = var.db_allocated_storage_gb
-  db_max_allocated_storage_gb = var.db_max_allocated_storage_gb
-  db_backup_retention_days    = var.db_backup_retention_days
-  db_deletion_protection      = var.db_deletion_protection
-  db_skip_final_snapshot      = var.db_skip_final_snapshot
-  runtime_db_secret_arn       = aws_secretsmanager_secret.db_runtime.arn
-  live_sms_enabled            = var.allow_live_sms
+  instance_type                 = var.instance_type
+  db_instance_class             = var.db_instance_class
+  db_engine_version             = var.db_engine_version
+  db_name                       = var.db_name
+  db_master_username            = var.db_master_username
+  db_allocated_storage_gb       = var.db_allocated_storage_gb
+  db_max_allocated_storage_gb   = var.db_max_allocated_storage_gb
+  db_backup_retention_days      = var.db_backup_retention_days
+  db_deletion_protection        = var.db_deletion_protection
+  db_skip_final_snapshot        = var.db_skip_final_snapshot
+  runtime_db_secret_arn         = aws_secretsmanager_secret.db_runtime.arn
+  notification_events_topic_arn = module.notifications.notification_topic_arn
+  live_sms_enabled              = var.allow_live_sms
   additional_secret_arns = [
     aws_secretsmanager_secret.otp_pepper.arn,
     aws_secretsmanager_secret.resend_api_key.arn,

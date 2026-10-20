@@ -78,6 +78,11 @@ variable "live_sms_enabled" {
   default = false
 }
 
+variable "notification_events_topic_arn" {
+  description = "SNS topic ARN for application notification events"
+  type        = string
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

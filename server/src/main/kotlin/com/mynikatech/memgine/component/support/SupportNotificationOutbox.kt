@@ -11,7 +11,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import org.jdbi.v3.core.Jdbi
-import org.jdbi.v3.sqlobject.config.RegisterBeanMapper
+import org.jdbi.v3.core.kotlin.KotlinMapper
+import org.jdbi.v3.sqlobject.kotlin.RegisterKotlinMapper
 import org.jdbi.v3.sqlobject.customizer.Bind
 import org.jdbi.v3.sqlobject.statement.SqlQuery
 import java.time.OffsetDateTime
@@ -46,10 +47,10 @@ data class SupportDeliverySnapshot(
     val templateParametersJson: String?, val channel: String
 )
 
-@RegisterBeanMapper(SupportOutboxRow::class)
-@RegisterBeanMapper(SupportNotificationRecipient::class)
-@RegisterBeanMapper(SupportPublishClaim::class)
-@RegisterBeanMapper(SupportDeliverySnapshot::class)
+@RegisterKotlinMapper(SupportOutboxRow::class)
+@RegisterKotlinMapper(SupportNotificationRecipient::class)
+@RegisterKotlinMapper(SupportPublishClaim::class)
+@RegisterKotlinMapper(SupportDeliverySnapshot::class)
 interface SupportNotificationOutboxSql {
     @SqlQuery("SELECT * FROM support_notification_claim_outbox(:workerId,:limit)")
     fun claim(@Bind("workerId") workerId: String, @Bind("limit") limit: Int): List<SupportOutboxRow>
