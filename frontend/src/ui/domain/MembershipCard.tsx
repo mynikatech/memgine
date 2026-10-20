@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { View } from "react-native";
 
-import { CardStyle } from "@/src/core";
+import { CardStyle, type Status } from "@/src/core";
 import { useTheme } from "@/src/providers";
 
 import { BrandLogo } from "../BrandLogo";
@@ -19,7 +19,7 @@ type MembershipCardProps = {
   logoUrl?: string;
   tier: string;
   validUntil: string;
-  active?: boolean;
+  status?: Status | null;
   cardStyle?: CardStyle;
   testID?: string;
 };
@@ -29,13 +29,13 @@ export function MembershipCard({
   logoUrl,
   tier,
   validUntil,
-  active = true,
+  status,
   cardStyle = CardStyle.MODERN,
   testID,
 }: MembershipCardProps) {
   const theme = useTheme();
   const initial = organizationName.trim().charAt(0).toUpperCase();
-
+  const active = status?.statusCode === "ACTIVE";
   const surface =
     cardStyle === CardStyle.CLASSIC
       ? theme.colors.primarySoft
@@ -123,7 +123,7 @@ export function MembershipCard({
               color={active ? theme.colors.success : theme.colors.textMuted}
             />
             <Text variant="caption" color={active ? "success" : "textMuted"}>
-              {active ? "Active" : "Expired"}
+              {status?.statusName ?? "—"}
             </Text>
           </View>
         </View>

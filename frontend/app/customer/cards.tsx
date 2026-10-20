@@ -88,7 +88,12 @@ export default function MyCards() {
               const organizationId = relationship.organizationId;
 
               const summary = await membershipSummary(organizationId);
-              const { subscriptions, membershipProducts: products, benefits: allBenefits, branding } = summary;
+              const {
+                subscriptions,
+                membershipProducts: products,
+                benefits: allBenefits,
+                branding,
+              } = summary;
 
               const cards = await Promise.all(
                 subscriptions.map(async (row): Promise<CardVM | null> => {
@@ -104,9 +109,8 @@ export default function MyCards() {
                     await entityStatusApi.resolveStatusId(
                       row.subscriptionStatusId,
                     );
-                  const status = await services.status.getStatus(
-                    normalizedStatusId,
-                  );
+                  const status =
+                    await services.status.getStatus(normalizedStatusId);
 
                   return {
                     subscription: {
@@ -232,7 +236,13 @@ export default function MyCards() {
       return () => {
         active = false;
       };
-    }, [customerId, customersLoading, customersError, landing, membershipSummary]),
+    }, [
+      customerId,
+      customersLoading,
+      customersError,
+      landing,
+      membershipSummary,
+    ]),
   );
 
   const openBusiness = (card: CardVM) => {
@@ -249,7 +259,25 @@ export default function MyCards() {
   const openDiscovery = (organizationId: string) => {
     router.push(APP_ROUTES.discover.organization(organizationId) as never);
   };
+  const activeGroups = groups
+    .map((group) => ({
+      ...group,
+      cards: group.cards.filter(
+        (card) =>
+          card.subscriptionStatus?.statusCode?.toUpperCase() === "ACTIVE",
+      ),
+    }))
+    .filter((group) => group.cards.length > 0);
 
+  const historicalGroups = groups
+    .map((group) => ({
+      ...group,
+      cards: group.cards.filter(
+        (card) =>
+          card.subscriptionStatus?.statusCode?.toUpperCase() !== "ACTIVE",
+      ),
+    }))
+    .filter((group) => group.cards.length > 0);
   return (
     <Screen
       testID="customer-cards-screen"
@@ -281,7 +309,7 @@ export default function MyCards() {
       ) : (
         <>
           <Section title="My Memberships">
-            {!groups.some((group) => group.cards.length > 0) ? (
+            {activeGroups.length === 0 ? (
               <StateView
                 kind="empty"
                 title={t("cards.empty")}
@@ -289,7 +317,7 @@ export default function MyCards() {
                 testID="cards-state"
               />
             ) : (
-              groups.map((group) => (
+              activeGroups.map((group) => (
                 <BusinessThemeScope
                   key={group.organizationId}
                   theme={group.theme}
@@ -303,10 +331,6 @@ export default function MyCards() {
                         (item) =>
                           item.id === card.subscription.subscriptionPlanId,
                       );
-
-                      const active =
-                        card.subscriptionStatus?.statusCode?.toUpperCase() ===
-                        "ACTIVE";
 
                       return (
                         <Pressable
@@ -325,7 +349,7 @@ export default function MyCards() {
                                 .filter(Boolean)
                                 .join(" ")}
                               validUntil={formatDate(card.subscription.endDate)}
-                              active={active}
+                              status={card.subscriptionStatus}
                               cardStyle={group.cardStyle}
                             />
 
@@ -354,6 +378,70 @@ export default function MyCards() {
               ))
             )}
           </Section>
+
+          {historicalGroups.length > 0 && (
+            <Section title="Membership History" testID="membership-history">
+              {historicalGroups.map((group) => (
+                <BusinessThemeScope
+                  key={group.organizationId}
+                  theme={group.theme}
+                >
+                  <Section title={group.organizationName}>
+                    {group.cards.map((card) => {
+                      const plan = card.product.plans.find(
+                        (item) =>
+                          item.id === card.subscription.subscriptionPlanId,
+                      );
+
+                      return (
+                        <Pressable
+                          key={card.subscription.id}
+                          testID={`history-card-${card.subscription.id}`}
+                          onPress={() => openBusiness(card)}
+                        >
+                          <Card padding="md">
+                            <View style={{ gap: 8 }}>
+                              <Text variant="bodyStrong">
+                                {[
+                                  plan?.subscriptionPlanName,
+                                  card.product.membershipProductName,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" ")}
+                              </Text>
+
+                              <Badge
+                                label={
+                                  card.subscriptionStatus?.statusName ??
+                                  "Status unavailable"
+                                }
+                                tone="neutral"
+                              />
+
+                              <Text variant="bodySmall" color="textMuted">
+                                Subscription:{" "}
+                                {card.subscription.subscriptionNumber}
+                              </Text>
+
+                              <Text variant="bodySmall" color="textMuted">
+                                Original validity:{" "}
+                                {formatDate(card.subscription.startDate)} –{" "}
+                                {formatDate(card.subscription.endDate)}
+                              </Text>
+
+                              <Text variant="bodySmall" color="primary">
+                                View membership history
+                              </Text>
+                            </View>
+                          </Card>
+                        </Pressable>
+                      );
+                    })}
+                  </Section>
+                </BusinessThemeScope>
+              ))}
+            </Section>
+          )}
 
           <Section title="Discover Businesses" testID="customer-discovery">
             {discoverable.length === 0 ? (

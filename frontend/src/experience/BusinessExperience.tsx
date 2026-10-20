@@ -137,6 +137,10 @@ type Props = {
 
   selectedSubscriptionId: string;
   onSelectSubscription: (subscriptionId: string) => void;
+  /**
+   * Displays a historical subscription in read-only mode.
+   * No redemption or membership entitlement actions are exposed.
+   */
 
   availableMemberships: MembershipProduct[];
 
@@ -274,6 +278,12 @@ export function BusinessExperience({
   onRefreshRedemptionState,
 }: Props) {
   const isPreviewMode = renderMode !== "customer";
+  // Reference-data status code determines entitlement; the display label
+  // remains sourced from subscriptionStatus.statusName.
+  const isHistoricalSubscription =
+    !isPreviewMode &&
+    Boolean(subscription) &&
+    subscriptionStatus?.statusCode?.toUpperCase() !== "ACTIVE";
 
   const {
     organization: contextOrganization,
@@ -896,7 +906,14 @@ export function BusinessExperience({
   const createRedemptionTransaction = async (
     scope: "ALL" | "OFFERS" = "ALL",
   ) => {
-    if (!subscription || isPreviewMode || redemptionLoading) return;
+    if (
+      !subscription ||
+      isPreviewMode ||
+      isHistoricalSubscription ||
+      redemptionLoading
+    ) {
+      return;
+    }
     const benefitIds =
       scope === "ALL"
         ? selectableBenefits
@@ -952,6 +969,7 @@ export function BusinessExperience({
   useEffect(() => {
     if (
       isPreviewMode ||
+      isHistoricalSubscription ||
       !subscription ||
       !pendingRedemption ||
       pendingRedemption.status !== "PENDING"
@@ -993,6 +1011,7 @@ export function BusinessExperience({
     };
   }, [
     isPreviewMode,
+    isHistoricalSubscription,
     onRefreshRedemptionState,
     organization.id,
     pendingRedemption?.status,
@@ -1223,14 +1242,67 @@ export function BusinessExperience({
         renderPromotionCard(exp.heroPromotion)
       ) : null}
 
-      {exp.membership ? (
+      {isHistoricalSubscription && subscription ? (
+        <Section title="Previous Membership">
+          <Card padding="lg" testID="experience-previous-membership">
+            <View style={{ gap: theme.spacing.md }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: theme.spacing.sm,
+                }}
+              >
+                <Text variant="bodyStrong" color="text">
+                  {exp.membership?.tier ??
+                    product?.displayName ??
+                    product?.membershipProductName ??
+                    "Membership"}
+                </Text>
+                <Badge
+                  label={subscriptionStatus?.statusName ?? "Status unavailable"}
+                  tone="neutral"
+                />
+              </View>
+              <Text variant="bodySmall" color="textMuted">
+                Originally valid until {formatDate(subscription.endDate)}
+              </Text>
+              <Text variant="bodySmall" color="textSecondary">
+                This membership is no longer active. View its previous activity
+                in the History tab.
+              </Text>
+              {product &&
+              availableMemberships.some((item) => item.id === product.id) ? (
+                <Button
+                  label="Repurchase"
+                  size="sm"
+                  onPress={() => {
+                    const purchaseOffer = membershipOfferForProduct(product.id);
+                    if (purchaseOffer && onUseMembershipPurchaseOffer) {
+                      onUseMembershipPurchaseOffer(
+                        purchaseOffer.offerId,
+                        purchaseOffer.displayName,
+                        product.id,
+                      );
+                    } else {
+                      onJoin(product.id);
+                    }
+                  }}
+                  testID="experience-repurchase-membership"
+                />
+              ) : null}
+            </View>
+          </Card>
+        </Section>
+      ) : exp.membership ? (
         <Section title={t("experience.yourMemberships")}>
           <MembershipCard
             testID="experience-membership-card"
             organizationName={exp.displayName}
             tier={exp.membership.tier}
             validUntil={exp.membership.validUntilLabel}
-            active={exp.membership.active}
+            status={subscriptionStatus}
             cardStyle={cardStyle}
             logoUrl={
               membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl
@@ -1248,7 +1320,7 @@ export function BusinessExperience({
               "Membership"
             }
             validUntil="—"
-            active={previewDefinition?.membership.enabled ?? true}
+            status={subscriptionStatus}
             cardStyle={cardStyle}
             logoUrl={
               membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl
@@ -1257,7 +1329,8 @@ export function BusinessExperience({
         </Section>
       ) : null}
 
-      {(previewSection === "benefits" || exp.membership) &&
+      {!isHistoricalSubscription &&
+      (previewSection === "benefits" || exp.membership) &&
       exp.benefits.length ? (
         <Section title={t("experience.yourBenefits")}>
           <Card padding="lg">
@@ -1283,7 +1356,8 @@ export function BusinessExperience({
         </Section>
       ) : null}
 
-      {exp.membership?.active &&
+      {!isHistoricalSubscription &&
+      exp.membership?.active &&
       (redeemSectionBenefits.length || redeemSectionOffers.length) ? (
         <Section title={t("experience.redeemBenefits")}>
           <Card padding="lg" testID="experience-redeem-benefits">
@@ -1404,7 +1478,9 @@ export function BusinessExperience({
                         (rule) => rule.offerId === offer.id,
                       )}
                       onPress={
-                        isPreviewMode || itemStatus.status !== "AVAILABLE"
+                        isPreviewMode ||
+                        isHistoricalSubscription ||
+                        itemStatus.status !== "AVAILABLE"
                           ? undefined
                           : () => toggleOffer(offer.id)
                       }
@@ -1615,7 +1691,8 @@ export function BusinessExperience({
                     ctaLabel={
                       isPreviewMode
                         ? offer.ctaLabel
-                        : itemStatus.status === "AVAILABLE"
+                        : !isHistoricalSubscription &&
+                            itemStatus.status === "AVAILABLE"
                           ? selectedOfferIds.has(offer.id)
                             ? "Remove from redemption"
                             : "Add to redemption"
@@ -1678,7 +1755,9 @@ export function BusinessExperience({
               </Card>
             ) : null}
 
-            {!isPreviewMode && offersTabItems.length ? (
+            {!isPreviewMode &&
+            !isHistoricalSubscription &&
+            offersTabItems.length ? (
               <View
                 style={{
                   flexDirection: "row",
@@ -1874,6 +1953,34 @@ export function BusinessExperience({
     return (
       <View style={{ gap: theme.spacing.lg }} testID="experience-tab-history">
         {renderTabPreviewLink("history")}
+
+        {subscription && !isPreviewMode ? (
+          <Section title="Membership Details">
+            <Card padding="lg">
+              <View style={{ gap: theme.spacing.sm }}>
+                <Text variant="bodyStrong" color="text">
+                  {exp.membership?.tier ??
+                    product?.displayName ??
+                    product?.membershipProductName ??
+                    "Membership"}
+                </Text>
+                <Badge
+                  label={subscriptionStatus?.statusName ?? "Status unavailable"}
+                  tone="neutral"
+                />
+                <Text variant="bodySmall" color="textMuted">
+                  Subscription: {subscription.subscriptionNumber}
+                </Text>
+                <Text variant="bodySmall" color="textMuted">
+                  Start: {formatDate(subscription.startDate)}
+                </Text>
+                <Text variant="bodySmall" color="textMuted">
+                  Original end: {formatDate(subscription.endDate)}
+                </Text>
+              </View>
+            </Card>
+          </Section>
+        ) : null}
 
         <View
           style={{
@@ -2604,11 +2711,7 @@ export function BusinessExperience({
                   "Membership"
                 }
                 validUntil={exp.membership?.validUntilLabel ?? "—"}
-                active={
-                  exp.membership?.active ??
-                  previewDefinition?.membership.enabled ??
-                  true
-                }
+                status={subscriptionStatus}
                 cardStyle={cardStyle}
                 logoUrl={
                   membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl
@@ -2968,7 +3071,6 @@ export function BusinessExperience({
               })}
             </ScrollView>
           ) : null}
-
           {renderedContent}
         </ScrollView>
 
