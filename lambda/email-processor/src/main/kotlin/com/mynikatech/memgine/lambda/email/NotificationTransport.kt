@@ -12,5 +12,6 @@ import kotlinx.serialization.Serializable
     val context: String? = null, val email: NotificationDestinationTransport? = null,
     val whatsapp: NotificationDestinationTransport? = null, val sms: NotificationDestinationTransport? = null,
     val whatsappTemplate: WhatsAppTemplateTransport? = null,
-    val correlationId: String? = null
+    val correlationId: String? = null,
+    val deliveryId: String? = null
 )

@@ -102,3 +102,17 @@ variable "allow_live_sms" {
   type    = bool
   default = false
 }
+variable "whatsapp_delivery_ack_url" {
+  type    = string
+  default = ""
+}
+variable "whatsapp_delivery_ack_secret" {
+  type      = string
+  sensitive = true
+  nullable  = false
+
+  validation {
+    condition     = length(var.whatsapp_delivery_ack_secret) >= 32
+    error_message = "WhatsApp delivery acknowledgement secret must be at least 32 characters."
+  }
+}

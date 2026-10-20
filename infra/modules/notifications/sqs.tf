@@ -48,6 +48,18 @@ resource "aws_sqs_queue" "whatsapp" {
   })
 }
 
+resource "aws_sqs_queue" "whatsapp_delivery_ack_dlq" {
+  name                      = "${local.prefix}-whatsapp-delivery-ack-dlq"
+  message_retention_seconds = 1209600
+  sqs_managed_sse_enabled   = true
+}
+resource "aws_sqs_queue" "whatsapp_delivery_ack" {
+  name                       = "${local.prefix}-whatsapp-delivery-ack"
+  visibility_timeout_seconds = 180
+  sqs_managed_sse_enabled    = true
+  redrive_policy             = jsonencode({ deadLetterTargetArn = aws_sqs_queue.whatsapp_delivery_ack_dlq.arn, maxReceiveCount = 5 })
+}
+
 resource "aws_sqs_queue" "sms_dlq" {
   name                      = "${local.prefix}-sms-dlq"
   message_retention_seconds = 1209600

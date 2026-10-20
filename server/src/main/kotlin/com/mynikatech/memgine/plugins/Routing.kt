@@ -44,6 +44,8 @@ import com.mynikatech.memgine.component.notification.NotificationDispatchSql
 import com.mynikatech.memgine.component.notification.SnsExternalNotificationPublisher
 import com.mynikatech.memgine.component.notification.UnavailableExternalNotificationPublisher
 import com.mynikatech.memgine.component.support.SupportService
+import com.mynikatech.memgine.component.support.MetaWhatsAppWebhookService
+import com.mynikatech.memgine.component.support.metaWhatsAppWebhookRoutes
 import com.mynikatech.memgine.component.support.supportRoutes
 import com.mynikatech.memgine.component.integrationconfiguration.IntegrationConfigurationService
 import com.mynikatech.memgine.component.integrationconfiguration.integrationConfigurationRoutes
@@ -228,6 +230,7 @@ fun Application.configureRouting(
     )
     val financialExceptionService = FinancialExceptionService(database.jdbi)
     val supportService = SupportService(database.jdbi)
+    val metaWhatsAppWebhookService = MetaWhatsAppWebhookService(database.jdbi, config.supportWebhook)
     val customerService = CustomerService(database.jdbi.onDemand(CustomerSql::class.java),
         membershipProductService, benefitService, storeService, organizationService, customerDevIdentityEnabled, businessOtpService, paymentService)
     val poyntCommerceProvider = PoyntCommerceProvider(
@@ -332,6 +335,7 @@ fun Application.configureRouting(
             financialExceptionRoutes(financialExceptionService)
             orgTransactionInvestigationRoutes(database.jdbi)
             supportRoutes(supportService)
+            metaWhatsAppWebhookRoutes(metaWhatsAppWebhookService)
             notificationConfigurationRoutes(notificationConfigurationService)
             notificationRoutes(notificationService)
             integrationConfigurationRoutes(integrationConfigurationService)

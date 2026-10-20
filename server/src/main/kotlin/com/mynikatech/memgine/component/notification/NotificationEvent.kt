@@ -17,5 +17,6 @@ data class NotificationEvent(
     val whatsapp: NotificationDestination? = null,
     val whatsappTemplate: NotificationTemplate? = null,
     val sms: NotificationDestination? = null,
-    val correlationId: String? = null
+    val correlationId: String? = null,
+    val deliveryId: String? = null
 )

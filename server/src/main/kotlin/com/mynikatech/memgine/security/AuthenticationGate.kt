@@ -43,6 +43,9 @@ fun Application.installAuthenticationGate(
         if (path == "/api/v1/payments/providers/stripe/webhook") {
             return@intercept
         }
+        if (path == "/api/v1/webhooks/whatsapp/meta" || path == "/api/v1/webhooks/whatsapp/delivery-ack") {
+            return@intercept
+        }
 
         when {
             path.startsWith("/api/v1/platform/") -> require(principal, "PLATFORM_ADMIN_ACCESS")

@@ -33,5 +33,6 @@ data class NotificationEventTransport(
     val whatsapp: NotificationDestinationTransport? = null,
     val sms: NotificationDestinationTransport? = null,
     val whatsappTemplate: WhatsAppTemplateTransport? = null,
-    val correlationId: String? = null
+    val correlationId: String? = null,
+    val deliveryId: String? = null
 )

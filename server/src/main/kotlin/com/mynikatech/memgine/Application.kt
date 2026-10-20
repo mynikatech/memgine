@@ -5,6 +5,11 @@ import com.mynikatech.memgine.component.asset.AssetStorageService
 import com.mynikatech.memgine.component.asset.LocalAssetStorageService
 import com.mynikatech.memgine.component.asset.S3AssetStorageService
 import com.mynikatech.memgine.component.entitystatus.EntityStatusCache
+import com.mynikatech.memgine.component.notification.SnsExternalNotificationPublisher
+import com.mynikatech.memgine.component.notification.UnavailableExternalNotificationPublisher
+import com.mynikatech.memgine.component.support.SupportNotificationBackgroundWorker
+import com.mynikatech.memgine.component.support.SupportNotificationDeliveryMode
+import com.mynikatech.memgine.component.support.SupportNotificationOutboxWorker
 import com.mynikatech.memgine.component.entitystatus.EntityStatusService
 import com.mynikatech.memgine.component.entitystatus.EntityStatusSql
 import com.mynikatech.memgine.component.referencedata.ReferenceDataCache
@@ -37,7 +42,9 @@ fun main() {
 fun Application.module() {
     val config = AppConfig.load(environment.config)
     val database = DatabaseFactory.create(config.database)
+    var supportNotificationScheduler: SupportNotificationBackgroundWorker? = null
     monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
+        supportNotificationScheduler?.close()
         database.close()
     }
 
@@ -91,6 +98,31 @@ fun Application.module() {
         BrandingAssetService(
             assetStorageService
         )
+
+    if (config.supportNotifications.workerEnabled) {
+        if (config.supportNotifications.allowLiveInDev ||
+            config.supportNotifications.environment in setOf("prod", "production")
+        ) {
+            require(config.otp.notificationEventsTopicArn.isNotBlank()) {
+                "MEMGINE_NOTIFICATION_EVENTS_TOPIC_ARN is required for LIVE support notifications"
+            }
+        }
+
+        val publisher = config.otp.notificationEventsTopicArn
+            .takeIf { it.isNotBlank() }
+            ?.let(::SnsExternalNotificationPublisher)
+            ?: UnavailableExternalNotificationPublisher()
+        val worker = SupportNotificationOutboxWorker(
+            database.jdbi,
+            publisher,
+            SupportNotificationDeliveryMode.fromConfig(config.supportNotifications),
+            config.supportNotifications
+        )
+        supportNotificationScheduler = SupportNotificationBackgroundWorker(
+            worker,
+            config.supportNotifications.pollIntervalSeconds
+        ).also { it.start() }
+    }
 
     configureRouting(
         database,

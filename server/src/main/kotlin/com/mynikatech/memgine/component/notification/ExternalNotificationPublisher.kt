@@ -24,15 +24,20 @@ class SnsExternalNotificationPublisher(
     private val json: Json = Json { encodeDefaults = true }
 ) : ExternalNotificationPublisher {
     override fun publish(event: NotificationEvent, channels: Set<NotificationChannel>) {
+        publishWithReceipt(event, channels)
+    }
+
+    fun publishWithReceipt(event: NotificationEvent, channels: Set<NotificationChannel>): String {
         val payload = SnsNotificationEvent(
             event.eventType, event.organizationId, event.recipientUserId.orEmpty(), channels.map { it.name }.toSet(),
             event.title, event.message, event.context,
             event.email?.let { SnsDestination(it.address, it.displayName) },
             event.whatsapp?.let { SnsDestination(it.address, it.displayName) },
             event.whatsappTemplate?.let { SnsTemplate(it.name, it.languageCode, it.parameters, it.buttonParameter) },
-            event.sms?.let { SnsDestination(it.address, it.displayName) }, event.correlationId
+            event.sms?.let { SnsDestination(it.address, it.displayName) }, event.correlationId, event.deliveryId
         )
-        client.publish(PublishRequest.builder().topicArn(topicArn).message(json.encodeToString(payload)).build())
+        return client.publish(PublishRequest.builder().topicArn(topicArn).message(json.encodeToString(payload)).build()).messageId()
+            ?: throw IllegalStateException("SNS accepted publish but returned no message ID")
     }
 }
 
@@ -47,5 +52,6 @@ class UnavailableExternalNotificationPublisher : ExternalNotificationPublisher {
 @Serializable private data class SnsNotificationEvent(
     val eventType: String, val organizationId: String?, val recipientUserId: String, val channels: Set<String>,
     val title: String, val message: String, val context: String?, val email: SnsDestination?,
-    val whatsapp: SnsDestination?, val whatsappTemplate: SnsTemplate?, val sms: SnsDestination?, val correlationId: String?
+    val whatsapp: SnsDestination?, val whatsappTemplate: SnsTemplate?, val sms: SnsDestination?, val correlationId: String?,
+    val deliveryId: String? = null
 )

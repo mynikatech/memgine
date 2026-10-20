@@ -5,6 +5,8 @@ output "email_dlq_arn" { value = aws_sqs_queue.email_dlq.arn }
 output "whatsapp_queue_arn" { value = aws_sqs_queue.whatsapp.arn }
 output "whatsapp_queue_url" { value = aws_sqs_queue.whatsapp.url }
 output "whatsapp_dlq_arn" { value = aws_sqs_queue.whatsapp_dlq.arn }
+output "whatsapp_delivery_ack_queue_arn" { value = aws_sqs_queue.whatsapp_delivery_ack.arn }
+output "whatsapp_delivery_ack_queue_url" { value = aws_sqs_queue.whatsapp_delivery_ack.url }
 
 output "sms_queue_arn" {
   value = aws_sqs_queue.sms.arn

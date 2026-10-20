@@ -11,7 +11,9 @@ data class AppConfig(
     val otp: OtpConfig,
     val payment: PaymentConfig,
     val poynt: PoyntCommerceConfig,
-    val assets: AssetStorageConfig
+    val assets: AssetStorageConfig,
+    val supportWebhook: SupportWebhookConfig,
+    val supportNotifications: SupportNotificationConfig
 ) {
     companion object {
         fun load(config: ApplicationConfig? = null): AppConfig {
@@ -341,6 +343,21 @@ data class AppConfig(
                     provider = assetStorageProvider,
                     appDataBucket = appDataBucket,
                     awsRegion = assetAwsRegion
+                ),
+                supportNotifications = SupportNotificationConfig(
+                    environment = environment,
+                    allowLiveInDev = booleanValue("memgine.supportNotifications.allowLiveInDev", "MEMGINE_SUPPORT_ALLOW_LIVE_DEV", false),
+                    workerEnabled = booleanValue("memgine.supportNotifications.workerEnabled", "MEMGINE_SUPPORT_WORKER_ENABLED", false),
+                    customerTemplate = value("memgine.supportNotifications.customerTemplate", "MEMGINE_SUPPORT_CUSTOMER_TEMPLATE", "memgine_support_customer"),
+                    businessTemplate = value("memgine.supportNotifications.businessTemplate", "MEMGINE_SUPPORT_BUSINESS_TEMPLATE", "memgine_support_business"),
+                    platformTemplate = value("memgine.supportNotifications.platformTemplate", "MEMGINE_SUPPORT_PLATFORM_TEMPLATE", "memgine_support_platform"),
+                    templateLanguage = value("memgine.supportNotifications.templateLanguage", "MEMGINE_SUPPORT_TEMPLATE_LANGUAGE", "en"),
+                    pollIntervalSeconds = value("memgine.supportNotifications.pollIntervalSeconds", "MEMGINE_SUPPORT_POLL_INTERVAL_SECONDS", "10").toLong().also { require(it in 1..3600) { "MEMGINE_SUPPORT_POLL_INTERVAL_SECONDS must be between 1 and 3600" } }
+                ),
+                supportWebhook = SupportWebhookConfig(
+                    verifyToken = optionalValue("memgine.supportWebhook.verifyToken", "MEMGINE_META_WEBHOOK_VERIFY_TOKEN").orEmpty(),
+                    appSecret = optionalValue("memgine.supportWebhook.appSecret", "MEMGINE_META_APP_SECRET").orEmpty(),
+                    acknowledgementSecret = optionalValue("memgine.supportWebhook.acknowledgementSecret", "MEMGINE_WHATSAPP_DELIVERY_ACK_SECRET").orEmpty()
                 )
             )
         }
@@ -419,10 +436,24 @@ data class AssetStorageConfig(
     val awsRegion: String
 )
 
+data class SupportWebhookConfig(val verifyToken: String, val appSecret: String, val acknowledgementSecret: String)
+
 data class DatabaseConfig(
     val jdbcUrl: String,
     val username: String,
     val password: String,
     val schema: String,
     val maximumPoolSize: Int
+)
+
+/** Support sending is separate from OTP configuration. No process starts from this flag alone. */
+data class SupportNotificationConfig(
+    val environment: String,
+    val allowLiveInDev: Boolean,
+    val workerEnabled: Boolean,
+    val customerTemplate: String,
+    val businessTemplate: String,
+    val platformTemplate: String,
+    val templateLanguage: String,
+    val pollIntervalSeconds: Long
 )
