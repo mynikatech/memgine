@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Image, Linking, Platform, Pressable, View } from "react-native";
 import type { CustomerAccountDeletionActiveSubscription } from "@/src/data/api/auth-api";
+import { CustomerSupportNotificationSettings } from "@/src/ui/domain/CustomerSupportNotificationSettings";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
@@ -303,7 +304,7 @@ export default function Profile() {
           />
         </Card>
       </Section>
-
+      <CustomerSupportNotificationSettings />
       {/* MEMGINE */}
       <Section title="Memgine" testID="profile-memgine">
         <Card padding="md">

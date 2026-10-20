@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 196-support-notification-preferences
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/196-support-notification-preferences.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

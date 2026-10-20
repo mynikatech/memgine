@@ -39,6 +39,8 @@ import com.mynikatech.memgine.component.payment.orgTransactionInvestigationRoute
 import com.mynikatech.memgine.component.notification.NotificationService
 import com.mynikatech.memgine.component.notification.NotificationSql
 import com.mynikatech.memgine.component.notification.notificationRoutes
+import com.mynikatech.memgine.component.support.SupportNotificationSettingsService
+import com.mynikatech.memgine.component.support.supportNotificationSettingsRoutes
 import com.mynikatech.memgine.component.notification.NotificationDispatchService
 import com.mynikatech.memgine.component.notification.NotificationDispatchSql
 import com.mynikatech.memgine.component.notification.SnsExternalNotificationPublisher
@@ -230,6 +232,8 @@ fun Application.configureRouting(
     )
     val financialExceptionService = FinancialExceptionService(database.jdbi)
     val supportService = SupportService(database.jdbi)
+    val supportNotificationSettingsService =
+    SupportNotificationSettingsService(database.jdbi)
     val metaWhatsAppWebhookService = MetaWhatsAppWebhookService(database.jdbi, config.supportWebhook)
     val customerService = CustomerService(database.jdbi.onDemand(CustomerSql::class.java),
         membershipProductService, benefitService, storeService, organizationService, customerDevIdentityEnabled, businessOtpService, paymentService)
@@ -335,6 +339,7 @@ fun Application.configureRouting(
             financialExceptionRoutes(financialExceptionService)
             orgTransactionInvestigationRoutes(database.jdbi)
             supportRoutes(supportService)
+            supportNotificationSettingsRoutes(supportNotificationSettingsService)
             metaWhatsAppWebhookRoutes(metaWhatsAppWebhookService)
             notificationConfigurationRoutes(notificationConfigurationService)
             notificationRoutes(notificationService)
