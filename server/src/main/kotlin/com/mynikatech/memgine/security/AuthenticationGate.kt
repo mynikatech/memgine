@@ -153,6 +153,19 @@ private fun protectOrganizationPath(
         return
     }
 
+    if (
+        resource == "payments" &&
+        method == HttpMethod.Post &&
+        parts.size == 7 &&
+        parts[6] == "cancel"
+    ) {
+        // Customer-owned payment cancellation remains authenticated here; the
+        // payment service and payment_cancel_intent enforce exact ownership.
+        if (principal == null) {
+            throw UnauthorizedException("Authentication is required")
+        }
+        return
+    }
     if (resource == "payments" &&
         method == HttpMethod.Post &&
         parts.getOrNull(6) in setOf("reconcile", "recover-fulfillment")) {

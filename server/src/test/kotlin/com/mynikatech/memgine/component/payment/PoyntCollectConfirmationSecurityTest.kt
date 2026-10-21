@@ -252,6 +252,59 @@ class PoyntCollectConfirmationSecurityTest {
         }
     }
 
+    @Test fun `pending Collect payment cancels before any charge`() {
+        val fixture = Fixture(SUCCESS)
+
+        val canceled = fixture.service.cancel("ORG-1", "PAY-1", "CUSTOMER-1")
+
+        assertEquals("CANCELED", canceled.status)
+        assertEquals(0, fixture.transport.charges.get())
+        assertFailsWith<ConflictException> {
+            fixture.service.confirmCollectAndFinalize("ORG-1", "PAY-1", "CUSTOMER-1", "nonce")
+        }
+    }
+
+    @Test fun `repeated pending cancellation is idempotent`() {
+        val fixture = Fixture(SUCCESS)
+
+        assertEquals("CANCELED", fixture.service.cancel("ORG-1", "PAY-1", "CUSTOMER-1").status)
+        assertEquals("CANCELED", fixture.service.cancel("ORG-1", "PAY-1", "CUSTOMER-1").status)
+        assertEquals(0, fixture.transport.charges.get())
+    }
+
+    @Test fun `another customer cannot cancel the payment intent`() {
+        val fixture = Fixture(SUCCESS)
+
+        assertFailsWith<ConflictException> {
+            fixture.service.cancel("ORG-1", "PAY-1", "CUSTOMER-2")
+        }
+        assertEquals("PENDING", fixture.sql.status.get())
+    }
+
+    @Test fun `charge claim wins cancellation race and no second charge is sent`() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val fixture = Fixture(SUCCESS, entered = entered, release = release)
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val charge = CompletableFuture.supplyAsync({
+                fixture.service.confirmCollectAndFinalize("ORG-1", "PAY-1", "CUSTOMER-1", "nonce")
+            }, executor)
+            assertEquals(true, entered.await(5, TimeUnit.SECONDS))
+
+            assertFailsWith<ConflictException> {
+                fixture.service.cancel("ORG-1", "PAY-1", "CUSTOMER-1")
+            }
+
+            release.countDown()
+            assertEquals("SUCCEEDED", charge.get(5, TimeUnit.SECONDS).first.status)
+            assertEquals(1, fixture.transport.charges.get())
+        } finally {
+            release.countDown()
+            executor.shutdownNow()
+        }
+    }
+
     private class Fixture(
         body: String,
         failToken: Boolean = false,
@@ -335,6 +388,13 @@ class PoyntCollectConfirmationSecurityTest {
                     claimAttempts.incrementAndGet()
                     (claimAllowed && status.compareAndSet("PENDING", "PROCESSING"))
                         .also { if (it) claims.incrementAndGet() }
+                }
+                "cancel" -> if (args?.get(2) != "CUSTOMER-1") {
+                    false
+                } else when (status.get()) {
+                    "PENDING" -> status.compareAndSet("PENDING", "CANCELED")
+                    "CANCELED" -> true
+                    else -> false
                 }
                 "setProviderReference" -> {
                     val supplied = args?.get(2) as String

@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 201-safe-poynt-collect-cancellation
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/201-safe-poynt-collect-cancellation.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

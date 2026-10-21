@@ -98,12 +98,21 @@ data class PoyntCollectWalletDto(
     val amount: String
 )
 
+/** Public organization colors used only to render the secure hosted checkout. */
+@Serializable
+data class PoyntCollectBrandingDto(
+    val primaryColor: String? = null,
+    val secondaryColor: String? = null,
+    val accentColor: String? = null
+)
+
 @Serializable
 data class PoyntCollectBootstrapDto(
     val sdkUrl: String,
     val businessId: String,
     val applicationId: String,
-    val wallet: PoyntCollectWalletDto? = null
+    val wallet: PoyntCollectWalletDto? = null,
+    val branding: PoyntCollectBrandingDto? = null
 )
 
 @Serializable

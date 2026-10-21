@@ -22,6 +22,7 @@ import com.mynikatech.memgine.net.dto.MembershipPurchaseQuoteDto
 import com.mynikatech.memgine.net.dto.CounterMembershipPurchaseQuoteDto
 import com.mynikatech.memgine.net.dto.TestPaymentConfirmationDto
 import com.mynikatech.memgine.net.dto.PoyntCollectBootstrapDto
+import com.mynikatech.memgine.net.dto.PoyntCollectBrandingDto
 import com.mynikatech.memgine.net.dto.PoyntCollectWalletDto
 import com.mynikatech.memgine.net.dto.PoyntCollectConfirmationDto
 import com.stripe.model.Event
@@ -334,7 +335,31 @@ class PaymentService(
         } catch (_: Exception) {
             null
         }
-        return PoyntCollectBootstrapDto(collectSdkUrl, row.businessId, row.applicationId, wallet)
+        // The payment intent's organization has already been verified above.
+        // Return only the public color values required by the hosted checkout.
+        val branding = try {
+            val brandingJson = jdbi.onDemand(OrganizationSql::class.java)
+                .getOrganizationBranding(org)
+                ?.let { Json.parseToJsonElement(it).jsonObject }
+            brandingJson?.let {
+                PoyntCollectBrandingDto(
+                    primaryColor = it["primaryColor"]?.jsonPrimitive?.contentOrNull,
+                    secondaryColor = it["secondaryColor"]?.jsonPrimitive?.contentOrNull,
+                    accentColor = it["accentColor"]?.jsonPrimitive?.contentOrNull
+                )
+            }
+        } catch (_: Exception) {
+            // Branding is presentation-only. A malformed public branding record
+            // must not prevent an authorized checkout from displaying.
+            null
+        }
+        return PoyntCollectBootstrapDto(
+            collectSdkUrl,
+            row.businessId,
+            row.applicationId,
+            wallet,
+            branding
+        )
     }
 
     /**

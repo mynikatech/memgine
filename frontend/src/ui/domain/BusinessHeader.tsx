@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { BrandLogo } from "@/src/ui/BrandLogo";
 
 import { View } from "react-native";
 
@@ -39,20 +40,13 @@ export function BusinessHeader({
         paddingVertical: theme.spacing.sm,
       }}
     >
-      <View
-        style={{
-          width: 44,
-          height: 44,
-          borderRadius: theme.radius.md,
-          backgroundColor: theme.colors.primary,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Text variant="title" color="onPrimary">
-          {initial}
-        </Text>
-      </View>
+      <BrandLogo
+        logoUrl={configuration.branding.logoUrl}
+        monogram={initial}
+        size={44}
+        borderRadius={theme.radius.md}
+        fit="contain"
+      />
 
       <View style={{ flex: 1 }}>
         {subtitle ? (

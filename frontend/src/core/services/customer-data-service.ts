@@ -538,6 +538,22 @@ export class CustomerDataService {
     return result.data;
   }
 
+  async cancelPayment(
+    organizationId: ID,
+    paymentIntentId: ID,
+  ): Promise<PaymentIntent> {
+    const result = await this.api.cancelPayment(organizationId, paymentIntentId);
+
+    if (!result.success) {
+      throw new CustomerPaymentStatusError(
+        result.error.message,
+        result.error.code,
+      );
+    }
+
+    return result.data;
+  }
+
   async preference(
     organizationId: ID,
 

@@ -1856,6 +1856,59 @@ function JoinFlow() {
     [clearPendingCustomerCollectPayment, finishSubscription, orgId],
   );
 
+  const collectCancellationInFlight = useRef(false);
+  const cancelUnusedCollectPayment = useCallback(
+    async (intentId: string) => {
+      if (isStaffSale || collectCancellationInFlight.current) return;
+
+      collectCancellationInFlight.current = true;
+      const operationVersion = ++collectOperationVersion.current;
+      collectOperationIntentId.current = intentId;
+      const isCurrent = () =>
+        collectMounted.current &&
+        collectOperationVersion.current === operationVersion &&
+        collectOperationIntentId.current === intentId;
+
+      if (isCurrent()) {
+        setCollectPollingActive(false);
+        setCollectPendingIntentId(intentId);
+        setCollectConfirmationState({ kind: "processing" });
+        setOtpError(undefined);
+        setStep("processing");
+      }
+
+      try {
+        const canceled = await services.customerData.cancelPayment(
+          orgId,
+          intentId,
+        );
+        if (!isCurrent()) return;
+
+        if (["CANCELED", "CANCELLED"].includes(canceled.status)) {
+          clearPendingCustomerCollectPayment();
+          setCollectPayment(null);
+          setCollectConfirmationState({ kind: "idle" });
+          setOtpError(undefined);
+          setStep("review");
+          return;
+        }
+      } catch {
+        // A failed cancellation may mean a charge claim won the race. Keep the
+        // durable recovery record and return to authoritative status checking.
+      } finally {
+        collectCancellationInFlight.current = false;
+      }
+
+      await checkCollectPayment(intentId);
+    },
+    [
+      checkCollectPayment,
+      clearPendingCustomerCollectPayment,
+      isStaffSale,
+      orgId,
+    ],
+  );
+
   // An explicit customer action may reconcile a captured payment, but never charge again.
   const customerCollectReconcileInFlight = useRef(false);
   const reconcileSavedCollectPayment = useCallback(
@@ -2078,15 +2131,17 @@ function JoinFlow() {
           ) {
             setCollectConfirmationState({
               kind: "attention",
-              message: "Checkout recovery is unavailable. Please check payment status before trying again.",
+              message:
+                "Checkout recovery is unavailable. Please check payment status before trying again.",
             });
             setStep("processing");
             return;
           }
-          const saved = await storage.getItem<PendingCustomerCollectPayment | null>(
-            customerCollectPaymentStorageKey,
-            null,
-          );
+          const saved =
+            await storage.getItem<PendingCustomerCollectPayment | null>(
+              customerCollectPaymentStorageKey,
+              null,
+            );
           if (!isCurrent()) return;
           if (
             !isPendingCustomerCollectPayment(saved) ||
@@ -2098,17 +2153,19 @@ function JoinFlow() {
           ) {
             setCollectConfirmationState({
               kind: "attention",
-              message: "The saved checkout does not match this purchase. Check payment status before continuing.",
+              message:
+                "The saved checkout does not match this purchase. Check payment status before continuing.",
             });
             setStep("processing");
             return;
           }
           // A new one-time browser token, but the exact SAME payment intent.
           // Both Google Pay and card remain available in the resumed checkout.
-          const checkout = await services.customerData.createCollectBrowserCheckout(
-            orgId,
-            intentId,
-          );
+          const checkout =
+            await services.customerData.createCollectBrowserCheckout(
+              orgId,
+              intentId,
+            );
           if (!isCurrent()) return;
           const clearNativeReturn = beginNativeCollectReturn(session.userId);
           try {
@@ -3405,13 +3462,20 @@ function JoinFlow() {
 
               if (!collectMounted.current) return;
 
-              // Success, cancel and dismiss are browser outcomes, not
-              // authoritative payment outcomes. Always inspect the saved intent.
-              if (
-                browserResult.type !== "success" &&
-                browserResult.type !== "cancel" &&
-                browserResult.type !== "dismiss"
-              ) {
+              const cancellationRequested =
+                browserResult.type === "cancel" ||
+                browserResult.type === "dismiss" ||
+                (browserResult.type === "success" &&
+                  browserResult.url.includes("cancelPayment=1"));
+
+              if (cancellationRequested) {
+                await cancelUnusedCollectPayment(intent.paymentIntentId);
+                return;
+              }
+
+              // A successful redirect is a return signal, not payment proof.
+              // Read the saved intent rather than inferring a charge outcome.
+              if (browserResult.type !== "success") {
                 console.warn(
                   "Poynt Collect returned an unexpected browser result:",
                   browserResult.type,
@@ -3537,6 +3601,8 @@ function JoinFlow() {
 
     checkCollectPayment,
 
+    cancelUnusedCollectPayment,
+
     counterPurchaseId,
 
     counterTerminalPaymentStorageKey,
@@ -3645,6 +3711,10 @@ function JoinFlow() {
     */
 
   const close = () => {
+    if (step === "collectCard" && collectPayment && !isStaffSale) {
+      void cancelUnusedCollectPayment(collectPayment.paymentIntentId);
+      return;
+    }
     if (step === "success") {
       if (isStaffSale) {
         goToCounter();
@@ -4410,6 +4480,7 @@ function JoinFlow() {
             merchantName={
               activeOrganization.displayName ?? activeOrganization.name
             }
+            branding={configuration.branding}
             payment={
               <View style={{ gap: 14, minWidth: 0 }}>
                 {otpError ? (
@@ -4447,13 +4518,9 @@ function JoinFlow() {
                   }}
                   payLabel={`Pay ${formatMoney(Math.round(collectPayment.amount * 100))} & Subscribe`}
                   onBack={() => {
-                    // Preserve the stable idempotency key when leaving the form.
-                    // A reopened checkout must reuse this pending intent, not
-                    // silently create a new one while the old intent still exists.
-                    setCollectPayment(null);
-                    setCollectConfirmationState({ kind: "idle" });
-                    setOtpError(undefined);
-                    setStep("review");
+                    void cancelUnusedCollectPayment(
+                      collectPayment.paymentIntentId,
+                    );
                   }}
                 />
               </View>

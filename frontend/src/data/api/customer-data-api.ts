@@ -37,6 +37,11 @@ export type PoyntCollectBootstrap = {
   sdkUrl: string;
   businessId: string;
   applicationId: string;
+  branding?: {
+    primaryColor?: string | null;
+    secondaryColor?: string | null;
+    accentColor?: string | null;
+  } | null;
   wallet?: {
     country: string;
     currency: string;
@@ -435,6 +440,15 @@ export class CustomerDataApi {
     paymentIntentId: ID,
   ): Promise<ApiResult<PaymentConfirmation>> {
     return httpClient.get(collectPaymentPath(organizationId, paymentIntentId));
+  }
+  cancelPayment(
+    organizationId: ID,
+    paymentIntentId: ID,
+  ): Promise<ApiResult<PaymentIntent>> {
+    return httpClient.post(
+      `${collectPaymentPath(organizationId, paymentIntentId)}/cancel`,
+      {},
+    );
   }
   preference(
     organizationId: ID,

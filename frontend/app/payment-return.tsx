@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { View } from "react-native";
 
@@ -25,6 +25,11 @@ type PendingCheckout = {
 export default function PaymentReturn() {
   const { session } = useAuth();
   const router = useRouter();
+  const { cancelPayment } = useLocalSearchParams<{
+    cancelPayment?: string | string[];
+  }>();
+  const cancellationRequested =
+    (Array.isArray(cancelPayment) ? cancelPayment[0] : cancelPayment) === "1";
 
   useEffect(() => {
     if (!session?.userId) {
@@ -65,6 +70,40 @@ export default function PaymentReturn() {
             // payment intent and handles its verified completion.
             router.back();
             return;
+          }
+          if (cancellationRequested) {
+            try {
+              const canceled = await services.customerData.cancelPayment(
+                pending.organizationId,
+                pending.paymentIntentId,
+              );
+              if (!active) return;
+
+              if (["CANCELED", "CANCELLED"].includes(canceled.status)) {
+                await Promise.all([
+                  storage.removeItem(
+                    `customer-collect-payment:${pending.organizationId}:${session.userId}`,
+                  ),
+                  storage.removeItem(
+                    `customer-payment-start:${pending.organizationId}:${session.userId}`,
+                  ),
+                  storage.removeItem(
+                    `customer-collect-payment-return:${session.userId}`,
+                  ),
+                ]);
+                if (!active) return;
+                router.replace(
+                  APP_ROUTES.join.membership(
+                    pending.organizationId,
+                    pending.membershipProductId,
+                  ) as never,
+                );
+                return;
+              }
+            } catch {
+              // Cancellation can lose a race with a provider claim. Preserve
+              // recovery state and continue with the authoritative lookup.
+            }
           }
           // On native, Expo Router may receive the same custom-scheme redirect
           // that completes openAuthSessionAsync. Treat it only as a signal and
@@ -114,7 +153,7 @@ export default function PaymentReturn() {
     return () => {
       active = false;
     };
-  }, [router, session?.userId]);
+  }, [cancellationRequested, router, session?.userId]);
 
   return <View />;
 }

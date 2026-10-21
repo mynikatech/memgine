@@ -6,6 +6,7 @@ import { Button, Text } from "@/src/ui";
 import { CollectCheckoutLayout } from "@/src/ui/payment/CollectCheckoutLayout";
 import { PoyntCollectCardForm } from "@/src/ui/payment/PoyntCollectCardForm";
 import { PoyntCollectWallets } from "@/src/ui/payment/PoyntCollectWallets";
+import { buildTheme } from "@/src/theme/theme";
 
 import {
   poyntCollectBrowserApi,
@@ -25,9 +26,13 @@ const money = (minor: number, currency: string) =>
 const STATUS_POLL_INTERVAL_MS = 2_000;
 const STATUS_POLL_TIMEOUT_MS = 60_000;
 
-function returnToMemgine() {
+function returnToMemgine(cancellationRequested = false) {
   if (typeof window !== "undefined") {
-    window.location.assign("memgine://payment-return");
+    window.location.assign(
+      cancellationRequested
+        ? "memgine://payment-return?cancelPayment=1"
+        : "memgine://payment-return",
+    );
   }
 }
 
@@ -278,13 +283,23 @@ export default function PoyntCollectCheckoutScreen() {
     : "—";
 
   const merchantName = bootstrap?.wallet?.merchantName ?? "Memgine";
+  const membershipStatus = success ? "Active" : "Confirmation pending";
+  const checkoutTheme = buildTheme(
+    bootstrap?.branding
+      ? {
+          primaryColor: bootstrap.branding.primaryColor ?? undefined,
+          secondaryColor: bootstrap.branding.secondaryColor ?? undefined,
+          accentColor: bootstrap.branding.accentColor ?? undefined,
+        }
+      : undefined,
+  );
 
   return (
     <ScrollView
       style={{
         flex: 1,
         width: "100%",
-        backgroundColor: "#F7F8FA",
+        backgroundColor: checkoutTheme.colors.primarySoft,
       }}
       contentContainerStyle={{
         flexGrow: 1,
@@ -295,6 +310,8 @@ export default function PoyntCollectCheckoutScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <CollectCheckoutLayout
+        branding={bootstrap?.branding}
+        merchantName={merchantName}
         payment={
           <View style={{ gap: 16, minWidth: 0 }}>
             {loading ? (
@@ -309,17 +326,26 @@ export default function PoyntCollectCheckoutScreen() {
 
             {/* SUCCESS — SAME FOR ALL PAYMENT METHODS */}
             {success ? (
-              <View style={{ gap: 12 }}>
-                <Text variant="h2">Payment Successful!</Text>
+              <View
+                style={{
+                  gap: 12,
+                  padding: 18,
+                  borderRadius: 16,
+                  backgroundColor: checkoutTheme.colors.accentSoft,
+                }}
+              >
+                <Text variant="h2" color="primary">Payment Successful</Text>
 
-                <Text variant="bodyStrong">Thank you for your purchase!</Text>
+                <Text variant="bodyStrong">Your membership is active.</Text>
 
                 <Text variant="body">
-                  Your membership is now active. You can start enjoying your
-                  membership benefits right away.
+                  We confirmed your payment and activated your membership.
                 </Text>
 
                 <Text variant="bodySmall">Amount paid: {amountText}</Text>
+                <Text variant="bodySmall">
+                  Membership status: {membershipStatus}
+                </Text>
 
                 <Button
                   label="View My Membership"
@@ -421,8 +447,14 @@ export default function PoyntCollectCheckoutScreen() {
                       onNonce={async (nonce) => {
                         await confirm(nonce, "card");
                       }}
-                      onBack={returnToMemgine}
+                      onBack={() => returnToMemgine(true)}
                       payLabel={`Pay ${amountText} & Subscribe`}
+                    />
+                    <Button
+                      label="Cancel Payment"
+                      fullWidth
+                      variant="secondary"
+                      onPress={() => returnToMemgine(true)}
                     />
                   </View>
                 ) : null}

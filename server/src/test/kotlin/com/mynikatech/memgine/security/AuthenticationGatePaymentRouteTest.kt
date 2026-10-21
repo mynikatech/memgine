@@ -52,6 +52,35 @@ class AuthenticationGatePaymentRouteTest {
     }
 
     @Test
+    fun `authenticated customer may reach exact payment cancellation route`() {
+        protectOrganizationPath(
+            customer,
+            "/api/v1/organizations/organization-1/payments/payment-1/cancel",
+            HttpMethod.Post
+        )
+    }
+
+    @Test
+    fun `unauthenticated or malformed payment cancellation remains rejected`() {
+        val unauthenticated = assertFailsWith<InvocationTargetException> {
+            protectOrganizationPath(
+                null,
+                "/api/v1/organizations/organization-1/payments/payment-1/cancel",
+                HttpMethod.Post
+            )
+        }
+        assertEquals(UnauthorizedException::class, unauthenticated.targetException::class)
+
+        val malformed = assertFailsWith<InvocationTargetException> {
+            protectOrganizationPath(
+                customer,
+                "/api/v1/organizations/organization-1/payments/payment-1/cancel/extra",
+                HttpMethod.Post
+            )
+        }
+        assertEquals(ForbiddenException::class, malformed.targetException::class)
+    }
+    @Test
     fun `existing customer-owned payment reads remain admitted`() {
         listOf(
             "/api/v1/organizations/organization-1/payments/payment-1",

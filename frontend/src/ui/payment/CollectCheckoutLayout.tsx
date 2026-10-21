@@ -1,9 +1,16 @@
 import type { ReactNode } from "react";
 import { useWindowDimensions, View } from "react-native";
+import { BusinessThemeScope } from "@/src/providers";
+import { buildTheme } from "@/src/theme/theme";
 import { Text } from "@/src/ui";
 
 type Props = {
   merchantName?: string;
+  branding?: {
+    primaryColor?: string | null;
+    secondaryColor?: string | null;
+    accentColor?: string | null;
+  } | null;
   heading?: string;
   subtitle?: string;
   payment: ReactNode;
@@ -16,6 +23,7 @@ type Props = {
  */
 export function CollectCheckoutLayout({
   merchantName,
+  branding,
   heading = "Complete your payment",
   subtitle = "Enter your details to complete your membership purchase.",
   payment,
@@ -23,6 +31,15 @@ export function CollectCheckoutLayout({
 }: Props) {
   const { width } = useWindowDimensions();
   const desktop = width >= 800;
+  const theme = buildTheme(
+    branding
+      ? {
+          primaryColor: branding.primaryColor ?? undefined,
+          secondaryColor: branding.secondaryColor ?? undefined,
+          accentColor: branding.accentColor ?? undefined,
+        }
+      : undefined,
+  );
   const paymentPanel = (
     <View style={{ flex: desktop ? 1.2 : undefined, minWidth: 0, gap: 18 }}>
       <View style={{ gap: 5 }}>
@@ -46,7 +63,7 @@ export function CollectCheckoutLayout({
         minWidth: 0,
         borderLeftWidth: desktop ? 1 : 0,
         borderBottomWidth: desktop ? 0 : 1,
-        borderColor: "#E5E7EB",
+        borderColor: theme.colors.border,
         paddingLeft: desktop ? 24 : 0,
         paddingBottom: desktop ? 0 : 20,
         gap: 12,
@@ -58,6 +75,7 @@ export function CollectCheckoutLayout({
   );
 
   return (
+    <BusinessThemeScope theme={theme}>
     <View
       style={{
         width: "100%",
@@ -68,8 +86,12 @@ export function CollectCheckoutLayout({
       }}
     >
       <View style={{ gap: 5 }}>
-        {merchantName ? <Text variant="bodyStrong">{merchantName}</Text> : null}
-        <Text variant="h2">Secure membership checkout</Text>
+        {merchantName ? (
+          <Text variant="bodyStrong" color="primary">
+            {merchantName}
+          </Text>
+        ) : null}
+        <Text variant="h2" color="primary">Secure membership checkout</Text>
         <Text variant="bodySmall" color="textMuted">
           {subtitle}
         </Text>
@@ -81,9 +103,9 @@ export function CollectCheckoutLayout({
           width: "100%",
           padding: desktop ? 28 : 18,
           borderRadius: 18,
-          backgroundColor: "#FFFFFF",
+          backgroundColor: theme.colors.surface,
           borderWidth: 1,
-          borderColor: "#E5E7EB",
+          borderColor: theme.colors.primary,
         }}
       >
         {desktop ? (
@@ -99,5 +121,6 @@ export function CollectCheckoutLayout({
         )}
       </View>
     </View>
+    </BusinessThemeScope>
   );
 }
