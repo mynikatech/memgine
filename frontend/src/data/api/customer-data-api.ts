@@ -31,11 +31,6 @@ import { MembershipProductApi } from "./membership-product-api";
 import { BenefitApi } from "./benefit-api";
 import { OfferApi } from "./offer-api";
 import { StoreApi } from "./store-api";
-console.log("[W39 MODULE LOADED]", {
-  mode: process.env.EXPO_PUBLIC_W39_TEST_MODE,
-  isDev: __DEV__,
-  hostname: typeof window !== "undefined" ? window.location.hostname : "N/A",
-});
 const base = (organizationId: ID) =>
   `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}`;
 export type PoyntCollectBootstrap = {
@@ -396,11 +391,8 @@ export class CustomerDataApi {
     const isLocalWebTest =
       __DEV__ &&
       typeof window !== "undefined" &&
+      typeof window.location !== "undefined" &&
       ["localhost", "127.0.0.1"].includes(window.location.hostname);
-    console.log("[W39] confirmCollectPayment ENTERED", {
-      isLocalWebTest,
-      w39Mode,
-    });
     const response = await httpClient.post<
       { nonce: string; method: PoyntCollectPaymentMethod },
       PaymentConfirmation

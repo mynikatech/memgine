@@ -8,7 +8,6 @@
     "icon": "./assets/images/memgine-icon.png",
     "scheme": "memgine",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.mynikatech.memgine",
@@ -17,7 +16,6 @@
       }
     },
     "android": {
-      "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "resize",
       "package": "com.mynikatech.memgine"
     },

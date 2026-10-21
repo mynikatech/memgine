@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal, Platform, Pressable, View } from "react-native";
 
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
+import { beginNativeCollectReturn } from "@/src/core/services/native-collect-return";
 
 import type {
   Benefit,
@@ -3321,11 +3322,36 @@ function JoinFlow() {
             // The browser receives only the one-time checkout bearer; it never sees
             // the native Memgine session. Returning is a signal, so status is read
             // authoritatively from the existing payment intent afterwards.
-            await WebBrowser.openAuthSessionAsync(
-              checkout.checkoutUrl,
-              "memgine://payment-return",
-            );
-            await checkCollectPayment(intent.paymentIntentId);
+            // The original JoinFlow owns normal native payment completion.
+            // The route /payment-return handles interrupted-session recovery.
+            const clearNativeReturn = beginNativeCollectReturn(session.userId);
+
+            try {
+              const browserResult = await WebBrowser.openAuthSessionAsync(
+                checkout.checkoutUrl,
+                "memgine://payment-return",
+              );
+
+              if (!collectMounted.current) return;
+
+              // Success, cancel and dismiss are browser outcomes, not
+              // authoritative payment outcomes. Always inspect the saved intent.
+              if (
+                browserResult.type !== "success" &&
+                browserResult.type !== "cancel" &&
+                browserResult.type !== "dismiss"
+              ) {
+                console.warn(
+                  "Poynt Collect returned an unexpected browser result:",
+                  browserResult.type,
+                );
+              }
+
+              await checkCollectPayment(intent.paymentIntentId);
+            } finally {
+              clearNativeReturn();
+            }
+
             return;
           }
           if (intent.status === "SUCCEEDED") {
