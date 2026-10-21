@@ -1432,6 +1432,7 @@ function JoinFlow() {
       },
 
       paymentReference: string,
+      nativeCollect = false,
     ) => {
       if (!isStaffSale && customerPaymentStartStorageKey) {
         void storage.removeItem(customerPaymentStartStorageKey);
@@ -1486,6 +1487,13 @@ function JoinFlow() {
 
       invalidateCustomerLanding();
 
+      // The Poynt browser already displayed Payment Successful and its button.
+      // Do not make native customers click through a second success screen.
+      if (nativeCollect && Platform.OS !== "web" && !isStaffSale) {
+        router.replace(APP_ROUTES.customer.cards as never);
+        return;
+      }
+
       setStep("success");
     },
 
@@ -1496,6 +1504,7 @@ function JoinFlow() {
       setActiveContext,
       invalidateCustomerLanding,
       customerPaymentStartStorageKey,
+      router,
     ],
   );
 
@@ -1752,6 +1761,7 @@ function JoinFlow() {
               confirmed.subscription,
               confirmed.payment.providerReferenceId ??
                 confirmed.payment.paymentIntentId,
+              true,
             );
             return;
           }
@@ -1797,7 +1807,7 @@ function JoinFlow() {
                 ? "A previous payment attempt is for a different membership plan. Resolve that payment before starting another purchase."
                 : !canReturnToPayment
                   ? "This payment intent could not be saved for durable recovery. Its status can be checked, but secure card entry remains blocked; contact support before trying again."
-                  : "Payment not completed. Your previous payment attempt is still awaiting payment. You can return to the secure checkout using this same payment intent.",
+                  : "Payment isn't complete. Resume checkout to use Google Pay or a card. Your existing payment will be checked first.",
               canReturnToPayment,
             });
             setStep("processing");
@@ -1866,6 +1876,7 @@ function JoinFlow() {
             recovered.subscription,
             recovered.payment.providerReferenceId ??
               recovered.payment.paymentIntentId,
+            true,
           );
           return;
         }
@@ -1953,6 +1964,7 @@ function JoinFlow() {
       const operationVersion = ++collectOperationVersion.current;
       collectOperationIntentId.current = intentId;
       collectPollingIntentIds.current.add(intentId);
+      let recheckAfterBrowser = false;
       const isCurrent = () =>
         collectMounted.current &&
         collectOperationVersion.current === operationVersion &&
@@ -1991,6 +2003,7 @@ function JoinFlow() {
               status.subscription,
               status.payment.providerReferenceId ??
                 status.payment.paymentIntentId,
+              true,
             );
             return;
           }
@@ -2035,15 +2048,6 @@ function JoinFlow() {
           setStep("processing");
           return;
         }
-        if (Platform.OS !== "web") {
-          setCollectConfirmationState({
-            kind: "attention",
-            message:
-              "Payment is pending. Secure checkout is unavailable here; please check payment status again.",
-          });
-          setStep("processing");
-          return;
-        }
         const quote = await services.customerData.purchaseQuote(
           orgId,
           plan.id,
@@ -2061,6 +2065,63 @@ function JoinFlow() {
               "The price has changed since this payment was created. Do not pay from this intent; contact support to close it safely.",
           });
           setStep("processing");
+          return;
+        }
+        if (Platform.OS !== "web") {
+          // Never issue a new intent when the customer returns to set up Google Pay
+          // or chooses to pay with a card. Verify the durable recovery record.
+          if (
+            !session?.userId ||
+            !product ||
+            !customerCollectPaymentStorageKey ||
+            collectRecoveryPersistenceFailedIntentIds.current.has(intentId)
+          ) {
+            setCollectConfirmationState({
+              kind: "attention",
+              message: "Checkout recovery is unavailable. Please check payment status before trying again.",
+            });
+            setStep("processing");
+            return;
+          }
+          const saved = await storage.getItem<PendingCustomerCollectPayment | null>(
+            customerCollectPaymentStorageKey,
+            null,
+          );
+          if (!isCurrent()) return;
+          if (
+            !isPendingCustomerCollectPayment(saved) ||
+            saved.organizationId !== orgId ||
+            saved.customerUserId !== session.userId ||
+            saved.paymentIntentId !== intentId ||
+            saved.membershipProductId !== product.id ||
+            saved.subscriptionPlanId !== plan.id
+          ) {
+            setCollectConfirmationState({
+              kind: "attention",
+              message: "The saved checkout does not match this purchase. Check payment status before continuing.",
+            });
+            setStep("processing");
+            return;
+          }
+          // A new one-time browser token, but the exact SAME payment intent.
+          // Both Google Pay and card remain available in the resumed checkout.
+          const checkout = await services.customerData.createCollectBrowserCheckout(
+            orgId,
+            intentId,
+          );
+          if (!isCurrent()) return;
+          const clearNativeReturn = beginNativeCollectReturn(session.userId);
+          try {
+            await WebBrowser.openAuthSessionAsync(
+              checkout.checkoutUrl,
+              "memgine://payment-return",
+            );
+            // A browser close, cancel or successful redirect is only a signal.
+            // Perform the authoritative status check after releasing the guard.
+            recheckAfterBrowser = true;
+          } finally {
+            clearNativeReturn();
+          }
           return;
         }
         const configuration = await services.customerData.collectBootstrap(
@@ -2087,14 +2148,23 @@ function JoinFlow() {
           setStep("processing");
         });
       } finally {
+        const shouldRecheck = recheckAfterBrowser && isCurrent();
         collectPollingIntentIds.current.delete(intentId);
-        applyIfCurrent(() => setCollectPollingActive(false));
+        if (shouldRecheck) {
+          void checkCollectPayment(intentId);
+        } else {
+          applyIfCurrent(() => setCollectPollingActive(false));
+        }
       }
     },
     [
       clearPendingCustomerCollectPayment,
       explicitOfferId,
       finishSubscription,
+      checkCollectPayment,
+      customerCollectPaymentStorageKey,
+      session?.userId,
+      product,
       orgId,
       plan,
     ],
@@ -2425,6 +2495,7 @@ function JoinFlow() {
               confirmed.subscription,
               confirmed.payment.providerReferenceId ??
                 confirmed.payment.paymentIntentId,
+              true,
             );
             return true;
           }
@@ -4684,7 +4755,7 @@ function JoinFlow() {
             <>
               {collectConfirmationState.canReturnToPayment ? (
                 <Button
-                  label="Return to Payment"
+                  label="Resume Payment"
                   fullWidth
                   onPress={() =>
                     void returnToPendingCollectPayment(collectPendingIntentId)
