@@ -162,6 +162,15 @@ data class PoyntStoreDiagnosticDto(
     val address: String? = null
 )
 
+/** Sanitized, read-only Poynt Apple Pay registration diagnostic. */
+@Serializable
+data class PoyntApplePayRegistrationDiagnosticDto(
+    val httpStatus: Int,
+    val registered: Boolean? = null,
+    val registeredDomains: List<String>? = null,
+    val memgineDevDomainRegistered: Boolean? = null
+)
+
 @Serializable
 data class PoyntDeviceDiagnosticDto(
     val deviceId: String,

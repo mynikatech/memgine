@@ -10,6 +10,7 @@ import com.mynikatech.memgine.net.dto.OrganizationPoyntPaymentSummaryDto
 import com.mynikatech.memgine.net.dto.PlatformPoyntPaymentDto
 import com.mynikatech.memgine.net.dto.PlatformPoyntPaymentWriteDto
 import com.mynikatech.memgine.net.dto.PoyntCredentialProfileDto
+import com.mynikatech.memgine.net.dto.PoyntApplePayRegistrationDiagnosticDto
 import com.mynikatech.memgine.net.dto.PoyntStoreDiagnosticDto
 import com.mynikatech.memgine.net.dto.PoyntDeviceDiagnosticDto
 import kotlinx.serialization.json.Json
@@ -224,6 +225,48 @@ class PlatformPoyntPaymentService(
         }
         throw BadRequestException("Poynt stores request was not authorized")
     }
+
+    /**
+     * Temporary LOCAL/DEV read-only diagnostic. It intentionally exposes only
+     * the provider HTTP status and recognized registration/domain fields.
+     */
+    fun applePayRegistrationDiagnostic(
+        integrationId: String,
+        actorUserId: String
+    ): PoyntApplePayRegistrationDiagnosticDto {
+        if (environment.lowercase() !in setOf("local", "dev", "development")) {
+            throw BadRequestException("Poynt Apple Pay registration diagnostic is unavailable in this environment")
+        }
+        val row = sql.get(integrationId, actorUserId)
+            ?: throw BadRequestException("Poynt payment configuration not found")
+        val businessId = row.providerBusinessId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: throw BadRequestException("Poynt Business ID is not configured")
+        val credentialReference = sql.credentialReference(integrationId, actorUserId)
+        val configuration = PoyntCatalogConfiguration(
+            row.integrationConfigurationId,
+            row.organizationId,
+            row.applicationId.orEmpty(),
+            businessId,
+            row.providerStoreId,
+            credentialReference,
+            row.merchantCurrencyCode.orEmpty(),
+            null
+        )
+
+        repeat(2) { attempt ->
+            val token = tokens.token(configuration)
+            val response = transport.get(
+                transport.applePayRegistrationUri(businessId),
+                "${token.tokenType} ${token.value}"
+            )
+            if (response.statusCode == 401 && attempt == 0) {
+                tokens.invalidate(configuration.integrationConfigurationId)
+                return@repeat
+            }
+            return parseApplePayRegistration(response.statusCode, response.body)
+        }
+        throw BadRequestException("Poynt Apple Pay registration request was not authorized")
+    }
     
     /** Temporary LOCAL/DEV operational diagnostic. Returns only non-sensitive terminal identity fields. */
         fun devicesDiagnostic(
@@ -347,6 +390,62 @@ class PlatformPoyntPaymentService(
     } catch (_: Exception) {
         throw BadRequestException("Poynt stores response was invalid")
     }
+
+    private fun parseApplePayRegistration(
+        httpStatus: Int,
+        body: String
+    ): PoyntApplePayRegistrationDiagnosticDto {
+        // Only a successful response, or a 404 carrying an explicit
+        // registration marker, can establish a registration state.
+        if (httpStatus !in 200..299 && httpStatus != 404) {
+            return PoyntApplePayRegistrationDiagnosticDto(httpStatus = httpStatus)
+        }
+        val root = try {
+            Json.parseToJsonElement(body) as? JsonObject
+        } catch (_: Exception) {
+            null
+        } ?: return PoyntApplePayRegistrationDiagnosticDto(httpStatus = httpStatus)
+        val registration = root["registration"] as? JsonObject
+        val registered = registrationState(root) ?: registration?.let(::registrationState)
+        val domains = registeredDomains(root) ?: registration?.let(::registeredDomains)
+        return PoyntApplePayRegistrationDiagnosticDto(
+            httpStatus = httpStatus,
+            registered = registered,
+            registeredDomains = domains,
+            memgineDevDomainRegistered = domains?.any {
+                it.equals("memgine-dev.mynikatech.in", ignoreCase = true)
+            }
+        )
+    }
+
+    /** Only provider fields explicitly named as registration/domain fields are accepted. */
+    private fun registrationState(value: JsonObject): Boolean? =
+        listOf("registered", "isRegistered").firstNotNullOfOrNull { name ->
+            (value[name] as? JsonPrimitive)?.contentOrNull?.trim()?.lowercase()?.let {
+                when (it) {
+                    "true", "registered" -> true
+                    "false", "unregistered" -> false
+                    else -> null
+                }
+            }
+        } ?: (value["registrationStatus"] as? JsonPrimitive)
+            ?.contentOrNull
+            ?.trim()
+            ?.uppercase()
+            ?.let { status ->
+                when (status) {
+                    "REGISTERED" -> true
+                    "UNREGISTERED" -> false
+                    else -> null
+                }
+            }
+
+    private fun registeredDomains(value: JsonObject): List<String>? =
+        listOf("registeredDomains", "domains").firstNotNullOfOrNull { name ->
+            (value[name] as? JsonArray)?.mapNotNull { domain ->
+                (domain as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+            }
+        }
 
     private fun JsonObject.string(name: String): String? =
         (this[name] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }

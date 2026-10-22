@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 202-fix-counter-redemption-pricing-reconciliation-actor
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/202_fix_counter_redemption_pricing_reconciliation_actor.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

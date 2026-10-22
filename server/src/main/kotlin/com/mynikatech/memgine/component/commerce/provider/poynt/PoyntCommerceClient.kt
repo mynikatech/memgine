@@ -10,6 +10,7 @@ import java.net.http.HttpResponse
 import java.time.Duration
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import org.slf4j.LoggerFactory
 
 interface PoyntHttpTransport {
     fun get(uri: URI, authorization: String, modifiedSince: String? = null): PoyntHttpResponse
@@ -25,6 +26,9 @@ interface PoyntHttpTransport {
     ): URI = throw UnsupportedOperationException("Poynt transaction lookup URI is unavailable")
     /** Operational diagnostic endpoint; provider configuration supplies the business ID. */
     fun storesUri(businessId: String): URI = throw UnsupportedOperationException("Poynt stores URI is unavailable")
+    /** Read-only Apple Pay registration diagnostic; provider configuration supplies the business ID. */
+    fun applePayRegistrationUri(businessId: String): URI =
+        throw UnsupportedOperationException("Poynt Apple Pay registration URI is unavailable")
     fun transactionByIdUri(businessId: String, transactionId: String): URI =
     throw UnsupportedOperationException("Poynt transaction lookup unavailable")
     fun storeUri(
@@ -94,6 +98,8 @@ class PoyntCloudHttpTransport(private val baseUrl: String, private val apiVersio
         URI.create("$baseUrl/businesses/$businessId/transactions?original-request-id=" +
             URLEncoder.encode(originalRequestId, StandardCharsets.UTF_8))
     override fun storesUri(businessId: String) = URI.create("$baseUrl/businesses/$businessId/stores")
+    override fun applePayRegistrationUri(businessId: String) =
+        URI.create("$baseUrl/businesses/$businessId/apple-pay/registration")
     override fun storeUri(
         businessId: String,
         storeId: String
@@ -114,10 +120,18 @@ class PoyntAuthenticatedCatalogClient(
     private val transport: PoyntHttpTransport,
     private val tokens: PoyntTokenService
 ) {
+    private val logger = LoggerFactory.getLogger(PoyntAuthenticatedCatalogClient::class.java)
     fun get(configuration: PoyntCatalogConfiguration, uri: URI, modifiedSince: String? = null): String {
         repeat(2) { attempt ->
             val token = tokens.token(configuration)
             val response = transport.get(uri, "${token.tokenType} ${token.value}", modifiedSince)
+            if (response.statusCode !in 200..299) {
+                logger.warn(
+                    "Poynt catalog GET failed: httpStatus={}, attempt={}",
+                    response.statusCode,
+                    attempt + 1
+                )
+            }
             if (response.statusCode in 200..299) return response.body
             if (response.statusCode == 401 && attempt == 0) {
                 tokens.invalidate(configuration.integrationConfigurationId)

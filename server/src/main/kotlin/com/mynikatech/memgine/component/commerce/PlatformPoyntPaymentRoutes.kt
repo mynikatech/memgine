@@ -71,6 +71,15 @@ fun Route.platformPoyntPaymentRoutes(
                     call.callId
                 ))
             }
+            get("/{integrationId}/apple-pay-registration-test") {
+                call.respond(ApiResponse.success(
+                    service.applePayRegistrationDiagnostic(
+                        requiredPoyntId(call.parameters["integrationId"]),
+                        call.authenticatedPrincipal().userId
+                    ),
+                    call.callId
+                ))
+            }
             get("/{integrationId}/terminals") {
                 call.respond(ApiResponse.success(
                     terminalBindings.list(requiredPoyntId(call.parameters["integrationId"]), call.authenticatedPrincipal().userId),

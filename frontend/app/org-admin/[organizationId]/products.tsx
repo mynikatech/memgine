@@ -47,7 +47,9 @@ const productImportHeaders = [
   "Currency",
   "Active",
 ];
-const productImportColumnWidths = [24, 24, 20, 30, 20, 20, 36, 26, 24, 14, 12, 12];
+const productImportColumnWidths = [
+  24, 24, 20, 30, 20, 20, 36, 26, 24, 14, 12, 12,
+];
 function string(value: unknown): string {
   return value == null ? "" : String(value).trim();
 }
@@ -65,9 +67,13 @@ export default function OrgAdminProducts() {
   const router = useRouter();
   const theme = useTheme();
   const [catalogs, setCatalogs] = useState<OrganizationProductCatalog[]>([]);
-  const [integrations, setIntegrations] = useState<IntegrationConfiguration[]>([]);
+  const [integrations, setIntegrations] = useState<IntegrationConfiguration[]>(
+    [],
+  );
   const [products, setProducts] = useState<OrganizationProduct[]>([]);
-  const [mappings, setMappings] = useState<OrganizationCommerceProductMapping[]>([]);
+  const [mappings, setMappings] = useState<
+    OrganizationCommerceProductMapping[]
+  >([]);
   const [error, setError] = useState<string>();
   const [successMessage, setSuccessMessage] = useState<string>();
   const [loading, setLoading] = useState(true);
@@ -112,7 +118,7 @@ export default function OrgAdminProducts() {
   }, [org]);
   useFocusEffect(
     useCallback(() => {
-    void load();
+      void load();
     }, [load]),
   );
   const activeCatalog = catalogs.find((c) => c.productCatalogId === catalogId);
@@ -122,14 +128,17 @@ export default function OrgAdminProducts() {
       (mapping) =>
         mapping.active &&
         mapping.productId === item.productId &&
-        mapping.integrationConfigurationId === item.integrationConfigurationId &&
+        mapping.integrationConfigurationId ===
+          item.integrationConfigurationId &&
         !mapping.storeId,
     ).length;
     if (activeCount === 1) return { label: "Mapped" };
     return {
       label: "Needs attention",
       detail:
-        activeCount === 0 ? "No active mapping" : `${activeCount} active mappings`,
+        activeCount === 0
+          ? "No active mapping"
+          : `${activeCount} active mappings`,
     };
   };
   const activeMappingsForProduct = (item: OrganizationProduct) =>
@@ -145,7 +154,9 @@ export default function OrgAdminProducts() {
     const canonicalSku = item.sku?.trim().toUpperCase();
     if (!canonicalSku) return [];
     return activeOrganizationScopeMappings(item)
-      .filter((mapping) => mapping.externalSku?.trim().toUpperCase() === canonicalSku)
+      .filter(
+        (mapping) => mapping.externalSku?.trim().toUpperCase() === canonicalSku,
+      )
       .map((mapping) => mapping.mappingId);
   };
   const openMappingFix = (item: OrganizationProduct) => {
@@ -181,8 +192,13 @@ export default function OrgAdminProducts() {
       setError("Catalog Name is required.");
       return;
     }
-    if (catalog.source === "INTEGRATION" && !catalog.integrationConfigurationId) {
-      setError("Select an Integration Configuration for an integration catalog.");
+    if (
+      catalog.source === "INTEGRATION" &&
+      !catalog.integrationConfigurationId
+    ) {
+      setError(
+        "Select an Integration Configuration for an integration catalog.",
+      );
       return;
     }
     setSavingCatalog(true);
@@ -219,8 +235,11 @@ export default function OrgAdminProducts() {
       selected
         ? {
             catalogName: selected.catalogName,
-            source: selected.integrationConfigurationId ? "INTEGRATION" : "MANUAL",
-            integrationConfigurationId: selected.integrationConfigurationId ?? "",
+            source: selected.integrationConfigurationId
+              ? "INTEGRATION"
+              : "MANUAL",
+            integrationConfigurationId:
+              selected.integrationConfigurationId ?? "",
             externalCatalogId: selected.externalCatalogId ?? "",
             active: selected.active,
           }
@@ -263,7 +282,9 @@ export default function OrgAdminProducts() {
     }
     const workbook = XLSX.utils.book_new();
     const productImportSheet = XLSX.utils.aoa_to_sheet([productImportHeaders]);
-    productImportSheet["!cols"] = productImportColumnWidths.map((wch) => ({ wch }));
+    productImportSheet["!cols"] = productImportColumnWidths.map((wch) => ({
+      wch,
+    }));
     const instructionsSheet = XLSX.utils.aoa_to_sheet([
       ["Memgine Product Import Template"],
       ["Keep the Product Import sheet blank and enter one product per row."],
@@ -289,7 +310,10 @@ export default function OrgAdminProducts() {
       ["UPC", "Optional."],
       ["Category External ID", "Optional."],
       ["Category Name", "Optional."],
-      ["Base Price", "Required. Use a normal currency amount, for example 4.99."],
+      [
+        "Base Price",
+        "Required. Use a normal currency amount, for example 4.99.",
+      ],
       ["Currency", "Required 3-letter ISO code, for example CAD."],
       [
         "Active",
@@ -297,10 +321,17 @@ export default function OrgAdminProducts() {
       ],
     ]);
     instructionsSheet["!cols"] = [{ wch: 28 }, { wch: 112 }];
-    XLSX.utils.book_append_sheet(workbook, productImportSheet, "Product Import");
+    XLSX.utils.book_append_sheet(
+      workbook,
+      productImportSheet,
+      "Product Import",
+    );
     XLSX.utils.book_append_sheet(workbook, instructionsSheet, "Instructions");
 
-    const workbookBytes = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+    const workbookBytes = XLSX.write(workbook, {
+      bookType: "xlsx",
+      type: "array",
+    });
     const blobBytes = new Uint8Array(workbookBytes);
     const url = URL.createObjectURL(
       new Blob([blobBytes.buffer], {
@@ -521,8 +552,12 @@ export default function OrgAdminProducts() {
               return (
                 <View>
                   <Text
-                    variant={health.label === "Needs attention" ? "bodyStrong" : "body"}
-                    color={health.label === "Needs attention" ? "danger" : "text"}
+                    variant={
+                      health.label === "Needs attention" ? "bodyStrong" : "body"
+                    }
+                    color={
+                      health.label === "Needs attention" ? "danger" : "text"
+                    }
                   >
                     {health.label}
                   </Text>
@@ -577,47 +612,57 @@ export default function OrgAdminProducts() {
                   Canonical Product SKU: {mappingProduct.sku || "Not set"}
                 </Text>
                 <Text color="textMuted">
-                  {mappingProduct.integrationName ?? "Integration"} · Organization-wide
+                  {mappingProduct.integrationName ?? "Integration"} ·
+                  Organization-wide
                 </Text>
               </View>
               <Text color="textMuted">
-                Choose the one active mapping to keep. The other active mappings in
-                this Product's integration and store scope will be deactivated.
+                Choose the one active mapping to keep. The other active mappings
+                in this Product&apos;s integration and store scope will be
+                deactivated.
               </Text>
-              {activeOrganizationScopeMappings(mappingProduct).map((mapping) => {
-                const recommended = recommendedMappingIds(mappingProduct).includes(
-                  mapping.mappingId,
-                );
-                const selected = selectedMappingId === mapping.mappingId;
-                return (
-                  <Pressable
-                  key={mapping.mappingId}
-                  onPress={() => setSelectedMappingId(mapping.mappingId)}
-                  style={{
-                    gap: theme.spacing.xs,
-                    padding: theme.spacing.md,
-                    borderWidth: 1,
-                    borderColor: selected ? theme.colors.primary : theme.colors.border,
-                    borderRadius: theme.radius.md,
-                  }}
-                >
-                  <Text variant="bodyStrong">
-                    {selected ? "●" : "○"} {mapping.externalSku || mapping.externalProductId}
-                    {recommended ? "  Recommended" : ""}
-                  </Text>
-                  <Text color="textMuted">
-                    External Product ID: {mapping.externalProductId}
-                  </Text>
-                  {mapping.externalSku ? (
-                    <Text color="textMuted">SKU: {mapping.externalSku}</Text>
-                  ) : null}
-                  <Text color="textMuted">
-                    Integration: {mappingProduct.integrationName ?? "Integration"}
-                  </Text>
-                  <Text color="textMuted">Store: Organization-wide</Text>
-                </Pressable>
-                );
-              })}
+              {activeOrganizationScopeMappings(mappingProduct).map(
+                (mapping) => {
+                  const recommended = recommendedMappingIds(
+                    mappingProduct,
+                  ).includes(mapping.mappingId);
+                  const selected = selectedMappingId === mapping.mappingId;
+                  return (
+                    <Pressable
+                      key={mapping.mappingId}
+                      onPress={() => setSelectedMappingId(mapping.mappingId)}
+                      style={{
+                        gap: theme.spacing.xs,
+                        padding: theme.spacing.md,
+                        borderWidth: 1,
+                        borderColor: selected
+                          ? theme.colors.primary
+                          : theme.colors.border,
+                        borderRadius: theme.radius.md,
+                      }}
+                    >
+                      <Text variant="bodyStrong">
+                        {selected ? "●" : "○"}{" "}
+                        {mapping.externalSku || mapping.externalProductId}
+                        {recommended ? "  Recommended" : ""}
+                      </Text>
+                      <Text color="textMuted">
+                        External Product ID: {mapping.externalProductId}
+                      </Text>
+                      {mapping.externalSku ? (
+                        <Text color="textMuted">
+                          SKU: {mapping.externalSku}
+                        </Text>
+                      ) : null}
+                      <Text color="textMuted">
+                        Integration:{" "}
+                        {mappingProduct.integrationName ?? "Integration"}
+                      </Text>
+                      <Text color="textMuted">Store: Organization-wide</Text>
+                    </Pressable>
+                  );
+                },
+              )}
               <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
                 <Button
                   label="Cancel"
@@ -661,7 +706,9 @@ export default function OrgAdminProducts() {
                   ...current,
                   source,
                   integrationConfigurationId:
-                    source === "MANUAL" ? "" : current.integrationConfigurationId,
+                    source === "MANUAL"
+                      ? ""
+                      : current.integrationConfigurationId,
                 }))
               }
               style={{
@@ -701,7 +748,9 @@ export default function OrgAdminProducts() {
                         borderRadius: theme.radius.md,
                       }}
                     >
-                      <Text variant="bodyStrong">{integration.integrationName}</Text>
+                      <Text variant="bodyStrong">
+                        {integration.integrationName}
+                      </Text>
                       <Text color="textMuted">{integration.provider}</Text>
                     </Pressable>
                   ))}
@@ -719,7 +768,8 @@ export default function OrgAdminProducts() {
               ) : (
                 <View style={{ gap: theme.spacing.sm }}>
                   <Text color="textMuted">
-                    No Integration Configurations are available for this organization.
+                    No Integration Configurations are available for this
+                    organization.
                   </Text>
                   <Button
                     label="Set Up Integration"
