@@ -41,10 +41,14 @@ class PoyntCommerceProviderTest {
         var postBody: String? = null
         var postUri: URI? = null
         var getUri: URI? = null
+        val getUris = mutableListOf<URI>()
+        val modifiedSinceValues = mutableListOf<String?>()
         override fun get(uri: URI, authorization: String, modifiedSince: String?): PoyntHttpResponse {
             this.getUri = uri
+            this.getUris += uri
             this.authorization = authorization
             this.modifiedSince = modifiedSince
+            this.modifiedSinceValues += modifiedSince
             return responses[calls++]
         }
         override fun post(uri: URI, authorization: String, requestId: String, body: String): PoyntHttpResponse {
@@ -55,7 +59,8 @@ class PoyntCommerceProviderTest {
             return responses[calls++]
         }
         override fun productUri(businessId: String, productId: String) = URI.create("https://example.test/product")
-        override fun productsUri(businessId: String, offset: Int) = URI.create("https://example.test/products/$offset")
+        override fun productsUri(businessId: String, offset: Int) =
+            URI.create("https://example.test/businesses/$businessId/products?limit=100&startOffset=$offset")
         override fun orderUri(businessId: String, orderId: String) = URI.create("https://example.test/businesses/$businessId/orders/$orderId")
         override fun ordersUri(businessId: String) = URI.create("https://example.test/businesses/$businessId/orders")
     }
@@ -160,7 +165,7 @@ class PoyntCommerceProviderTest {
         val decoded = JWT.decode(jwt)
         assertEquals("urn:aid:memgine", decoded.issuer)
         assertEquals("urn:aid:memgine", decoded.subject)
-        assertEquals("https://services.poynt.net", decoded.audience.single())
+        assertEquals("https://services-ote.poynt.net", decoded.audience.single())
         assertTrue(decoded.id.isNotBlank())
         assertEquals(300, decoded.expiresAt.time / 1000 - decoded.issuedAt.time / 1000)
         assertEquals("RS256", decoded.algorithm)
@@ -237,6 +242,174 @@ class PoyntCommerceProviderTest {
         assertEquals(500, snapshots[1].unitPriceMinorSnapshot)
         assertEquals("USD", snapshots[0].currencyCode)
     }
+
+    @Test fun `catalog accepts structured numeric and zero minor-unit prices`() {
+        val http = FakeTransport(mutableListOf(PoyntHttpResponse(200, """{"products":[
+            {"id":"structured","name":"Structured","sku":"S-1","price":{"amount":250,"currency":"CAD"}},
+            {"id":"numeric","name":"Numeric","sku":"N-1","price":199},
+            {"id":"free","name":"Free","price":0}
+        ]}""")))
+        val provider = PoyntCommerceProvider(sql, PoyntAuthenticatedCatalogClient(http, tokens()))
+
+        val snapshots = provider.syncCatalog(CommerceCatalogSyncRequest("org", "integration", actorUserId = "admin"))
+
+        assertEquals(listOf("structured", "numeric", "free"), snapshots.map { it.externalProductId })
+        assertEquals(listOf(250L, 199L, 0L), snapshots.map { it.unitPriceMinorSnapshot })
+        assertEquals("CAD", snapshots[0].currencyCode)
+        assertEquals("USD", snapshots[1].currencyCode)
+        assertEquals(null, snapshots[2].externalSku)
+    }
+
+    @Test fun `catalog rejects malformed price and incomplete records rather than returning a partial catalog`() {
+        val missingPrice = FakeTransport(mutableListOf(PoyntHttpResponse(200, """{"products":[{"id":"valid","name":"Valid","price":100},{"id":"missing-price","name":"Broken"}]}""")))
+        val malformedPrice = FakeTransport(mutableListOf(PoyntHttpResponse(200, """{"products":[{"id":"malformed-price","name":"Broken","price":"100"}]}""")))
+        val malformedVariant = FakeTransport(mutableListOf(PoyntHttpResponse(200, """{"products":[{"id":"coffee","name":"Coffee","price":100,"variants":[{"sku":"small","price":50}]}]}""")))
+        val negativePrice = FakeTransport(mutableListOf(PoyntHttpResponse(200, """{"products":[{"id":"negative","name":"Broken","price":-1}]}""")))
+
+        assertFailsWith<BadRequestException> {
+            PoyntCommerceProvider(sql, PoyntAuthenticatedCatalogClient(missingPrice, tokens()))
+                .syncCatalog(CommerceCatalogSyncRequest("org", "integration", actorUserId = "admin"))
+        }
+        assertFailsWith<BadRequestException> {
+            PoyntCommerceProvider(sql, PoyntAuthenticatedCatalogClient(malformedPrice, tokens()))
+                .syncCatalog(CommerceCatalogSyncRequest("org", "integration", actorUserId = "admin"))
+        }
+        assertFailsWith<BadRequestException> {
+            PoyntCommerceProvider(sql, PoyntAuthenticatedCatalogClient(malformedVariant, tokens()))
+                .syncCatalog(CommerceCatalogSyncRequest("org", "integration", actorUserId = "admin"))
+        }
+        assertFailsWith<BadRequestException> {
+            PoyntCommerceProvider(sql, PoyntAuthenticatedCatalogClient(negativePrice, tokens()))
+                .syncCatalog(CommerceCatalogSyncRequest("org", "integration", actorUserId = "admin"))
+        }
+    }
+
+    @Test fun `duplicate SKUs retain distinct Poynt product identities`() {
+        val http = FakeTransport(mutableListOf(PoyntHttpResponse(200, """{"products":[
+            {"id":"poynt-a","name":"Coffee A","sku":"COFFEE","price":100},
+            {"id":"poynt-b","name":"Coffee B","sku":"COFFEE","price":200}
+        ]}""")))
+        val snapshots = PoyntCommerceProvider(sql, PoyntAuthenticatedCatalogClient(http, tokens()))
+            .syncCatalog(CommerceCatalogSyncRequest("org", "integration", actorUserId = "admin"))
+
+        assertEquals(listOf("poynt-a", "poynt-b"), snapshots.map { it.externalProductId })
+        assertEquals(listOf("COFFEE", "COFFEE"), snapshots.map { it.externalSku })
+    }
+
+    @Test fun `catalog follows complete offset pages without truncation`() {
+        val firstPage = productsBody((1..100).map { "product-$it" })
+        val secondPage = productsBody(listOf("product-101"))
+        val http = FakeTransport(mutableListOf(PoyntHttpResponse(200, firstPage), PoyntHttpResponse(200, secondPage)))
+        val snapshots = PoyntCommerceProvider(sql, PoyntAuthenticatedCatalogClient(http, tokens()))
+            .syncCatalog(CommerceCatalogSyncRequest("org", "integration", storeId = "store-1", actorUserId = "admin"))
+
+        assertEquals(101, snapshots.size)
+        assertEquals("product-101", snapshots.last().externalProductId)
+        assertEquals("store-1", snapshots.first().storeId)
+        assertEquals(
+            listOf(
+                "https://example.test/businesses/business/products?limit=100&startOffset=0",
+                "https://example.test/businesses/business/products?limit=100&startOffset=100"
+            ),
+            http.getUris.map(URI::toString)
+        )
+    }
+
+    @Test fun `empty catalog is valid but repeated pages and later page failures fail the fetch`() {
+        val empty = FakeTransport(mutableListOf(PoyntHttpResponse(200, """{"products":[]}""")))
+        assertEquals(
+            emptyList(),
+            PoyntCommerceProvider(sql, PoyntAuthenticatedCatalogClient(empty, tokens()))
+                .syncCatalog(CommerceCatalogSyncRequest("org", "integration", actorUserId = "admin"))
+        )
+
+        val fullPage = productsBody((1..100).map { "product-$it" })
+        val repeated = FakeTransport(mutableListOf(PoyntHttpResponse(200, fullPage), PoyntHttpResponse(200, fullPage)))
+        assertFailsWith<BadRequestException> {
+            PoyntCommerceProvider(sql, PoyntAuthenticatedCatalogClient(repeated, tokens()))
+                .syncCatalog(CommerceCatalogSyncRequest("org", "integration", actorUserId = "admin"))
+        }
+
+        val laterFailure = FakeTransport(mutableListOf(PoyntHttpResponse(200, fullPage), PoyntHttpResponse(500, "provider failure")))
+        assertFailsWith<BadRequestException> {
+            PoyntCommerceProvider(sql, PoyntAuthenticatedCatalogClient(laterFailure, tokens()))
+                .syncCatalog(CommerceCatalogSyncRequest("org", "integration", actorUserId = "admin"))
+        }
+    }
+
+    @Test fun `catalog preserves inactive variant identity price and availability`() {
+        val http = FakeTransport(mutableListOf(PoyntHttpResponse(200, """{"products":[{
+            "id":"coffee","name":"Coffee","price":100,"active":true,"variants":[
+                {"id":"small","sku":"S","price":0,"active":false},
+                {"id":"large","sku":"L","price":{"amount":250,"currency":"CAD"},"active":true}
+            ]
+        }]}""")))
+        val snapshots = PoyntCommerceProvider(sql, PoyntAuthenticatedCatalogClient(http, tokens()))
+            .syncCatalog(CommerceCatalogSyncRequest("org", "integration", actorUserId = "admin"))
+
+        assertEquals(listOf("small", "large"), snapshots.map { it.externalVariantId })
+        assertEquals(listOf(0L, 250L), snapshots.map { it.unitPriceMinorSnapshot })
+        assertEquals(listOf(false, true), snapshots.map { it.active })
+    }
+
+    @Test fun `catalog integrations remain isolated by configuration business and cursor`() {
+        val integrationSql = object : PoyntCommerceSql {
+            override fun catalogConfiguration(organizationId: String, integrationId: String, actorUserId: String): PoyntCatalogConfigurationRow? =
+                when (integrationId) {
+                    "integration-a" -> catalogRow("integration-a", "business-a", "2026-01-01T00:00:00Z")
+                    "integration-b" -> catalogRow("integration-b", "business-b", "2026-02-01T00:00:00Z")
+                    else -> null
+                }
+
+            override fun counterCatalogConfiguration(transactionId: String, actorUserId: String): PoyntCatalogConfigurationRow? = null
+        }
+        val http = FakeTransport(mutableListOf(
+            PoyntHttpResponse(200, """{"products":[{"id":"product-a","name":"Coffee","sku":"COFFEE","price":100}]}"""),
+            PoyntHttpResponse(200, """{"products":[{"id":"product-b","name":"Coffee","sku":"COFFEE","price":200}]}""")
+        ))
+        val provider = PoyntCommerceProvider(integrationSql, PoyntAuthenticatedCatalogClient(http, tokens()))
+
+        val first = provider.syncCatalog(CommerceCatalogSyncRequest("org", "integration-a", incremental = true, actorUserId = "admin"))
+        val second = provider.syncCatalog(CommerceCatalogSyncRequest("org", "integration-b", incremental = true, actorUserId = "admin"))
+
+        assertEquals("integration-a", first.single().integrationConfigurationId)
+        assertEquals("product-a", first.single().externalProductId)
+        assertEquals("integration-b", second.single().integrationConfigurationId)
+        assertEquals("product-b", second.single().externalProductId)
+        assertEquals(
+            listOf(
+                "https://example.test/businesses/business-a/products?limit=100&startOffset=0",
+                "https://example.test/businesses/business-b/products?limit=100&startOffset=0"
+            ),
+            http.getUris.map(URI::toString)
+        )
+        assertEquals(
+            listOf<String?>(
+                "2026-01-01T00:00:00Z",
+                "2026-02-01T00:00:00Z"
+            ),
+            http.modifiedSinceValues
+        )
+    }
+
+    private fun productsBody(ids: List<String>): String =
+        ids.joinToString(prefix = "{\"products\":[", postfix = "]}") { id ->
+            """{"id":"$id","name":"$id","price":100}"""
+        }
+
+    private fun catalogRow(
+        integrationId: String,
+        businessId: String,
+        cursor: String
+    ) = PoyntCatalogConfigurationRow(
+        integrationConfigurationId = integrationId,
+        organizationId = "org",
+        applicationId = "urn:aid:memgine",
+        businessId = businessId,
+        secretReference = "secret",
+        merchantCurrencyCode = "USD",
+        lastIncrementalSyncAt = cursor
+    )
 
     @Test fun `incremental request sends last successful cursor as modified since`() {
         val http = FakeTransport(mutableListOf(PoyntHttpResponse(200, "{\"products\":[]}")))
@@ -389,7 +562,7 @@ class PoyntCommerceProviderTest {
         assertEquals(null, orderClient.order!!.items.single().productId)
         assertEquals("plan", orderClient.order!!.items.single().sku)
         assertEquals("membership-line", orderClient.order!!.items.single().externalId)
-        assertEquals(1000, orderClient.order!!.items.single().discounts.single().amount)
+        assertEquals(-1000, orderClient.order!!.items.single().discounts.single().amount)
         assertEquals(0, orderClient.order!!.amounts!!.netTotal)
     }
 

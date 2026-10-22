@@ -487,3 +487,68 @@ data class CommerceRemoteTerminalPaymentDispatchDto(
     val status: String,
     val dispatchState: String? = null
 )
+
+@Serializable
+data class CommerceCatalogSyncPreviewRequestDto(
+    val productCatalogId: String,
+    val storeId: String? = null
+)
+
+@Serializable
+data class CommerceCatalogSyncApplyRequestDto(
+    val approved: Boolean,
+    val idempotencyKey: String
+)
+
+@Serializable
+data class CommerceCatalogSyncPreviewRowDto(
+    val rowId: String,
+    val externalProductId: String,
+    val externalVariantId: String? = null,
+    val externalSku: String? = null,
+    val productName: String,
+    val currencyCode: String,
+    val unitPriceMinor: Long,
+    val active: Boolean,
+    val canonicalProductId: String? = null,
+    val mappingId: String? = null,
+    val action: String,
+    val reason: String? = null,
+    val hasDependentBusinessRules: Boolean = false,
+    val eligibleForApply: Boolean = false,
+    val previousAttributes: CommerceCatalogSyncAttributesDto? = null,
+    val proposedAttributes: CommerceCatalogSyncAttributesDto? = null
+)
+
+@Serializable
+data class CommerceCatalogSyncPreviewDto(
+    val previewId: String,
+    val organizationId: String,
+    val integrationConfigurationId: String,
+    val productCatalogId: String,
+    val storeId: String? = null,
+    val status: String,
+    val fullCatalogComplete: Boolean,
+    val rows: List<CommerceCatalogSyncPreviewRowDto>,
+    val summary: Map<String, Int>
+)
+
+@Serializable
+data class CommerceCatalogSyncApplyResultDto(
+    val previewId: String,
+    val status: String,
+    val createdCount: Int,
+    val appliedCount: Int,
+    val mappedCount: Int
+)
+
+@Serializable
+data class CommerceCatalogSyncAttributesDto(
+    val externalSku: String? = null,
+    val productName: String,
+    val description: String? = null,
+    val currencyCode: String,
+    val unitPriceMinor: Long,
+    val active: Boolean,
+    val sourceUpdatedAt: String? = null
+)

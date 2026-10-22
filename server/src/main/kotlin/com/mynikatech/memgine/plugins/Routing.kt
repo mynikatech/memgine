@@ -58,6 +58,8 @@ import com.mynikatech.memgine.component.commerce.CommerceService
 import com.mynikatech.memgine.component.commerce.CounterCommercePaymentService
 import com.mynikatech.memgine.component.commerce.CommerceSql
 import com.mynikatech.memgine.component.commerce.commerceRoutes
+import com.mynikatech.memgine.component.commerce.CommerceCatalogSyncService
+import com.mynikatech.memgine.component.commerce.commerceCatalogSyncRoutes
 import com.mynikatech.memgine.component.commerce.poyntPaymentBridgeCallbackRoutes
 import com.mynikatech.memgine.component.commerce.CommerceProviderRegistry
 import com.mynikatech.memgine.component.commerce.CommercePaymentProviderPolicy
@@ -284,6 +286,7 @@ fun Application.configureRouting(
         CommercePaymentProviderPolicy(config.server.environment),
         poyntTerminalBindingResolver
     )
+    val commerceCatalogSyncService = CommerceCatalogSyncService(database.jdbi, commerceProviders)
     val platformPoyntPaymentService = PlatformPoyntPaymentService(
         database.jdbi.onDemand(PlatformPoyntPaymentSql::class.java),
         poyntCredentials,
@@ -352,6 +355,7 @@ fun Application.configureRouting(
             notificationRoutes(notificationService)
             integrationConfigurationRoutes(integrationConfigurationService)
             commerceRoutes(commerceService)
+            commerceCatalogSyncRoutes(commerceCatalogSyncService)
             poyntPaymentBridgeCallbackRoutes(
                 commerceService,
                 counterCommercePaymentService,

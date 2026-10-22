@@ -168,9 +168,7 @@ class PoyntAuthenticatedOrderClient(
                 tokens.invalidate(configuration.integrationConfigurationId)
                 return@repeat
             }
-            throw BadRequestException(
-                "Poynt order request failed (HTTP ${response.statusCode}): ${response.body.take(1500)}"
-            )
+            throw providerFailure(response.statusCode)
         }
         throw BadRequestException("Poynt order request was not authorized")
     }

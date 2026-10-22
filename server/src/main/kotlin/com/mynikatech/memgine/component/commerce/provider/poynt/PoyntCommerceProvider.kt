@@ -36,11 +36,20 @@ class PoyntCommerceProvider(
         val config = config(request.organizationId, request.integrationConfigurationId, request.actorUserId)
         val mapped = mutableListOf<CommerceProductSnapshotWriteDto>()
         var offset = 0
+        val seenProductIds = mutableSetOf<String>()
+        val seenPages = mutableSetOf<List<String>>()
         while (true) {
             val body = client.get(config, client.productsUri(config.businessId, offset), if (request.incremental) config.lastIncrementalSyncAt else request.modifiedSince)
             val products = parseProducts(body)
-            mapped += products.flatMap { mapProduct(it, config, null) }
-            if (products.size < 100) break
+            val pageIds = products.map(PoyntProduct::id)
+            if (pageIds.size != pageIds.toSet().size ||
+                (pageIds.isNotEmpty() && !seenPages.add(pageIds)) ||
+                pageIds.any { !seenProductIds.add(it) }
+            ) {
+                throw BadRequestException("Poynt catalog pagination was inconsistent")
+            }
+            mapped += products.flatMap { mapProduct(it, config, request.storeId) }
+            if (products.size < CATALOG_PAGE_SIZE) break
             offset += products.size
         }
         return mapped
@@ -74,7 +83,8 @@ class PoyntCommerceProvider(
         )
         val body = client.get(config, client.productUri(config.businessId, request.externalProductId))
         val product = parseProduct(Json.parseToJsonElement(body).jsonObject) ?: return null
-        return mapProduct(product, config, null).firstOrNull { it.externalVariantId == request.externalVariantId }
+        return mapProduct(product, config, request.storeId)
+            .firstOrNull { it.externalVariantId == request.externalVariantId }
     }
 
     private fun checkoutOrder(request: CommerceCheckoutRequest): PreparedPoyntOrder {
@@ -236,26 +246,107 @@ class PoyntCommerceProvider(
     }
 
     private fun mapProduct(product: PoyntProduct, config: PoyntCatalogConfiguration, storeId: String?): List<CommerceProductSnapshotWriteDto> {
-        val variants = product.variants.filter { it.active }
+        val variants = product.variants
         val choices = if (variants.isEmpty()) listOf<PoyntProductVariant?>(null) else variants
         return choices.map { variant ->
             val price = variant?.price ?: product.price ?: throw BadRequestException("Poynt product price is unavailable")
             val amount = price.amount ?: throw BadRequestException("Poynt product price is unavailable")
-            CommerceProductSnapshotWriteDto(config.integrationConfigurationId, storeId, product.id, variant?.id ?: variant?.sku, variant?.sku ?: product.sku ?: product.shortCode, listOfNotNull(product.name, variant?.name).joinToString(" - "), product.description, (price.currency ?: config.merchantCurrencyCode).uppercase(), amount, product.active && (variant?.active != false), variant?.updatedAt ?: product.updatedAt)
+            if (amount < 0) throw BadRequestException("Poynt product price is invalid")
+            CommerceProductSnapshotWriteDto(
+                config.integrationConfigurationId,
+                storeId,
+                product.id,
+                variant?.id,
+                variant?.sku ?: product.sku ?: product.shortCode,
+                listOfNotNull(product.name, variant?.name).joinToString(" - "),
+                product.description,
+                (price.currency ?: config.merchantCurrencyCode).trim().uppercase(),
+                amount,
+                product.active && (variant?.active != false),
+                variant?.updatedAt ?: product.updatedAt
+            )
         }
     }
 
-    private fun parseProducts(body: String): List<PoyntProduct> {
+    private fun parseProducts(body: String): List<PoyntProduct> = try {
         val root = Json.parseToJsonElement(body).jsonObject
-        val array = root["products"] ?: root["items"] ?: return emptyList()
-        return array.jsonArray.mapNotNull { parseProduct(it.jsonObject) }
+        val array = (root["products"] ?: root["items"]) as? JsonArray
+            ?: throw IllegalArgumentException("Product array is missing")
+        array.mapIndexed { index, element ->
+            parseProduct(element as? JsonObject ?: throw IllegalArgumentException("Product $index is invalid"))
+        }
+    } catch (_: BadRequestException) {
+        throw BadRequestException("Poynt catalog response was invalid")
+    } catch (_: Exception) {
+        throw BadRequestException("Poynt catalog response was invalid")
     }
-    private fun parseProduct(o: JsonObject): PoyntProduct? {
-        val id = o["id"]?.jsonPrimitive?.contentOrNull ?: return null
-        fun text(name: String) = o[name]?.jsonPrimitive?.contentOrNull
-        fun price(element: JsonElement?): PoyntPrice? { val p=element?.jsonObject ?: return null; return PoyntPrice(p["amount"]?.jsonPrimitive?.longOrNull,p["currency"]?.jsonPrimitive?.contentOrNull) }
-        val variants = o["variants"]?.jsonArray?.mapNotNull { v -> val x=v.jsonObject; PoyntProductVariant(x["id"]?.jsonPrimitive?.contentOrNull,x["sku"]?.jsonPrimitive?.contentOrNull,x["name"]?.jsonPrimitive?.contentOrNull,price(x["price"]),x["active"]?.jsonPrimitive?.booleanOrNull ?: true,x["updatedAt"]?.jsonPrimitive?.contentOrNull) } ?: emptyList()
-        return PoyntProduct(id,text("name") ?: return null,text("description"),text("sku"),text("shortCode"),price(o["price"]),variants,o["active"]?.jsonPrimitive?.booleanOrNull ?: true,text("updatedAt"))
+
+    private fun parseProduct(o: JsonObject): PoyntProduct {
+        val id = string(o, "id") ?: throw BadRequestException("Poynt product ID is unavailable")
+        val name = string(o, "name") ?: throw BadRequestException("Poynt product name is unavailable")
+        val variants = when (val value = o["variants"]) {
+            null -> emptyList()
+            is JsonArray -> value.mapIndexed { index, element ->
+                parseVariant(element as? JsonObject ?: throw BadRequestException("Poynt product variant $index is invalid"))
+            }
+            else -> throw BadRequestException("Poynt product variants are invalid")
+        }
+        return PoyntProduct(
+            id = id,
+            name = name,
+            description = string(o, "description"),
+            sku = string(o, "sku"),
+            shortCode = string(o, "shortCode"),
+            price = price(o["price"]),
+            variants = variants,
+            active = active(o),
+            updatedAt = string(o, "updatedAt")
+        )
+    }
+
+    private fun parseVariant(value: JsonObject): PoyntProductVariant = PoyntProductVariant(
+        id = string(value, "id") ?: throw BadRequestException("Poynt product variant ID is unavailable"),
+        sku = string(value, "sku"),
+        name = string(value, "name"),
+        price = price(value["price"]),
+        active = active(value),
+        updatedAt = string(value, "updatedAt")
+    )
+
+    private fun price(value: JsonElement?): PoyntPrice? = when (value) {
+        null, JsonNull -> null
+        is JsonPrimitive -> PoyntPrice(
+            minorUnits(value)
+        )
+        is JsonObject -> PoyntPrice(
+            minorUnits(value["amount"] as? JsonPrimitive),
+            string(value, "currency")
+        )
+        else -> throw BadRequestException("Poynt product price is invalid")
+    }.also { parsed ->
+        if (parsed != null && parsed.amount != null && parsed.amount < 0) {
+            throw BadRequestException("Poynt product price is invalid")
+        }
+    }
+
+    private fun minorUnits(value: JsonPrimitive?): Long {
+        if (value == null || value.isString) {
+            throw BadRequestException("Poynt product price is invalid")
+        }
+        return value.longOrNull ?: throw BadRequestException("Poynt product price is invalid")
+    }
+
+    private fun active(value: JsonObject): Boolean {
+        val active = value["active"] ?: return true
+        return active.jsonPrimitive.booleanOrNull
+            ?: throw BadRequestException("Poynt product active status is invalid")
+    }
+
+    private fun string(value: JsonObject, name: String): String? =
+        value[name]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+
+    private companion object {
+        const val CATALOG_PAGE_SIZE = 100
     }
 }
 

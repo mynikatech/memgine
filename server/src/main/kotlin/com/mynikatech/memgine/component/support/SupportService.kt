@@ -1,6 +1,9 @@
 package com.mynikatech.memgine.component.support
 
 import com.mynikatech.memgine.exception.NotFoundException
+import com.mynikatech.memgine.exception.ApiException
+import com.mynikatech.memgine.exception.BadRequestException
+import org.postgresql.util.PSQLException
 import org.jdbi.v3.core.Jdbi
 import java.util.UUID
 
@@ -23,11 +26,60 @@ class SupportService(private val jdbi: Jdbi) {
     fun reopen(actor:String,id:String,request:ReopenSupportRequestDto)=sql().reopen(id,actor,request.reason)
     fun close(actor:String,id:String)=sql().close(id,actor)
     fun submitFeedback(actor:String,id:String,request:SubmitSupportFeedbackDto)=sql().submitFeedback(id,actor,request.rating,request.comment)
-    fun update(org:String,actor:String,id:String,request:UpdateSupportRequestDto)=sql().update(id,org,actor,request.status,request.priority,request.assignedToUserId,request.resolutionSummary,request.versionNo)
-    fun platformUpdate(actor:String,id:String,request:UpdateSupportRequestDto)=sql().platformUpdate(id,actor,request.status,request.priority,request.resolutionSummary,request.versionNo)
+    fun update(
+        org: String,
+        actor: String,
+        id: String,
+        request: UpdateSupportRequestDto
+    ) = translateSupportUpdate {
+        sql().update(
+            id,
+            org,
+            actor,
+            request.status,
+            request.priority,
+            request.assignedToUserId,
+            request.resolutionSummary,
+            request.versionNo
+        )
+    }
+
+    fun platformUpdate(
+        actor: String,
+        id: String,
+        request: UpdateSupportRequestDto
+    ) = translateSupportUpdate {
+        sql().platformUpdate(
+            id,
+            actor,
+            request.status,
+            request.priority,
+            request.resolutionSummary,
+            request.versionNo
+        )
+    }
     fun paymentInvestigation(org:String,actor:String,id:String)=sql().paymentInvestigation(id,org,actor)
     fun paymentExceptionCandidates(org:String,actor:String,id:String)=sql().paymentExceptionCandidates(id,org,actor)
     fun escalatePaymentInvestigation(org:String,actor:String,id:String,request:EscalatePaymentInvestigationDto)=sql().escalatePaymentInvestigation(id,org,actor,request.reason,request.paymentReference,request.description)
     fun linkPaymentException(org:String,actor:String,id:String,request:LinkPaymentExceptionDto)=sql().linkPaymentException(id,org,actor,request.financialExceptionId)
     fun transitionPaymentInvestigation(org:String,actor:String,id:String,request:UpdatePaymentInvestigationDto)=sql().transitionPaymentInvestigation(id,org,actor,request.state,request.reason)
+    
+    private fun <T> translateSupportUpdate(block: () -> T): T = try {
+        block()
+    } catch (error: Exception) {
+        if (error is ApiException) throw error
+
+        val postgres = generateSequence<Throwable>(error) { it.cause }
+            .filterIsInstance<PSQLException>()
+            .firstOrNull()
+
+        if (postgres?.serverErrorMessage?.message == "Invalid support status transition") {
+            throw BadRequestException(
+                "This support request cannot be moved to the selected status. " +
+                    "Please check its current status and choose a valid transition."
+            )
+        }
+
+        throw error
+    }
 }

@@ -199,3 +199,22 @@ fun Route.commerceRoutes(service: CommerceService) {
 private fun orgId(call: io.ktor.server.application.ApplicationCall): String = required(call.parameters["organizationId"])
 private fun required(value: String?): String = value?.takeIf { it.isNotBlank() }
     ?: throw BadRequestException("Required id is missing")
+
+fun Route.commerceCatalogSyncRoutes(service: CommerceCatalogSyncService) {
+    route("/organizations/{organizationId}/commerce") {
+        route("/integrations/{integrationConfigurationId}/catalog-sync") {
+            post("/preview") {
+                call.respond(HttpStatusCode.Created, ApiResponse.success(
+                    service.preview(orgId(call), required(call.parameters["integrationConfigurationId"]),
+                        call.receive<CommerceCatalogSyncPreviewRequestDto>(), call.authenticatedPrincipal().userId), call.callId))
+            }
+        }
+        route("/catalog-sync/{previewId}") {
+            post("/apply") {
+                call.respond(ApiResponse.success(
+                    service.apply(orgId(call), required(call.parameters["previewId"]),
+                        call.receive<CommerceCatalogSyncApplyRequestDto>(), call.authenticatedPrincipal().userId), call.callId))
+            }
+        }
+    }
+}

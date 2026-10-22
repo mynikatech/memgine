@@ -506,6 +506,14 @@ export function SupportRequestsScreen({
   };
   const update = async () => {
     if (!detail || saving) return;
+    if (editStatus === "CLOSED" && detail.request.status !== "RESOLVED") {
+      setManageValidationError(
+        "Resolve this support request before closing it.",
+      );
+      setDetailError(null);
+      setSections((previous) => ({ ...previous, manage: true }));
+      return;
+    }
     if (editStatus === "RESOLVED" && !resolution.trim()) {
       setManageValidationError(
         "Enter a resolution summary before marking this request resolved.",
@@ -959,7 +967,9 @@ export function SupportRequestsScreen({
                     items={
                       detail.request.status === "RESOLVED"
                         ? ["RESOLVED", "CLOSED"]
-                        : statuses
+                        : detail.request.status === "CLOSED"
+                          ? ["CLOSED"]
+                          : statuses.filter((item) => item !== "CLOSED")
                     }
                     onChange={(value) => {
                       setEditStatus(value);
