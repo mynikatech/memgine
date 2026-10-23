@@ -7,9 +7,12 @@ import com.mynikatech.memgine.exception.NotFoundException
 import com.mynikatech.memgine.net.dto.CommerceCatalogSyncApplyRequestDto
 import com.mynikatech.memgine.net.dto.CommerceCatalogSyncApplyResultDto
 import com.mynikatech.memgine.net.dto.CommerceCatalogSyncPreviewRequestDto
+import com.mynikatech.memgine.net.dto.CommerceCatalogSyncManualResolutionRequestDto
 import com.mynikatech.memgine.net.dto.CommerceCatalogSyncPreviewDto
 import com.mynikatech.memgine.net.dto.CommerceCatalogSyncPreviewRowDto
 import com.mynikatech.memgine.net.dto.CommerceCatalogSyncAttributesDto
+import com.mynikatech.memgine.net.dto.CommerceCatalogCategoryCorrespondenceDto
+import com.mynikatech.memgine.net.dto.CommerceCatalogCategoryCorrespondenceWriteDto
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.jdbi.v3.core.Jdbi
@@ -47,12 +50,17 @@ class CommerceCatalogSyncService(
             ?: throw NotFoundException("Commerce integration was not found")
         val provider = providers.catalogProvider(integration.providerCode)
             ?: throw BadRequestException("Commerce catalog provider is not available")
+        val productSql = jdbi.onDemand(OrganizationProductSql::class.java)
+        val catalog = productSql.catalogs(organizationId, actorUserId)
+            .firstOrNull { it.productCatalogId == request.productCatalogId }
+            ?: throw NotFoundException("Product catalog was not found")
         val fetched = provider.syncCatalog(
             CommerceCatalogSyncRequest(
                 organizationId = organizationId,
                 integrationConfigurationId = integrationConfigurationId,
                 storeId = storeId,
                 incremental = false,
+                externalCatalogId = catalog.externalCatalogId,
                 actorUserId = actorUserId
             )
         )
@@ -60,10 +68,27 @@ class CommerceCatalogSyncService(
         if (fetched.any { it.integrationConfigurationId != integrationConfigurationId || it.storeId != storeId }) {
             throw BadRequestException("Catalog provider returned a mismatched integration or store scope")
         }
-        val productSql = jdbi.onDemand(OrganizationProductSql::class.java)
-        val products = productSql.products(organizationId, null, actorUserId).map {
-            CommerceCatalogCanonicalProduct(it.productId, it.organizationId, it.sku, it.active, it.versionNo)
-        }
+        // Reconciliation candidates are deliberately limited to the selected
+        // canonical catalog. A SKU in another catalog must never influence a
+        // POS mapping decision for this preview.
+        val products = productSql.products(organizationId, null, actorUserId)
+            .asSequence()
+            .filter { it.productCatalogId == request.productCatalogId }
+            .map {
+                CommerceCatalogCanonicalProduct(
+                    it.productId,
+                    it.organizationId,
+                    it.sku,
+                    it.active,
+                    it.versionNo,
+                    it.productCatalogCategoryId,
+                    it.categoryName,
+                    it.productName,
+                    it.basePriceMinor,
+                    it.currencyCode
+                )
+            }
+            .toList()
         val mappings = commerce.mappings(organizationId, actorUserId)
         val snapshots = commerce.snapshots(organizationId, actorUserId)
         val plan = reconciliation.plan(
@@ -76,7 +101,10 @@ class CommerceCatalogSyncService(
                 canonicalProducts = products,
                 mappings = mappings,
                 previousSnapshots = snapshots,
-                dependentProductIds = dependentProductIds(organizationId)
+                dependentProductIds = dependentProductIds(organizationId),
+                categoryCorrespondences = jdbi.onDemand(CommerceCatalogCategoryCorrespondenceSql::class.java).list(
+                    organizationId, integrationConfigurationId, request.productCatalogId, actorUserId
+                ).map { CommerceCatalogCategoryCorrespondence(it.externalCategoryId, it.productCatalogCategoryId) }
             )
         )
         val stageRows = plan.rows.mapIndexed { index, row ->
@@ -105,6 +133,39 @@ class CommerceCatalogSyncService(
         val applied = result.substringAfter("\"appliedCount\":", "0").takeWhile(Char::isDigit).toIntOrNull() ?: 0
         val mapped = result.substringAfter("\"mappedCount\":", "0").takeWhile(Char::isDigit).toIntOrNull() ?: 0
         CommerceCatalogSyncApplyResultDto(previewId, "APPLIED", created, applied, mapped)
+    }
+
+    fun resolve(
+        organizationId: String,
+        previewId: String,
+        rowId: String,
+        request: CommerceCatalogSyncManualResolutionRequestDto,
+        actorUserId: String
+    ): Boolean = translate {
+        requireId(organizationId); requireId(previewId); requireId(request.canonicalProductId)
+        val rowNumber = rowId.substringAfterLast(':', "").toIntOrNull()
+            ?: throw BadRequestException("Invalid preview row")
+        jdbi.onDemand(CommerceCatalogSyncSql::class.java).resolvePreviewRow(
+            organizationId, previewId, rowNumber, request.canonicalProductId,
+            request.expectedCanonicalProductVersionNo, actorUserId
+        )
+    }
+
+    fun categoryCorrespondences(organizationId: String, integrationId: String, catalogId: String, actorUserId: String) = translate {
+        jdbi.onDemand(CommerceCatalogCategoryCorrespondenceSql::class.java).list(organizationId, integrationId, catalogId, actorUserId)
+            .map { CommerceCatalogCategoryCorrespondenceDto(it.correspondenceId, it.externalCategoryId, it.productCatalogCategoryId, it.versionNo) }
+    }
+
+    fun saveCategoryCorrespondence(organizationId: String, integrationId: String, catalogId: String, request: CommerceCatalogCategoryCorrespondenceWriteDto, actorUserId: String) = translate {
+        requireId(request.externalCategoryId); requireId(request.productCatalogCategoryId)
+        jdbi.onDemand(CommerceCatalogCategoryCorrespondenceSql::class.java).save(organizationId, integrationId, catalogId,
+            request.externalCategoryId, request.externalCategoryName, request.externalParentCategoryId,
+            request.productCatalogCategoryId, request.versionNo, actorUserId)
+    }
+
+    fun deactivateCategoryCorrespondence(organizationId: String, correspondenceId: String, versionNo: Int, actorUserId: String) = translate {
+        jdbi.onDemand(CommerceCatalogCategoryCorrespondenceSql::class.java)
+            .deactivate(organizationId, correspondenceId, versionNo, actorUserId)
     }
 
     private fun dependentProductIds(organizationId: String): Set<String> = jdbi.withHandle<Set<String>, Exception> { handle ->
@@ -191,6 +252,8 @@ private data class CatalogSyncStageRow(
     val eligibleForApply: Boolean = false,
     val previousAttributes: CommerceCatalogSyncAttributesDto? = null,
     val proposedAttributes: CommerceCatalogSyncAttributesDto? = null
+    , val externalCategories: List<com.mynikatech.memgine.net.dto.CommerceExternalCategoryReferenceDto> = emptyList(),
+    val categoryMetadataAvailable: Boolean = false
 ) {
     constructor(index: Int, row: CommerceCatalogReconciliationRow, mappings: List<CommerceProductMappingRow>, products: List<CommerceCatalogCanonicalProduct>) : this(
         index, row.externalProductId, row.externalVariantId, row.externalSku,
@@ -205,11 +268,11 @@ private data class CatalogSyncStageRow(
         row.action.name, row.reason, row.hasDependentBusinessRules,
         row.action in setOf(CommerceCatalogReconciliationAction.NEW, CommerceCatalogReconciliationAction.MATCHED, CommerceCatalogReconciliationAction.UPDATE, CommerceCatalogReconciliationAction.UNCHANGED),
         row.previousAttributes?.let(::attributesDto),
-        row.proposedAttributes?.let(::attributesDto)
+        row.proposedAttributes?.let(::attributesDto), row.externalCategories, row.categoryMetadataAvailable
     )
     fun toDto(previewId: String) = CommerceCatalogSyncPreviewRowDto(
         "$previewId:$rowNumber", externalProductId, externalVariantId, externalSku, productName, currencyCode,
-        unitPriceMinor, active, canonicalProductId, mappingId, action, reason, hasDependentBusinessRules, eligibleForApply, previousAttributes, proposedAttributes
+        unitPriceMinor, active, canonicalProductId, mappingId, action, reason, hasDependentBusinessRules, eligibleForApply, previousAttributes, proposedAttributes, externalCategories, categoryMetadataAvailable
     )
 }
 
@@ -230,4 +293,29 @@ interface CommerceCatalogSyncSql {
     @SqlQuery("SELECT commerce_apply_catalog_sync_preview(:organizationId,:previewId,:idempotencyKey,:actorUserId)::text")
     fun applyPreview(@Bind("organizationId") organizationId: String, @Bind("previewId") previewId: String,
                      @Bind("idempotencyKey") idempotencyKey: String, @Bind("actorUserId") actorUserId: String): String
+    @SqlQuery("SELECT commerce_resolve_catalog_sync_preview_row(:organizationId,:previewId,:rowNumber,:productId,:expectedVersion,:actorUserId)")
+    fun resolvePreviewRow(@Bind("organizationId") organizationId: String, @Bind("previewId") previewId: String,
+                          @Bind("rowNumber") rowNumber: Int, @Bind("productId") productId: String,
+                          @Bind("expectedVersion") expectedVersion: Int, @Bind("actorUserId") actorUserId: String): Boolean
+}
+
+data class CommerceCatalogCategoryCorrespondenceRow(
+    var correspondenceId: String = "",
+    var externalCategoryId: String = "",
+    var productCatalogCategoryId: String = "",
+    var versionNo: Int = 0
+)
+
+interface CommerceCatalogCategoryCorrespondenceSql {
+    @SqlQuery("SELECT * FROM commerce_list_catalog_category_correspondences(:organizationId,:integrationId,:catalogId,:actorUserId)")
+    @org.jdbi.v3.sqlobject.config.RegisterBeanMapper(CommerceCatalogCategoryCorrespondenceRow::class)
+    fun list(@Bind("organizationId") organizationId: String, @Bind("integrationId") integrationId: String,
+             @Bind("catalogId") catalogId: String, @Bind("actorUserId") actorUserId: String): List<CommerceCatalogCategoryCorrespondenceRow>
+    @SqlQuery("SELECT commerce_save_catalog_category_correspondence(:organizationId,:integrationId,:catalogId,:externalCategoryId,:externalCategoryName,:externalParentCategoryId,:canonicalCategoryId,:versionNo,:actorUserId)")
+    fun save(@Bind("organizationId") organizationId: String, @Bind("integrationId") integrationId: String, @Bind("catalogId") catalogId: String,
+             @Bind("externalCategoryId") externalCategoryId: String, @Bind("externalCategoryName") externalCategoryName: String?, @Bind("externalParentCategoryId") externalParentCategoryId: String?,
+             @Bind("canonicalCategoryId") canonicalCategoryId: String, @Bind("versionNo") versionNo: Int?, @Bind("actorUserId") actorUserId: String): String
+    @SqlQuery("SELECT commerce_deactivate_catalog_category_correspondence(:organizationId,:correspondenceId,:versionNo,:actorUserId)")
+    fun deactivate(@Bind("organizationId") organizationId: String, @Bind("correspondenceId") correspondenceId: String,
+                   @Bind("versionNo") versionNo: Int, @Bind("actorUserId") actorUserId: String): Boolean
 }

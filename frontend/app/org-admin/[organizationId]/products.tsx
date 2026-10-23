@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, ScrollView, View } from "react-native";
+import { Platform, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import * as XLSX from "xlsx";
 import { Button, Checkbox, DataTable, Input, Modal, Text } from "@/src/ui";
@@ -16,6 +16,8 @@ import {
   type ProductImportRow,
   type CommerceCatalogSyncPreview,
   type CommerceCatalogSyncPreviewRow,
+  type CommerceCatalogCategoryCorrespondence,
+  type CommerceCatalogSyncExternalCategory,
 } from "@/src/data/api/organization-product-api";
 
 const emptyProduct = {
@@ -68,6 +70,7 @@ export default function OrgAdminProducts() {
   const org = routeOrganizationId ?? organization?.id ?? "";
   const router = useRouter();
   const theme = useTheme();
+  const { height: viewportHeight } = useWindowDimensions();
   const [catalogs, setCatalogs] = useState<OrganizationProductCatalog[]>([]);
   const [integrations, setIntegrations] = useState<IntegrationConfiguration[]>(
     [],
@@ -103,11 +106,24 @@ export default function OrgAdminProducts() {
   const [posPreview, setPosPreview] = useState<CommerceCatalogSyncPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [showApplyConfirmation, setShowApplyConfirmation] = useState(false);
+  const [showReviewChanges, setShowReviewChanges] = useState(false);
   const [applyingPreview, setApplyingPreview] = useState(false);
   const [applyUncertain, setApplyUncertain] = useState(false);
   const [previewExpired, setPreviewExpired] = useState(false);
   const [previewSearch, setPreviewSearch] = useState("");
   const [previewAction, setPreviewAction] = useState("ALL");
+  const previewListRef = useRef<ScrollView>(null);
+  const [previewListScrolled, setPreviewListScrolled] = useState(false);
+  const [resolvingPreviewRow, setResolvingPreviewRow] = useState<CommerceCatalogSyncPreviewRow | null>(null);
+  const [selectedCanonicalProductId, setSelectedCanonicalProductId] = useState("");
+  const [savingResolution, setSavingResolution] = useState(false);
+  const [showCategoryCorrespondences, setShowCategoryCorrespondences] = useState(false);
+  const [categoryCorrespondences, setCategoryCorrespondences] = useState<CommerceCatalogCategoryCorrespondence[]>([]);
+  const [availableExternalCategories, setAvailableExternalCategories] = useState<CommerceCatalogSyncExternalCategory[]>([]);
+  const [selectedExternalCategory, setSelectedExternalCategory] = useState<CommerceCatalogSyncExternalCategory | null>(null);
+  const [selectedCanonicalCategoryId, setSelectedCanonicalCategoryId] = useState("");
+  const [savingCategoryCorrespondence, setSavingCategoryCorrespondence] = useState(false);
+  const [correspondenceToDeactivate, setCorrespondenceToDeactivate] = useState<CommerceCatalogCategoryCorrespondence | null>(null);
   const applyIdempotencyKey = useRef<string | null>(null);
   const load = useCallback(async () => {
     if (!org) return;
@@ -146,18 +162,110 @@ export default function OrgAdminProducts() {
   const filteredPreviewRows = useMemo(() => {
     if (!posPreview) return [] as CommerceCatalogSyncPreviewRow[];
     const search = previewSearch.trim().toLowerCase();
-    return posPreview.rows.filter((row) => {
+    const rows = posPreview.rows.filter((row) => {
       const actionMatches = previewAction === "ALL" || row.action === previewAction;
       const textMatches = !search || [row.productName, row.externalSku, row.externalProductId, row.externalVariantId, row.canonicalProductId, row.reason].some((value) => value?.toLowerCase().includes(search));
       return actionMatches && textMatches;
     });
+    if (previewAction !== "ALL") return rows;
+    const priority = (action: CommerceCatalogSyncPreviewRow["action"]) =>
+      action === "CONFLICT" ? 0 : action === "INVALID" ? 1 : 2;
+    return rows.sort((left, right) => priority(left.action) - priority(right.action));
   }, [posPreview, previewAction, previewSearch]);
   const summaryValue = (action: string) =>
     posPreview && Object.prototype.hasOwnProperty.call(posPreview.summary, action)
       ? posPreview.summary[action]
       : "—";
+  const openPreviewResolution = (row: CommerceCatalogSyncPreviewRow) => {
+    setResolvingPreviewRow(row);
+    setSelectedCanonicalProductId("");
+  };
   const formatMinor = (minor: number, currency: string) =>
     `${currency} ${(minor / 100).toFixed(2)}`;
+  const resolutionCandidates = resolvingPreviewRow
+    ? products.filter((product) =>
+        product.productCatalogId === catalogId &&
+        product.active &&
+        product.sku?.trim().toUpperCase() === resolvingPreviewRow.externalSku?.trim().toUpperCase(),
+      )
+    : [];
+  const externalCategories = useMemo(() => {
+    const byId = new Map<string, CommerceCatalogSyncExternalCategory>();
+    posPreview?.rows.forEach((row) => row.externalCategories?.forEach((category) => byId.set(category.externalCategoryId, category)));
+    return [...byId.values()].sort((a, b) => (a.categoryName ?? a.externalCategoryId).localeCompare(b.categoryName ?? b.externalCategoryId));
+  }, [posPreview]);
+  const canonicalCategories = useMemo(() => {
+    const byId = new Map<string, string>();
+    products.filter((product) => product.productCatalogId === catalogId && product.productCatalogCategoryId)
+      .forEach((product) => byId.set(product.productCatalogCategoryId!, product.categoryName ?? product.productCatalogCategoryId!));
+    return [...byId.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [catalogId, products]);
+  const loadCategoryCorrespondences = async () => {
+    if (!selectedSyncIntegrationId || !catalogId) return;
+    const result = await organizationProductApi.categoryCorrespondences(org, selectedSyncIntegrationId, catalogId);
+    if (!result.success) { setError(result.error?.message ?? "Unable to load category correspondences."); return; }
+    setCategoryCorrespondences(result.data);
+  };
+  const openCategoryCorrespondences = async () => {
+    await loadCategoryCorrespondences();
+    setAvailableExternalCategories(externalCategories);
+    setSelectedExternalCategory(null);
+    setSelectedCanonicalCategoryId("");
+    setShowCategoryCorrespondences(true);
+  };
+  const saveCategoryCorrespondence = async () => {
+    if (!selectedExternalCategory || !selectedCanonicalCategoryId || !selectedSyncIntegrationId || !catalogId) return;
+    setSavingCategoryCorrespondence(true);
+    const existing = categoryCorrespondences.find((item) => item.externalCategoryId === selectedExternalCategory.externalCategoryId);
+    const result = await organizationProductApi.saveCategoryCorrespondence(org, selectedSyncIntegrationId, catalogId, {
+      externalCategoryId: selectedExternalCategory.externalCategoryId,
+      externalCategoryName: selectedExternalCategory.categoryName,
+      externalParentCategoryId: selectedExternalCategory.parentExternalCategoryId,
+      productCatalogCategoryId: selectedCanonicalCategoryId,
+      versionNo: existing?.versionNo,
+    });
+    setSavingCategoryCorrespondence(false);
+    if (!result.success) { setError(result.error?.message ?? "Unable to save category correspondence."); return; }
+    await loadCategoryCorrespondences();
+    setPosPreview(null);
+    setSuccessMessage("Category correspondence saved. Generate a fresh preview before applying synchronization.");
+  };
+  const deactivateCategoryCorrespondence = async (item: CommerceCatalogCategoryCorrespondence) => {
+    const result = await organizationProductApi.deactivateCategoryCorrespondence(org, item.correspondenceId, item.versionNo);
+    if (!result.success) { setError(result.error?.message ?? "Unable to deactivate category correspondence."); return; }
+    await loadCategoryCorrespondences();
+    setPosPreview(null);
+    setCorrespondenceToDeactivate(null);
+    setSuccessMessage("Category correspondence deactivated. Generate a fresh preview before applying synchronization.");
+  };
+  const resolvePreviewRow = async () => {
+    if (!posPreview || !resolvingPreviewRow || !selectedCanonicalProductId) return;
+    const product = resolutionCandidates.find((item) => item.productId === selectedCanonicalProductId);
+    if (!product) return;
+    setSavingResolution(true);
+    const result = await organizationProductApi.resolvePosCatalogConflict(org, posPreview.previewId, resolvingPreviewRow.rowId, {
+      canonicalProductId: product.productId,
+      expectedCanonicalProductVersionNo: product.versionNo,
+    });
+    setSavingResolution(false);
+    if (!result.success) {
+      setError(result.error?.message ?? "Unable to save the catalog resolution.");
+      return;
+    }
+    setPosPreview((current) => current ? {
+      ...current,
+      rows: current.rows.map((row) => row.rowId === resolvingPreviewRow.rowId
+        ? { ...row, canonicalProductId: product.productId, action: "MATCHED", eligibleForApply: true, reason: "Administrator selected canonical product for ambiguous SKU" }
+        : row),
+      summary: {
+        ...current.summary,
+        CONFLICT: Math.max(0, (current.summary.CONFLICT ?? 0) - 1),
+        MATCHED: (current.summary.MATCHED ?? 0) + 1,
+      },
+    } : current);
+    setResolvingPreviewRow(null);
+    setSelectedCanonicalProductId("");
+  };
   const resetPosSync = () => {
     setShowPosSync(false);
     setSelectedSyncIntegrationId("");
@@ -167,6 +275,7 @@ export default function OrgAdminProducts() {
     setPreviewAction("ALL");
     setApplyUncertain(false);
     setPreviewExpired(false);
+    setPreviewListScrolled(false);
     applyIdempotencyKey.current = null;
   };
   const fetchPosPreview = async () => {
@@ -778,9 +887,11 @@ export default function OrgAdminProducts() {
           setShowApplyConfirmation(false);
         }}
         title="POS catalog preview"
-        scrollable
+        scrollable={false}
       >
         {posPreview ? (
+          <View style={{ height: viewportHeight * 0.86, maxHeight: viewportHeight * 0.9, minHeight: 0, flexShrink: 1, position: "relative" }}>
+          <ScrollView ref={previewListRef} style={{ flex: 1, minHeight: 0, ...(Platform.OS === "web" ? ({ overflowY: "auto" } as any) : {}) }} contentContainerStyle={{ gap: theme.spacing.md, paddingBottom: theme.spacing.xl }} showsVerticalScrollIndicator onScroll={(event) => setPreviewListScrolled(event.nativeEvent.contentOffset.y > 40)} scrollEventThrottle={16}>
           <View style={{ gap: theme.spacing.md }}>
             <View style={{ gap: theme.spacing.xs }}>
               <Text variant="bodyStrong">{activeCatalog?.catalogName ?? posPreview.productCatalogId}</Text>
@@ -805,38 +916,113 @@ export default function OrgAdminProducts() {
                 <Text color="textMuted">P3 applies approved previews atomically. No valid rows will be imported until every conflict and invalid record is resolved and a fresh preview is generated. Partial import is unavailable.</Text>
               </View>
             ) : null}
-            <Input label="Search preview" value={previewSearch} onChangeText={setPreviewSearch} placeholder="Name, SKU, external ID, canonical ID, reason" />
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.xs }}>
-              {["ALL", "NEW", "MATCHED", "UPDATE", "UNCHANGED", "INACTIVE", "MISSING", "CONFLICT", "INVALID"].map((action) => (
-                <Button key={action} label={action} size="sm" variant={previewAction === action ? "primary" : "outline"} onPress={() => setPreviewAction(action)} />
-              ))}
+            <View style={{ gap: theme.spacing.sm, paddingBottom: theme.spacing.sm, borderBottomWidth: 1, borderColor: theme.colors.border }}>
+              <View style={{ flexDirection: "row", gap: theme.spacing.sm, flexWrap: "wrap" }}>
+                <Button label="Category correspondences" variant="outline" onPress={() => void openCategoryCorrespondences()} />
+                <Button label="Generate fresh preview" variant="outline" onPress={() => { setPosPreview(null); setShowPosSync(true); }} />
+                <Button label="Review changes" disabled={previewExpired} onPress={() => setShowReviewChanges(true)} />
+              </View>
+              <Input label="Search preview" value={previewSearch} onChangeText={setPreviewSearch} placeholder="Name, SKU, external ID, canonical ID, reason" />
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.xs }}>
+                {["ALL", "NEW", "MATCHED", "UPDATE", "UNCHANGED", "INACTIVE", "MISSING", "CONFLICT", "INVALID"].map((action) => (
+                  <Button key={action} label={action} size="sm" variant={previewAction === action ? "primary" : "outline"} onPress={() => setPreviewAction(action)} />
+                ))}
+              </View>
             </View>
-            <DataTable
-              data={filteredPreviewRows}
-              keyExtractor={(row) => row.rowId}
-              minTableWidth={1480}
-              columns={[
-                { key: "classification", title: "Classification", width: 120, render: (row) => <Text color={row.action === "CONFLICT" || row.action === "INVALID" ? "danger" : "text"}>{row.action}</Text> },
-                { key: "product", title: "External Product", width: 220, render: (row) => <View><Text variant="bodyStrong">{row.productName}</Text>{row.externalVariantId ? <Text color="textMuted">Variant: {row.externalVariantId}</Text> : null}</View> },
-                { key: "sku", title: "SKU", width: 160, render: (row) => <Text>{row.externalSku ?? "—"}</Text> },
-                { key: "externalId", title: "External ID", width: 220, render: (row) => <Text>{row.externalProductId}</Text> },
-                { key: "canonical", title: "Canonical Product", width: 220, render: (row) => <Text>{row.canonicalProductId ?? "—"}</Text> },
-                { key: "price", title: "External Price", width: 150, render: (row) => <Text>{formatMinor(row.unitPriceMinor, row.currencyCode)}</Text> },
-                { key: "state", title: "Provider State", width: 140, render: (row) => <Text>{row.active ? "Active" : "Inactive"}</Text> },
-                { key: "proposed", title: "Proposed Action", width: 260, render: (row) => <View><Text>{row.action === "UPDATE" ? "Provider snapshot update; canonical product attributes stay unchanged." : row.action === "MATCHED" ? "Additional POS mapping." : row.eligibleForApply ? "Eligible for atomic apply." : "Not applied."}</Text>{row.hasDependentBusinessRules ? <Text color="danger">Dependent business rules require review.</Text> : null}</View> },
-                { key: "reason", title: "Reason", width: 280, render: (row) => <Text color={row.action === "CONFLICT" || row.action === "INVALID" ? "danger" : "textMuted"}>{row.reason ?? "—"}</Text> },
-              ]}
-              emptyMessage="No preview rows match the current filters."
-            />
+            <View style={{ gap: theme.spacing.sm, paddingVertical: theme.spacing.xs }}>
+              {filteredPreviewRows.map((row) => <View key={row.rowId} style={{ gap: theme.spacing.xs, padding: theme.spacing.md, borderWidth: 1, borderColor: row.action === "CONFLICT" || row.action === "INVALID" ? theme.colors.danger : theme.colors.border, borderRadius: theme.radius.md }}>
+              <Text variant="bodyStrong" color={row.action === "CONFLICT" || row.action === "INVALID" ? "danger" : "text"}>{row.action} · {row.productName}</Text>
+              <Text color="textMuted">Product ID: {row.externalProductId}{row.externalVariantId ? ` · Variant: ${row.externalVariantId}` : ""}</Text>
+              <Text>SKU: {row.externalSku ?? "—"} · {formatMinor(row.unitPriceMinor, row.currencyCode)}</Text>
+              <Text>Poynt categories: {row.externalCategories?.length ? row.externalCategories.map((category) => `${category.categoryName ?? "Unnamed"} (${category.externalCategoryId})`).join(", ") : row.categoryMetadataAvailable ? "Uncategorized" : "Metadata unavailable"}</Text>
+              <Text>Canonical match: {row.canonicalProductId ?? "—"}</Text>
+              <Text color={row.reason ? "textMuted" : "text"}>Reason: {row.reason ?? "—"}</Text>
+              {row.hasDependentBusinessRules ? <Text color="danger">Dependent business rules require review.</Text> : null}
+              {row.action === "CONFLICT" && row.externalSku ? <Button label="Resolve" size="sm" variant="outline" onPress={() => openPreviewResolution(row)} /> : null}
+              </View>)}
+            </View>
             {applyUncertain ? <Text color="danger">The server did not confirm apply. Do not create a new preview; retry uses the same approval key.</Text> : null}
             {previewExpired ? <Text color="danger">This preview is no longer valid. Generate a fresh preview before applying any changes.</Text> : null}
-            <View style={{ flexDirection: "row", gap: theme.spacing.sm, flexWrap: "wrap" }}>
+            <View style={{ flexDirection: "row", gap: theme.spacing.sm, flexWrap: "wrap", paddingTop: theme.spacing.sm, borderTopWidth: 1, borderColor: theme.colors.border }}>
               <Button label="Close" variant="outline" onPress={() => setPosPreview(null)} />
-              <Button label="Generate fresh preview" variant="outline" onPress={() => { setPosPreview(null); setShowPosSync(true); }} />
-              <Button label="Apply approved changes" disabled={blockingPreviewRows.length > 0 || !posPreview.fullCatalogComplete || previewExpired || applyingPreview} onPress={() => setShowApplyConfirmation(true)} />
+            </View>
+          </View>
+          </ScrollView>
+          {previewListScrolled ? <View style={{ position: "absolute", right: theme.spacing.sm, bottom: theme.spacing.sm }}><Button label="Back to top" size="sm" variant="primary" onPress={() => { previewListRef.current?.scrollTo({ y: 0, animated: true }); setPreviewListScrolled(false); }} /></View> : null}
+          </View>
+        ) : null}
+      </Modal>
+      <Modal visible={showCategoryCorrespondences} onClose={() => setShowCategoryCorrespondences(false)} title="Verified Poynt category correspondences" scrollable>
+        <View style={{ gap: theme.spacing.md }}>
+          <Text color="textMuted">Approve each correspondence explicitly. Category names are informational; the saved IDs control reconciliation. Saving or deactivating one invalidates the current preview.</Text>
+          {availableExternalCategories.map((external) => {
+            const existing = categoryCorrespondences.find((item) => item.externalCategoryId === external.externalCategoryId);
+            const canonical = canonicalCategories.find((item) => item.id === existing?.productCatalogCategoryId);
+            return <Pressable key={external.externalCategoryId} onPress={() => { setSelectedExternalCategory(external); setSelectedCanonicalCategoryId(existing?.productCatalogCategoryId ?? ""); }} style={{ padding: theme.spacing.sm, borderWidth: 1, borderColor: selectedExternalCategory?.externalCategoryId === external.externalCategoryId ? theme.colors.primary : theme.colors.border, borderRadius: theme.radius.md }}>
+              <Text variant="bodyStrong">{external.categoryName ?? "Unnamed Poynt category"}</Text>
+              <Text color="textMuted">Poynt ID: {external.externalCategoryId}{external.parentExternalCategoryId ? ` · Parent: ${external.parentExternalCategoryId}` : ""}</Text>
+              <Text color={existing ? "text" : "textMuted"}>{existing ? `Approved → ${canonical?.name ?? existing.productCatalogCategoryId} (${existing.productCatalogCategoryId})` : "No approved correspondence"}</Text>
+              {existing ? <Button label="Deactivate" size="sm" variant="outline" onPress={() => setCorrespondenceToDeactivate(existing)} /> : null}
+            </Pressable>;
+          })}
+          {!availableExternalCategories.length ? <Text color="textMuted">No Poynt categories are available in this preview. Configure the provider catalog ID and generate a fresh preview.</Text> : null}
+          {selectedExternalCategory ? <View style={{ gap: theme.spacing.sm, borderTopWidth: 1, borderColor: theme.colors.border, paddingTop: theme.spacing.md }}>
+            <Text variant="bodyStrong">Approve correspondence for {selectedExternalCategory.categoryName ?? selectedExternalCategory.externalCategoryId}</Text>
+            <Text color="textMuted">Poynt category ID: {selectedExternalCategory.externalCategoryId}</Text>
+            {canonicalCategories.map((category) => <Pressable key={category.id} onPress={() => setSelectedCanonicalCategoryId(category.id)} style={{ padding: theme.spacing.sm, borderWidth: 1, borderColor: selectedCanonicalCategoryId === category.id ? theme.colors.primary : theme.colors.border, borderRadius: theme.radius.md }}><Text>{selectedCanonicalCategoryId === category.id ? "●" : "○"} {category.name} · {category.id}</Text></Pressable>)}
+            <Button label={savingCategoryCorrespondence ? "Saving…" : "Confirm verified correspondence"} disabled={!selectedCanonicalCategoryId || savingCategoryCorrespondence} onPress={() => void saveCategoryCorrespondence()} />
+          </View> : null}
+          <View style={{ flexDirection: "row", gap: theme.spacing.sm, flexWrap: "wrap" }}><Button label="Close" variant="outline" onPress={() => setShowCategoryCorrespondences(false)} /><Button label="Generate fresh preview" variant="outline" onPress={() => { setShowCategoryCorrespondences(false); setShowPosSync(true); }} /></View>
+        </View>
+      </Modal>
+      <Modal visible={correspondenceToDeactivate !== null} onClose={() => setCorrespondenceToDeactivate(null)} title="Deactivate category correspondence">
+        <View style={{ gap: theme.spacing.md }}><Text>Deactivate this approved correspondence? It will not change products or mappings, but a fresh preview is required.</Text><View style={{ flexDirection: "row", gap: theme.spacing.sm }}><Button label="Cancel" variant="outline" onPress={() => setCorrespondenceToDeactivate(null)} /><Button label="Deactivate" onPress={() => correspondenceToDeactivate && void deactivateCategoryCorrespondence(correspondenceToDeactivate)} /></View></View>
+      </Modal>
+      <Modal
+        visible={resolvingPreviewRow !== null}
+        onClose={() => { setResolvingPreviewRow(null); setSelectedCanonicalProductId(""); }}
+        title="Resolve catalog conflict"
+        scrollable
+      >
+        {resolvingPreviewRow ? (
+          <View style={{ gap: theme.spacing.md }}>
+            <Text variant="bodyStrong">{resolvingPreviewRow.productName}</Text>
+            <Text color="textMuted">External SKU: {resolvingPreviewRow.externalSku ?? "Not provided"}</Text>
+            <Text color="textMuted">Poynt categories: {resolvingPreviewRow.externalCategories?.length ? resolvingPreviewRow.externalCategories.map((category) => `${category.categoryName ?? "Unnamed"} (${category.externalCategoryId})`).join(", ") : resolvingPreviewRow.categoryMetadataAvailable ? "Uncategorized" : "Metadata unavailable"}</Text>
+            <Text color="textMuted">Select the existing canonical product. This creates no mapping until the separate atomic preview apply.</Text>
+            {resolutionCandidates.map((product) => (
+              <Pressable key={product.productId} onPress={() => setSelectedCanonicalProductId(product.productId)} style={{ padding: theme.spacing.sm, borderWidth: 1, borderColor: selectedCanonicalProductId === product.productId ? theme.colors.primary : theme.colors.border, borderRadius: theme.radius.md }}>
+                <Text variant="bodyStrong">{selectedCanonicalProductId === product.productId ? "●" : "○"} {product.productName}</Text>
+                <Text color="textMuted">{product.productId} · {product.categoryName ?? "No category"} · SKU {product.sku ?? "—"}</Text>
+                <Text color="textMuted">{product.basePriceMinor != null ? formatMinor(product.basePriceMinor, product.currencyCode ?? "") : "No canonical price"}</Text>
+              </Pressable>
+            ))}
+            {!resolutionCandidates.length ? <Text color="danger">No eligible same-catalog SKU candidates are available. Correct the canonical catalog or source data, then create a fresh preview.</Text> : null}
+            <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+              <Button label="Cancel" variant="outline" onPress={() => setResolvingPreviewRow(null)} />
+              <Button label={savingResolution ? "Saving…" : "Confirm selection"} disabled={!selectedCanonicalProductId || savingResolution} onPress={() => void resolvePreviewRow()} />
             </View>
           </View>
         ) : null}
+      </Modal>
+      <Modal visible={showReviewChanges} onClose={() => setShowReviewChanges(false)} title="Review POS synchronization changes" scrollable={false}>
+        {posPreview ? <View style={{ height: viewportHeight * 0.86, maxHeight: viewportHeight * 0.9, minHeight: 0, flexShrink: 1 }}>
+          <ScrollView style={{ flex: 1, minHeight: 0, ...(Platform.OS === "web" ? ({ overflowY: "auto" } as any) : {}) }} contentContainerStyle={{ gap: theme.spacing.md, paddingBottom: theme.spacing.md }} showsVerticalScrollIndicator>
+          <View style={{ gap: theme.spacing.md }}>
+            <Text color="textMuted">Review every proposed mapping before approval. Apply remains atomic and is unavailable while conflicts or invalid records remain.</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>{(["NEW", "MATCHED", "UPDATE", "UNCHANGED", "INACTIVE", "MISSING", "CONFLICT", "INVALID"] as const).map((action) => <Text key={action} color={action === "CONFLICT" || action === "INVALID" ? "danger" : "textMuted"}>{action}: {summaryValue(action)}</Text>)}</View>
+          {posPreview.rows.map((row) => <View key={row.rowId} style={{ gap: theme.spacing.xs, padding: theme.spacing.sm, borderWidth: 1, borderColor: row.action === "CONFLICT" || row.action === "INVALID" ? theme.colors.danger : theme.colors.border, borderRadius: theme.radius.md }}>
+            <Text variant="bodyStrong">{row.action} · {row.productName}</Text>
+            <Text color="textMuted">Provider: {row.externalProductId} · SKU {row.externalSku ?? "—"} · Canonical: {row.canonicalProductId ?? "—"}</Text>
+            <Text color="textMuted">Categories: {row.externalCategories?.length ? row.externalCategories.map((category) => `${category.categoryName ?? category.externalCategoryId} (${category.externalCategoryId})`).join(", ") : row.categoryMetadataAvailable ? "Uncategorized" : "Metadata unavailable"}</Text>
+            <Text color={row.reason ? "textMuted" : "text"}>{row.reason ?? "No additional reason."}</Text>
+            {row.hasDependentBusinessRules ? <Text color="danger">Dependent business-rule warning.</Text> : null}
+            {row.action === "CONFLICT" && row.externalSku ? <Button label="Inspect / resolve" size="sm" variant="outline" onPress={() => { setShowReviewChanges(false); openPreviewResolution(row); }} /> : null}
+          </View>)}
+          </View>
+          </ScrollView>
+          <View style={{ flexDirection: "row", gap: theme.spacing.sm, flexWrap: "wrap", paddingTop: theme.spacing.md, borderTopWidth: 1, borderColor: theme.colors.border }}><Button label="Close" variant="outline" onPress={() => setShowReviewChanges(false)} /><Button label="Approve and continue" disabled={blockingPreviewRows.length > 0 || !posPreview.fullCatalogComplete || previewExpired || applyingPreview} onPress={() => { setShowReviewChanges(false); setShowApplyConfirmation(true); }} /></View>
+        </View> : null}
       </Modal>
       <Modal
         visible={showApplyConfirmation}

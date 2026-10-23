@@ -83,7 +83,34 @@ data class CommerceProductSnapshotWriteDto(
     val currencyCode: String,
     val unitPriceMinorSnapshot: Long,
     val active: Boolean = true,
-    val sourceUpdatedAt: String? = null
+    val sourceUpdatedAt: String? = null,
+    /** Informational provider categories. They never change a canonical category by themselves. */
+    val externalCategories: List<CommerceExternalCategoryReferenceDto> = emptyList(),
+    val categoryMetadataAvailable: Boolean = false
+)
+
+@Serializable
+data class CommerceExternalCategoryReferenceDto(
+    val externalCategoryId: String,
+    val categoryName: String? = null,
+    val parentExternalCategoryId: String? = null
+)
+
+@Serializable
+data class CommerceCatalogCategoryCorrespondenceDto(
+    val correspondenceId: String,
+    val externalCategoryId: String,
+    val productCatalogCategoryId: String,
+    val versionNo: Int
+)
+
+@Serializable
+data class CommerceCatalogCategoryCorrespondenceWriteDto(
+    val externalCategoryId: String,
+    val externalCategoryName: String? = null,
+    val externalParentCategoryId: String? = null,
+    val productCatalogCategoryId: String,
+    val versionNo: Int? = null
 )
 
 @Serializable
@@ -501,6 +528,12 @@ data class CommerceCatalogSyncApplyRequestDto(
 )
 
 @Serializable
+data class CommerceCatalogSyncManualResolutionRequestDto(
+    val canonicalProductId: String,
+    val expectedCanonicalProductVersionNo: Int
+)
+
+@Serializable
 data class CommerceCatalogSyncPreviewRowDto(
     val rowId: String,
     val externalProductId: String,
@@ -517,7 +550,9 @@ data class CommerceCatalogSyncPreviewRowDto(
     val hasDependentBusinessRules: Boolean = false,
     val eligibleForApply: Boolean = false,
     val previousAttributes: CommerceCatalogSyncAttributesDto? = null,
-    val proposedAttributes: CommerceCatalogSyncAttributesDto? = null
+    val proposedAttributes: CommerceCatalogSyncAttributesDto? = null,
+    val externalCategories: List<CommerceExternalCategoryReferenceDto> = emptyList(),
+    val categoryMetadataAvailable: Boolean = false
 )
 
 @Serializable

@@ -37,7 +37,9 @@ data class CommerceCatalogSyncRequest(
     val storeId: String? = null,
     val modifiedSince: String? = null,
     val incremental: Boolean = false,
-    val actorUserId: String
+    val actorUserId: String,
+    /** Optional provider catalog identity; absence means categories are unavailable, never inferred. */
+    val externalCatalogId: String? = null
 )
 
 /** Provider-neutral remote terminal boundary. The provider owns wire format only. */

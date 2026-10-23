@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 204-pos-catalog-sync-manual-resolution
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/204-pos-catalog-sync-manual-resolution.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

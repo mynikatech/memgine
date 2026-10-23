@@ -6,6 +6,7 @@ import com.mynikatech.memgine.net.dto.CommerceCapability
 import com.mynikatech.memgine.net.dto.CommerceCheckoutRequest
 import com.mynikatech.memgine.net.dto.CommerceCheckoutResult
 import com.mynikatech.memgine.net.dto.CommerceProductSnapshotWriteDto
+import com.mynikatech.memgine.net.dto.CommerceExternalCategoryReferenceDto
 import kotlinx.serialization.json.*
 import org.jdbi.v3.sqlobject.config.RegisterBeanMapper
 import org.jdbi.v3.sqlobject.customizer.Bind
@@ -52,7 +53,9 @@ class PoyntCommerceProvider(
             if (products.size < CATALOG_PAGE_SIZE) break
             offset += products.size
         }
-        return mapped
+        val catalogId = request.externalCatalogId?.trim()?.takeIf { it.isNotEmpty() } ?: return mapped
+        val categories = parseCatalogCategories(client.get(config, client.catalogFullUri(config.businessId, catalogId)))
+        return mapped.map { snapshot -> snapshot.copy(externalCategories = categories[snapshot.externalProductId].orEmpty(), categoryMetadataAvailable = true) }
     }
 
     /** Validates the currently supported provider-order shape without creating an order. */
@@ -280,6 +283,30 @@ class PoyntCommerceProvider(
     } catch (_: Exception) {
         throw BadRequestException("Poynt catalog response was invalid")
     }
+
+    /** Parses only documented category/product associations. Unknown shapes leave no association. */
+    private fun parseCatalogCategories(body: String): Map<String, List<CommerceExternalCategoryReferenceDto>> = try {
+        val root = Json.parseToJsonElement(body).jsonObject
+        val categories = root["categories"] as? JsonArray
+            ?: throw BadRequestException("Poynt catalog category response was invalid")
+        val output = linkedMapOf<String, MutableList<CommerceExternalCategoryReferenceDto>>()
+        fun visit(category: JsonObject, parentId: String?) {
+            val categoryId = string(category, "id") ?: return
+            val reference = CommerceExternalCategoryReferenceDto(categoryId, string(category, "name"), parentId)
+            val products = category["products"] as? JsonArray
+            products?.forEach { item ->
+                val product = item as? JsonObject ?: return@forEach
+                val productId = string(product, "productId") ?: string(product["product"] as? JsonObject ?: product, "id")
+                if (productId != null) output.getOrPut(productId) { mutableListOf() }.add(reference)
+            }
+            (category["categories"] as? JsonArray)?.forEach { nested ->
+                (nested as? JsonObject)?.let { visit(it, categoryId) }
+            }
+        }
+        categories.forEach { (it as? JsonObject)?.let { category -> visit(category, null) } }
+        output.mapValues { (_, refs) -> refs.distinctBy { it.externalCategoryId } }
+    } catch (error: BadRequestException) { throw error }
+      catch (_: Exception) { throw BadRequestException("Poynt catalog category response was invalid") }
 
     private fun parseProduct(o: JsonObject): PoyntProduct {
         val id = string(o, "id") ?: throw BadRequestException("Poynt product ID is unavailable")

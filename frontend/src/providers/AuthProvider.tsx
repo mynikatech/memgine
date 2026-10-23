@@ -32,6 +32,8 @@ export class AuthRequestError extends Error {
 }
 
 const NATIVE_SESSION_MODE_KEY = "memgine.native.session-mode";
+const isConfirmedInvalidSession = (code: string) =>
+  code === "UNAUTHORIZED" || code === "HTTP_401";
 
 type AuthContextValue = {
   session: AuthSession | null;
@@ -53,7 +55,9 @@ type AuthContextValue = {
   unlockPos: (staffId: string, pin: string) => Promise<AuthSession>;
   setPassword: (password: string) => Promise<void>;
   customerAccountDeletionPreview: () => Promise<CustomerAccountDeletionPreview>;
-  deleteCustomerAccount: (acknowledgeActiveSubscriptions: boolean) => Promise<void>;
+  deleteCustomerAccount: (
+    acknowledgeActiveSubscriptions: boolean,
+  ) => Promise<void>;
   logout: () => Promise<void>;
   requestRegistrationOtp: (
     phone: string,
@@ -73,7 +77,8 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function unwrap<T>(result: ApiResult<T>): T {
-  if (!result.success) throw new AuthRequestError(result.error.code, result.error.message);
+  if (!result.success)
+    throw new AuthRequestError(result.error.code, result.error.message);
   return result.data as T;
 }
 
@@ -108,15 +113,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const clearLocalAuthentication = useCallback(async () => {
+    try {
+      await saveNativeSessionToken(null);
+    } catch {
+      console.warn("Native session-token cleanup failed");
+    }
+    try {
+      await saveMobileSessionMode(null);
+    } catch {
+      console.warn("Native session-mode cleanup failed");
+    }
+    setSession(null);
+  }, [saveMobileSessionMode]);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const result = await authApi.session();
-      const current = result.success ? result.data : null;
-      if (!current) {
-        await saveNativeSessionToken(null);
-        await saveMobileSessionMode(null);
-      } else if (Platform.OS !== "web") {
+      if (!result.success) {
+        if (isConfirmedInvalidSession(result.error.code)) {
+          await clearLocalAuthentication();
+          return null;
+        }
+        console.warn("Session refresh was unavailable:", result.error.code);
+        return null;
+      }
+      const current = result.data;
+      if (Platform.OS !== "web") {
         const stored = await storage.secureGet<MobileSessionMode | null>(
           NATIVE_SESSION_MODE_KEY,
           null,
@@ -130,10 +154,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setSession(current);
       return current;
+    } catch {
+      console.warn("Session refresh failed unexpectedly");
+      return null;
     } finally {
       setLoading(false);
     }
-  }, [inferredMobileMode, saveMobileSessionMode]);
+  }, [clearLocalAuthentication, inferredMobileMode, saveMobileSessionMode]);
 
   useEffect(() => {
     void refresh();
@@ -200,11 +227,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(null);
       },
       logout: async () => {
-        const result = await authApi.logout();
-        if (!result.success) throw new Error(result.error.message);
-        await saveNativeSessionToken(null);
-        await saveMobileSessionMode(null);
-        setSession(null);
+        try {
+          const result = await authApi.logout();
+
+          if (!result.success) {
+            console.warn("Server logout was unsuccessful:", result.error.code);
+          }
+        } catch {
+          console.warn("Server logout request failed");
+        } finally {
+          await clearLocalAuthentication();
+        }
       },
       setMobileSessionMode: async (mode) => {
         await saveMobileSessionMode(mode);
@@ -243,7 +276,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               context.organizationId === organizationId),
         ) ?? false,
     }),
-    [loading, mobileSessionMode, refresh, saveMobileSessionMode, session],
+    [clearLocalAuthentication, loading, mobileSessionMode, refresh, saveMobileSessionMode, session],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

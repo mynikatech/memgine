@@ -83,6 +83,20 @@ class CommerceCatalogReconciliationService {
                 "No canonical SKU match is available", null, proposed, input)
         }
         val candidates = products.filter { it.active && normalized(it.sku) == sku }
+        val categoryCandidates = candidates.filter { candidate ->
+            input.categoryCorrespondences.any { correspondence ->
+                correspondence.canonicalCategoryId == candidate.productCatalogCategoryId &&
+                    snapshot.externalCategories.any { it.externalCategoryId == correspondence.externalCategoryId }
+            }
+        }
+        if (categoryCandidates.size == 1) {
+            val candidate = categoryCandidates.single()
+            return row(snapshot, candidate.productId, CommerceCatalogReconciliationAction.MATCHED,
+                "Unique SKU matched through an administrator-verified category correspondence", null, proposed, input)
+        }
+        if (categoryCandidates.size > 1) {
+            return conflictRow(snapshot, "Verified category correspondences match multiple canonical products", proposed)
+        }
         if (candidates.size > 1) {
             return conflictRow(snapshot, "Canonical SKU matches multiple products", proposed)
         }
@@ -172,7 +186,9 @@ class CommerceCatalogReconciliationService {
         CommerceCatalogReconciliationAction.INVALID,
         reason,
         null,
-        proposed
+        proposed,
+        externalCategories = snapshot.externalCategories,
+        categoryMetadataAvailable = snapshot.categoryMetadataAvailable
     )
 
     private fun conflictRow(
@@ -190,7 +206,9 @@ class CommerceCatalogReconciliationService {
         CommerceCatalogReconciliationAction.CONFLICT,
         reason,
         null,
-        proposed
+        proposed,
+        externalCategories = snapshot.externalCategories,
+        categoryMetadataAvailable = snapshot.categoryMetadataAvailable
     )
 
     private fun row(
@@ -212,7 +230,9 @@ class CommerceCatalogReconciliationService {
         reason,
         previous,
         proposed,
-        productId != null && input.dependentProductIds.contains(productId)
+        productId != null && input.dependentProductIds.contains(productId),
+        externalCategories = snapshot.externalCategories,
+        categoryMetadataAvailable = snapshot.categoryMetadataAvailable
     )
 
     private fun scopedMappings(
@@ -315,7 +335,13 @@ data class CommerceCatalogReconciliationInput(
     val mappings: List<CommerceProductMappingRow>,
     val previousSnapshots: List<CommerceProductSnapshotRow> = emptyList(),
     /** Product IDs known by the caller to have benefit, offer, or other business-rule dependencies. */
-    val dependentProductIds: Set<String> = emptySet()
+    val dependentProductIds: Set<String> = emptySet(),
+    val categoryCorrespondences: List<CommerceCatalogCategoryCorrespondence> = emptyList()
+)
+
+data class CommerceCatalogCategoryCorrespondence(
+    val externalCategoryId: String,
+    val canonicalCategoryId: String
 )
 
 data class CommerceCatalogCanonicalProduct(
@@ -323,7 +349,12 @@ data class CommerceCatalogCanonicalProduct(
     val organizationId: String,
     val sku: String? = null,
     val active: Boolean = true,
-    val versionNo: Int? = null
+    val versionNo: Int? = null,
+    val productCatalogCategoryId: String? = null,
+    val categoryName: String? = null,
+    val productName: String? = null,
+    val basePriceMinor: Long? = null,
+    val currencyCode: String? = null
 )
 
 data class CommerceCatalogReconciliationPlan(
@@ -346,7 +377,9 @@ data class CommerceCatalogReconciliationRow(
     val previousAttributes: CommerceCatalogProductAttributes? = null,
     val proposedAttributes: CommerceCatalogProductAttributes? = null,
     val hasDependentBusinessRules: Boolean = false,
-    val canonicalProductActive: Boolean? = null
+    val canonicalProductActive: Boolean? = null,
+    val externalCategories: List<com.mynikatech.memgine.net.dto.CommerceExternalCategoryReferenceDto> = emptyList(),
+    val categoryMetadataAvailable: Boolean = false
 )
 
 data class CommerceCatalogProductAttributes(

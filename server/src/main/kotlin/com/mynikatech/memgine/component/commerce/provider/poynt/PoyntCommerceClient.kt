@@ -17,6 +17,8 @@ interface PoyntHttpTransport {
     fun post(uri: URI, authorization: String, requestId: String, body: String): PoyntHttpResponse
     fun productUri(businessId: String, productId: String): URI
     fun productsUri(businessId: String, offset: Int): URI
+    fun catalogFullUri(businessId: String, catalogId: String): URI =
+        throw UnsupportedOperationException("Poynt catalog URI is unavailable")
     fun orderUri(businessId: String, orderId: String): URI
     fun ordersUri(businessId: String): URI
     /** Safe reconciliation lookup for a charge submitted with a stable request ID. */
@@ -92,6 +94,7 @@ class PoyntCloudHttpTransport(private val baseUrl: String, private val apiVersio
 
     override fun productUri(businessId: String, productId: String) = URI.create("$baseUrl/businesses/$businessId/products/$productId")
     override fun productsUri(businessId: String, offset: Int) = URI.create("$baseUrl/businesses/$businessId/products?limit=100&startOffset=$offset")
+    override fun catalogFullUri(businessId: String, catalogId: String) = URI.create("$baseUrl/businesses/$businessId/catalogs/$catalogId/full")
     override fun orderUri(businessId: String, orderId: String) = URI.create("$baseUrl/businesses/$businessId/orders/$orderId")
     override fun ordersUri(businessId: String) = URI.create("$baseUrl/businesses/$businessId/orders")
     override fun transactionsByOriginalRequestIdUri(businessId: String, originalRequestId: String): URI =
@@ -144,6 +147,7 @@ class PoyntAuthenticatedCatalogClient(
 
     fun productUri(businessId: String, productId: String): URI = transport.productUri(businessId, productId)
     fun productsUri(businessId: String, offset: Int): URI = transport.productsUri(businessId, offset)
+    fun catalogFullUri(businessId: String, catalogId: String): URI = transport.catalogFullUri(businessId, catalogId)
 }
 
 /** Authenticated Poynt Cloud Order boundary. It does not perform Commerce orchestration or persistence. */

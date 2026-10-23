@@ -209,7 +209,27 @@ fun Route.commerceCatalogSyncRoutes(service: CommerceCatalogSyncService) {
                         call.receive<CommerceCatalogSyncPreviewRequestDto>(), call.authenticatedPrincipal().userId), call.callId))
             }
         }
+        route("/integrations/{integrationConfigurationId}/catalogs/{catalogId}/category-correspondences") {
+            get {
+                call.respond(ApiResponse.success(service.categoryCorrespondences(orgId(call), required(call.parameters["integrationConfigurationId"]), required(call.parameters["catalogId"]), call.authenticatedPrincipal().userId), call.callId))
+            }
+            post {
+                call.respond(HttpStatusCode.Created, ApiResponse.success(service.saveCategoryCorrespondence(orgId(call), required(call.parameters["integrationConfigurationId"]), required(call.parameters["catalogId"]), call.receive<com.mynikatech.memgine.net.dto.CommerceCatalogCategoryCorrespondenceWriteDto>(), call.authenticatedPrincipal().userId), call.callId))
+            }
+        }
+        delete("/category-correspondences/{correspondenceId}") {
+            val version = call.request.queryParameters["versionNo"]?.toIntOrNull()
+                ?: throw BadRequestException("A correspondence version is required")
+            call.respond(ApiResponse.success(service.deactivateCategoryCorrespondence(
+                orgId(call), required(call.parameters["correspondenceId"]), version,
+                call.authenticatedPrincipal().userId), call.callId))
+        }
         route("/catalog-sync/{previewId}") {
+            post("/rows/{rowId}/resolve") {
+                call.respond(ApiResponse.success(
+                    service.resolve(orgId(call), required(call.parameters["previewId"]), required(call.parameters["rowId"]),
+                        call.receive<com.mynikatech.memgine.net.dto.CommerceCatalogSyncManualResolutionRequestDto>(), call.authenticatedPrincipal().userId), call.callId))
+            }
             post("/apply") {
                 call.respond(ApiResponse.success(
                     service.apply(orgId(call), required(call.parameters["previewId"]),
