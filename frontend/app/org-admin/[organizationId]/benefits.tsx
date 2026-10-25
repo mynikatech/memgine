@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { BenefitReadOnlyDetails } from "@/src/ui/admin/BenefitReadOnlyDetails";
 
 import type {
   Benefit,
@@ -347,7 +348,10 @@ export default function OrgAdminBenefits() {
               ([benefitId, applicability]) => [
                 benefitId,
                 {
-                  productIds: persistedSnapshot.find((benefit) => benefit.id === benefitId)?.productIds ?? [],
+                  productIds:
+                    persistedSnapshot.find(
+                      (benefit) => benefit.id === benefitId,
+                    )?.productIds ?? [],
                   adjustmentType:
                     applicability.adjustmentType as BenefitCommerceConfiguration["adjustmentType"],
                   percentage: applicability.percentage ?? undefined,
@@ -862,7 +866,9 @@ export default function OrgAdminBenefits() {
             ([benefitId, applicability]) => [
               benefitId,
               {
-                productIds: refreshed.find((benefit) => benefit.id === benefitId)?.productIds ?? [],
+                productIds:
+                  refreshed.find((benefit) => benefit.id === benefitId)
+                    ?.productIds ?? [],
                 adjustmentType:
                   applicability.adjustmentType as BenefitCommerceConfiguration["adjustmentType"],
                 percentage: applicability.percentage ?? undefined,
@@ -1056,7 +1062,14 @@ export default function OrgAdminBenefits() {
 
         render: (item) => (
           <Text variant="body" color="text">
-            {(item.productIds?.length ? item.productIds : item.productId ? [item.productId] : []).map((id) => getProductName(id)).join(", ") || "—"}
+            {(item.productIds?.length
+              ? item.productIds
+              : item.productId
+                ? [item.productId]
+                : []
+            )
+              .map((id) => getProductName(id))
+              .join(", ") || "—"}
           </Text>
         ),
       },
@@ -1275,6 +1288,7 @@ export default function OrgAdminBenefits() {
       {/* VIEW                                                             */}
       {/* ================================================================ */}
 
+      {/* VIEW BENEFIT */}
       <Modal
         visible={Boolean(viewingBenefit)}
         onClose={() => setViewingBenefit(null)}
@@ -1283,67 +1297,20 @@ export default function OrgAdminBenefits() {
         testID="benefit-view-modal"
       >
         {viewingBenefit ? (
-          <View style={styles.viewDetails}>
-            <View style={styles.viewGrid}>
-              {[
-                ["Benefit Code", viewingBenefit.benefitCode],
-                ["Benefit Name", getDisplayName(viewingBenefit)],
-                ["Category", getCategoryName(viewingBenefit.benefitCategoryId)],
-                ["Type", getTypeName(viewingBenefit.benefitTypeId)],
-                ["Products", (viewingBenefit.productIds?.length ? viewingBenefit.productIds : viewingBenefit.productId ? [viewingBenefit.productId] : []).map((id) => getProductName(id)).join(", ") || "—"],
-                ["Status", getStatusName(viewingBenefit.benefitStatusId)],
-                ["Effective Date", viewingBenefit.effectiveDate],
-                ["Expiry Date", viewingBenefit.expiryDate ?? "—"],
-              ].map(([label, value]) => (
-                <View key={label} style={styles.viewField}>
-                  <Text variant="bodySmall" color="textMuted">
-                    {label}
-                  </Text>
-                  <Text variant="body" color="text">
-                    {value}
-                  </Text>
-                </View>
-              ))}
-            </View>
-
-            <View style={styles.viewSection}>
-              <Text variant="bodySmall" color="textMuted">
-                Description
-              </Text>
-              <Text variant="body" color="text">
-                {viewingBenefit.description ?? "—"}
-              </Text>
-            </View>
-
-            <View style={styles.viewSection}>
-              <Text variant="bodySmall" color="textMuted">
-                Usage Rules
-              </Text>
-              {(() => {
-                const benefitRules = rules.filter(
-                  (rule) =>
-                    rule.benefitId === viewingBenefit.id && !rule.isDeleted,
-                );
-
-                return benefitRules.length ? (
-                  benefitRules.map((rule) => (
-                    <View key={rule.id} style={styles.viewRule}>
-                      <Text variant="body" color="text">
-                        {rule.ruleName}
-                      </Text>
-                      <Text variant="bodySmall" color="textMuted">
-                        {formatRuleSummary(rule)}
-                      </Text>
-                    </View>
-                  ))
-                ) : (
-                  <Text variant="body" color="text">
-                    No usage rules configured.
-                  </Text>
-                );
-              })()}
-            </View>
-          </View>
+          <BenefitReadOnlyDetails
+            organizationId={organization.id}
+            benefit={viewingBenefit}
+            rules={rules.filter(
+              (rule) => rule.benefitId === viewingBenefit.id && !rule.isDeleted,
+            )}
+            products={products}
+            mappings={commerceMappings}
+            applicability={commerceApplicability[viewingBenefit.id]}
+            categoryName={getCategoryName(viewingBenefit.benefitCategoryId)}
+            typeName={getTypeName(viewingBenefit.benefitTypeId)}
+            statusName={getStatusName(viewingBenefit.benefitStatusId)}
+            formatRule={formatRuleSummary}
+          />
         ) : null}
       </Modal>
 

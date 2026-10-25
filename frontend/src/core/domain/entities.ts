@@ -664,6 +664,10 @@ export interface Benefit {
   productId?: ID;
   productIds?: ID[];
   products?: { productId: ID; productName: string; productCode: string }[];
+  storeAvailability?: {
+    mode: "ALL_STORES" | "SELECTED_STORES";
+    storeIds: ID[];
+  };
   retailPrice?: Money;
   cost?: Money;
 

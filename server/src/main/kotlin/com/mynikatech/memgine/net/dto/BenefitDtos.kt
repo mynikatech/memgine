@@ -17,6 +17,7 @@ data class BenefitDto(
     val productId: String? = null,
     val productIds: List<String> = emptyList(),
     val products: List<CanonicalProductDto> = emptyList(),
+    val storeAvailability: BenefitStoreAvailabilityDto? = null,
     val retailPrice: Double? = null,
     val cost: Double? = null,
     val effectiveDate: String,
@@ -27,6 +28,24 @@ data class BenefitDto(
     val updatedBy: String,
     val isDeleted: Boolean,
     val versionNo: Int
+)
+
+@Serializable
+enum class BenefitStoreAvailabilityMode {
+    ALL_STORES,
+    SELECTED_STORES
+}
+
+@Serializable
+data class BenefitStoreAvailabilityDto(
+    val mode: BenefitStoreAvailabilityMode = BenefitStoreAvailabilityMode.ALL_STORES,
+    val storeIds: List<String> = emptyList()
+)
+
+@Serializable
+data class BenefitStoreAvailabilityWriteDto(
+    val mode: BenefitStoreAvailabilityMode,
+    val storeIds: List<String>? = null
 )
 
 @Serializable
@@ -81,6 +100,7 @@ data class BenefitWriteDto(
     val benefitStatusId: String,
     val productId: String? = null,
     val productIds: List<String>? = null,
+    val storeAvailability: BenefitStoreAvailabilityWriteDto? = null,
     val retailPrice: Double? = null,
     val cost: Double? = null,
     val effectiveDate: String,

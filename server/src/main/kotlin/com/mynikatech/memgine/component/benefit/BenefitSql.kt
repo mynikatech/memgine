@@ -27,6 +27,12 @@ data class RuleSqlParams(
     val actorUserId: String, val create: Boolean
 )
 
+data class BenefitStoreAvailabilityRow(
+    val benefitId: String,
+    val availabilityMode: String,
+    val storeId: String?
+)
+
 interface BenefitSql {
     @SqlQuery("SELECT * FROM get_benefit_products(:organizationId)")
     @RegisterKotlinMapper(CanonicalProductRow::class)
@@ -36,6 +42,17 @@ interface BenefitSql {
     fun saveCanonicalProducts(@Bind("organizationId") organizationId: String,
                               @Bind("benefitId") benefitId: String,
                               @Bind("productIds") productIds: Array<String>,
+                              @Bind("actorUserId") actorUserId: String): Boolean
+
+    @SqlQuery("SELECT * FROM get_benefit_store_availability(:organizationId)")
+    @RegisterKotlinMapper(BenefitStoreAvailabilityRow::class)
+    fun storeAvailability(@Bind("organizationId") organizationId: String): List<BenefitStoreAvailabilityRow>
+
+    @SqlQuery("SELECT save_benefit_store_availability(:organizationId, :benefitId, :mode, :storeIds, :actorUserId)")
+    fun saveStoreAvailability(@Bind("organizationId") organizationId: String,
+                              @Bind("benefitId") benefitId: String,
+                              @Bind("mode") mode: String,
+                              @Bind("storeIds") storeIds: Array<String>,
                               @Bind("actorUserId") actorUserId: String): Boolean
     @SqlQuery("SELECT EXISTS(SELECT 1 FROM benefit_categories WHERE benefit_category_id = :id AND is_active = true)")
     fun categoryExists(@Bind("id") id: String): Boolean

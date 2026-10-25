@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 212-benefit-store-availability
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/212-benefit-store-availability.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

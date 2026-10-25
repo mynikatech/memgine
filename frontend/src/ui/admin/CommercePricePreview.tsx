@@ -34,6 +34,10 @@ type CommercePricePreviewProps = {
   productName: (productId: string) => string;
   mappings: CommercePricePreviewMapping[];
   adjustment: CommercePricePreviewAdjustment | null;
+  /** The W41-selected Store/catalog context used for the estimate. */
+  storeId?: string;
+  integrationConfigurationId?: string;
+  catalogSourceName?: string;
 };
 
 type AvailablePreview = {
@@ -77,16 +81,52 @@ function previewFor(
   productId: string,
   mappings: CommercePricePreviewMapping[],
   adjustment: CommercePricePreviewAdjustment | null,
+  context?: {
+    storeId?: string;
+    integrationConfigurationId?: string;
+    catalogSourceName?: string;
+  },
 ): Preview {
-  const candidates = mappings.filter(
-    (mapping) => mapping.productId === productId && mapping.snapshot,
+  if (context?.storeId && !context.integrationConfigurationId) {
+    return {
+      kind: "unavailable",
+      reason: "Price unavailable because this Store has no selected Product Catalog.",
+    };
+  }
+
+  const candidates = mappings.filter((mapping) =>
+    mapping.productId === productId &&
+    mapping.snapshot &&
+    (!context?.integrationConfigurationId ||
+      mapping.integrationConfigurationId === context.integrationConfigurationId) &&
+    (!context?.storeId ||
+      mapping.storeId === context.storeId ||
+      mapping.storeId == null),
   );
   if (candidates.length === 0) {
     return { kind: "unavailable", reason: "No catalog price is available for this product." };
   }
 
+  // A Store-level mapping is authoritative over an organization-level mapping
+  // for the same selected W41 integration. This prevents a price from another
+  // Store or provider configuration appearing in this preview.
+  const storeMappings = context?.storeId
+    ? candidates.filter((mapping) => mapping.storeId === context.storeId)
+    : [];
+  const scopedCandidates = context?.storeId
+    ? storeMappings.length
+      ? storeMappings
+      : candidates.filter((mapping) => !mapping.storeId)
+    : candidates;
+  if (scopedCandidates.length === 0) {
+    return {
+      kind: "unavailable",
+      reason: "No applicable mapping is available for this Store.",
+    };
+  }
+
   const contexts = new Map<string, CommercePricePreviewMapping[]>();
-  for (const mapping of candidates) {
+  for (const mapping of scopedCandidates) {
     const key = `${mapping.integrationConfigurationId}:${mapping.storeId ?? "organization"}`;
     contexts.set(key, [...(contexts.get(key) ?? []), mapping]);
   }
@@ -131,9 +171,9 @@ function previewFor(
     originalMinor,
     discountMinor,
     estimatedMinor: originalMinor - discountMinor,
-    catalogSource: contextMappings[0].storeId
-      ? "Configured store catalog"
-      : "Organization catalog",
+    catalogSource:
+      context?.catalogSourceName ||
+      (contextMappings[0].storeId ? "Configured store catalog" : "Organization catalog"),
     stale: snapshotIsStale(snapshot.lastSyncedAt),
   };
 }
@@ -147,6 +187,9 @@ export function CommercePricePreview({
   productName,
   mappings,
   adjustment,
+  storeId,
+  integrationConfigurationId,
+  catalogSourceName,
 }: CommercePricePreviewProps) {
   const selectedProductIds = [...new Set(productIds)];
   if (selectedProductIds.length === 0) return null;
@@ -157,7 +200,11 @@ export function CommercePricePreview({
         Catalog price estimates
       </Text>
       {selectedProductIds.map((productId) => {
-        const preview = previewFor(productId, mappings, adjustment);
+        const preview = previewFor(productId, mappings, adjustment, {
+          storeId,
+          integrationConfigurationId,
+          catalogSourceName,
+        });
         return (
           <Card key={productId} padding="md" style={styles.card}>
             <Text variant="body" color="text">

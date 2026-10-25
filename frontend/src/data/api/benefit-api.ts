@@ -209,6 +209,7 @@ export class BenefitApi {
         ),
         productId: benefit.productId,
         productIds: benefit.productIds ?? (benefit.productId ? [benefit.productId] : []),
+        storeAvailability: benefit.storeAvailability,
         retailPrice: benefit.retailPrice
           ? benefit.retailPrice.amountMinor / 100
           : null,
