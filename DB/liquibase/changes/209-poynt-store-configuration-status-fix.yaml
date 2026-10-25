@@ -1,0 +1,9 @@
+databaseChangeLog:
+  - changeSet:
+      id: 209-poynt-store-configuration-status-fix
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/209-poynt-store-configuration-status-fix.sql
+            relativeToChangelogFile: true
+            splitStatements: false

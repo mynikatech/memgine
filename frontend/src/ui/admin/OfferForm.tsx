@@ -35,6 +35,7 @@ import type {
   OfferCommerceConfiguration,
   MembershipOfferApplicabilityWrite,
 } from "@/src/data/api/offer-commerce-api";
+import { CommercePricePreview } from "./CommercePricePreview";
 
 type OfferFormProps = {
   offer: Offer;
@@ -1493,6 +1494,14 @@ export function OfferForm({
                         />
                       ))}
                     </ScrollView>
+                    <CommercePricePreview
+                      productIds={applicability?.productIds ?? []}
+                      productName={(productId) =>
+                        posProducts.find((product) => product.id === productId)?.name ?? productId
+                      }
+                      mappings={commerceMappings}
+                      adjustment={applicability}
+                    />
                   </>
                 )}
               </>

@@ -3,7 +3,15 @@ package com.mynikatech.memgine.component.referencedata
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class ReferenceDataItemDto(val id: String, val code: String, val name: String, val description: String? = null, val displayOrder: Int, val active: Boolean)
+data class ReferenceDataItemDto(
+    val id: String,
+    val code: String,
+    val name: String,
+    val description: String? = null,
+    val displayOrder: Int,
+    val active: Boolean,
+    val providerConfigurationPolicies: Map<String, Map<String, Boolean>>? = null
+)
 @Serializable data class SupportIssueTypeReferenceDataDto(val id: String, val categoryId: String, val categoryCode: String, val code: String, val name: String, val description: String? = null, val displayOrder: Int, val active: Boolean)
 
 @Serializable

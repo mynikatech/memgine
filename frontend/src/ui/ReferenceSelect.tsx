@@ -46,6 +46,16 @@ type ReferenceSelectProps<T> = {
    * Prefer supplying this explicitly for domain-specific types.
    */
   renderItemLabel?: (item: T) => string;
+
+  /**
+   * Keeps an item visible while preventing it from being selected.
+   */
+  isItemDisabled?: (item: T) => boolean;
+
+  /**
+   * Explains why an otherwise visible item cannot be selected.
+   */
+  renderItemDisabledReason?: (item: T) => string | undefined;
 };
 
 function defaultItemId<T>(item: T): string {
@@ -100,6 +110,8 @@ export function ReferenceSelect<T>({
   testID,
   getItemId = defaultItemId,
   renderItemLabel = defaultItemLabel,
+  isItemDisabled,
+  renderItemDisabledReason,
 }: ReferenceSelectProps<T>) {
   const theme = useTheme();
   const [open, setOpen] = useState(false);
@@ -192,10 +204,15 @@ export function ReferenceSelect<T>({
           {items.map((item) => {
             const itemId = getItemId(item);
             const selectedItem = itemId === value;
+            const itemDisabled = isItemDisabled?.(item) ?? false;
+            const disabledReason = itemDisabled
+              ? renderItemDisabledReason?.(item)
+              : undefined;
 
             return (
               <Pressable
                 key={itemId}
+                disabled={itemDisabled}
                 onPress={() => {
                   onChange(itemId);
                   setOpen(false);
@@ -210,11 +227,17 @@ export function ReferenceSelect<T>({
                       ? theme.colors.surfaceAlt
                       : "transparent",
                   justifyContent: "center",
+                  opacity: itemDisabled ? theme.states.disabledOpacity : 1,
                 })}
               >
                 <Text variant="body" color={selectedItem ? "primary" : "text"}>
                   {renderItemLabel(item)}
                 </Text>
+                {disabledReason ? (
+                  <Text variant="caption" color="textMuted">
+                    {disabledReason}
+                  </Text>
+                ) : null}
               </Pressable>
             );
           })}

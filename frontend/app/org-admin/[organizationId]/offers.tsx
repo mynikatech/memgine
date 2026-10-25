@@ -431,24 +431,6 @@ export default function OrgAdminOffers() {
     if (!configuration)
       throw new Error("Org Product configuration is required.");
 
-    const mappingIds: string[] = [];
-
-    for (const productId of configuration.productIds) {
-      const mappings = commerceMappings.filter(
-        (mapping) => mapping.productId === productId,
-      );
-
-      if (mappings.length !== 1) {
-        return { adjustmentType: configuration.adjustmentType,
-          percentage: configuration.percentage, amountMinor: configuration.amountMinor,
-          currencyCode: configuration.currencyCode, active: false, productMappingIds: [] };
-      }
-      mappingIds.push(mappings[0].mappingId);
-    }
-    if (!mappingIds.length) return { adjustmentType: configuration.adjustmentType,
-      percentage: configuration.percentage, amountMinor: configuration.amountMinor,
-      currencyCode: configuration.currencyCode, active: false, productMappingIds: [] };
-
     return {
       adjustmentType: configuration.adjustmentType,
 
@@ -459,8 +441,7 @@ export default function OrgAdminOffers() {
       currencyCode: configuration.currencyCode,
 
       active: configuration.active,
-
-      productMappingIds: mappingIds,
+      productMappingIds: [],
     };
   };
 

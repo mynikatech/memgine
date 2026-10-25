@@ -1,0 +1,9 @@
+databaseChangeLog:
+  - changeSet:
+      id: 208-provider-configuration-policies
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/208-provider-configuration-policies.sql
+            relativeToChangelogFile: true
+            splitStatements: false

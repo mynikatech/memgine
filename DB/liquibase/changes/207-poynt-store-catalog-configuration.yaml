@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 207-poynt-store-catalog-configuration
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/207-poynt-store-catalog-configuration.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

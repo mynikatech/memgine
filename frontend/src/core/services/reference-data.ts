@@ -16,6 +16,8 @@ export interface ReferenceDataItem {
   description?: string | null;
   displayOrder: number;
   active: boolean;
+  /** Provider-specific policy metadata owned by Memgine reference data. */
+  providerConfigurationPolicies?: Record<string, Record<string, boolean>>;
 }
 
 export interface SupportIssueTypeReferenceDataItem extends ReferenceDataItem {

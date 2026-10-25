@@ -704,9 +704,8 @@ class CommerceService(
             throw BadRequestException("Invalid commerce applicability")
         }
         val product = type.startsWith("PRODUCT_")
-        if ((product && request.active && request.productMappingIds.isEmpty()) ||
-            (!product && request.productMappingIds.isNotEmpty())) {
-            throw BadRequestException("Product adjustments require product mappings; order adjustments do not")
+        if (!product && request.productMappingIds.isNotEmpty()) {
+            throw BadRequestException("Order adjustments do not accept product mappings")
         }
         when (type) {
             "PRODUCT_FREE" -> if (request.percentage != null || request.amountMinor != null || request.currencyCode != null) invalidAdjustment()

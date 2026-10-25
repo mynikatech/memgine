@@ -127,7 +127,8 @@ class PlatformPoyntApplePayRegistrationDiagnosticTest {
             now = { Instant.ofEpochSecond(1_000) }
         ),
         transport = transport,
-        environment = "dev"
+        environment = "dev",
+        diagnosticsEnabled = true
     )
 
     @Suppress("UNCHECKED_CAST")

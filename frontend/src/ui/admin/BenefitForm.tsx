@@ -20,6 +20,8 @@ import { ReferenceSelect } from "../ReferenceSelect";
 import { Text } from "../Text";
 import { Checkbox } from "../Checkbox";
 import { TextArea } from "../TextArea";
+import type { CommerceProductMapping } from "@/src/data/api/benefit-commerce-api";
+import { CommercePricePreview } from "./CommercePricePreview";
 
 type BenefitFormProps = {
   benefit: Benefit;
@@ -30,6 +32,7 @@ type BenefitFormProps = {
   benefitStatuses: Status[];
 
   products: Product[];
+  commerceMappings?: CommerceProductMapping[];
   usageRules: BenefitUsageRule[];
 
   commerceConfiguration?: BenefitCommerceConfiguration | null;
@@ -353,6 +356,7 @@ export function BenefitForm({
   benefitTypes,
   benefitStatuses,
   products,
+  commerceMappings = [],
   usageRules,
   commerceConfiguration,
   onSave,
@@ -852,6 +856,23 @@ export function BenefitForm({
                   />
                 ))}
               </ScrollView>
+              <CommercePricePreview
+                productIds={commerceProductIds}
+                productName={(productId) =>
+                  products.find((product) => product.id === productId)?.productName ?? productId
+                }
+                mappings={commerceMappings}
+                adjustment={
+                  selectedAdjustmentType
+                    ? {
+                        adjustmentType: selectedAdjustmentType,
+                        percentage: Number(percentageInput) || 0,
+                        amountMinor: Math.round((Number(fixedAmountInput) || 0) * 100),
+                        currencyCode: commerceConfiguration?.currencyCode,
+                      }
+                    : null
+                }
+              />
               {commerceError ? (
                 <Text variant="bodySmall" color="danger">
                   {commerceError}

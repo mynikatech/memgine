@@ -27,6 +27,7 @@ class PoyntTerminalBindingResolutionRow {
     var integrationDeleted: Boolean? = null
     var configuredBusinessId: String? = null
     var configuredStoreId: String? = null
+    var storeConfigurationId: String? = null
 }
 
 interface PoyntTerminalBindingLookup {
@@ -57,7 +58,8 @@ interface PoyntTerminalBindingLookup {
             i.provider AS "integrationProvider",
             i.is_deleted AS "integrationDeleted",
             c.provider_business_id AS "configuredBusinessId",
-            c.provider_store_id AS "configuredStoreId"
+            COALESCE(sc.poynt_store_id, c.provider_store_id) AS "configuredStoreId",
+            sc.id::text AS "storeConfigurationId"
         FROM poynt_terminal_bindings b
         LEFT JOIN integration_configurations i
           ON i.integration_configuration_id = b.integration_configuration_id
@@ -65,6 +67,10 @@ interface PoyntTerminalBindingLookup {
           ON c.integration_configuration_id = b.integration_configuration_id
          AND c.organization_id = b.organization_id
          AND NOT c.is_deleted
+        LEFT JOIN poynt_store_catalog_configurations sc
+          ON sc.organization_id = b.organization_id
+         AND sc.integration_configuration_id = b.integration_configuration_id
+         AND sc.store_id = b.store_id
         WHERE b.pos_device_id = :posDeviceId
         ORDER BY b.created_at DESC
     """)
@@ -125,7 +131,8 @@ class SqlPoyntTerminalBindingResolver(
             bindingBusiness.isEmpty() ||
             bindingBusiness != configuredBusiness ||
             bindingStore.isEmpty() ||
-            (configuredStore.isNotEmpty() && bindingStore != configuredStore) ||
+            configuredStore.isEmpty() ||
+            bindingStore != configuredStore ||
             terminalId.isEmpty()) {
             throw unavailable()
         }

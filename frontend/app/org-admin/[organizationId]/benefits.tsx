@@ -398,21 +398,13 @@ export default function OrgAdminBenefits() {
     const configuration = commerceConfigurations[benefit.id];
     const existing = commerceApplicability[benefit.id];
     if (!configuration) return false;
-    const uniquelyMapped = configuration.productIds.every((id) => mappingsForProduct(id, commerceMappings).length === 1);
     if (!existing) return true;
-    const existingProductIds = existing.productMappings
-      .map((mapping) => mapping.productId)
-      .filter((id): id is string => Boolean(id))
-      .sort();
     return (
       configuration.adjustmentType !== existing.adjustmentType ||
       configuration.percentage !== (existing.percentage ?? undefined) ||
       configuration.amountMinor !== (existing.amountMinor ?? undefined) ||
       configuration.currencyCode !== (existing.currencyCode ?? undefined) ||
-      (uniquelyMapped && !existing.active) ||
-      (!uniquelyMapped && existing.active) ||
-      (uniquelyMapped && JSON.stringify([...configuration.productIds].sort()) !==
-        JSON.stringify(existingProductIds))
+      configuration.active !== existing.active
     );
   };
   const hasChanges = useMemo(
@@ -471,31 +463,13 @@ export default function OrgAdminBenefits() {
   ): BenefitCommerceApplicabilityWrite | null => {
     const configuration = commerceConfigurations[benefit.id];
     if (!configuration) return null;
-    const mappingIds: string[] = [];
-    for (const productId of configuration.productIds) {
-      const matches = mappingsForProduct(productId, commerceMappings);
-      if (matches.length !== 1) {
-        return {
-          adjustmentType: configuration.adjustmentType,
-          percentage: configuration.percentage,
-          amountMinor: configuration.amountMinor,
-          currencyCode: configuration.currencyCode,
-          active: false,
-          productMappingIds: [],
-        };
-      }
-      mappingIds.push(matches[0].mappingId);
-    }
-    if (!mappingIds.length) return { adjustmentType: configuration.adjustmentType,
-      percentage: configuration.percentage, amountMinor: configuration.amountMinor,
-      currencyCode: configuration.currencyCode, active: false, productMappingIds: [] };
     return {
       adjustmentType: configuration.adjustmentType,
       percentage: configuration.percentage,
       amountMinor: configuration.amountMinor,
       currencyCode: configuration.currencyCode,
       active: configuration.active,
-      productMappingIds: mappingIds,
+      productMappingIds: [],
     };
   };
   /* ---------------------------------------------------------------------- */
@@ -1407,6 +1381,7 @@ export default function OrgAdminBenefits() {
             benefitTypes={benefitTypes}
             benefitStatuses={benefitStatuses}
             products={products}
+            commerceMappings={commerceMappings}
             commerceConfiguration={
               commerceConfigurations[editingBenefit.id] ?? null
             }

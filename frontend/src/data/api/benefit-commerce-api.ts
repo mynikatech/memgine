@@ -6,10 +6,19 @@ export type CommerceProductMapping = {
   mappingId: ID;
   /** Canonical durable Product identity from migration 124. */
   productId?: ID | null;
+  integrationConfigurationId: ID;
+  storeId?: ID | null;
   active: boolean;
   externalProductId: string;
   externalSku?: string | null;
-  snapshot?: { productName: string; description?: string | null } | null;
+  snapshot?: {
+    productName: string;
+    description?: string | null;
+    currencyCode: string;
+    unitPriceMinorSnapshot: number;
+    sourceUpdatedAt?: string | null;
+    lastSyncedAt: string;
+  } | null;
 };
 
 export type BenefitCommerceApplicability = {

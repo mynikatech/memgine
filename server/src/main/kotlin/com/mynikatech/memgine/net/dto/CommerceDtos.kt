@@ -230,6 +230,50 @@ data class OrganizationPoyntTerminalBindingWriteDto(
 )
 
 @Serializable
+data class PoyntOperationalStoreDto(val id: String, val name: String? = null)
+
+@Serializable
+data class PoyntOperationalStoresDto(val stores: List<PoyntOperationalStoreDto>)
+
+@Serializable
+data class PoyntOperationalTerminalDto(
+    val id: String,
+    val name: String? = null,
+    val storeId: String,
+    val catalogId: String? = null,
+    val catalogName: String? = null,
+    val configurationEligible: Boolean,
+    val ineligibilityReason: String? = null
+)
+
+@Serializable
+data class PoyntOperationalTerminalsDto(val terminals: List<PoyntOperationalTerminalDto>)
+
+@Serializable
+data class PoyntStoreCatalogConfigurationDto(
+    val storeId: String,
+    val storeName: String,
+    val poyntStoreId: String? = null,
+    val effectiveCatalogId: String? = null,
+    val effectiveCatalogName: String? = null,
+    val configurationStatus: String,
+    val terminalBindings: List<PlatformPoyntTerminalBindingDto> = emptyList()
+)
+
+@Serializable
+data class PoyntStoreCatalogConfigurationsDto(val configurations: List<PoyntStoreCatalogConfigurationDto>)
+
+@Serializable
+data class PoyntStoreTerminalAssignmentWriteDto(
+    val storeId: String,
+    val poyntStoreId: String,
+    val terminalId: String
+)
+
+@Serializable
+data class PoyntStoreTerminalAssignmentDto(val bindingId: String)
+
+@Serializable
 data class PlatformPoyntTerminalBindingDto(
     val bindingId: String,
     val posDeviceId: String,

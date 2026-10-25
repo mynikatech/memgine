@@ -13,6 +13,7 @@ type ModalProps = {
   children?: ReactNode;
   scrollable?: boolean;
   testID?: string;
+  maxWidth?: number;
 };
 
 /** Dialog foundation — themed sheet with backdrop; optional scrollable body. */
@@ -23,6 +24,7 @@ export function Modal({
   children,
   scrollable = false,
   testID,
+  maxWidth = 520,
 }: ModalProps) {
   const theme = useTheme();
 
@@ -71,7 +73,7 @@ export function Modal({
               padding: theme.spacing.lg,
               maxHeight: "88%",
               width: "100%",
-              maxWidth: 520,
+              maxWidth,
               alignSelf: "center",
             },
             theme.shadows.lg,

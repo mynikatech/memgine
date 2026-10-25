@@ -23,13 +23,20 @@ import { CommercePaymentProviderRouteApi } from "@/src/data/api/commerce-payment
 import {
   organizationPoyntPaymentApi,
   type OrganizationPoyntPaymentSummary,
-  type OrganizationPoyntTerminalBinding,
-  type OrganizationPoyntTerminalBindingWrite,
 } from "@/src/data/api/platform-poynt-payment-api";
 import { useBusiness } from "@/src/providers";
-import { DataTable, DataTableColumn, Input, Modal, ReferenceSelect, Text } from "@/src/ui";
+import {
+  DataTable,
+  DataTableColumn,
+  Modal,
+  Text,
+} from "@/src/ui";
 import { CommercePaymentProviderRouteForm } from "@/src/ui/admin/CommercePaymentProviderRouteForm";
 import { IntegrationConfigurationForm } from "@/src/ui/admin/IntegrationConfigurationForm";
+import { PoyntStoreTerminalManager } from "@/src/ui/admin/PoyntStoreTerminalManager";
+
+const poyntCapabilities =
+  "Product Catalog · Counter Payment · Customer Payment";
 
 export default function Integrations() {
   const { organization } = useBusiness();
@@ -47,15 +54,22 @@ export default function Integrations() {
   );
 
   const [statuses, setStatuses] = useState<Status[]>([]);
-  const [paymentRoutes, setPaymentRoutes] = useState<CommercePaymentProviderRoute[]>([]);
+  const [paymentRoutes, setPaymentRoutes] = useState<
+    CommercePaymentProviderRoute[]
+  >([]);
   const [stores, setStores] = useState<Store[]>([]);
-  const [poyntSummaries, setPoyntSummaries] = useState<OrganizationPoyntPaymentSummary[]>([]);
-  const [terminalSummary, setTerminalSummary] = useState<OrganizationPoyntPaymentSummary | null>(null);
-  const [terminals, setTerminals] = useState<OrganizationPoyntTerminalBinding[]>([]);
-  const [terminalDraft, setTerminalDraft] = useState<(OrganizationPoyntTerminalBindingWrite & { bindingId?: string }) | null>(null);
-  const [savingTerminal, setSavingTerminal] = useState(false);
+  const [poyntSummaries, setPoyntSummaries] = useState<
+    OrganizationPoyntPaymentSummary[]
+  >([]);
+  const [detailsIntegrationId, setDetailsIntegrationId] = useState<
+    string | null
+  >(null);
+  const [terminalSummary, setTerminalSummary] =
+    useState<OrganizationPoyntPaymentSummary | null>(null);
+  const [terminalIntegrationTypeId, setTerminalIntegrationTypeId] = useState("");
   const [paymentRouteVisible, setPaymentRouteVisible] = useState(false);
-  const [editingPaymentRoute, setEditingPaymentRoute] = useState<CommercePaymentProviderRoute | null>(null);
+  const [editingPaymentRoute, setEditingPaymentRoute] =
+    useState<CommercePaymentProviderRoute | null>(null);
   const [viewingPaymentRoute, setViewingPaymentRoute] = useState(false);
   const [savingPaymentRoute, setSavingPaymentRoute] = useState(false);
 
@@ -77,8 +91,21 @@ export default function Integrations() {
 
   const { width } = useWindowDimensions();
   const isMobile = width < 700;
-  const paymentRouteApi = useMemo(() => new CommercePaymentProviderRouteApi(), []);
+  const paymentRouteApi = useMemo(
+    () => new CommercePaymentProviderRouteApi(),
+    [],
+  );
   const allowTestPaymentProvider = process.env.EXPO_PUBLIC_APP_ENV !== "prod";
+  const poyntSummaryByIntegrationId = useMemo(
+    () =>
+      new Map(
+        poyntSummaries.map((summary) => [
+          summary.integrationConfigurationId,
+          summary,
+        ]),
+      ),
+    [poyntSummaries],
+  );
 
   const activeIntegrationStatusId = useMemo(
     () =>
@@ -96,7 +123,14 @@ export default function Integrations() {
       setError(null);
 
       try {
-        const [integrationList, typeList, statusList, routeResult, storeList, poyntResult] = await Promise.all([
+        const [
+          integrationList,
+          typeList,
+          statusList,
+          routeResult,
+          storeList,
+          poyntResult,
+        ] = await Promise.all([
           services.organization.listIntegrationConfigurations(organization.id),
           services.referenceData.listIntegrationTypes(),
           services.status.listIntegrationConfigurationStatuses(),
@@ -190,25 +224,69 @@ export default function Integrations() {
   );
 
   const routeIntegrations = useMemo(
-    () => integrations.filter((integration) =>
-      integration.provider.trim().toUpperCase() !== "POYNT" ||
-      poyntSummaries.some((summary) =>
-        summary.integrationConfigurationId === integration.id && summary.connectionStatus === "VERIFIED"),
-    ),
-    [integrations, poyntSummaries],
+    () =>
+      integrations.filter(
+        (integration) =>
+          integration.provider.trim().toUpperCase() !== "POYNT" ||
+          poyntSummaryByIntegrationId.get(integration.id)?.connectionStatus ===
+            "VERIFIED",
+      ),
+    [integrations, poyntSummaryByIntegrationId],
   );
 
-  const paymentRouteColumns = useMemo<DataTableColumn<CommercePaymentProviderRoute>[]>(
+  const paymentRouteColumns = useMemo<
+    DataTableColumn<CommercePaymentProviderRoute>[]
+  >(
     () => [
-      { key: "sourceChannel", title: "Channel", width: 130,
-        render: (item) => <Text variant="body" color="text">{item.sourceChannel === "COUNTER" ? "Counter" : "Customer"}</Text> },
-      { key: "storeId", title: "Scope", width: 200,
-        render: (item) => <Text variant="body" color="text">{item.storeId ? stores.find((store) => store.id === item.storeId)?.name ?? "Store" : "Organization default"}</Text> },
+      {
+        key: "sourceChannel",
+        title: "Channel",
+        width: 130,
+        render: (item) => (
+          <Text variant="body" color="text">
+            {item.sourceChannel === "COUNTER" ? "Counter" : "Customer"}
+          </Text>
+        ),
+      },
+      {
+        key: "storeId",
+        title: "Scope",
+        width: 200,
+        render: (item) => (
+          <Text variant="body" color="text">
+            {item.storeId
+              ? (stores.find((store) => store.id === item.storeId)?.name ??
+                "Store")
+              : "Organization default"}
+          </Text>
+        ),
+      },
       { key: "providerCode", title: "Provider", width: 150 },
-      { key: "integrationConfigurationId", title: "Integration", width: 220,
-        render: (item) => <Text variant="body" color="text">{item.integrationConfigurationId ? integrations.find((integration) => integration.id === item.integrationConfigurationId)?.integrationName ?? "Unavailable" : "—"}</Text> },
-      { key: "enabled", title: "Status", width: 120,
-        render: (item) => <Text variant="body" color="text">{item.enabled ? "Enabled" : "Disabled"}</Text> },
+      {
+        key: "integrationConfigurationId",
+        title: "Integration",
+        width: 220,
+        render: (item) => (
+          <Text variant="body" color="text">
+            {item.integrationConfigurationId
+              ? (integrations.find(
+                  (integration) =>
+                    integration.id === item.integrationConfigurationId,
+                )?.integrationName ?? "Unavailable")
+              : "—"}
+          </Text>
+        ),
+      },
+      {
+        key: "enabled",
+        title: "Status",
+        width: 120,
+        render: (item) => (
+          <Text variant="body" color="text">
+            {item.enabled ? "Enabled" : "Disabled"}
+          </Text>
+        ),
+      },
     ],
     [integrations, stores],
   );
@@ -257,7 +335,10 @@ export default function Integrations() {
 
   const handleEdit = (configuration: IntegrationConfiguration) => {
     if (isPlatformManagedPayment(configuration)) {
-      Alert.alert("Platform managed", "Payment integrations are managed by Memgine Platform Admin.");
+      Alert.alert(
+        "Platform managed",
+        "Payment integrations are managed by Memgine Platform Admin.",
+      );
       handleView(configuration);
       return;
     }
@@ -282,7 +363,10 @@ export default function Integrations() {
 
   const handleSaveDraft = (configuration: IntegrationConfiguration) => {
     if (isPlatformManagedPayment(configuration)) {
-      Alert.alert("Platform managed", "Payment integrations are managed by Memgine Platform Admin.");
+      Alert.alert(
+        "Platform managed",
+        "Payment integrations are managed by Memgine Platform Admin.",
+      );
       return;
     }
     setIntegrations((current) => {
@@ -304,7 +388,10 @@ export default function Integrations() {
 
   const handleDelete = (configuration: IntegrationConfiguration) => {
     if (isPlatformManagedPayment(configuration)) {
-      Alert.alert("Platform managed", "Payment integrations cannot be removed by Org Admin.");
+      Alert.alert(
+        "Platform managed",
+        "Payment integrations cannot be removed by Org Admin.",
+      );
       return;
     }
     setIntegrations((current) =>
@@ -330,7 +417,11 @@ export default function Integrations() {
     setSavingPaymentRoute(true);
     try {
       const result = editingPaymentRoute
-        ? await paymentRouteApi.update(organization.id, editingPaymentRoute.routeId, route)
+        ? await paymentRouteApi.update(
+            organization.id,
+            editingPaymentRoute.routeId,
+            route,
+          )
         : await paymentRouteApi.create(organization.id, route);
       if (!result.success) throw new Error(result.error.message);
       await reloadPaymentRoutes();
@@ -338,80 +429,58 @@ export default function Integrations() {
       setEditingPaymentRoute(null);
       setViewingPaymentRoute(false);
     } catch (saveError) {
-      Alert.alert("Unable to save payment route", saveError instanceof Error ? saveError.message : "Unable to save the payment provider route.");
+      Alert.alert(
+        "Unable to save payment route",
+        saveError instanceof Error
+          ? saveError.message
+          : "Unable to save the payment provider route.",
+      );
     } finally {
       setSavingPaymentRoute(false);
     }
   };
 
   const deletePaymentRoute = (route: CommercePaymentProviderRoute) => {
-    Alert.alert("Delete payment route", "This route will no longer be used for payment resolution.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => void (async () => {
-        const result = await paymentRouteApi.remove(organization.id, route.routeId, route.versionNo);
-        if (!result.success) throw new Error(result.error.message);
-        await reloadPaymentRoutes();
-      })().catch((error: unknown) => Alert.alert("Unable to delete payment route", error instanceof Error ? error.message : "Unable to delete the payment provider route.")) },
-    ]);
+    Alert.alert(
+      "Delete payment route",
+      "This route will no longer be used for payment resolution.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () =>
+            void (async () => {
+              const result = await paymentRouteApi.remove(
+                organization.id,
+                route.routeId,
+                route.versionNo,
+              );
+              if (!result.success) throw new Error(result.error.message);
+              await reloadPaymentRoutes();
+            })().catch((error: unknown) =>
+              Alert.alert(
+                "Unable to delete payment route",
+                error instanceof Error
+                  ? error.message
+                  : "Unable to delete the payment provider route.",
+              ),
+            ),
+        },
+      ],
+    );
   };
 
-  const loadTerminals = async (summary: OrganizationPoyntPaymentSummary) => {
-    const result = await organizationPoyntPaymentApi.terminals(organization.id, summary.integrationConfigurationId);
-    if (!result.success) throw new Error(result.error.message);
-    setTerminals(result.data);
-  };
-
-  const openTerminals = async (summary: OrganizationPoyntPaymentSummary) => {
+  const openTerminals = (summary: OrganizationPoyntPaymentSummary, integrationTypeId: string) => {
     if (summary.connectionStatus !== "VERIFIED") {
-      Alert.alert("Poynt verification required", "Poynt integration has not been verified by Platform Admin.");
+      Alert.alert(
+        "Poynt verification required",
+        "Poynt integration has not been verified by Platform Admin.",
+      );
       return;
     }
     setTerminalSummary(summary);
-    try {
-      await loadTerminals(summary);
-    } catch (loadError) {
-      setTerminalSummary(null);
-      Alert.alert("Unable to load terminals", loadError instanceof Error ? loadError.message : "Unable to load Poynt terminals.");
-    }
-  };
-
-  const saveTerminal = async () => {
-    if (!terminalSummary || !terminalDraft || !terminalDraft.storeId || !terminalDraft.deviceName.trim() || !terminalDraft.poyntTerminalId.trim()) {
-      Alert.alert("Missing information", "Memgine Store, terminal friendly name, and Poynt Terminal / Device ID are required.");
-      return;
-    }
-    setSavingTerminal(true);
-    try {
-      const body: OrganizationPoyntTerminalBindingWrite = {
-        storeId: terminalDraft.storeId,
-        deviceName: terminalDraft.deviceName.trim(),
-        poyntStoreId: terminalDraft.poyntStoreId?.trim() || null,
-        poyntTerminalId: terminalDraft.poyntTerminalId.trim(),
-        active: terminalDraft.active,
-      };
-      const result = terminalDraft.bindingId
-        ? await organizationPoyntPaymentApi.updateTerminal(organization.id, terminalSummary.integrationConfigurationId, terminalDraft.bindingId, body)
-        : await organizationPoyntPaymentApi.createTerminal(organization.id, terminalSummary.integrationConfigurationId, body);
-      if (!result.success) throw new Error(result.error.message);
-      setTerminalDraft(null);
-      await loadTerminals(terminalSummary);
-    } catch (saveError) {
-      Alert.alert("Unable to save terminal", saveError instanceof Error ? saveError.message : "Unable to save Poynt terminal binding.");
-    } finally {
-      setSavingTerminal(false);
-    }
-  };
-
-  const deactivateTerminal = (terminal: OrganizationPoyntTerminalBinding) => {
-    if (!terminalSummary) return;
-    Alert.alert("Deactivate terminal", `Deactivate ${terminal.deviceName}? Payment Bridge will no longer target this terminal.`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Deactivate", style: "destructive", onPress: () => void (async () => {
-        const result = await organizationPoyntPaymentApi.deactivateTerminal(organization.id, terminalSummary.integrationConfigurationId, terminal.bindingId);
-        if (!result.success) throw new Error(result.error.message);
-        await loadTerminals(terminalSummary);
-      })().catch((deactivateError: unknown) => Alert.alert("Unable to deactivate terminal", deactivateError instanceof Error ? deactivateError.message : "Unable to deactivate Poynt terminal.")) },
-    ]);
+    setTerminalIntegrationTypeId(integrationTypeId);
   };
 
   const handleSaveChanges = async () => {
@@ -427,15 +496,27 @@ export default function Integrations() {
 
       for (const configuration of integrations) {
         const existing = committedById.get(configuration.id);
-        if (existing && JSON.stringify(existing) === JSON.stringify(configuration)) continue;
+        if (
+          existing &&
+          JSON.stringify(existing) === JSON.stringify(configuration)
+        )
+          continue;
         const saved = existing
-          ? await services.organization.updateIntegrationConfiguration(organization.id, configuration)
-          : await services.organization.createIntegrationConfiguration(organization.id, configuration);
+          ? await services.organization.updateIntegrationConfiguration(
+              organization.id,
+              configuration,
+            )
+          : await services.organization.createIntegrationConfiguration(
+              organization.id,
+              configuration,
+            );
         setCommittedIntegrations((current) => [
-          ...current.filter((item) => item.id !== saved.id), saved,
+          ...current.filter((item) => item.id !== saved.id),
+          saved,
         ]);
-        setIntegrations((current) => current.map((item) =>
-          item.id === saved.id ? saved : item));
+        setIntegrations((current) =>
+          current.map((item) => (item.id === saved.id ? saved : item)),
+        );
       }
 
       for (const configuration of committedIntegrations) {
@@ -445,7 +526,8 @@ export default function Integrations() {
             configuration.id,
           );
           setCommittedIntegrations((current) =>
-            current.filter((item) => item.id !== configuration.id));
+            current.filter((item) => item.id !== configuration.id),
+          );
         }
       }
 
@@ -505,149 +587,208 @@ export default function Integrations() {
       contentContainerStyle={styles.screen}
       showsVerticalScrollIndicator={false}
     >
-      <View style={[styles.header, isMobile && styles.headerMobile]}>
+      <View style={styles.header}>
         <View style={styles.headerText}>
           <Text variant="title" color="text">
             Integrations
           </Text>
 
           <Text variant="bodySmall" color="textMuted">
-            Configure external services used by this organization.
+            View integrations configured by Platform Admin and manage your store
+            connections.
           </Text>
-
-          {saveMessage ? (
-            <Text variant="bodySmall" color="success">
-              {saveMessage}
-            </Text>
-          ) : null}
-        </View>
-
-        <View
-          style={[styles.headerActions, isMobile && styles.headerActionsMobile]}
-        >
-          {!isEditing ? (
-            <Pressable
-              onPress={handleStartEditing}
-              style={({ pressed }) => [
-                styles.secondaryButton,
-                {
-                  opacity: pressed ? 0.8 : 1,
-                },
-              ]}
-            >
-              <Text variant="body" color="text">
-                Edit
-              </Text>
-            </Pressable>
-          ) : (
-            <>
-              <Pressable
-                onPress={handleCancel}
-                disabled={saving}
-                style={({ pressed }) => [
-                  styles.secondaryButton,
-                  {
-                    opacity: saving ? 0.5 : pressed ? 0.8 : 1,
-                  },
-                ]}
-              >
-                <Text variant="body" color="text">
-                  Cancel
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => void handleSaveChanges()}
-                disabled={saving}
-                style={({ pressed }) => [
-                  styles.primaryButton,
-                  {
-                    opacity: saving ? 0.5 : pressed ? 0.8 : 1,
-                  },
-                ]}
-              >
-                <Text variant="body" color="background">
-                  {saving ? "Saving..." : "Save Changes"}
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={handleAdd}
-                disabled={saving}
-                style={({ pressed }) => [
-                  styles.addButton,
-                  {
-                    opacity: saving ? 0.5 : pressed ? 0.8 : 1,
-                  },
-                ]}
-              >
-                <Text variant="body" color="background">
-                  + Add Integration
-                </Text>
-              </Pressable>
-            </>
-          )}
         </View>
       </View>
 
-      <DataTable
-        columns={columns}
-        data={integrations}
-        keyExtractor={(item) => item.id}
-        emptyMessage="No integrations configured."
-        actions={
-          isEditing
-            ? [
-                {
-                  label: "Edit",
-                  onPress: handleEdit,
-                },
-                {
-                  label: "Delete",
-                  onPress: handleDelete,
-                },
-              ]
-            : [
-                {
-                  label: "View",
-                  onPress: handleView,
-                },
-              ]
-        }
-      />
+      <View style={styles.cardSection}>
+        {integrations.length === 0 ? (
+          <Text variant="body" color="textMuted">
+            No integrations configured.
+          </Text>
+        ) : (
+          integrations.map((integration) => {
+            const summary = poyntSummaryByIntegrationId.get(integration.id);
+            const connectionStatus =
+              summary?.connectionStatus ?? "NOT_CONFIGURED";
+            const detailsOpen = detailsIntegrationId === integration.id;
+            const canManageTerminals = summary?.connectionStatus === "VERIFIED";
+            return (
+              <View key={integration.id} style={styles.integrationCard}>
+                <View
+                  style={[
+                    styles.cardHeader,
+                    isMobile && styles.cardHeaderMobile,
+                  ]}
+                >
+                  <View style={styles.cardHeaderText}>
+                    <Text variant="h2" color="text">
+                      {integration.integrationName} / {integration.provider}
+                    </Text>
+                    <Text variant="bodySmall" color="textMuted">
+                      {getTypeName(integration.integrationTypeId)}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      statusBadgeStyle(connectionStatus),
+                    ]}
+                  >
+                    <Text variant="bodySmall" color="text">
+                      {connectionStatusLabel(connectionStatus)}
+                    </Text>
+                  </View>
+                </View>
 
-      {poyntSummaries.length > 0 ? (
-        <View style={styles.poyntSection}>
-          <Text variant="h2" color="text">Poynt Payment Integration</Text>
-          {poyntSummaries.map((summary) => (
-            <View key={summary.integrationConfigurationId} style={styles.poyntCard}>
-              <Text variant="body" color="text">Provider: Poynt</Text>
-              <Text variant="bodySmall" color="textMuted">Integration: {summary.integrationName} · {summary.integrationStatus}</Text>
-              <Text variant="bodySmall" color="textMuted">Credential status: {credentialStatusLabel(summary.credentialStatus)}</Text>
-              <Text variant="bodySmall" color="textMuted">Connection status: {connectionStatusLabel(summary.connectionStatus)}</Text>
-              <Text variant="bodySmall" color="textMuted">Merchant / Business ID: {summary.providerBusinessId || "Not configured"}</Text>
-              <Text variant="bodySmall" color="textMuted">Poynt Store ID: {summary.providerStoreId || "Not configured"}</Text>
-              <Text variant="bodySmall" color="textMuted">Currency: {summary.merchantCurrencyCode || "Not configured"}</Text>
-              {summary.lastVerifiedAt ? <Text variant="bodySmall" color="textMuted">Last verified: {summary.lastVerifiedAt}</Text> : null}
-              <Text variant="bodySmall" color="textMuted">{poyntSupportMessage(summary)}</Text>
-              <Pressable
-                onPress={() => void openTerminals(summary)}
-                style={({ pressed }) => [styles.secondaryButton, { alignSelf: "flex-start", opacity: summary.connectionStatus === "VERIFIED" ? (pressed ? 0.8 : 1) : 0.5 }]}
-                disabled={summary.connectionStatus !== "VERIFIED"}
-              >
-                <Text variant="body" color="text">Manage Terminals</Text>
-              </Pressable>
-            </View>
-          ))}
-        </View>
-      ) : null}
+                <View
+                  style={[
+                    styles.summaryGrid,
+                    isMobile && styles.summaryGridMobile,
+                  ]}
+                >
+                  <SummaryField
+                    label="Integration"
+                    value={integration.integrationName}
+                  />
+                  <SummaryField label="Provider" value={integration.provider} />
+                  <SummaryField
+                    label="Capabilities"
+                    value={
+                      integration.provider.trim().toUpperCase() === "POYNT"
+                        ? poyntCapabilities
+                        : "Not available"
+                    }
+                  />
+                  <SummaryField
+                    label="Currency"
+                    value={summary?.merchantCurrencyCode || "Not configured"}
+                  />
+                </View>
+
+                <View style={styles.cardActions}>
+                  <Pressable
+                    disabled={!canManageTerminals}
+                    onPress={() =>
+                      summary && openTerminals(summary, integration.integrationTypeId)
+                    }
+                    style={({ pressed }) => [
+                      styles.primaryButton,
+                      !canManageTerminals && styles.buttonDisabled,
+                      {
+                        opacity: !canManageTerminals ? 0.5 : pressed ? 0.8 : 1,
+                      },
+                    ]}
+                  >
+                    <Text variant="body" color="background">
+                      Manage Store Terminals
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() =>
+                      setDetailsIntegrationId((current) =>
+                        current === integration.id ? null : integration.id,
+                      )
+                    }
+                    style={({ pressed }) => [
+                      styles.secondaryButton,
+                      { opacity: pressed ? 0.8 : 1 },
+                    ]}
+                  >
+                    <Text variant="body" color="text">
+                      {detailsOpen
+                        ? "Hide Connection Details"
+                        : "View Connection Details"}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {detailsOpen ? (
+                  <View style={styles.details}>
+                    <Text variant="bodySmall" color="textMuted">
+                      Connection verification confirms provider authentication
+                      only. It does not verify store or catalog assignment.
+                    </Text>
+                    <View
+                      style={[
+                        styles.detailsGrid,
+                        isMobile && styles.detailsGridMobile,
+                      ]}
+                    >
+                      <DetailField
+                        label="Integration Type"
+                        value={getTypeName(integration.integrationTypeId)}
+                      />
+                      <DetailField
+                        label="Integration Status"
+                        value={
+                          summary?.integrationStatus ??
+                          getStatusName(integration.integrationStatusId)
+                        }
+                      />
+                      <DetailField
+                        label="Credential Status"
+                        value={credentialStatusLabel(summary?.credentialStatus)}
+                      />
+                      <DetailField
+                        label="Connection Status"
+                        value={connectionStatusLabel(connectionStatus)}
+                      />
+                      <DetailField
+                        label="Merchant / Business ID"
+                        value={summary?.providerBusinessId || "Not configured"}
+                      />
+                      {summary?.providerStoreId ? (
+                        <DetailField
+                          label="Integration-level Poynt Store ID (legacy/default)"
+                          value={summary.providerStoreId}
+                        />
+                      ) : null}
+                      <DetailField
+                        label="Currency"
+                        value={
+                          summary?.merchantCurrencyCode || "Not configured"
+                        }
+                      />
+                      <DetailField
+                        label="Last Verified"
+                        value={formatTimestamp(summary?.lastVerifiedAt)}
+                      />
+                    </View>
+                  </View>
+                ) : null}
+                {!canManageTerminals &&
+                integration.provider.trim().toUpperCase() === "POYNT" ? (
+                  <Text variant="bodySmall" color="textMuted">
+                    Manage Store Terminals is available after Platform Admin
+                    verifies Poynt authentication.
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })
+        )}
+      </View>
       <View style={styles.routeHeader}>
         <View style={styles.headerText}>
-          <Text variant="h2" color="text">Payment Provider Routes</Text>
-          <Text variant="bodySmall" color="textMuted">Configure the provider used for Counter and Customer Commerce orders.</Text>
+          <Text variant="h2" color="text">
+            Payment Provider Routes
+          </Text>
+          <Text variant="bodySmall" color="textMuted">
+            Configure the provider used for Counter and Customer Commerce
+            orders.
+          </Text>
         </View>
-        <Pressable onPress={() => { setEditingPaymentRoute(null); setViewingPaymentRoute(false); setPaymentRouteVisible(true); }} style={styles.addButton}>
-          <Text variant="body" color="background">+ Add Payment Route</Text>
+        <Pressable
+          onPress={() => {
+            setEditingPaymentRoute(null);
+            setViewingPaymentRoute(false);
+            setPaymentRouteVisible(true);
+          }}
+          style={styles.addButton}
+        >
+          <Text variant="body" color="background">
+            + Add Payment Route
+          </Text>
         </Pressable>
       </View>
 
@@ -657,8 +798,22 @@ export default function Integrations() {
         keyExtractor={(item) => item.routeId}
         emptyMessage="No payment provider routes configured."
         actions={[
-          { label: "View", onPress: (route) => { setEditingPaymentRoute(route); setViewingPaymentRoute(true); setPaymentRouteVisible(true); } },
-          { label: "Edit", onPress: (route) => { setEditingPaymentRoute(route); setViewingPaymentRoute(false); setPaymentRouteVisible(true); } },
+          {
+            label: "View",
+            onPress: (route) => {
+              setEditingPaymentRoute(route);
+              setViewingPaymentRoute(true);
+              setPaymentRouteVisible(true);
+            },
+          },
+          {
+            label: "Edit",
+            onPress: (route) => {
+              setEditingPaymentRoute(route);
+              setViewingPaymentRoute(false);
+              setPaymentRouteVisible(true);
+            },
+          },
           { label: "Delete", onPress: deletePaymentRoute },
         ]}
       />
@@ -701,110 +856,126 @@ export default function Integrations() {
 
       <Modal
         visible={paymentRouteVisible}
-        onClose={() => { if (!savingPaymentRoute) { setPaymentRouteVisible(false); setEditingPaymentRoute(null); setViewingPaymentRoute(false); } }}
-        title={viewingPaymentRoute ? "View Payment Provider Route" : editingPaymentRoute ? "Edit Payment Provider Route" : "Add Payment Provider Route"}
+        onClose={() => {
+          if (!savingPaymentRoute) {
+            setPaymentRouteVisible(false);
+            setEditingPaymentRoute(null);
+            setViewingPaymentRoute(false);
+          }
+        }}
+        title={
+          viewingPaymentRoute
+            ? "View Payment Provider Route"
+            : editingPaymentRoute
+              ? "Edit Payment Provider Route"
+              : "Add Payment Provider Route"
+        }
         scrollable
       >
         <CommercePaymentProviderRouteForm
           route={editingPaymentRoute}
           stores={stores}
           integrations={routeIntegrations}
-          mode={viewingPaymentRoute ? "view" : editingPaymentRoute ? "edit" : "add"}
+          mode={
+            viewingPaymentRoute ? "view" : editingPaymentRoute ? "edit" : "add"
+          }
           allowTest={allowTestPaymentProvider}
           onSave={(route) => void savePaymentRoute(route)}
-          onCancel={() => { setPaymentRouteVisible(false); setEditingPaymentRoute(null); setViewingPaymentRoute(false); }}
+          onCancel={() => {
+            setPaymentRouteVisible(false);
+            setEditingPaymentRoute(null);
+            setViewingPaymentRoute(false);
+          }}
         />
       </Modal>
 
       <Modal
-        visible={!!terminalSummary && !terminalDraft}
-        onClose={() => setTerminalSummary(null)}
-        title="Poynt Terminals"
+        visible={!!terminalSummary}
+        onClose={() => {
+          setTerminalSummary(null);
+          setTerminalIntegrationTypeId("");
+        }}
+        title="Poynt Store & Terminals"
         scrollable
+        maxWidth={820}
       >
-        <View style={{ gap: 12 }}>
-          <Text variant="body" color="text">{terminalSummary?.integrationName}</Text>
-          <Text variant="bodySmall" color="textMuted">Each terminal is bound to a Memgine store and is used as an exact Payment Bridge target.</Text>
-          <Pressable
-            onPress={() => setTerminalDraft({ storeId: "", deviceName: "", poyntStoreId: terminalSummary?.providerStoreId ?? null, poyntTerminalId: "", active: true })}
-            style={styles.addButton}
-          ><Text variant="body" color="background">+ Add Terminal</Text></Pressable>
-          <DataTable
-            data={terminals}
-            keyExtractor={(item) => item.bindingId}
-            columns={[
-              { key: "deviceName", title: "Terminal" },
-              { key: "storeName", title: "Memgine Store" },
-              { key: "poyntTerminalId", title: "Poynt Device ID" },
-              { key: "active", title: "Status", render: (item) => <Text variant="body" color="text">{item.active ? "Active" : "Inactive"}</Text> },
-            ]}
-            actions={[
-              { label: "Edit", onPress: (item) => setTerminalDraft({ bindingId: item.bindingId, storeId: item.storeId, deviceName: item.deviceName, poyntStoreId: item.poyntStoreId || null, poyntTerminalId: item.poyntTerminalId, active: item.active }) },
-              { label: "Deactivate", onPress: deactivateTerminal },
-            ]}
-            emptyMessage="No Poynt terminals are configured. Add a terminal to enable targeted Payment Bridge payments."
+        {terminalSummary ? (
+          <PoyntStoreTerminalManager
+            organizationId={organization.id}
+            summary={terminalSummary}
+            stores={stores}
+            integrationTypeId={terminalIntegrationTypeId}
+            integrationTypes={integrationTypes}
+            onClose={() => {
+              setTerminalSummary(null);
+              setTerminalIntegrationTypeId("");
+            }}
           />
-        </View>
-      </Modal>
-
-      <Modal
-        visible={!!terminalDraft}
-        onClose={() => !savingTerminal && setTerminalDraft(null)}
-        title={terminalDraft?.bindingId ? "Edit Poynt Terminal" : "Add Poynt Terminal"}
-        scrollable
-      >
-        <View style={{ gap: 12 }}>
-          <ReferenceSelect
-            label="Memgine Store"
-            required
-            value={terminalDraft?.storeId ?? ""}
-            items={stores}
-            getItemId={(store) => store.id}
-            renderItemLabel={(store) => `${store.name} (${store.storeCode})`}
-            onChange={(value) => setTerminalDraft((current) => current ? { ...current, storeId: value } : current)}
-          />
-          <Input label="Terminal Friendly Name" required value={terminalDraft?.deviceName ?? ""} onChangeText={(value) => setTerminalDraft((current) => current ? { ...current, deviceName: value } : current)} />
-          <Input label="Poynt Store ID" value={terminalDraft?.poyntStoreId ?? ""} onChangeText={(value) => setTerminalDraft((current) => current ? { ...current, poyntStoreId: value } : current)} />
-          <Input label="Poynt Terminal / Device ID" required value={terminalDraft?.poyntTerminalId ?? ""} onChangeText={(value) => setTerminalDraft((current) => current ? { ...current, poyntTerminalId: value } : current)} />
-          <ReferenceSelect
-            label="State"
-            value={terminalDraft?.active ? "ACTIVE" : "INACTIVE"}
-            items={[{ id: "ACTIVE", name: "Active" }, { id: "INACTIVE", name: "Inactive" }]}
-            onChange={(value) => setTerminalDraft((current) => current ? { ...current, active: value === "ACTIVE" } : current)}
-          />
-          <Text variant="bodySmall" color="textMuted">Use the Poynt Terminal / Device ID used by Payment Bridge. Serial ID is not used for routing.</Text>
-          <Pressable disabled={savingTerminal} onPress={() => void saveTerminal()} style={[styles.primaryButton, { opacity: savingTerminal ? 0.5 : 1 }]}>
-            <Text variant="body" color="background">{savingTerminal ? "Saving..." : "Save Terminal"}</Text>
-          </Pressable>
-        </View>
+        ) : null}
       </Modal>
     </ScrollView>
   );
 }
 
-function credentialStatusLabel(status: OrganizationPoyntPaymentSummary["credentialStatus"]) {
+function SummaryField({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.summaryField}>
+      <Text variant="bodySmall" color="textMuted">
+        {label}
+      </Text>
+      <Text variant="body" color="text">
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function DetailField({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.detailField}>
+      <Text variant="bodySmall" color="textMuted">
+        {label}
+      </Text>
+      <Text variant="body" color="text" style={styles.detailValue}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function credentialStatusLabel(
+  status?: OrganizationPoyntPaymentSummary["credentialStatus"],
+) {
   if (status === "CONFIGURED") return "Configured";
   if (status === "VERIFICATION_UNAVAILABLE") return "Unable to verify";
   return "Not configured";
 }
 
-function connectionStatusLabel(status: OrganizationPoyntPaymentSummary["connectionStatus"]) {
+function connectionStatusLabel(
+  status?:
+    | OrganizationPoyntPaymentSummary["connectionStatus"]
+    | "NOT_CONFIGURED",
+) {
   if (status === "VERIFIED") return "Verified";
   if (status === "FAILED") return "Failed";
-  return "Not tested";
+  if (status === "NOT_TESTED") return "Not tested";
+  return "Not configured";
 }
 
-function poyntSupportMessage(summary: OrganizationPoyntPaymentSummary) {
-  if (summary.credentialStatus === "NOT_CONFIGURED") {
-    return "Poynt payment integration has not been configured for this organization. Please contact Memgine Support.";
-  }
-  if (summary.connectionStatus === "FAILED") {
-    return "Poynt payment integration requires attention. Please contact Memgine Support.";
-  }
-  if (summary.connectionStatus !== "VERIFIED") {
-    return "Poynt payment integration is awaiting verification by Memgine.";
-  }
-  return "Poynt payment integration is verified by Memgine.";
+function statusBadgeStyle(
+  status:
+    | OrganizationPoyntPaymentSummary["connectionStatus"]
+    | "NOT_CONFIGURED",
+) {
+  if (status === "VERIFIED") return styles.statusVerified;
+  if (status === "FAILED") return styles.statusFailed;
+  return styles.statusPending;
+}
+
+function formatTimestamp(value?: string | null) {
+  if (!value) return "Never";
+  const timestamp = new Date(value);
+  return Number.isNaN(timestamp.getTime()) ? value : timestamp.toLocaleString();
 }
 
 const styles = StyleSheet.create({
@@ -818,15 +989,7 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 16,
-  },
-
-  headerMobile: {
-    flexDirection: "column",
-    alignItems: "stretch",
+    gap: 6,
   },
 
   headerText: {
@@ -834,26 +997,107 @@ const styles = StyleSheet.create({
     gap: 6,
   },
 
-  headerActions: {
+  cardSection: {
+    gap: 16,
+  },
+
+  integrationCard: {
+    gap: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    backgroundColor: "#FFFFFF",
+  },
+
+  cardHeader: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16,
   },
 
-  headerActionsMobile: {
-    width: "100%",
+  cardHeaderMobile: {
+    flexDirection: "column",
+    alignItems: "stretch",
+  },
+
+  cardHeaderText: {
+    flex: 1,
+    gap: 4,
+  },
+
+  statusBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+
+  statusVerified: {
+    backgroundColor: "#D1FAE5",
+  },
+
+  statusFailed: {
+    backgroundColor: "#FEE2E2",
+  },
+
+  statusPending: {
+    backgroundColor: "#FEF3C7",
+  },
+
+  summaryGrid: {
+    flexDirection: "row",
     flexWrap: "wrap",
+    columnGap: 24,
+    rowGap: 16,
   },
 
-  poyntSection: {
+  summaryGridMobile: {
+    flexDirection: "column",
     gap: 12,
   },
 
-  poyntCard: {
-    gap: 6,
-    padding: 16,
-    borderRadius: 8,
-    backgroundColor: "#F8FAFC",
+  summaryField: {
+    flexBasis: "45%",
+    flexGrow: 1,
+    gap: 4,
+  },
+
+  cardActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+
+  details: {
+    gap: 12,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+  },
+
+  detailsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    columnGap: 24,
+    rowGap: 16,
+  },
+
+  detailsGridMobile: {
+    flexDirection: "column",
+    gap: 12,
+  },
+
+  detailField: {
+    flexBasis: "45%",
+    flexGrow: 0,
+    flexShrink: 1,
+    gap: 4,
+  },
+
+  detailValue: {
+    flexShrink: 1,
   },
 
   routeHeader: {
@@ -889,6 +1133,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#0F766E",
+  },
+
+  buttonDisabled: {
+    backgroundColor: "#94A3B8",
   },
 
   center: {

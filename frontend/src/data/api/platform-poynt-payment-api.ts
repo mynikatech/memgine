@@ -89,6 +89,37 @@ export type OrganizationPoyntTerminalBindingWrite = {
   active: boolean;
 };
 
+export type PoyntOperationalStore = {
+  id: string;
+  name?: string | null;
+};
+
+export type PoyntOperationalTerminal = {
+  id: string;
+  name?: string | null;
+  storeId: string;
+  catalogId?: string | null;
+  catalogName?: string | null;
+  configurationEligible: boolean;
+  ineligibilityReason?: string | null;
+};
+
+export type PoyntStoreCatalogConfiguration = {
+  storeId: string;
+  storeName: string;
+  poyntStoreId?: string | null;
+  effectiveCatalogId?: string | null;
+  effectiveCatalogName?: string | null;
+  configurationStatus: string;
+  terminalBindings: OrganizationPoyntTerminalBinding[];
+};
+
+export type PoyntStoreTerminalAssignmentWrite = {
+  storeId: string;
+  poyntStoreId: string;
+  terminalId: string;
+};
+
 async function resolveIntegrationStatusId(
   integrationStatusId: string,
 ): Promise<string> {
@@ -226,5 +257,57 @@ export const organizationPoyntPaymentApi = {
   ): Promise<ApiResult<OrganizationPoyntTerminalBinding>> =>
     httpClient.delete(
       `/api/v1/organizations/${encodeURIComponent(organizationId)}/commerce/poynt-payment-summaries/${encodeURIComponent(integrationId)}/terminals/${encodeURIComponent(bindingId)}`,
+    ),
+};
+
+export const organizationPoyntOperationalApi = {
+  stores: (
+    organizationId: string,
+    integrationId: string,
+  ): Promise<ApiResult<PoyntOperationalStore[]>> =>
+    httpClient
+      .get<{ stores: PoyntOperationalStore[] }>(
+        `/api/v1/organizations/${encodeURIComponent(organizationId)}/integrations/${encodeURIComponent(integrationId)}/poynt/stores`,
+      )
+      .then((result) =>
+        result.success
+          ? { success: true, data: result.data.stores }
+          : result,
+      ),
+  terminals: (
+    organizationId: string,
+    integrationId: string,
+    poyntStoreId: string,
+  ): Promise<ApiResult<PoyntOperationalTerminal[]>> =>
+    httpClient
+      .get<{ terminals: PoyntOperationalTerminal[] }>(
+        `/api/v1/organizations/${encodeURIComponent(organizationId)}/integrations/${encodeURIComponent(integrationId)}/poynt/stores/${encodeURIComponent(poyntStoreId)}/terminals`,
+      )
+      .then((result) =>
+        result.success
+          ? { success: true, data: result.data.terminals }
+          : result,
+      ),
+  configurations: (
+    organizationId: string,
+    integrationId: string,
+  ): Promise<ApiResult<PoyntStoreCatalogConfiguration[]>> =>
+    httpClient
+      .get<{ configurations: PoyntStoreCatalogConfiguration[] }>(
+        `/api/v1/organizations/${encodeURIComponent(organizationId)}/integrations/${encodeURIComponent(integrationId)}/poynt/store-configurations`,
+      )
+      .then((result) =>
+        result.success
+          ? { success: true, data: result.data.configurations }
+          : result,
+      ),
+  saveAssignment: (
+    organizationId: string,
+    integrationId: string,
+    body: PoyntStoreTerminalAssignmentWrite,
+  ): Promise<ApiResult<{ bindingId: string }>> =>
+    httpClient.post(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/integrations/${encodeURIComponent(integrationId)}/poynt/store-configurations`,
+      body,
     ),
 };

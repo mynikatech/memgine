@@ -341,6 +341,14 @@ export const createOrgAdminRoutes = (organizationId: string): AdminRoute[] => [
   },
 
   {
+    title: "Integrations",
+
+    href: APP_ROUTES.orgAdmin.settings.integrations(organizationId),
+
+    icon: "git-network-outline",
+  },
+
+  {
     title: "Products",
 
     href: APP_ROUTES.orgAdmin.products(organizationId),
@@ -443,13 +451,6 @@ export const createOrgAdminRoutes = (organizationId: string): AdminRoute[] => [
         icon: "notifications-outline",
       },
 
-      {
-        title: "Integrations",
-
-        href: APP_ROUTES.orgAdmin.settings.integrations(organizationId),
-
-        icon: "git-network-outline",
-      },
     ],
   },
 ];
@@ -506,7 +507,7 @@ export const PLATFORM_ADMIN_ROUTES: AdminRoute[] = [
   },
 
   {
-    title: "Payment Configuration",
+    title: "Integrations",
 
     href: APP_ROUTES.platformAdmin.paymentConfiguration,
 

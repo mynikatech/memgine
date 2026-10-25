@@ -1,0 +1,500 @@
+package com.mynikatech.memgine.component.commerce.provider.poynt
+
+import java.net.URI
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.longOrNull
+
+/**
+ * Explicit, read-only production diagnostic for the POS integration. The test
+ * is inert unless POYNT_PROD_CATALOG_DISCOVERY=true is supplied to this exact
+ * invocation. It only uses OAuth and Poynt GET requests.
+ */
+class PoyntProductionCatalogDiscoveryTest {
+    @Test
+    fun discoverProductionDeviceCatalogs() {
+        if (System.getenv("POYNT_PROD_CATALOG_DISCOVERY") != "true") {
+            println("Poynt production catalog discovery: SKIPPED")
+            return
+        }
+
+        val config = configuration()
+        val transport = PoyntCloudHttpTransport(config.baseUrl, API_VERSION)
+        // Configuration checks run before AWS credential retrieval or any Poynt request.
+        val token = PoyntTokenService(
+            credentials = AwsSecretsManagerPoyntCredentialResolver(config.awsRegion),
+            transport = PoyntCloudTokenTransport(config.baseUrl, API_VERSION),
+            audience = config.baseUrl,
+        ).token(
+            PoyntCatalogConfiguration(
+                integrationConfigurationId = "production-pos-catalog-discovery",
+                organizationId = "production-pos-catalog-discovery",
+                applicationId = config.applicationId,
+                businessId = config.businessId,
+                providerStoreId = null,
+                secretReference = config.secretReference,
+                merchantCurrencyCode = "CAD",
+                lastIncrementalSyncAt = null,
+            ),
+        )
+        val authorization = "${token.tokenType} ${token.value}"
+
+        val businessResponse = transport.get(
+            URI.create("${config.baseUrl}/businesses/${config.businessId}?ignoreDeactivatedDevices=false"),
+            authorization,
+        )
+        println("Business GET HTTP ${businessResponse.statusCode}")
+        if (businessResponse.statusCode != 200) {
+            println("Business result: ${classify(businessResponse.statusCode)}")
+            println("Business error code: ${safeErrorCode(businessResponse.body)}")
+            return
+        }
+
+        val business = parseObject(businessResponse.body, "Business") ?: return
+        val returnedBusinessId = primitive(business, "id")
+        assertEquals(config.businessId, returnedBusinessId, "Configured production business did not match Poynt")
+
+        // Always inspect the independently configured production store, even if
+        // the Business response omits embedded stores or device/store links.
+        val stores = linkedMapOf<String, StoreDocument>()
+        val candidateStoreIds = linkedSetOf(config.storeId).apply { addAll(storeIds(business)) }
+        println("Business device array counts: ${deviceArraySummary(business)}")
+        println("Store IDs to inspect: ${candidateStoreIds.size} (configured production store included)")
+        candidateStoreIds.forEach { storeId ->
+            val response = transport.get(transport.storeUri(config.businessId, storeId), authorization)
+            println("Store ${mask(storeId)} GET HTTP ${response.statusCode}")
+            val store = if (response.statusCode == 200) {
+                parseObject(response.body, "Store ${mask(storeId)}")
+            } else {
+                println("Store ${mask(storeId)} result: ${classify(response.statusCode)}")
+                null
+            }
+            if (store != null && primitive(store, "id") == storeId) {
+                stores[storeId] = StoreDocument(storeId, store, response.statusCode)
+                println("Store ${mask(storeId)} device array counts: ${deviceArraySummary(store)}")
+            } else if (store != null) {
+                println("Store ${mask(storeId)} identity: MISMATCH")
+            }
+        }
+        check(config.storeId in stores) {
+            "Configured production store could not be verified by read-only Store GET"
+        }
+
+        val devices = (devicesIn(business) + stores.values.flatMap { devicesIn(it.document) })
+            .distinctBy(::deviceIdentity)
+        println("Recognized device records: ${devices.size}")
+        devices.take(20).forEachIndexed { index, device ->
+            printDeviceDiagnostic(index + 1, device)
+        }
+        if (devices.size > 20) println("Further device records omitted from diagnostics")
+
+        val ajax = devices.firstOrNull { deviceName(it).equals("AJAX", ignoreCase = true) }
+        val osc = devices.firstOrNull { deviceName(it).equals("OSC", ignoreCase = true) }
+
+        println("Device-specific catalog endpoint: NOT_EXPOSED_BY_CONFIGURED_TRANSPORT")
+        val ajaxCatalog = inspectDevice("AJAX", ajax, config, transport, authorization)
+        val oscCatalog = inspectDevice("OSC", osc, config, transport, authorization)
+        inspectSharedSku(config.sharedSku, ajaxCatalog, oscCatalog)
+        val complete = ajaxCatalog.status == "FOUND" && oscCatalog.status == "FOUND"
+        println("Catalog assignment outcome: ${if (complete) "BOTH_CATALOGS_RETRIEVED" else "DISCOVERY_INCOMPLETE"}")
+        println("Product membership and authoritative per-terminal prices: NOT_YET_VERIFIED")
+        println("Poynt production catalog discovery complete. GET requests only.")
+    }
+
+    private fun inspectDevice(
+        label: String,
+        device: JsonObject?,
+        config: ProductionConfig,
+        transport: PoyntCloudHttpTransport,
+        authorization: String,
+    ): CatalogInspection {
+        if (device == null) {
+            println("$label device: NOT_FOUND")
+            return CatalogInspection(label, null, null, null, null, "NOT_FOUND", "NOT_EXPOSED", emptyList())
+        }
+
+        val deviceId = firstPrimitive(device, "deviceId", "id")
+        val storeId = firstPrimitive(device, "storeId", "merchantStoreId")
+        val assignment = catalogAssignment(device)
+        println("$label device ID: ${mask(deviceId)}")
+        println("$label Poynt Store ID: ${mask(storeId)}")
+
+        val catalogId = assignment.catalogId
+        if (catalogId == null) {
+            println("$label assigned catalog ID: ${assignment.status}")
+            return CatalogInspection(label, deviceId, storeId, null, null, assignment.status, "NOT_EXPOSED", emptyList())
+        }
+
+        val response = transport.get(transport.catalogFullUri(config.businessId, catalogId), authorization)
+        println("$label catalog ${mask(catalogId)} GET HTTP ${response.statusCode}")
+        if (response.statusCode != 200) {
+            println("$label catalog result: ${classify(response.statusCode)}")
+            println("$label catalog error code: ${safeErrorCode(response.body)}")
+            return CatalogInspection(label, deviceId, storeId, catalogId, null, classify(response.statusCode), "UNKNOWN", emptyList())
+        }
+
+        val catalog = parseObject(response.body, "$label catalog")
+            ?: return CatalogInspection(label, deviceId, storeId, catalogId, null, "UNKNOWN", "UNKNOWN", emptyList())
+        val catalogName = firstPrimitive(catalog, "name", "catalogName")
+        val products = catalogProducts(catalog, label)
+        val matcha = products.values.filter { it.sku.equals(MATCHA_COOKIE_SKU, ignoreCase = true) }
+        // Compare only unambiguous catalog IDs to the business-product endpoint.
+        // These are read-only GET requests and do not establish price authority.
+        listOf(MATCHA_COOKIE_SKU, config.sharedSku).filterNotNull().distinct().forEach { sku ->
+            val matches = products.values.filter { it.sku.equals(sku, ignoreCase = true) }
+            if (matches.size == 1) compareBusinessProduct(label, sku, matches.single(), config, transport, authorization)
+            else println("$label business price comparison $sku: UNKNOWN (catalog SKU match count=${matches.size})")
+        }
+        println("$label assigned catalog ID: ${mask(catalogId)}")
+        println("$label catalog name: ${safe(catalogName)}")
+        printSkuResult(label, "Matcha Cookie", MATCHA_COOKIE_SKU, products.status, matcha)
+        return CatalogInspection(label, deviceId, storeId, catalogId, catalogName, "FOUND", products.status, products.values)
+    }
+
+    private fun inspectSharedSku(
+        sku: String?,
+        ajax: CatalogInspection,
+        osc: CatalogInspection,
+    ) {
+        if (sku == null) {
+            println("Shared SKU comparison: UNKNOWN (POYNT_PROD_SHARED_SKU is not set)")
+            return
+        }
+        println("Shared SKU comparison: ${safe(sku)}")
+        printSkuResult("AJAX", "Shared SKU", sku, ajax.productListStatus, ajax.products.filter { it.sku.equals(sku, ignoreCase = true) })
+        printSkuResult("OSC", "Shared SKU", sku, osc.productListStatus, osc.products.filter { it.sku.equals(sku, ignoreCase = true) })
+    }
+
+    private fun printSkuResult(
+        device: String,
+        description: String,
+        sku: String,
+        productListStatus: String,
+        matches: List<CatalogProduct>,
+    ) {
+        when {
+            productListStatus == "NOT_EXPOSED" -> println("$device $description $sku: NOT_EXPOSED")
+            matches.size > 1 -> println("$device $description $sku: UNKNOWN (multiple entries; may represent variants)")
+            matches.size == 1 -> {
+                val product = matches.single()
+                println("$device $description $sku: PRESENT_IN_PARSED_ENTRIES (completeness=$productListStatus)")
+                println("$device external product ID: ${mask(product.id)}; variant ID: ${mask(product.variantId)}; origin: ${product.origin}")
+                println("$device raw catalog-entry price amount (minor units, authority unverified): ${product.priceMinor?.toString() ?: "NOT_EXPOSED"} ${safe(product.currency)}")
+            }
+            else -> println("$device $description $sku: UNKNOWN (not in parsed entries; completeness=$productListStatus)")
+        }
+    }
+
+    private fun configuration(): ProductionConfig {
+        val integrationName = required("POYNT_PROD_POS_INTEGRATION_NAME")
+        require(integrationName == "POS") {
+            "POYNT_PROD_POS_INTEGRATION_NAME must identify the POS integration"
+        }
+        val baseUrl = (System.getenv("POYNT_PROD_API_BASE_URL") ?: PRODUCTION_BASE_URL).trim().removeSuffix("/")
+        require(baseUrl == PRODUCTION_BASE_URL) {
+            "POYNT_PROD_API_BASE_URL must be the Poynt production services host"
+        }
+        // Independent operator confirmation prevents accidentally targeting TestLab.
+        // These environment variables are not fetched from or verified against Memgine DB.
+        val businessId = required("POYNT_PROD_POS_BUSINESS_ID")
+        val storeId = required("POYNT_PROD_POS_STORE_ID")
+        require(storeId.matches(Regex("[A-Za-z0-9_-]{1,100}"))) {
+            "Invalid POYNT_PROD_POS_STORE_ID format"
+        }
+        val confirmedBusinessId = required("POYNT_PROD_EXPECTED_BUSINESS_ID")
+        require(businessId == confirmedBusinessId) {
+            "Production business ID does not match the independently confirmed business ID"
+        }
+        val secretReference = required("POYNT_PROD_POS_SECRET_REFERENCE")
+        require(secretReference.startsWith("memgine/dev/poynt/") &&
+            !secretReference.startsWith("memgine/dev/poynt-dev/")) {
+            "Unexpected POS secret reference; verify the original production POS configuration"
+        }
+        val applicationId = required("POYNT_PROD_POS_APPLICATION_ID")
+        require(applicationId.startsWith("urn:aid:")) { "Invalid Poynt application ID format" }
+        return ProductionConfig(
+            baseUrl = baseUrl,
+            applicationId = applicationId,
+            businessId = businessId,
+            storeId = storeId,
+            secretReference = secretReference,
+            awsRegion = required("POYNT_PROD_AWS_REGION"),
+            sharedSku = System.getenv("POYNT_PROD_SHARED_SKU")?.trim()?.takeIf { it.isNotEmpty() },
+        )
+    }
+
+    private fun required(name: String): String = System.getenv(name)?.trim()?.takeIf { it.isNotEmpty() }
+        ?: error("Missing environment variable: $name")
+
+    private fun parseObject(body: String, operation: String): JsonObject? = runCatching {
+        Json.parseToJsonElement(body) as? JsonObject
+    }.getOrNull().also { objectValue ->
+        if (objectValue == null) println("$operation result: UNKNOWN (non-object JSON response)")
+    }
+
+    private fun deviceArraySummary(document: JsonObject): String =
+        listOf("storeDevices", "devices").joinToString(", ") { field ->
+            val value = document[field]
+            val count = when (value) {
+                null -> "NOT_EXPOSED"
+                is JsonArray -> value.size.toString()
+                else -> "NOT_AN_ARRAY"
+            }
+            "$field=$count"
+        }
+
+    /** Allowlisted, bounded diagnostics only. Never print entire Poynt JSON objects. */
+    private fun printDeviceDiagnostic(index: Int, device: JsonObject) {
+        val name = deviceName(device)
+        val assignment = catalogAssignment(device)
+        val presentFields = listOf(
+            "id", "deviceId", "storeId", "merchantStoreId", "deviceName", "name",
+            "displayName", "terminalName", "externalTerminalId", "catalogId",
+            "productCatalogId", "catalog", "productCatalog", "catalogIds",
+        ).filter(device::containsKey)
+        println("Device $index recognized fields: ${presentFields.joinToString(", ")}")
+        println("Device $index name: ${safe(name)}")
+        println("Device $index ID: ${mask(firstPrimitive(device, "deviceId", "id"))}")
+        println("Device $index external terminal ID: ${mask(primitive(device, "externalTerminalId"))}")
+        println("Device $index store ID: ${mask(firstPrimitive(device, "storeId", "merchantStoreId"))}")
+        println("Device $index catalog assignment: ${assignment.status} ${mask(assignment.catalogId)}")
+    }
+
+    private fun devicesIn(document: JsonObject): List<JsonObject> = listOf("storeDevices", "devices")
+        .flatMap { field -> (document[field] as? JsonArray).orEmpty() }
+        .mapNotNull { it as? JsonObject }
+
+    private fun storeIds(document: JsonObject): Set<String> = buildSet {
+        devicesIn(document).mapNotNullTo(this) { firstPrimitive(it, "storeId", "merchantStoreId") }
+        ((document["stores"] as? JsonArray).orEmpty())
+            .mapNotNullTo(this) { (it as? JsonObject)?.let { store -> primitive(store, "id") } }
+    }
+
+    private fun deviceIdentity(device: JsonObject): String =
+        firstPrimitive(device, "deviceId", "id") ?: "${deviceName(device)}:${firstPrimitive(device, "storeId")}" 
+
+    private fun deviceName(device: JsonObject): String =
+        firstPrimitive(device, "deviceName", "name", "displayName", "terminalName") ?: ""
+
+    private fun catalogAssignment(device: JsonObject): CatalogAssignment {
+        val ids = linkedSetOf<String>()
+        firstPrimitive(device, "catalogId", "productCatalogId")?.let(ids::add)
+        listOf("catalog", "productCatalog").forEach { key ->
+            (device[key] as? JsonObject)?.let { catalog -> primitive(catalog, "id")?.let(ids::add) }
+        }
+        listOf("catalogIds", "productCatalogIds", "catalogs", "productCatalogs").forEach { key ->
+            when (val value = device[key]) {
+                is JsonArray -> value.forEach { item ->
+                    when (item) {
+                        is JsonPrimitive -> item.contentOrNull?.let(ids::add)
+                        is JsonObject -> primitive(item, "id")?.let(ids::add)
+                        else -> Unit
+                    }
+                }
+                else -> Unit
+            }
+        }
+        return when (ids.size) {
+            0 -> CatalogAssignment(null, "NOT_EXPOSED")
+            1 -> CatalogAssignment(ids.single(), "FOUND")
+            else -> CatalogAssignment(null, "UNKNOWN (multiple catalog IDs exposed)")
+        }
+    }
+
+    /** Shape diagnostics for assigned full catalogs. Unknown associations stay UNKNOWN. */
+    private fun catalogProducts(catalog: JsonObject, label: String): CatalogProducts {
+        val rootKeys = listOf("id", "name", "catalogName", "products", "items", "categories", "next", "nextPage", "nextCursor", "hasMore", "hasNext", "totalCount", "total")
+        println("$label catalog recognized root fields: ${rootKeys.filter(catalog::containsKey).joinToString(", ")}")
+        val categories = catalog["categories"] as? JsonArray
+        println("$label root categories: ${categories?.size?.toString() ?: "NOT_EXPOSED"}")
+        val products = mutableListOf<CatalogProduct>()
+        var unknown = false
+        var inspected = 0
+        var nestedCategoryCount = 0
+        var itemCount = 0
+        val sampleShapes = linkedSetOf<String>()
+        val paginationKeys = listOf("next", "nextPage", "nextCursor", "hasMore", "hasNext", "totalCount", "total")
+        if (paginationKeys.any(catalog::containsKey)) unknown = true
+        fun inspectItem(item: kotlinx.serialization.json.JsonElement) {
+            itemCount++
+            val obj = item as? JsonObject
+            if (obj == null) { unknown = true; return }
+            if (sampleShapes.size < 5) {
+                val allow = listOf("id", "productId", "product", "sku", "shortCode", "name", "price", "variants", "selectedVariants", "unitPrice")
+                sampleShapes.add(allow.filter(obj::containsKey).joinToString(", ").ifEmpty { "UNRECOGNIZED" })
+            }
+            val embedded = obj["product"] as? JsonObject
+            val id = firstPrimitive(obj, "productId") ?: firstPrimitive(embedded ?: obj, "id")
+            val source = embedded ?: obj
+            val variants = source["variants"] as? JsonArray
+            val baseSku = firstPrimitive(source, "sku", "shortCode")
+            val candidate = catalogProduct(source, id, baseSku, "CATALOG_ENTRY")
+            if (candidate != null) products.add(candidate) else unknown = true
+            variants?.forEach { variant ->
+                val v = variant as? JsonObject
+                if (v == null) { unknown = true; return@forEach }
+                val sku = firstPrimitive(v, "sku") ?: baseSku
+                val parsed = catalogProduct(v, id, sku, "CATALOG_VARIANT")
+                if (parsed != null) products.add(parsed) else unknown = true
+            }
+            // Product IDs without SKU may require a separate product fetch, so keep outcome unknown.
+        }
+        fun inspectArray(array: JsonArray?) {
+            if (array == null) return
+            array.forEach(::inspectItem)
+        }
+        inspectArray(catalog["products"] as? JsonArray)
+        inspectArray(catalog["items"] as? JsonArray)
+        if (catalog["products"] != null && catalog["products"] !is JsonArray) unknown = true
+        if (catalog["items"] != null && catalog["items"] !is JsonArray) unknown = true
+        fun visitCategory(category: JsonObject, depth: Int) {
+            if (depth > 15 || ++inspected > 3000) { unknown = true; return }
+            nestedCategoryCount++
+            if (sampleShapes.size < 5) {
+                sampleShapes.add("CATEGORY: " + listOf("id", "name", "products", "items", "categories").filter(category::containsKey).joinToString(", "))
+            }
+            inspectArray(category["products"] as? JsonArray)
+            inspectArray(category["items"] as? JsonArray)
+            if (category["products"] != null && category["products"] !is JsonArray) unknown = true
+            if (category["items"] != null && category["items"] !is JsonArray) unknown = true
+            val children = category["categories"]
+            if (children != null && children !is JsonArray) unknown = true
+            (children as? JsonArray)?.forEach { child ->
+                val obj = child as? JsonObject
+                if (obj == null) unknown = true else visitCategory(obj, depth + 1)
+            }
+        }
+        categories?.forEach { c ->
+            val obj = c as? JsonObject
+            if (obj == null) unknown = true else visitCategory(obj, 0)
+        }
+        if (catalog["categories"] != null && categories == null) unknown = true
+        println("$label nested categories inspected: $nestedCategoryCount")
+        println("$label catalog item entries inspected: $itemCount")
+        println("$label recognized entry shapes (max 5): ${sampleShapes.joinToString(" | ")}")
+        println("$label parsed SKU entries: ${products.size}")
+        val hasContainer = categories != null || catalog["products"] is JsonArray || catalog["items"] is JsonArray
+        // A missing or empty array is not proof that all catalog memberships were exposed.
+        val status = if (!hasContainer) "NOT_EXPOSED" else if (unknown || itemCount == 0) "UNKNOWN" else "PARSED_NOT_VERIFIED_COMPLETE"
+        println("$label catalog membership completeness: $status")
+        return CatalogProducts(status, products.distinctBy { listOf(it.id, it.variantId, it.sku, it.priceMinor.toString()).joinToString(":") })
+    }
+
+    private fun catalogProduct(item: JsonObject, productId: String?, sku: String?, origin: String): CatalogProduct? {
+        val id = productId ?: return null
+        val normalizedSku = sku ?: return null
+        val priceNode = item["price"] ?: item["unitPrice"]
+        val amount = when (priceNode) {
+            is JsonPrimitive -> if (priceNode.isString) null else priceNode.longOrNull
+            is JsonObject -> (priceNode["amount"] as? JsonPrimitive)?.let { if (it.isString) null else it.longOrNull }
+            else -> null
+        }
+        val currency = if (priceNode is JsonObject) primitive(priceNode, "currency") else primitive(item, "currency")
+        return CatalogProduct(id, normalizedSku, amount, currency, primitive(item, "id")?.takeIf { origin == "CATALOG_VARIANT" }, origin)
+    }
+
+    private fun compareBusinessProduct(
+        label: String, sku: String, item: CatalogProduct, config: ProductionConfig,
+        transport: PoyntCloudHttpTransport, authorization: String,
+    ) {
+        // Only use IDs returned in a verified merchant catalog, never untrusted free-form paths.
+        if (!item.id.matches(Regex("[A-Za-z0-9_-]{1,150}"))) {
+            println("$label business price comparison $sku: UNKNOWN (invalid product ID format)")
+            return
+        }
+        val response = transport.get(transport.productUri(config.businessId, item.id), authorization)
+        println("$label business product GET $sku HTTP ${response.statusCode}")
+        if (response.statusCode != 200) {
+            println("$label business price comparison $sku: ${classify(response.statusCode)}")
+            return
+        }
+        val product = parseObject(response.body, "$label business product $sku") ?: return
+        if (primitive(product, "id") != item.id) {
+            println("$label business price comparison $sku: UNKNOWN (product ID mismatch)")
+            return
+        }
+        val variant = (product["variants"] as? JsonArray)?.mapNotNull { it as? JsonObject }
+            ?.singleOrNull { primitive(it, "id") == item.variantId }
+        val businessPrice = priceAmount(variant?.get("price") ?: product["price"])
+        val catalogPrice = item.priceMinor
+        println("$label $sku external product ID: ${mask(item.id)}; variant ID: ${mask(item.variantId)}")
+        println("$label $sku catalog-entry price (raw minor units): ${catalogPrice ?: "NOT_EXPOSED"} ${safe(item.currency)}")
+        println("$label $sku business-product price (raw minor units): ${businessPrice ?: "NOT_EXPOSED"}")
+        val comparison = when {
+            catalogPrice == null || businessPrice == null -> "UNKNOWN (price missing)"
+            catalogPrice == businessPrice -> "EQUAL_RAW_AMOUNTS (authority unverified)"
+            else -> "DIFFERENT_RAW_AMOUNTS (authority unverified)"
+        }
+        println("$label $sku price comparison: $comparison")
+    }
+
+    private fun priceAmount(node: kotlinx.serialization.json.JsonElement?): Long? = when (node) {
+        is JsonPrimitive -> if (node.isString) null else node.longOrNull
+        is JsonObject -> (node["amount"] as? JsonPrimitive)?.let { if (it.isString) null else it.longOrNull }
+        else -> null
+    }
+
+    private fun primitive(objectValue: JsonObject, key: String): String? =
+        (objectValue[key] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+
+    private fun firstPrimitive(objectValue: JsonObject, vararg keys: String): String? =
+        keys.firstNotNullOfOrNull { primitive(objectValue, it) }
+
+    private fun classify(statusCode: Int): String = when (statusCode) {
+        401, 403 -> "UNAUTHORIZED"
+        404 -> "NOT_FOUND"
+        else -> "UNKNOWN"
+    }
+
+    private fun safe(value: String?): String = value
+        ?.replace(Regex("[\\r\\n\\t]"), " ")
+        ?.take(120)
+        ?: "NOT_EXPOSED"
+
+    private fun mask(value: String?): String = when {
+        value.isNullOrBlank() -> "NOT_EXPOSED"
+        value.length <= 6 -> "***"
+        else -> "${value.take(3)}…${value.takeLast(3)}"
+    }
+
+    private fun safeErrorCode(body: String): String = runCatching {
+        val error = Json.parseToJsonElement(body) as? JsonObject
+        firstPrimitive(error ?: JsonObject(emptyMap()), "code", "error")
+    }.getOrNull()?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,80}")) } ?: "NOT_EXPOSED"
+
+    private data class ProductionConfig(
+        val baseUrl: String,
+        val applicationId: String,
+        val businessId: String,
+        val storeId: String,
+        val secretReference: String,
+        val awsRegion: String,
+        val sharedSku: String?,
+    )
+
+    private data class StoreDocument(val id: String, val document: JsonObject, val statusCode: Int)
+    private data class CatalogAssignment(val catalogId: String?, val status: String)
+    private data class CatalogProduct(val id: String, val sku: String, val priceMinor: Long?, val currency: String?, val variantId: String?, val origin: String)
+    private data class CatalogProducts(val status: String, val values: List<CatalogProduct>)
+    private data class CatalogInspection(
+        val label: String,
+        val deviceId: String?,
+        val storeId: String?,
+        val catalogId: String?,
+        val catalogName: String?,
+        val status: String,
+        val productListStatus: String,
+        val products: List<CatalogProduct>,
+    )
+
+    private companion object {
+        const val API_VERSION = "1.2"
+        const val PRODUCTION_BASE_URL = "https://services.poynt.net"
+        const val MATCHA_COOKIE_SKU = "MTCH-CK"
+    }
+}

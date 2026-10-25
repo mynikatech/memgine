@@ -70,6 +70,8 @@ import com.mynikatech.memgine.component.commerce.PlatformPoyntTerminalBindingSer
 import com.mynikatech.memgine.component.commerce.PlatformPoyntTerminalBindingSql
 import com.mynikatech.memgine.component.commerce.OrganizationPoyntTerminalBindingService
 import com.mynikatech.memgine.component.commerce.OrganizationPoyntTerminalBindingSql
+import com.mynikatech.memgine.component.commerce.PoyntOperationalDiscoveryService
+import com.mynikatech.memgine.component.commerce.PoyntOperationalDiscoverySql
 import com.mynikatech.memgine.component.commerce.PoyntTerminalBindingLookup
 import com.mynikatech.memgine.component.commerce.SqlPoyntTerminalBindingResolver
 import com.mynikatech.memgine.component.commerce.platformPoyntPaymentRoutes
@@ -292,13 +294,20 @@ fun Application.configureRouting(
         poyntCredentials,
         poyntTokens,
         poyntHttpTransport,
-        config.server.environment
+        config.server.environment,
+        config.poynt.diagnosticsEnabled
     )
     val platformPoyntTerminalBindingService = PlatformPoyntTerminalBindingService(
         database.jdbi.onDemand(PlatformPoyntTerminalBindingSql::class.java)
     )
     val organizationPoyntTerminalBindingService = OrganizationPoyntTerminalBindingService(
         database.jdbi.onDemand(OrganizationPoyntTerminalBindingSql::class.java)
+    )
+    val poyntOperationalDiscoveryService = PoyntOperationalDiscoveryService(
+        database.jdbi.onDemand(PoyntOperationalDiscoverySql::class.java),
+        organizationPoyntTerminalBindingService,
+        poyntTokens,
+        poyntHttpTransport
     )
     val customerExperienceReleaseService =
     CustomerExperienceReleaseService(database.jdbi.onDemand(CustomerExperienceReleaseSql::class.java)
@@ -325,7 +334,7 @@ fun Application.configureRouting(
             organizationAccessRoutes(organizationAccessService)
             organizationMaintenanceRoutes(organizationMaintenanceService)
             platformPoyntPaymentRoutes(platformPoyntPaymentService, platformPoyntTerminalBindingService)
-            organizationPoyntPaymentSummaryRoutes(platformPoyntPaymentService, organizationPoyntTerminalBindingService)
+            organizationPoyntPaymentSummaryRoutes(platformPoyntPaymentService, organizationPoyntTerminalBindingService, poyntOperationalDiscoveryService)
 
             // Batch 2A
             storeRoutes(storeService)

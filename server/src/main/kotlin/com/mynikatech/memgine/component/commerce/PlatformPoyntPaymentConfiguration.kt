@@ -94,7 +94,8 @@ class PlatformPoyntPaymentService(
     private val credentials: PoyntCredentialResolver,
     private val tokens: PoyntTokenService,
     private val transport: PoyntHttpTransport,
-    private val environment: String
+    private val environment: String,
+    private val diagnosticsEnabled: Boolean = false
 ) {
     private val integrationPolicy = PlatformPaymentIntegrationPolicy()
 
@@ -199,8 +200,8 @@ class PlatformPoyntPaymentService(
 
     /** Temporary LOCAL/DEV operational diagnostic. It never persists or returns sensitive provider data. */
     fun storesDiagnostic(integrationId: String, actorUserId: String): List<PoyntStoreDiagnosticDto> {
-        if (environment.lowercase() !in setOf("local", "dev", "development")) {
-            throw BadRequestException("Poynt stores diagnostic is unavailable in this environment")
+        if (!diagnosticsEnabled) {
+            throw BadRequestException("Poynt stores diagnostic is disabled")
         }
         val row = sql.get(integrationId, actorUserId)
             ?: throw BadRequestException("Poynt payment configuration not found")
@@ -234,8 +235,8 @@ class PlatformPoyntPaymentService(
         integrationId: String,
         actorUserId: String
     ): PoyntApplePayRegistrationDiagnosticDto {
-        if (environment.lowercase() !in setOf("local", "dev", "development")) {
-            throw BadRequestException("Poynt Apple Pay registration diagnostic is unavailable in this environment")
+        if (!diagnosticsEnabled) {
+            throw BadRequestException("Poynt Apple Pay registration diagnostic is disabled")
         }
         val row = sql.get(integrationId, actorUserId)
             ?: throw BadRequestException("Poynt payment configuration not found")
@@ -274,9 +275,9 @@ class PlatformPoyntPaymentService(
             storeId: String,
             actorUserId: String
         ): List<PoyntDeviceDiagnosticDto> {
-            if (environment.lowercase() !in setOf("local", "dev", "development")) {
+            if (!diagnosticsEnabled) {
                 throw BadRequestException(
-                    "Poynt devices diagnostic is unavailable in this environment"
+                    "Poynt devices diagnostic is disabled"
                 )
             }
 

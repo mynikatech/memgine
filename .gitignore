@@ -295,4 +295,7 @@ frontend/dist-web/_expo/static/js/web/entry-ec979ef975f4de863d896d4fd871f98c.js
 frontend/dist-web/_expo/static/js/web/*.js
 frontend/eas-android-inspect-v2
 frontend/eas-android-inspect-v2
-frontend/eas-android-inspect
+frontend/eas-android-
+**/build/
+*.jar
+~WRL3643.tmp

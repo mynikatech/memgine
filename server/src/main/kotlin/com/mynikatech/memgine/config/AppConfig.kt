@@ -336,7 +336,13 @@ data class AppConfig(
                         "memgine.poynt.refundDispatchEnabled",
                         "MEMGINE_POYNT_REFUND_DISPATCH_ENABLED",
                         "false"
-                    ).toBooleanStrictOrNull() ?: false
+                    ).toBooleanStrictOrNull() ?: false,
+
+                    diagnosticsEnabled = booleanValue(
+                        "memgine.poynt.diagnosticsEnabled",
+                        "POYNT_DIAGNOSTICS_ENABLED",
+                        false
+                    )
                 ),
 
                 assets = AssetStorageConfig(
@@ -413,7 +419,8 @@ data class PoyntCommerceConfig(
     val paymentBridgeCallbackHeaderName: String,
     val paymentBridgeCallbackHeaderValue: String,
     val paymentBridgeTtlSeconds: Long,
-    val refundDispatchEnabled: Boolean
+    val refundDispatchEnabled: Boolean,
+    val diagnosticsEnabled: Boolean
 )
 
 data class PaymentConfig(

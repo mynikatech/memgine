@@ -6,6 +6,7 @@ import com.mynikatech.memgine.net.dto.IntegrationConfigurationWriteDto
 import com.mynikatech.memgine.net.dto.PlatformPoyntPaymentWriteDto
 import com.mynikatech.memgine.net.dto.PlatformPoyntTerminalBindingWriteDto
 import com.mynikatech.memgine.net.dto.OrganizationPoyntTerminalBindingWriteDto
+import com.mynikatech.memgine.net.dto.PoyntStoreTerminalAssignmentWriteDto
 import com.mynikatech.memgine.security.authenticatedPrincipal
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.plugins.callid.callId
@@ -146,7 +147,8 @@ fun Route.platformPoyntPaymentRoutes(
 
 fun Route.organizationPoyntPaymentSummaryRoutes(
     service: PlatformPoyntPaymentService,
-    terminalBindings: OrganizationPoyntTerminalBindingService
+    terminalBindings: OrganizationPoyntTerminalBindingService,
+    operationalDiscovery: PoyntOperationalDiscoveryService
 ) {
     route("/organizations/{organizationId}/commerce/poynt-payment-summaries") {
         get {
@@ -193,6 +195,33 @@ fun Route.organizationPoyntPaymentSummaryRoutes(
                     ), call.callId
                 ))
             }
+        }
+    }
+
+    route("/organizations/{organizationId}/integrations/{integrationId}/poynt") {
+        get("/stores") {
+            call.respond(ApiResponse.success(
+                operationalDiscovery.stores(requiredPoyntId(call.parameters["organizationId"]), requiredPoyntId(call.parameters["integrationId"]), call.authenticatedPrincipal().userId),
+                call.callId
+            ))
+        }
+        get("/stores/{poyntStoreId}/terminals") {
+            call.respond(ApiResponse.success(
+                operationalDiscovery.terminals(requiredPoyntId(call.parameters["organizationId"]), requiredPoyntId(call.parameters["integrationId"]), requiredPoyntId(call.parameters["poyntStoreId"]), call.authenticatedPrincipal().userId),
+                call.callId
+            ))
+        }
+        get("/store-configurations") {
+            call.respond(ApiResponse.success(
+                operationalDiscovery.configurations(requiredPoyntId(call.parameters["organizationId"]), requiredPoyntId(call.parameters["integrationId"]), call.authenticatedPrincipal().userId),
+                call.callId
+            ))
+        }
+        post("/store-configurations") {
+            call.respond(HttpStatusCode.Created, ApiResponse.success(
+                operationalDiscovery.save(requiredPoyntId(call.parameters["organizationId"]), requiredPoyntId(call.parameters["integrationId"]), call.receive<PoyntStoreTerminalAssignmentWriteDto>(), call.authenticatedPrincipal().userId),
+                call.callId
+            ))
         }
     }
 }
