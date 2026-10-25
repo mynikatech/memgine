@@ -307,6 +307,37 @@ export type CommercePaymentProviderRouteWrite = Pick<
   | "versionNo"
 >;
 
+export interface CommerceStoreCatalogSource {
+  organizationId: ID;
+  storeId: ID;
+  integrationConfigurationId: ID;
+  integrationName: string;
+  providerCode: string;
+  catalogId?: string | null;
+  catalogName?: string | null;
+  versionNo: number;
+}
+
+export interface CommerceStoreCatalogSourceCandidate {
+  integrationConfigurationId: ID;
+  integrationName: string;
+  providerCode: string;
+  catalogId?: string | null;
+  catalogName?: string | null;
+  eligible: boolean;
+  ineligibilityReason?: string | null;
+}
+
+export interface CommerceStoreCatalogSourceConfiguration {
+  source?: CommerceStoreCatalogSource | null;
+  candidates: CommerceStoreCatalogSourceCandidate[];
+}
+
+export type CommerceStoreCatalogSourceWrite = Pick<
+  CommerceStoreCatalogSource,
+  "integrationConfigurationId" | "versionNo"
+>;
+
 /** The business integration configuration type. */
 export interface IntegrationType {
   id: string;

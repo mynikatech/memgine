@@ -27,6 +27,27 @@ data class CommercePaymentProviderRouteRow(
     var versionNo: Int = 1
 )
 
+data class CommerceStoreCatalogSourceRow(
+    var organizationId: String = "",
+    var storeId: String = "",
+    var integrationConfigurationId: String = "",
+    var integrationName: String = "",
+    var providerCode: String = "",
+    var catalogId: String? = null,
+    var catalogName: String? = null,
+    var versionNo: Int = 0
+)
+
+data class CommerceStoreCatalogSourceCandidateRow(
+    var integrationConfigurationId: String = "",
+    var integrationName: String = "",
+    var providerCode: String = "",
+    var catalogId: String? = null,
+    var catalogName: String? = null,
+    var eligible: Boolean = false,
+    var ineligibilityReason: String? = null
+)
+
 data class CommerceProductSnapshotRow(
     var snapshotId: String = "",
     var organizationId: String = "",
@@ -158,6 +179,31 @@ interface CommerceSql {
         @Bind("versionNo") versionNo: Int,
         @Bind("actorUserId") actorUserId: String
     ): Boolean
+
+    @SqlQuery("SELECT * FROM commerce_get_store_catalog_source(:organizationId, :storeId, :actorUserId)")
+    @RegisterBeanMapper(CommerceStoreCatalogSourceRow::class)
+    fun storeCatalogSource(
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): CommerceStoreCatalogSourceRow?
+
+    @SqlQuery("SELECT * FROM commerce_list_store_catalog_source_candidates(:organizationId, :storeId, :actorUserId)")
+    @RegisterBeanMapper(CommerceStoreCatalogSourceCandidateRow::class)
+    fun storeCatalogSourceCandidates(
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): List<CommerceStoreCatalogSourceCandidateRow>
+
+    @SqlQuery("SELECT commerce_save_store_catalog_source(:organizationId, :storeId, :integrationConfigurationId, :versionNo, :actorUserId)")
+    fun saveStoreCatalogSource(
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String,
+        @Bind("integrationConfigurationId") integrationConfigurationId: String,
+        @Bind("versionNo") versionNo: Int,
+        @Bind("actorUserId") actorUserId: String
+    ): String
 
     @SqlQuery("SELECT * FROM get_commerce_product_snapshots(:organizationId, :actorUserId)")
     @RegisterBeanMapper(CommerceProductSnapshotRow::class)

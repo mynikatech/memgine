@@ -52,6 +52,41 @@ data class CommercePaymentProviderRouteWriteDto(
 )
 
 @Serializable
+data class CommerceStoreCatalogSourceDto(
+    val organizationId: String,
+    val storeId: String,
+    val integrationConfigurationId: String,
+    val integrationName: String,
+    val providerCode: String,
+    val catalogId: String? = null,
+    val catalogName: String? = null,
+    val versionNo: Int
+)
+
+@Serializable
+data class CommerceStoreCatalogSourceCandidateDto(
+    val integrationConfigurationId: String,
+    val integrationName: String,
+    val providerCode: String,
+    val catalogId: String? = null,
+    val catalogName: String? = null,
+    val eligible: Boolean,
+    val ineligibilityReason: String? = null
+)
+
+@Serializable
+data class CommerceStoreCatalogSourceConfigurationDto(
+    val source: CommerceStoreCatalogSourceDto? = null,
+    val candidates: List<CommerceStoreCatalogSourceCandidateDto> = emptyList()
+)
+
+@Serializable
+data class CommerceStoreCatalogSourceWriteDto(
+    val integrationConfigurationId: String,
+    val versionNo: Int = 0
+)
+
+@Serializable
 data class CommerceProductSnapshotDto(
     val snapshotId: String,
     val organizationId: String,

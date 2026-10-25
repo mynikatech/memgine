@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Alert,
@@ -12,6 +12,8 @@ import {
 import type {
   CommercePaymentProviderRoute,
   CommercePaymentProviderRouteWrite,
+  CommerceStoreCatalogSource,
+  CommerceStoreCatalogSourceConfiguration,
   IntegrationConfiguration,
   ReferenceDataItem,
   Status,
@@ -20,23 +22,20 @@ import type {
 
 import { createEmptyIntegrationConfiguration, services } from "@/src/core";
 import { CommercePaymentProviderRouteApi } from "@/src/data/api/commerce-payment-provider-route-api";
+import { CommerceStoreCatalogSourceApi } from "@/src/data/api/commerce-store-catalog-source-api";
 import {
   organizationPoyntPaymentApi,
   type OrganizationPoyntPaymentSummary,
 } from "@/src/data/api/platform-poynt-payment-api";
 import { useBusiness } from "@/src/providers";
-import {
-  DataTable,
-  DataTableColumn,
-  Modal,
-  Text,
-} from "@/src/ui";
+import { Modal, ReferenceSelect, Text } from "@/src/ui";
 import { CommercePaymentProviderRouteForm } from "@/src/ui/admin/CommercePaymentProviderRouteForm";
 import { IntegrationConfigurationForm } from "@/src/ui/admin/IntegrationConfigurationForm";
 import { PoyntStoreTerminalManager } from "@/src/ui/admin/PoyntStoreTerminalManager";
 
 const poyntCapabilities =
   "Product Catalog · Counter Payment · Customer Payment";
+const ROUTE_FORM_MODAL_TRANSITION_MS = 250;
 
 export default function Integrations() {
   const { organization } = useBusiness();
@@ -72,6 +71,27 @@ export default function Integrations() {
     useState<CommercePaymentProviderRoute | null>(null);
   const [viewingPaymentRoute, setViewingPaymentRoute] = useState(false);
   const [savingPaymentRoute, setSavingPaymentRoute] = useState(false);
+  const [paymentRouteScope, setPaymentRouteScope] = useState<{
+    storeId: string | null;
+    sourceChannel?: "COUNTER" | "CUSTOMER";
+  } | null>(null);
+  const [organizationDefaultsVisible, setOrganizationDefaultsVisible] =
+    useState(false);
+  const [paymentRouteFormOrigin, setPaymentRouteFormOrigin] = useState<
+    "ORGANIZATION_DEFAULTS" | null
+  >(null);
+  const [selectedCapabilityStoreId, setSelectedCapabilityStoreId] =
+    useState("");
+  const [catalogSource, setCatalogSource] =
+    useState<CommerceStoreCatalogSourceConfiguration | null>(null);
+  const [catalogSourceLoading, setCatalogSourceLoading] = useState(false);
+  const [catalogSourceError, setCatalogSourceError] = useState<string | null>(
+    null,
+  );
+  const [catalogSourceVisible, setCatalogSourceVisible] = useState(false);
+  const [selectedCatalogIntegrationId, setSelectedCatalogIntegrationId] =
+    useState("");
+  const [savingCatalogSource, setSavingCatalogSource] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +115,11 @@ export default function Integrations() {
     () => new CommercePaymentProviderRouteApi(),
     [],
   );
+  const catalogSourceApi = useMemo(() => new CommerceStoreCatalogSourceApi(), []);
+  const catalogSourceRequestVersion = useRef(0);
+  const paymentRouteModalTransitionTimer = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const allowTestPaymentProvider = process.env.EXPO_PUBLIC_APP_ENV !== "prod";
   const poyntSummaryByIntegrationId = useMemo(
     () =>
@@ -155,7 +180,11 @@ export default function Integrations() {
         setIntegrationTypes(typeList);
         setStatuses(statusList);
         setPaymentRoutes(routeResult.data.filter((route) => !route.isDeleted));
-        setStores(storeList.filter((store) => !store.isDeleted));
+        const activeStores = storeList.filter((store) => !store.isDeleted);
+        setStores(activeStores);
+        setSelectedCapabilityStoreId((current) =>
+          current || activeStores[0]?.id || "",
+        );
         setPoyntSummaries(poyntResult.data);
       } catch (loadError) {
         if (!mounted) {
@@ -181,47 +210,57 @@ export default function Integrations() {
     };
   }, [organization.id, paymentRouteApi]);
 
+  useEffect(
+    () => () => {
+      if (paymentRouteModalTransitionTimer.current) {
+        clearTimeout(paymentRouteModalTransitionTimer.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!selectedCapabilityStoreId) {
+      setCatalogSource(null);
+      setCatalogSourceError(null);
+      return;
+    }
+    const version = ++catalogSourceRequestVersion.current;
+    setCatalogSourceLoading(true);
+    setCatalogSourceError(null);
+    void catalogSourceApi
+      .get(organization.id, selectedCapabilityStoreId)
+      .then((result) => {
+        if (version !== catalogSourceRequestVersion.current) return;
+        if (!result.success) throw new Error(result.error.message);
+        setCatalogSource(result.data);
+      })
+      .catch((loadError: unknown) => {
+        if (version !== catalogSourceRequestVersion.current) return;
+        setCatalogSource(null);
+        setCatalogSourceError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Unable to load Store catalog configuration.",
+        );
+      })
+      .finally(() => {
+        if (version === catalogSourceRequestVersion.current) {
+          setCatalogSourceLoading(false);
+        }
+      });
+  }, [catalogSourceApi, organization.id, selectedCapabilityStoreId]);
+
+  useEffect(() => {
+    setCatalogSourceVisible(false);
+    setSelectedCatalogIntegrationId("");
+  }, [selectedCapabilityStoreId]);
+
   const getTypeName = (id: string) =>
     integrationTypes.find((item) => item.id === id)?.name ?? "Unknown";
 
   const getStatusName = (id: string) =>
     statuses.find((item) => item.id === id)?.statusName ?? "Unknown";
-
-  const columns = useMemo<DataTableColumn<IntegrationConfiguration>[]>(
-    () => [
-      {
-        key: "integrationName",
-        title: "Name",
-        width: 220,
-      },
-      {
-        key: "integrationTypeId",
-        title: "Type",
-        width: 200,
-        render: (item) => (
-          <Text variant="body" color="text">
-            {getTypeName(item.integrationTypeId)}
-          </Text>
-        ),
-      },
-      {
-        key: "provider",
-        title: "Provider",
-        width: 180,
-      },
-      {
-        key: "integrationStatusId",
-        title: "Status",
-        width: 140,
-        render: (item) => (
-          <Text variant="body" color="text">
-            {getStatusName(item.integrationStatusId)}
-          </Text>
-        ),
-      },
-    ],
-    [integrationTypes, statuses],
-  );
 
   const routeIntegrations = useMemo(
     () =>
@@ -232,63 +271,6 @@ export default function Integrations() {
             "VERIFIED",
       ),
     [integrations, poyntSummaryByIntegrationId],
-  );
-
-  const paymentRouteColumns = useMemo<
-    DataTableColumn<CommercePaymentProviderRoute>[]
-  >(
-    () => [
-      {
-        key: "sourceChannel",
-        title: "Channel",
-        width: 130,
-        render: (item) => (
-          <Text variant="body" color="text">
-            {item.sourceChannel === "COUNTER" ? "Counter" : "Customer"}
-          </Text>
-        ),
-      },
-      {
-        key: "storeId",
-        title: "Scope",
-        width: 200,
-        render: (item) => (
-          <Text variant="body" color="text">
-            {item.storeId
-              ? (stores.find((store) => store.id === item.storeId)?.name ??
-                "Store")
-              : "Organization default"}
-          </Text>
-        ),
-      },
-      { key: "providerCode", title: "Provider", width: 150 },
-      {
-        key: "integrationConfigurationId",
-        title: "Integration",
-        width: 220,
-        render: (item) => (
-          <Text variant="body" color="text">
-            {item.integrationConfigurationId
-              ? (integrations.find(
-                  (integration) =>
-                    integration.id === item.integrationConfigurationId,
-                )?.integrationName ?? "Unavailable")
-              : "—"}
-          </Text>
-        ),
-      },
-      {
-        key: "enabled",
-        title: "Status",
-        width: 120,
-        render: (item) => (
-          <Text variant="body" color="text">
-            {item.enabled ? "Enabled" : "Disabled"}
-          </Text>
-        ),
-      },
-    ],
-    [integrations, stores],
   );
 
   const handleStartEditing = () => {
@@ -413,6 +395,162 @@ export default function Integrations() {
     setPaymentRoutes(result.data.filter((route) => !route.isDeleted));
   };
 
+  const reloadCatalogSource = async () => {
+    if (!selectedCapabilityStoreId) return;
+    const version = ++catalogSourceRequestVersion.current;
+    setCatalogSourceLoading(true);
+    setCatalogSourceError(null);
+    try {
+      const result = await catalogSourceApi.get(
+        organization.id,
+        selectedCapabilityStoreId,
+      );
+      if (version !== catalogSourceRequestVersion.current) return;
+      if (!result.success) throw new Error(result.error.message);
+      setCatalogSource(result.data);
+    } catch (loadError) {
+      if (version !== catalogSourceRequestVersion.current) return;
+      setCatalogSourceError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load Store catalog configuration.",
+      );
+    } finally {
+      if (version === catalogSourceRequestVersion.current) {
+        setCatalogSourceLoading(false);
+      }
+    }
+  };
+
+  const routeResolution = (sourceChannel: "COUNTER" | "CUSTOMER") => {
+    const storeRoute = paymentRoutes.find(
+      (route) =>
+        route.storeId === selectedCapabilityStoreId &&
+        route.sourceChannel === sourceChannel,
+    );
+    const organizationDefault = paymentRoutes.find(
+      (route) => !route.storeId && route.sourceChannel === sourceChannel,
+    );
+    const effectiveRoute = storeRoute?.enabled
+      ? storeRoute
+      : organizationDefault?.enabled
+        ? organizationDefault
+        : null;
+    const configuration = storeRoute
+      ? storeRoute.enabled
+        ? "Store override"
+        : organizationDefault?.enabled
+          ? "Store override disabled; organization default"
+          : "Store override disabled"
+      : organizationDefault?.enabled
+        ? "Organization default"
+        : "Not configured";
+
+    return { storeRoute, organizationDefault, effectiveRoute, configuration };
+  };
+
+  const openStoreRoute = (sourceChannel: "COUNTER" | "CUSTOMER") => {
+    if (!selectedCapabilityStoreId) return;
+    setPaymentRouteFormOrigin(null);
+    setPaymentRouteScope({
+      storeId: selectedCapabilityStoreId,
+      sourceChannel,
+    });
+    setEditingPaymentRoute(routeResolution(sourceChannel).storeRoute ?? null);
+    setViewingPaymentRoute(false);
+    setPaymentRouteVisible(true);
+  };
+
+  const schedulePaymentRouteModalTransition = (callback: () => void) => {
+    if (paymentRouteModalTransitionTimer.current) {
+      clearTimeout(paymentRouteModalTransitionTimer.current);
+    }
+    paymentRouteModalTransitionTimer.current = setTimeout(() => {
+      paymentRouteModalTransitionTimer.current = null;
+      callback();
+    }, ROUTE_FORM_MODAL_TRANSITION_MS);
+  };
+
+  const openOrganizationDefaultRouteForm = (
+    sourceChannel: "COUNTER" | "CUSTOMER",
+    route: CommercePaymentProviderRoute | null,
+    viewing: boolean,
+  ) => {
+    // Let the defaults modal finish dismissing before mounting the route form.
+    setOrganizationDefaultsVisible(false);
+    setPaymentRouteFormOrigin("ORGANIZATION_DEFAULTS");
+    setPaymentRouteScope({ storeId: null, sourceChannel });
+    setEditingPaymentRoute(route);
+    setViewingPaymentRoute(viewing);
+    schedulePaymentRouteModalTransition(() => setPaymentRouteVisible(true));
+  };
+
+  const dismissPaymentRouteForm = () => {
+    const returnToOrganizationDefaults =
+      paymentRouteFormOrigin === "ORGANIZATION_DEFAULTS";
+
+    setPaymentRouteVisible(false);
+    schedulePaymentRouteModalTransition(() => {
+      setEditingPaymentRoute(null);
+      setViewingPaymentRoute(false);
+      setPaymentRouteScope(null);
+      setPaymentRouteFormOrigin(null);
+      if (returnToOrganizationDefaults) {
+        setOrganizationDefaultsVisible(true);
+      }
+    });
+  };
+
+  const openCatalogSource = () => {
+    setSelectedCatalogIntegrationId(
+      catalogSource?.source?.integrationConfigurationId ?? "",
+    );
+    setCatalogSourceVisible(true);
+  };
+
+  const handleCapabilityStoreChange = (storeId: string) => {
+    // Clear the prior Store's configuration before the next request starts so
+    // its catalog selection is never shown for the newly selected Store.
+    catalogSourceRequestVersion.current += 1;
+    setCatalogSource(null);
+    setCatalogSourceError(null);
+    setCatalogSourceLoading(Boolean(storeId));
+    setSelectedCapabilityStoreId(storeId);
+  };
+
+  const saveCatalogSource = async () => {
+    if (!selectedCapabilityStoreId || !catalogSource) return;
+    const selected = catalogSource.candidates.find(
+      (candidate) =>
+        candidate.integrationConfigurationId === selectedCatalogIntegrationId,
+    );
+    if (!selected?.eligible) return;
+    setSavingCatalogSource(true);
+    try {
+      const result = await catalogSourceApi.save(
+        organization.id,
+        selectedCapabilityStoreId,
+        {
+          integrationConfigurationId: selected.integrationConfigurationId,
+          versionNo: catalogSource.source?.versionNo ?? 0,
+        },
+      );
+      if (!result.success) throw new Error(result.error.message);
+      setCatalogSource(result.data);
+      setCatalogSourceVisible(false);
+    } catch (saveError) {
+      Alert.alert(
+        "Unable to save Product Catalog integration",
+        saveError instanceof Error
+          ? saveError.message
+          : "Unable to save the Store catalog source.",
+      );
+      await reloadCatalogSource();
+    } finally {
+      setSavingCatalogSource(false);
+    }
+  };
+
   const savePaymentRoute = async (route: CommercePaymentProviderRouteWrite) => {
     setSavingPaymentRoute(true);
     try {
@@ -425,9 +563,7 @@ export default function Integrations() {
         : await paymentRouteApi.create(organization.id, route);
       if (!result.success) throw new Error(result.error.message);
       await reloadPaymentRoutes();
-      setPaymentRouteVisible(false);
-      setEditingPaymentRoute(null);
-      setViewingPaymentRoute(false);
+      dismissPaymentRouteForm();
     } catch (saveError) {
       Alert.alert(
         "Unable to save payment route",
@@ -458,6 +594,7 @@ export default function Integrations() {
               );
               if (!result.success) throw new Error(result.error.message);
               await reloadPaymentRoutes();
+              setOrganizationDefaultsVisible(true);
             })().catch((error: unknown) =>
               Alert.alert(
                 "Unable to delete payment route",
@@ -771,52 +908,74 @@ export default function Integrations() {
       <View style={styles.routeHeader}>
         <View style={styles.headerText}>
           <Text variant="h2" color="text">
-            Payment Provider Routes
+            Store Capability Configuration
           </Text>
           <Text variant="bodySmall" color="textMuted">
-            Configure the provider used for Counter and Customer Commerce
-            orders.
+            Choose which configured integration each Memgine Store uses.
           </Text>
         </View>
         <Pressable
           onPress={() => {
+            setPaymentRouteScope({ storeId: null });
             setEditingPaymentRoute(null);
             setViewingPaymentRoute(false);
-            setPaymentRouteVisible(true);
+            setOrganizationDefaultsVisible(true);
           }}
-          style={styles.addButton}
+          style={styles.secondaryButton}
         >
-          <Text variant="body" color="background">
-            + Add Payment Route
+          <Text variant="body" color="text">
+            Manage organization defaults
           </Text>
         </Pressable>
       </View>
 
-      <DataTable
-        columns={paymentRouteColumns}
-        data={paymentRoutes}
-        keyExtractor={(item) => item.routeId}
-        emptyMessage="No payment provider routes configured."
-        actions={[
-          {
-            label: "View",
-            onPress: (route) => {
-              setEditingPaymentRoute(route);
-              setViewingPaymentRoute(true);
-              setPaymentRouteVisible(true);
-            },
-          },
-          {
-            label: "Edit",
-            onPress: (route) => {
-              setEditingPaymentRoute(route);
-              setViewingPaymentRoute(false);
-              setPaymentRouteVisible(true);
-            },
-          },
-          { label: "Delete", onPress: deletePaymentRoute },
-        ]}
-      />
+      <View style={styles.capabilityPanel}>
+        <ReferenceSelect
+          label="Memgine Store"
+          value={selectedCapabilityStoreId}
+          items={stores}
+          getItemId={(store) => store.id}
+          renderItemLabel={(store) => `${store.name} (${store.storeCode})`}
+          onChange={handleCapabilityStoreChange}
+          placeholder="Select a Memgine Store"
+        />
+
+        {selectedCapabilityStoreId ? (
+          <View style={styles.capabilityTable}>
+            <CapabilityHeader isMobile={isMobile} />
+            <CatalogCapabilityRow
+              source={catalogSource?.source ?? null}
+              loading={catalogSourceLoading}
+              error={catalogSourceError}
+              isMobile={isMobile}
+              onChange={openCatalogSource}
+            />
+            <PaymentCapabilityRow
+              capability="Counter Payment"
+              resolution={routeResolution("COUNTER")}
+              integrations={integrations}
+              isMobile={isMobile}
+              onEdit={() => openStoreRoute("COUNTER")}
+            />
+            <PaymentCapabilityRow
+              capability="Customer Payment"
+              resolution={routeResolution("CUSTOMER")}
+              integrations={integrations}
+              isMobile={isMobile}
+              onEdit={() => openStoreRoute("CUSTOMER")}
+            />
+          </View>
+        ) : (
+          <Text variant="bodySmall" color="textMuted">
+            Select a Memgine Store to view its capability configuration.
+          </Text>
+        )}
+        <Text variant="bodySmall" color="textMuted">
+          The active Product Catalog selection is recorded for Store administration.
+          Existing synchronized products are unchanged until Store-scoped catalog
+          synchronization is introduced.
+        </Text>
+      </View>
 
       <Modal
         visible={formVisible}
@@ -858,9 +1017,7 @@ export default function Integrations() {
         visible={paymentRouteVisible}
         onClose={() => {
           if (!savingPaymentRoute) {
-            setPaymentRouteVisible(false);
-            setEditingPaymentRoute(null);
-            setViewingPaymentRoute(false);
+            dismissPaymentRouteForm();
           }
         }}
         title={
@@ -880,13 +1037,171 @@ export default function Integrations() {
             viewingPaymentRoute ? "view" : editingPaymentRoute ? "edit" : "add"
           }
           allowTest={allowTestPaymentProvider}
+          scope={paymentRouteScope ?? undefined}
           onSave={(route) => void savePaymentRoute(route)}
           onCancel={() => {
-            setPaymentRouteVisible(false);
-            setEditingPaymentRoute(null);
-            setViewingPaymentRoute(false);
+            dismissPaymentRouteForm();
           }}
         />
+      </Modal>
+
+      <Modal
+        visible={catalogSourceVisible}
+        onClose={() => {
+          if (!savingCatalogSource) setCatalogSourceVisible(false);
+        }}
+        title="Change Product Catalog Integration"
+        scrollable
+      >
+        <View style={styles.catalogSourceModal}>
+          <Text variant="bodySmall" color="textMuted">
+            Select a verified configured integration for this Store. This does
+            not change existing synchronized products or terminal assignments.
+          </Text>
+          <ReferenceSelect
+            label="Configured integration"
+            required
+            value={selectedCatalogIntegrationId}
+            items={catalogSource?.candidates ?? []}
+            getItemId={(candidate) => candidate.integrationConfigurationId}
+            renderItemLabel={(candidate) =>
+              `${candidate.integrationName} — ${candidate.providerCode} — ${candidate.catalogName || candidate.catalogId || "Catalog unavailable"}`
+            }
+            isItemDisabled={(candidate) => !candidate.eligible}
+            renderItemDisabledReason={(candidate) =>
+              candidate.ineligibilityReason ?? undefined
+            }
+            onChange={setSelectedCatalogIntegrationId}
+            placeholder="Select an integration"
+          />
+          <View style={styles.modalActions}>
+            <Pressable
+              onPress={() => setCatalogSourceVisible(false)}
+              style={styles.secondaryButton}
+            >
+              <Text variant="body" color="text">Cancel</Text>
+            </Pressable>
+            <Pressable
+              disabled={
+                savingCatalogSource ||
+                !catalogSource?.candidates.some(
+                  (candidate) =>
+                    candidate.integrationConfigurationId ===
+                      selectedCatalogIntegrationId && candidate.eligible,
+                )
+              }
+              onPress={() => void saveCatalogSource()}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                savingCatalogSource && styles.buttonDisabled,
+                { opacity: pressed ? 0.8 : 1 },
+              ]}
+            >
+              <Text variant="body" color="background">
+                {savingCatalogSource ? "Saving…" : "Save selection"}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={organizationDefaultsVisible}
+        onClose={() => setOrganizationDefaultsVisible(false)}
+        title="Organization Default Payment Routes"
+        scrollable
+        maxWidth={900}
+      >
+        <View style={styles.catalogSourceModal}>
+          <Text variant="bodySmall" color="textMuted">
+            These routes apply when a Store has no enabled override for the
+            matching payment channel.
+          </Text>
+          <View style={styles.organizationDefaultsList}>
+            {(["COUNTER", "CUSTOMER"] as const).map((sourceChannel) => {
+              const route = paymentRoutes.find(
+                (item) =>
+                  !item.storeId && item.sourceChannel === sourceChannel,
+              );
+              const label =
+                sourceChannel === "COUNTER"
+                  ? "Counter"
+                  : "Customer";
+              const integration = route?.integrationConfigurationId
+                ? integrations.find(
+                    (item) =>
+                      item.id === route.integrationConfigurationId,
+                  )
+                : null;
+
+              return (
+                <View key={sourceChannel} style={styles.organizationDefaultCard}>
+                  <View style={styles.organizationDefaultSummary}>
+                    <Text variant="body" color="text">
+                      {label} default
+                    </Text>
+                    <Text variant="bodySmall" color="textMuted">
+                      {route
+                        ? `${route.enabled ? "Enabled" : "Disabled"} · ${route.providerCode}${integration ? ` · ${integration.integrationName}` : ""}`
+                        : "Not configured"}
+                    </Text>
+                  </View>
+                  <View style={styles.organizationDefaultActions}>
+                    {route ? (
+                      <>
+                        <Pressable
+                          onPress={() => {
+                            openOrganizationDefaultRouteForm(
+                              sourceChannel,
+                              route,
+                              true,
+                            );
+                          }}
+                          style={styles.secondaryButton}
+                        >
+                          <Text variant="bodySmall" color="text">View</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => {
+                            openOrganizationDefaultRouteForm(
+                              sourceChannel,
+                              route,
+                              false,
+                            );
+                          }}
+                          style={styles.secondaryButton}
+                        >
+                          <Text variant="bodySmall" color="text">Edit</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => deletePaymentRoute(route)}
+                          style={styles.secondaryButton}
+                        >
+                          <Text variant="bodySmall" color="text">Delete</Text>
+                        </Pressable>
+                      </>
+                    ) : (
+                      <Pressable
+                        onPress={() => {
+                          openOrganizationDefaultRouteForm(
+                            sourceChannel,
+                            null,
+                            false,
+                          );
+                        }}
+                        style={styles.addButton}
+                      >
+                        <Text variant="bodySmall" color="background">
+                          Add {label} default
+                        </Text>
+                      </Pressable>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </View>
       </Modal>
 
       <Modal
@@ -939,6 +1254,115 @@ function DetailField({ label, value }: { label: string; value: string }) {
       <Text variant="body" color="text" style={styles.detailValue}>
         {value}
       </Text>
+    </View>
+  );
+}
+
+type PaymentRouteResolution = {
+  storeRoute?: CommercePaymentProviderRoute;
+  organizationDefault?: CommercePaymentProviderRoute;
+  effectiveRoute?: CommercePaymentProviderRoute | null;
+  configuration: string;
+};
+
+function CapabilityHeader({ isMobile }: { isMobile: boolean }) {
+  if (isMobile) return null;
+  return (
+    <View style={[styles.capabilityRow, styles.capabilityHeaderRow]}>
+      {[
+        "Capability",
+        "Provider",
+        "Integration",
+        "Configuration",
+        "Status",
+        "Actions",
+      ].map((label) => (
+        <Text key={label} variant="bodySmall" color="textMuted" style={styles.capabilityCell}>
+          {label}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
+function CatalogCapabilityRow({
+  source,
+  loading,
+  error,
+  isMobile,
+  onChange,
+}: {
+  source: CommerceStoreCatalogSource | null;
+  loading: boolean;
+  error: string | null;
+  isMobile: boolean;
+  onChange: () => void;
+}) {
+  const fields = [
+    ["Capability", "Product Catalog"],
+    ["Provider", source?.providerCode ?? "—"],
+    ["Integration", source?.integrationName ?? "Not selected"],
+    ["Configuration", source?.catalogName || source?.catalogId || "Not selected"],
+    ["Status", loading ? "Loading" : error ? "Unavailable" : source ? "Configured" : "Not configured"],
+  ];
+  return (
+    <View style={[styles.capabilityRow, isMobile && styles.capabilityRowMobile]}>
+      {fields.map(([label, value]) => (
+        <View key={label} style={styles.capabilityCell}>
+          {isMobile ? <Text variant="caption" color="textMuted">{label}</Text> : null}
+          <Text variant="body" color={label === "Status" && error ? "danger" : "text"}>{value}</Text>
+        </View>
+      ))}
+      <View style={styles.capabilityCell}>
+        {isMobile ? <Text variant="caption" color="textMuted">Actions</Text> : null}
+        <Pressable onPress={onChange} style={styles.secondaryButton}>
+          <Text variant="bodySmall" color="text">Change Integration</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function PaymentCapabilityRow({
+  capability,
+  resolution,
+  integrations,
+  isMobile,
+  onEdit,
+}: {
+  capability: string;
+  resolution: PaymentRouteResolution;
+  integrations: IntegrationConfiguration[];
+  isMobile: boolean;
+  onEdit: () => void;
+}) {
+  const route = resolution.effectiveRoute;
+  const integration = route?.integrationConfigurationId
+    ? integrations.find((item) => item.id === route.integrationConfigurationId)
+    : null;
+  const fields = [
+    ["Capability", capability],
+    ["Provider", route?.providerCode ?? "Not configured"],
+    ["Integration", integration?.integrationName ?? (route?.providerCode === "TEST" ? "Not required" : "—")],
+    ["Configuration", resolution.configuration],
+    ["Status", route?.enabled ? "Enabled" : "Not configured"],
+  ];
+  return (
+    <View style={[styles.capabilityRow, isMobile && styles.capabilityRowMobile]}>
+      {fields.map(([label, value]) => (
+        <View key={label} style={styles.capabilityCell}>
+          {isMobile ? <Text variant="caption" color="textMuted">{label}</Text> : null}
+          <Text variant="body" color="text">{value}</Text>
+        </View>
+      ))}
+      <View style={styles.capabilityCell}>
+        {isMobile ? <Text variant="caption" color="textMuted">Actions</Text> : null}
+        <Pressable onPress={onEdit} style={styles.secondaryButton}>
+          <Text variant="bodySmall" color="text">
+            {resolution.storeRoute ? "Edit Route" : "Override Default"}
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -1106,6 +1530,87 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 16,
     paddingTop: 8,
+  },
+
+  capabilityPanel: {
+    gap: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    backgroundColor: "#FFFFFF",
+  },
+
+  capabilityTable: {
+    gap: 0,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+
+  capabilityRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+
+  capabilityHeaderRow: {
+    backgroundColor: "#F8FAFC",
+  },
+
+  capabilityRowMobile: {
+    flexDirection: "column",
+    gap: 10,
+  },
+
+  capabilityCell: {
+    flexBasis: 110,
+    flexGrow: 1,
+    gap: 4,
+  },
+
+  catalogSourceModal: {
+    gap: 20,
+  },
+
+  organizationDefaultsList: {
+    gap: 12,
+  },
+
+  organizationDefaultCard: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 8,
+    backgroundColor: "#FFFFFF",
+  },
+
+  organizationDefaultSummary: {
+    flexGrow: 1,
+    flexShrink: 1,
+    gap: 4,
+  },
+
+  organizationDefaultActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+
+  modalActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: 12,
   },
 
   primaryButton: {

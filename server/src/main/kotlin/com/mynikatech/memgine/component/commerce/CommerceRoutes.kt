@@ -57,6 +57,29 @@ fun Route.commerceRoutes(service: CommerceService) {
                     ), call.callId))
                 }
             }
+            route("/stores/{storeId}/catalog-source") {
+                get {
+                    call.respond(ApiResponse.success(
+                        service.storeCatalogSource(
+                            orgId(call),
+                            required(call.parameters["storeId"]),
+                            call.authenticatedPrincipal().userId
+                        ),
+                        call.callId
+                    ))
+                }
+                put {
+                    call.respond(ApiResponse.success(
+                        service.saveStoreCatalogSource(
+                            orgId(call),
+                            required(call.parameters["storeId"]),
+                            call.receive<CommerceStoreCatalogSourceWriteDto>(),
+                            call.authenticatedPrincipal().userId
+                        ),
+                        call.callId
+                    ))
+                }
+            }
             get("/integrations") {
                 call.respond(ApiResponse.success(service.integrations(orgId(call), call.authenticatedPrincipal().userId), call.callId))
             }

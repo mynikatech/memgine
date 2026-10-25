@@ -77,6 +77,47 @@ class CommerceService(
         )
     }
 
+    fun storeCatalogSource(
+        organizationId: String,
+        storeId: String,
+        actorUserId: String
+    ): CommerceStoreCatalogSourceConfigurationDto = translate {
+        val organization = validId(organizationId)
+        val store = validId(storeId)
+        CommerceStoreCatalogSourceConfigurationDto(
+            sql.storeCatalogSource(organization, store, actorUserId)
+                ?.let(::storeCatalogSourceDto),
+            sql.storeCatalogSourceCandidates(organization, store, actorUserId)
+                .map(::storeCatalogSourceCandidateDto)
+        )
+    }
+
+    fun saveStoreCatalogSource(
+        organizationId: String,
+        storeId: String,
+        request: CommerceStoreCatalogSourceWriteDto,
+        actorUserId: String
+    ): CommerceStoreCatalogSourceConfigurationDto = translate {
+        if (request.versionNo < 0) {
+            throw BadRequestException("Invalid Store catalog source")
+        }
+        val organization = validId(organizationId)
+        val store = validId(storeId)
+        sql.saveStoreCatalogSource(
+            organization,
+            store,
+            validId(request.integrationConfigurationId),
+            request.versionNo,
+            actorUserId
+        )
+        CommerceStoreCatalogSourceConfigurationDto(
+            sql.storeCatalogSource(organization, store, actorUserId)
+                ?.let(::storeCatalogSourceDto),
+            sql.storeCatalogSourceCandidates(organization, store, actorUserId)
+                .map(::storeCatalogSourceCandidateDto)
+        )
+    }
+
     private fun savePaymentProviderRoute(
         organizationId: String,
         routeId: String?,
@@ -615,6 +656,30 @@ class CommerceService(
         row.routeId, row.organizationId, row.storeId, row.sourceChannel, row.providerCode,
         row.integrationConfigurationId, row.enabled, row.createdAt, row.createdBy,
         row.updatedAt, row.updatedBy, row.isDeleted, row.versionNo
+    )
+
+    private fun storeCatalogSourceDto(row: CommerceStoreCatalogSourceRow) =
+        CommerceStoreCatalogSourceDto(
+            row.organizationId,
+            row.storeId,
+            row.integrationConfigurationId,
+            row.integrationName,
+            row.providerCode,
+            row.catalogId,
+            row.catalogName,
+            row.versionNo
+        )
+
+    private fun storeCatalogSourceCandidateDto(
+        row: CommerceStoreCatalogSourceCandidateRow
+    ) = CommerceStoreCatalogSourceCandidateDto(
+        row.integrationConfigurationId,
+        row.integrationName,
+        row.providerCode,
+        row.catalogId,
+        row.catalogName,
+        row.eligible,
+        row.ineligibilityReason
     )
     private fun transactionDetail(organizationId: String, transactionId: String, actorUserId: String, transaction: CommerceTransactionRow) =
         CommerceTransactionDetailDto(transactionDto(transaction), sql.transactionLines(organizationId, transactionId, actorUserId).map(::lineDto), sql.transactionAdjustments(organizationId, transactionId, actorUserId).map(::adjustmentDto), sql.transactionRedemptions(organizationId, transactionId, actorUserId).map(::redemptionDto))

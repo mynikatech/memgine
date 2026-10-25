@@ -18,6 +18,10 @@ type Props = {
   integrations: IntegrationConfiguration[];
   mode: "add" | "edit" | "view";
   allowTest: boolean;
+  scope?: {
+    storeId: string | null;
+    sourceChannel?: "COUNTER" | "CUSTOMER";
+  };
   onSave: (route: CommercePaymentProviderRouteWrite) => void;
   onCancel: () => void;
 };
@@ -39,6 +43,7 @@ export function CommercePaymentProviderRouteForm({
   integrations,
   mode,
   allowTest,
+  scope,
   onSave,
   onCancel,
 }: Props) {
@@ -46,15 +51,22 @@ export function CommercePaymentProviderRouteForm({
   const [form, setForm] = useState<FormState>(emptyRoute);
 
   useEffect(() => {
-    setForm(route ? {
+    const routeForm = route ? {
       storeId: route.storeId ?? null,
       sourceChannel: route.sourceChannel,
       providerCode: route.providerCode,
       integrationConfigurationId: route.integrationConfigurationId ?? null,
       enabled: route.enabled,
       versionNo: route.versionNo,
-    } : emptyRoute);
-  }, [route]);
+    } : emptyRoute;
+    setForm({
+      ...routeForm,
+      ...(scope ? { storeId: scope.storeId } : {}),
+      ...(scope?.sourceChannel
+        ? { sourceChannel: scope.sourceChannel }
+        : {}),
+    });
+  }, [route, scope]);
 
   const readOnly = mode === "view";
   const providerOptions = useMemo(() => {
@@ -94,7 +106,7 @@ export function CommercePaymentProviderRouteForm({
             getItemId={(item) => item}
             renderItemLabel={(item) => item === "COUNTER" ? "Counter" : "Customer"}
             onChange={(value) => update("sourceChannel", value as FormState["sourceChannel"])}
-            disabled={readOnly}
+            disabled={readOnly || !!scope?.sourceChannel}
           />
         </View>
         <View style={styles.field}>
@@ -107,7 +119,7 @@ export function CommercePaymentProviderRouteForm({
             placeholder="Organization default"
             allowClear
             onChange={(value) => update("storeId", value || null)}
-            disabled={readOnly}
+            disabled={readOnly || !!scope}
           />
         </View>
         <View style={styles.field}>

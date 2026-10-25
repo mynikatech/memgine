@@ -299,3 +299,4 @@ frontend/eas-android-
 **/build/
 *.jar
 ~WRL3643.tmp
+frontend/eas-android-inspect-v3
