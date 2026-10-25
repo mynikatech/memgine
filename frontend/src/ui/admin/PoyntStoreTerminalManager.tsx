@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
-
 import type { ReferenceDataItem, Store } from "@/src/core";
 import {
   organizationPoyntOperationalApi,
@@ -12,7 +11,6 @@ import {
 } from "@/src/data/api/platform-poynt-payment-api";
 import { useTheme } from "@/src/providers";
 import { Input, ReferenceSelect, Text } from "@/src/ui";
-
 type Props = {
   organizationId: string;
   summary: OrganizationPoyntPaymentSummary;
@@ -21,7 +19,6 @@ type Props = {
   integrationTypes: ReferenceDataItem[];
   onClose: () => void;
 };
-
 type PoyntPolicies = {
   storeDiscovery: boolean;
   terminalDiscovery: boolean;
@@ -29,12 +26,10 @@ type PoyntPolicies = {
   manualTerminal: boolean;
   verificationRequired: boolean;
 };
-
 const policyValue = (
   policies: Record<string, Record<string, boolean>> | undefined,
   key: string,
 ) => policies?.POYNT?.[key] === true;
-
 export function PoyntStoreTerminalManager({
   organizationId,
   summary,
@@ -55,6 +50,8 @@ export function PoyntStoreTerminalManager({
   const [selectedTerminalId, setSelectedTerminalId] = useState("");
   const [terminalRefreshVersion, setTerminalRefreshVersion] = useState(0);
   const [showAssignment, setShowAssignment] = useState(false);
+  const [showConfigurationDetails, setShowConfigurationDetails] =
+    useState(false);
   const [manualStore, setManualStore] = useState(false);
   const [manualTerminal, setManualTerminal] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -62,7 +59,6 @@ export function PoyntStoreTerminalManager({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-
   const policies = useMemo<PoyntPolicies | null>(() => {
     const item = integrationTypes.find((type) => type.id === integrationTypeId);
     const configured = item?.providerConfigurationPolicies;
@@ -81,7 +77,6 @@ export function PoyntStoreTerminalManager({
       ),
     };
   }, [integrationTypeId, integrationTypes]);
-
   const selectedConfiguration = configurations.find(
     (configuration) => configuration.storeId === selectedStoreId,
   );
@@ -94,25 +89,42 @@ export function PoyntStoreTerminalManager({
         configurations.flatMap((configuration) =>
           configuration.terminalBindings
             .filter((binding) => binding.active)
-            .map((binding) => [
-              binding.poyntTerminalId,
-              {
-                storeId: configuration.storeId,
-                storeName: configuration.storeName,
-              },
-            ] as const),
+            .map(
+              (binding) =>
+                [
+                  binding.poyntTerminalId,
+                  {
+                    storeId: configuration.storeId,
+                    storeName: configuration.storeName,
+                  },
+                ] as const,
+            ),
         ),
       ),
     [configurations],
   );
-  const isAddingTerminal = !!selectedConfiguration?.effectiveCatalogId;
+  const isConfigured = !!selectedConfiguration?.effectiveCatalogId;
+  const activeBindings =
+    selectedConfiguration?.terminalBindings.filter(
+      (binding) => binding.active,
+    ) ?? [];
+  const needsCompletion = !isConfigured && activeBindings.length > 0;
+  const legacyPoyntStoreId =
+    needsCompletion &&
+    activeBindings.every(
+      (binding) => binding.poyntStoreId === activeBindings[0].poyntStoreId,
+    )
+      ? activeBindings[0].poyntStoreId
+      : "";
+  const isAddingTerminal = isConfigured;
   const terminalUnavailableReason = (
     terminal: PoyntOperationalTerminal,
   ): string | undefined => {
     if (!terminal.configurationEligible) {
-      return terminal.ineligibilityReason ?? "This terminal cannot be configured.";
+      return (
+        terminal.ineligibilityReason ?? "This terminal cannot be configured."
+      );
     }
-
     const assignment = activeTerminalAssignments.get(terminal.id);
     if (!assignment) return undefined;
     if (isAddingTerminal) {
@@ -139,16 +151,16 @@ export function PoyntStoreTerminalManager({
     !selectedTerminalUnavailableReason &&
     (manualTerminal || !!selectedTerminal) &&
     !saving;
-
   const resetAssignment = () => {
-    setSelectedPoyntStoreId(selectedConfiguration?.poyntStoreId ?? "");
+    setSelectedPoyntStoreId(
+      selectedConfiguration?.poyntStoreId || legacyPoyntStoreId,
+    );
     setSelectedTerminalId("");
     setTerminals([]);
     setManualStore(false);
     setManualTerminal(false);
     setMessage(null);
   };
-
   const loadConfigurations = async () => {
     const result = await organizationPoyntOperationalApi.configurations(
       organizationId,
@@ -158,7 +170,6 @@ export function PoyntStoreTerminalManager({
     setConfigurations(result.data);
     return result.data;
   };
-
   const loadStores = async () => {
     if (!policies?.storeDiscovery) return;
     const result = await organizationPoyntOperationalApi.stores(
@@ -168,13 +179,15 @@ export function PoyntStoreTerminalManager({
     if (!result.success) throw new Error(result.error.message);
     setPoyntStores(result.data);
   };
-
   const refreshInitial = async () => {
     const version = ++requestVersion.current;
     setLoading(true);
     setError(null);
     try {
-      const [configurations] = await Promise.all([loadConfigurations(), loadStores()]);
+      const [configurations] = await Promise.all([
+        loadConfigurations(),
+        loadStores(),
+      ]);
       if (version !== requestVersion.current) return;
       if (!selectedStoreId && configurations.length === 1) {
         setSelectedStoreId(configurations[0].storeId);
@@ -191,7 +204,6 @@ export function PoyntStoreTerminalManager({
       if (version === requestVersion.current) setLoading(false);
     }
   };
-
   useEffect(() => {
     if (!policies) {
       setLoading(false);
@@ -205,21 +217,22 @@ export function PoyntStoreTerminalManager({
     // The modal receives a stable integration and reference-data snapshot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organizationId, summary.integrationConfigurationId, policies]);
-
   useEffect(() => {
     resetAssignment();
     // selectedConfiguration derives from the selected store.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStoreId]);
-
   useEffect(() => {
     if (!showAssignment && selectedConfiguration?.poyntStoreId) {
       setSelectedPoyntStoreId(selectedConfiguration.poyntStoreId);
     }
   }, [selectedConfiguration?.poyntStoreId, showAssignment]);
-
   useEffect(() => {
-    if (!selectedPoyntStoreId || manualTerminal || !policies?.terminalDiscovery) {
+    if (
+      !selectedPoyntStoreId ||
+      manualTerminal ||
+      !policies?.terminalDiscovery
+    ) {
       setTerminals([]);
       return;
     }
@@ -237,6 +250,18 @@ export function PoyntStoreTerminalManager({
         if (version !== requestVersion.current) return;
         if (!result.success) throw new Error(result.error.message);
         setTerminals(result.data);
+        if (needsCompletion) {
+          const existing = activeBindings.find(
+            (binding) =>
+              binding.poyntStoreId === selectedPoyntStoreId &&
+              result.data.some(
+                (terminal) =>
+                  terminal.id === binding.poyntTerminalId &&
+                  terminal.configurationEligible,
+              ),
+          );
+          if (existing) setSelectedTerminalId(existing.poyntTerminalId);
+        }
       })
       .catch((loadError: unknown) => {
         if (version === requestVersion.current) {
@@ -258,13 +283,12 @@ export function PoyntStoreTerminalManager({
     summary.integrationConfigurationId,
     terminalRefreshVersion,
   ]);
-
   const selectMemgineStore = (storeId: string) => {
     setSelectedStoreId(storeId);
     setShowAssignment(false);
+    setShowConfigurationDetails(false);
     setError(null);
   };
-
   const save = async () => {
     if (!canSave) return;
     setSaving(true);
@@ -284,7 +308,11 @@ export function PoyntStoreTerminalManager({
       setShowAssignment(false);
       setSelectedTerminalId("");
       setTerminalRefreshVersion((version) => version + 1);
-      setMessage("Terminal assignment saved.");
+      setMessage(
+        needsCompletion
+          ? "Store setup completed."
+          : "Terminal assignment saved.",
+      );
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -295,7 +323,6 @@ export function PoyntStoreTerminalManager({
       setSaving(false);
     }
   };
-
   const deactivate = (bindingId: string, name: string) => {
     Alert.alert(
       "Deactivate terminal",
@@ -329,10 +356,16 @@ export function PoyntStoreTerminalManager({
       ],
     );
   };
+  const openAssignment = () => {
+    resetAssignment();
+    setShowAssignment(true);
+    setShowConfigurationDetails(false);
+  };
 
   const storeName = (id?: string | null) =>
-    poyntStores.find((store) => store.id === id)?.name || id || "Not configured";
-
+    poyntStores.find((store) => store.id === id)?.name ||
+    id ||
+    "Not configured";
   return (
     <View style={[styles.container, { gap: theme.spacing.md }]}>
       <View style={{ gap: theme.spacing.xs }}>
@@ -344,7 +377,6 @@ export function PoyntStoreTerminalManager({
           is saved.
         </Text>
       </View>
-
       <ReferenceSelect
         label="Memgine Store"
         required
@@ -355,84 +387,197 @@ export function PoyntStoreTerminalManager({
         onChange={selectMemgineStore}
         placeholder="Select a Memgine Store"
       />
-
-      {loading ? <Text variant="body" color="textMuted">Loading configuration…</Text> : null}
-      {error ? <Text variant="bodySmall" color="danger">{error}</Text> : null}
-      {message ? <Text variant="bodySmall" color="success">{message}</Text> : null}
-
+      {loading ? (
+        <Text variant="body" color="textMuted">
+          Loading configuration…
+        </Text>
+      ) : null}
+      {error ? (
+        <Text variant="bodySmall" color="danger">
+          {error}
+        </Text>
+      ) : null}
+      {message ? (
+        <Text variant="bodySmall" color="success">
+          {message}
+        </Text>
+      ) : null}
       {selectedStoreId ? (
-        <View style={[styles.panel, { borderColor: theme.colors.border }]}>
-          <Text variant="h2" color="text">Current Configuration</Text>
-          {selectedConfiguration?.effectiveCatalogId ? (
-            <View style={{ gap: theme.spacing.xs }}>
-              <Text variant="body" color="text">
-                {selectedConfiguration.configurationStatus}
-              </Text>
-              <Text variant="bodySmall" color="textMuted">
-                Poynt Store: {storeName(selectedConfiguration.poyntStoreId)}
-              </Text>
-              <Text variant="bodySmall" color="textMuted">
-                Effective catalog: {selectedConfiguration.effectiveCatalogName || selectedConfiguration.effectiveCatalogId}
-              </Text>
-              <Text variant="bodySmall" color="textMuted">
-                Assigned terminals: {selectedConfiguration.terminalBindings.length}
-              </Text>
+        <View
+          style={[
+            styles.panel,
+            { borderColor: theme.colors.border, gap: theme.spacing.md },
+          ]}
+        >
+          <View style={styles.inlineActions}>
+            <Text variant="h2" color="text">
+              Store Configuration
+            </Text>
+            <Text
+              variant="bodySmall"
+              color={isConfigured ? "success" : "textMuted"}
+            >
+              {isConfigured
+                ? "✓ Configured"
+                : needsCompletion
+                  ? "Existing assignment · Setup incomplete"
+                  : "Not configured"}
+            </Text>
+          </View>
+
+          {isConfigured || needsCompletion ? (
+            <View style={styles.summaryColumns}>
+              <View style={styles.summaryColumn}>
+                <Text variant="caption" color="textMuted">
+                  Poynt Store
+                </Text>
+                <Text variant="body" color="text">
+                  {storeName(
+                    selectedConfiguration?.poyntStoreId || legacyPoyntStoreId,
+                  )}
+                </Text>
+              </View>
+              <View style={styles.summaryColumn}>
+                <Text variant="caption" color="textMuted">
+                  Product Catalog
+                </Text>
+                <Text variant="body" color="text">
+                  {isConfigured
+                    ? selectedConfiguration?.effectiveCatalogName ||
+                      "Catalog name not supplied by Poynt"
+                    : "Pending verification"}
+                </Text>
+              </View>
             </View>
           ) : (
             <Text variant="bodySmall" color="textMuted">
-              This Store has not been connected to Poynt yet.
+              No Poynt Store or terminal has been configured for this Memgine
+              Store.
             </Text>
           )}
-        </View>
-      ) : null}
 
-      {selectedConfiguration?.terminalBindings.length ? (
-        <View style={{ gap: theme.spacing.sm }}>
-          <Text variant="h2" color="text">Assigned Terminals</Text>
-          {selectedConfiguration.terminalBindings.map((binding) => (
-            <View key={binding.bindingId} style={[styles.terminalRow, { borderColor: theme.colors.border }]}>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text variant="body" color="text">{binding.deviceName}</Text>
-                <Text variant="bodySmall" color="textMuted">
-                  {binding.active ? "Active" : "Revoked"} · {storeName(binding.poyntStoreId)}
-                </Text>
-                {selectedConfiguration.effectiveCatalogId ? (
-                  <Text variant="bodySmall" color="textMuted">
-                    Catalog: {selectedConfiguration.effectiveCatalogName || selectedConfiguration.effectiveCatalogId}
-                  </Text>
-                ) : null}
-                <Text variant="caption" color="textMuted">Device ID: {binding.poyntTerminalId}</Text>
-              </View>
-              {binding.active ? (
-                <Pressable onPress={() => deactivate(binding.bindingId, binding.deviceName)}>
-                  <Text variant="bodySmall" color="danger">Deactivate</Text>
-                </Pressable>
-              ) : null}
+          {needsCompletion ? (
+            <Text variant="bodySmall" color="textMuted">
+              An existing terminal is assigned. Complete setup to verify its
+              Poynt Store and catalog without creating a duplicate terminal
+              binding.
+            </Text>
+          ) : null}
+
+          {activeBindings.length > 0 ? (
+            <View style={{ gap: theme.spacing.sm }}>
+              <Text variant="body" color="text">
+                Terminals ({activeBindings.length})
+              </Text>
+              {activeBindings.map((binding) => (
+                <View
+                  key={binding.bindingId}
+                  style={[
+                    styles.terminalRow,
+                    { borderColor: theme.colors.border },
+                  ]}
+                >
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text variant="body" color="text">
+                      {binding.deviceName}
+                    </Text>
+                    <Text variant="bodySmall" color="textMuted">
+                      Active · {storeName(binding.poyntStoreId)}
+                    </Text>
+                    <Text variant="caption" color="textMuted">
+                      Device ID: {binding.poyntTerminalId}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() =>
+                      deactivate(binding.bindingId, binding.deviceName)
+                    }
+                  >
+                    <Text variant="bodySmall" color="danger">
+                      Deactivate
+                    </Text>
+                  </Pressable>
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
-      ) : null}
+          ) : null}
 
-      {selectedStoreId ? (
-        <Pressable
-          onPress={() => setShowAssignment((current) => !current)}
-          style={({ pressed }) => [styles.action, { backgroundColor: theme.colors.primary, opacity: pressed ? 0.8 : 1 }]}
-        >
-          <Text variant="body" color="background">
-            {showAssignment
-              ? "Cancel"
-              : selectedConfiguration?.effectiveCatalogId
-                ? "+ Add Terminal"
-                : "Configure Store"}
-          </Text>
-        </Pressable>
+          {isConfigured && !showAssignment ? (
+            <View style={styles.summaryActions}>
+              <Pressable
+                onPress={() => {
+                  setShowAssignment(false);
+                  setShowConfigurationDetails((visible) => !visible);
+                }}
+                style={[
+                  styles.secondaryAction,
+                  { borderColor: theme.colors.border },
+                ]}
+              >
+                <Text variant="body" color="text">
+                  {showConfigurationDetails
+                    ? "Hide Details"
+                    : "Configuration Details"}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={openAssignment}
+                style={[
+                  styles.secondaryAction,
+                  { borderColor: theme.colors.border },
+                ]}
+              >
+                <Text variant="body" color="text">
+                  + Add Terminal
+                </Text>
+              </Pressable>
+            </View>
+          ) : !isConfigured && !showAssignment ? (
+            <Pressable
+              onPress={openAssignment}
+              style={[styles.action, { backgroundColor: theme.colors.primary }]}
+            >
+              <Text variant="body" color="background">
+                {needsCompletion ? "Complete Setup" : "Add Configuration"}
+              </Text>
+            </Pressable>
+          ) : null}
+
+          {showConfigurationDetails && isConfigured ? (
+            <View
+              style={[
+                styles.catalog,
+                { backgroundColor: theme.colors.surfaceAlt },
+              ]}
+            >
+              <Text variant="bodySmall" color="textMuted">
+                The Poynt Store and effective catalog cannot currently be
+                changed for a configured Store. Add compatible terminals or
+                deactivate an existing terminal. No changes are made from this
+                details view.
+              </Text>
+              <Text variant="caption" color="textMuted">
+                Catalog ID: {selectedConfiguration?.effectiveCatalogId}
+              </Text>
+            </View>
+          ) : null}
+        </View>
       ) : null}
 
       {showAssignment ? (
-        <View style={[styles.panel, { borderColor: theme.colors.border, gap: theme.spacing.md }]}>
+        <View
+          style={[
+            styles.panel,
+            { borderColor: theme.colors.border, gap: theme.spacing.md },
+          ]}
+        >
           <View style={styles.inlineActions}>
             <Text variant="h2" color="text">
-              {isAddingTerminal ? "Add Terminal" : "Complete Configuration"}
+              {isAddingTerminal
+                ? "Add Terminal"
+                : needsCompletion
+                  ? "Complete Configuration"
+                  : "Configure Poynt Store"}
             </Text>
             <Pressable
               onPress={() =>
@@ -445,15 +590,22 @@ export function PoyntStoreTerminalManager({
                 )
               }
             >
-              <Text variant="bodySmall" color="primary">Refresh Stores</Text>
+              <Text variant="bodySmall" color="primary">
+                Refresh Stores
+              </Text>
             </Pressable>
           </View>
           {selectedConfiguration?.poyntStoreId ? (
             <Text variant="bodySmall" color="textMuted">
-              Poynt Store: {storeName(selectedConfiguration.poyntStoreId)}. Store selection is locked for this configured Memgine Store.
+              Poynt Store: {storeName(selectedConfiguration.poyntStoreId)}.
+              Store selection is locked for this configured Memgine Store.
             </Text>
           ) : manualStore ? (
-            <Input label="Poynt Store ID" value={selectedPoyntStoreId} onChangeText={setSelectedPoyntStoreId} />
+            <Input
+              label="Poynt Store ID"
+              value={selectedPoyntStoreId}
+              onChangeText={setSelectedPoyntStoreId}
+            />
           ) : (
             <ReferenceSelect
               label="Poynt Store"
@@ -474,18 +626,30 @@ export function PoyntStoreTerminalManager({
               </Text>
             </Pressable>
           ) : null}
-
           <View style={styles.inlineActions}>
-            <Text variant="body" color="text">Available Terminal</Text>
+            <Text variant="body" color="text">
+              Available Terminal
+            </Text>
             <Pressable
               disabled={!selectedPoyntStoreId || loadingTerminals}
-              onPress={() => setTerminalRefreshVersion((version) => version + 1)}
+              onPress={() =>
+                setTerminalRefreshVersion((version) => version + 1)
+              }
             >
-              <Text variant="bodySmall" color={selectedPoyntStoreId ? "primary" : "textMuted"}>Refresh</Text>
+              <Text
+                variant="bodySmall"
+                color={selectedPoyntStoreId ? "primary" : "textMuted"}
+              >
+                Refresh
+              </Text>
             </Pressable>
           </View>
           {manualTerminal ? (
-            <Input label="Poynt Terminal / Device ID" value={selectedTerminalId} onChangeText={setSelectedTerminalId} />
+            <Input
+              label="Poynt Terminal / Device ID"
+              value={selectedTerminalId}
+              onChangeText={setSelectedTerminalId}
+            />
           ) : (
             <ReferenceSelect
               label="Available Terminal"
@@ -502,23 +666,40 @@ export function PoyntStoreTerminalManager({
               renderItemDisabledReason={terminalUnavailableReason}
               onChange={setSelectedTerminalId}
               disabled={!selectedPoyntStoreId || loadingTerminals}
-              placeholder={loadingTerminals ? "Loading terminals…" : "Select a terminal"}
+              placeholder={
+                loadingTerminals ? "Loading terminals…" : "Select a terminal"
+              }
             />
           )}
           {policies?.manualTerminal ? (
             <Pressable onPress={() => setManualTerminal((current) => !current)}>
               <Text variant="bodySmall" color="primary">
-                {manualTerminal ? "Use discovered terminals" : "Enter Terminal Manually"}
+                {manualTerminal
+                  ? "Use discovered terminals"
+                  : "Enter Terminal Manually"}
               </Text>
             </Pressable>
           ) : null}
-          <View style={[styles.catalog, { backgroundColor: theme.colors.surfaceAlt }]}>
-            <Text variant="bodySmall" color="textMuted">Assigned Product Catalog</Text>
+          <View
+            style={[
+              styles.catalog,
+              { backgroundColor: theme.colors.surfaceAlt },
+            ]}
+          >
+            <Text variant="bodySmall" color="textMuted">
+              Assigned Product Catalog
+            </Text>
             <Text variant="body" color="text">
               {selectedTerminal
-                ? selectedTerminal.catalogName || selectedTerminal.catalogId || "Catalog was not returned"
+                ? selectedTerminal.catalogName ||
+                  "Catalog name not supplied by Poynt"
                 : "Select a terminal to view its assigned catalog."}
             </Text>
+            {selectedTerminal?.catalogId ? (
+              <Text variant="caption" color="textMuted">
+                Catalog ID: {selectedTerminal.catalogId}
+              </Text>
+            ) : null}
             {selectedTerminalUnavailableReason ? (
               <Text variant="bodySmall" color="danger">
                 {selectedTerminalUnavailableReason}
@@ -526,33 +707,95 @@ export function PoyntStoreTerminalManager({
             ) : null}
             {catalogMismatch ? (
               <Text variant="bodySmall" color="danger">
-                This terminal uses a different catalog than the Store’s effective catalog.
+                This terminal uses a different catalog than the Store’s
+                effective catalog.
               </Text>
             ) : null}
           </View>
           <Pressable
             disabled={!canSave}
             onPress={() => void save()}
-            style={({ pressed }) => [styles.action, { backgroundColor: theme.colors.primary, opacity: canSave ? (pressed ? 0.8 : 1) : 0.5 }]}
+            style={({ pressed }) => [
+              styles.action,
+              {
+                backgroundColor: theme.colors.primary,
+                opacity: canSave ? (pressed ? 0.8 : 1) : 0.5,
+              },
+            ]}
           >
-            <Text variant="body" color="background">{saving ? "Saving…" : "Save Assignment"}</Text>
+            <Text variant="body" color="background">
+              {saving
+                ? "Saving…"
+                : needsCompletion
+                  ? "Complete Setup"
+                  : "Save Assignment"}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              setShowAssignment(false);
+              resetAssignment();
+            }}
+            style={styles.cancel}
+          >
+            <Text variant="body" color="text">
+              Cancel
+            </Text>
           </Pressable>
         </View>
       ) : null}
-
       <Pressable onPress={onClose} style={styles.cancel}>
-        <Text variant="body" color="text">Close</Text>
+        <Text variant="body" color="text">
+          Close
+        </Text>
       </Pressable>
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   container: { paddingBottom: 4 },
   panel: { borderWidth: 1, borderRadius: 10, padding: 14, gap: 8 },
-  terminalRow: { borderWidth: 1, borderRadius: 8, padding: 12, flexDirection: "row", alignItems: "center", gap: 12 },
-  action: { minHeight: 44, borderRadius: 8, alignItems: "center", justifyContent: "center", paddingHorizontal: 14 },
-  cancel: { minHeight: 44, borderRadius: 8, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#D1D5DB" },
-  inlineActions: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 },
+  terminalRow: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  action: {
+    minHeight: 44,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  cancel: {
+    minHeight: 44,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+  },
+  inlineActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
   catalog: { borderRadius: 8, padding: 12, gap: 4 },
+  summaryColumns: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
+  summaryColumn: { flexGrow: 1, flexBasis: 180, gap: 5 },
+  summaryActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  secondaryAction: {
+    flexGrow: 1,
+    flexBasis: 170,
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

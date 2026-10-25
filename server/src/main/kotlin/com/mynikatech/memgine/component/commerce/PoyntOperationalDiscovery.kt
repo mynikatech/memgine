@@ -68,11 +68,40 @@ class PoyntOperationalDiscoveryService(
         return PoyntOperationalStoresDto(parseStores(body))
     }
 
-    fun terminals(organizationId: String, integrationId: String, poyntStoreId: String, actorUserId: String): PoyntOperationalTerminalsDto {
-        val store = poyntStoreId.trim().takeIf { it.isNotEmpty() } ?: throw BadRequestException("Poynt Store ID is required")
+    fun terminals(
+        organizationId: String,
+        integrationId: String,
+        poyntStoreId: String,
+        actorUserId: String
+    ): PoyntOperationalTerminalsDto {
+        val store = poyntStoreId.trim().takeIf { it.isNotEmpty() }
+            ?: throw BadRequestException("Poynt Store ID is required")
+
         val configuration = configuration(organizationId, integrationId, actorUserId)
+        val discovered = discoverTerminals(configuration, store)
+
+        // Resolve each distinct catalog only once per discovery request.
+        // A failed name lookup must not make terminal discovery unavailable.
+        val catalogNames = discovered
+            .filter { it.configurationEligible && !it.catalogId.isNullOrBlank() }
+            .mapNotNull { it.catalogId }
+            .distinct()
+            .associateWith { catalogId ->
+                try {
+                    verifyCatalog(configuration, catalogId).name
+                } catch (_: BadRequestException) {
+                    null
+                }
+            }
+
         return PoyntOperationalTerminalsDto(
-            discoverTerminals(configuration, store).map(DiscoveredTerminal::dto)
+            discovered.map { terminal ->
+                terminal.copy(
+                    catalogName = terminal.catalogId
+                        ?.let { catalogNames[it] }
+                        ?: terminal.catalogName
+                ).dto()
+            }
         )
     }
 
