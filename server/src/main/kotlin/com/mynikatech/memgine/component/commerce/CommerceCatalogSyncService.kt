@@ -15,6 +15,10 @@ import com.mynikatech.memgine.net.dto.CommerceCatalogCategoryCorrespondenceDto
 import com.mynikatech.memgine.net.dto.CommerceCatalogCategoryCorrespondenceWriteDto
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
 import org.jdbi.v3.core.Jdbi
 import org.jdbi.v3.sqlobject.customizer.Bind
 import org.jdbi.v3.sqlobject.statement.SqlQuery
@@ -129,10 +133,14 @@ class CommerceCatalogSyncService(
         if (key.isEmpty() || key.length > 160) throw BadRequestException("A valid idempotency key is required")
         val result = jdbi.onDemand(CommerceCatalogSyncSql::class.java)
             .applyPreview(organizationId, previewId, key, actorUserId)
-        val created = result.substringAfter("\"createdCount\":", "0").takeWhile(Char::isDigit).toIntOrNull() ?: 0
-        val applied = result.substringAfter("\"appliedCount\":", "0").takeWhile(Char::isDigit).toIntOrNull() ?: 0
-        val mapped = result.substringAfter("\"mappedCount\":", "0").takeWhile(Char::isDigit).toIntOrNull() ?: 0
-        CommerceCatalogSyncApplyResultDto(previewId, "APPLIED", created, applied, mapped)
+        val counts = applyResultCounts(result)
+        CommerceCatalogSyncApplyResultDto(
+            previewId,
+            "APPLIED",
+            counts.created,
+            counts.applied,
+            counts.mapped
+        )
     }
 
     fun resolve(
@@ -210,6 +218,34 @@ class CommerceCatalogSyncService(
         if (value.isBlank() || value.length > 64) throw BadRequestException("Invalid identifier")
     }
 
+    private fun applyResultCounts(result: String): CatalogSyncApplyCounts {
+        val resultObject = try {
+            json.parseToJsonElement(result).jsonObject
+        } catch (_: Exception) {
+            throw BadRequestException("Catalog synchronization apply result is invalid")
+        }
+        return CatalogSyncApplyCounts(
+            created = requiredCount(resultObject, "createdCount"),
+            applied = requiredCount(resultObject, "appliedCount"),
+            mapped = requiredCount(resultObject, "mappedCount")
+        )
+    }
+
+    private fun requiredCount(
+        result: JsonObject,
+        name: String
+    ): Int {
+        val primitive = result[name] as? JsonPrimitive
+            ?: throw BadRequestException("Catalog synchronization apply result is invalid")
+        if (primitive.isString) {
+            throw BadRequestException("Catalog synchronization apply result is invalid")
+        }
+        val value = primitive.intOrNull
+            ?: throw BadRequestException("Catalog synchronization apply result is invalid")
+        if (value < 0) throw BadRequestException("Catalog synchronization apply result is invalid")
+        return value
+    }
+
     private fun <T> translate(block: () -> T): T = try { block() } catch (error: Exception) {
         var cause: Throwable? = error
         while (cause != null) {
@@ -229,6 +265,12 @@ class CommerceCatalogSyncService(
 
     private companion object { const val MAX_PREVIEW_ROWS = 2000 }
 }
+
+private data class CatalogSyncApplyCounts(
+    val created: Int,
+    val applied: Int,
+    val mapped: Int
+)
 
 @kotlinx.serialization.Serializable
 private data class CatalogSyncStageRow(

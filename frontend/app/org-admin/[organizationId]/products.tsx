@@ -1,8 +1,23 @@
-import { useCallback, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import * as XLSX from "xlsx";
-import { Button, Checkbox, DataTable, Input, Modal, Text } from "@/src/ui";
+import {
+  Button,
+  Checkbox,
+  DataTable,
+  Input,
+  Modal,
+  ReferenceSelect,
+  Text,
+} from "@/src/ui";
 import { useBusiness, useTheme } from "@/src/providers";
 import type { IntegrationConfiguration, Store } from "@/src/core";
 import { apis } from "@/src/data/data-registry";
@@ -19,6 +34,36 @@ import {
   type CommerceCatalogCategoryCorrespondence,
   type CommerceCatalogSyncExternalCategory,
 } from "@/src/data/api/organization-product-api";
+import { CommerceStoreCatalogSourceApi } from "@/src/data/api/commerce-store-catalog-source-api";
+import { organizationPoyntOperationalApi } from "@/src/data/api/platform-poynt-payment-api";
+
+type ProductSection =
+  | "PRODUCTS"
+  | "CATEGORIES"
+  | "MAPPINGS"
+  | "SYNCHRONIZATION";
+
+type CatalogMaintenanceContext = {
+  key: string;
+  storeId: string;
+  integrationConfigurationId?: string | null;
+  integrationName?: string | null;
+  provider?: string | null;
+  externalCatalogId?: string | null;
+  externalCatalogName?: string | null;
+  productCatalogId?: string | null;
+  catalogName?: string | null;
+  available: boolean;
+  canSynchronize: boolean;
+  reason?: string;
+};
+
+type ProductMappingHealth = {
+  label: "Mapped" | "Not mapped" | "Needs attention" | "Not applicable";
+  detail?: string;
+  scope?: "STORE" | "ORGANIZATION";
+  effectiveMappings?: OrganizationCommerceProductMapping[];
+};
 
 const emptyProduct = {
   productCode: "",
@@ -76,6 +121,25 @@ export default function OrgAdminProducts() {
     [],
   );
   const [stores, setStores] = useState<Store[]>([]);
+  const [selectedStoreId, setSelectedStoreId] = useState("");
+  const [maintenanceContexts, setMaintenanceContexts] = useState<
+    CatalogMaintenanceContext[]
+  >([]);
+  const [selectedMaintenanceContextKey, setSelectedMaintenanceContextKey] =
+    useState("");
+  const [selectedManualCatalogId, setSelectedManualCatalogId] = useState("");
+  const [runtimeCatalogIntegrationId, setRuntimeCatalogIntegrationId] =
+    useState<string | null>(null);
+  const [runtimeExternalCatalogId, setRuntimeExternalCatalogId] = useState<
+    string | null
+  >(null);
+  const [runtimeCatalogName, setRuntimeCatalogName] = useState<string | null>(
+    null,
+  );
+  const [maintenanceLoading, setMaintenanceLoading] = useState(false);
+  const [maintenanceError, setMaintenanceError] = useState<string>();
+  const [activeSection, setActiveSection] =
+    useState<ProductSection>("PRODUCTS");
   const [products, setProducts] = useState<OrganizationProduct[]>([]);
   const [mappings, setMappings] = useState<
     OrganizationCommerceProductMapping[]
@@ -91,6 +155,9 @@ export default function OrgAdminProducts() {
   const [showCatalog, setShowCatalog] = useState(false);
   const [catalogEditing, setCatalogEditing] =
     useState<OrganizationProductCatalog | null>(null);
+  const [catalogSetupContext, setCatalogSetupContext] =
+    useState<CatalogMaintenanceContext | null>(null);
+  const [catalogManualOnly, setCatalogManualOnly] = useState(false);
   const [catalog, setCatalog] = useState<any>(emptyCatalog);
   const [savingCatalog, setSavingCatalog] = useState(false);
   const [mappingProduct, setMappingProduct] =
@@ -101,9 +168,13 @@ export default function OrgAdminProducts() {
   const [preview, setPreview] = useState<ProductImportPreview[]>([]);
   const [fileName, setFileName] = useState("");
   const [showPosSync, setShowPosSync] = useState(false);
-  const [selectedSyncIntegrationId, setSelectedSyncIntegrationId] = useState("");
-  const [selectedSyncStoreId, setSelectedSyncStoreId] = useState<string | null>(null);
-  const [posPreview, setPosPreview] = useState<CommerceCatalogSyncPreview | null>(null);
+  const [selectedSyncIntegrationId, setSelectedSyncIntegrationId] =
+    useState("");
+  const [selectedSyncStoreId, setSelectedSyncStoreId] = useState<string | null>(
+    null,
+  );
+  const [posPreview, setPosPreview] =
+    useState<CommerceCatalogSyncPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [showApplyConfirmation, setShowApplyConfirmation] = useState(false);
   const [showReviewChanges, setShowReviewChanges] = useState(false);
@@ -114,17 +185,34 @@ export default function OrgAdminProducts() {
   const [previewAction, setPreviewAction] = useState("ALL");
   const previewListRef = useRef<ScrollView>(null);
   const [previewListScrolled, setPreviewListScrolled] = useState(false);
-  const [resolvingPreviewRow, setResolvingPreviewRow] = useState<CommerceCatalogSyncPreviewRow | null>(null);
-  const [selectedCanonicalProductId, setSelectedCanonicalProductId] = useState("");
+  const [resolvingPreviewRow, setResolvingPreviewRow] =
+    useState<CommerceCatalogSyncPreviewRow | null>(null);
+  const [selectedCanonicalProductId, setSelectedCanonicalProductId] =
+    useState("");
   const [savingResolution, setSavingResolution] = useState(false);
-  const [showCategoryCorrespondences, setShowCategoryCorrespondences] = useState(false);
-  const [categoryCorrespondences, setCategoryCorrespondences] = useState<CommerceCatalogCategoryCorrespondence[]>([]);
-  const [availableExternalCategories, setAvailableExternalCategories] = useState<CommerceCatalogSyncExternalCategory[]>([]);
-  const [selectedExternalCategory, setSelectedExternalCategory] = useState<CommerceCatalogSyncExternalCategory | null>(null);
-  const [selectedCanonicalCategoryId, setSelectedCanonicalCategoryId] = useState("");
-  const [savingCategoryCorrespondence, setSavingCategoryCorrespondence] = useState(false);
-  const [correspondenceToDeactivate, setCorrespondenceToDeactivate] = useState<CommerceCatalogCategoryCorrespondence | null>(null);
+  const [showCategoryCorrespondences, setShowCategoryCorrespondences] =
+    useState(false);
+  const [categoryCorrespondences, setCategoryCorrespondences] = useState<
+    CommerceCatalogCategoryCorrespondence[]
+  >([]);
+  const [availableExternalCategories, setAvailableExternalCategories] =
+    useState<CommerceCatalogSyncExternalCategory[]>([]);
+  const [selectedExternalCategory, setSelectedExternalCategory] =
+    useState<CommerceCatalogSyncExternalCategory | null>(null);
+  const [selectedCanonicalCategoryId, setSelectedCanonicalCategoryId] =
+    useState("");
+  const [savingCategoryCorrespondence, setSavingCategoryCorrespondence] =
+    useState(false);
+  const [correspondenceToDeactivate, setCorrespondenceToDeactivate] =
+    useState<CommerceCatalogCategoryCorrespondence | null>(null);
   const applyIdempotencyKey = useRef<string | null>(null);
+  const maintenanceRequestVersion = useRef(0);
+  const maintenanceStoreId = useRef("");
+  const maintenanceContextKey = useRef("");
+  const catalogSourceApi = useMemo(
+    () => new CommerceStoreCatalogSourceApi(),
+    [],
+  );
   const load = useCallback(async () => {
     if (!org) return;
     setLoading(true);
@@ -138,7 +226,6 @@ export default function OrgAdminProducts() {
     if (!c.success) setError(c.error?.message);
     else {
       setCatalogs(c.data);
-      setCatalogId((v) => v || c.data[0]?.productCatalogId || "");
     }
     if (!p.success) setError(p.error?.message);
     else setProducts(p.data);
@@ -147,7 +234,11 @@ export default function OrgAdminProducts() {
     if (!m.success) setError(m.error?.message);
     else setMappings(m.data);
     if (!storeResult.success) setError(storeResult.error?.message);
-    else setStores(storeResult.data);
+    else {
+      const activeStores = storeResult.data.filter((store) => !store.isDeleted);
+      setStores(activeStores);
+      setSelectedStoreId((current) => current || activeStores[0]?.id || "");
+    }
     setLoading(false);
   }, [org]);
   useFocusEffect(
@@ -155,25 +246,389 @@ export default function OrgAdminProducts() {
       void load();
     }, [load]),
   );
+
+  useEffect(() => {
+    if (!org || !selectedStoreId) {
+      setMaintenanceContexts([]);
+      setSelectedMaintenanceContextKey("");
+      setSelectedManualCatalogId("");
+      maintenanceStoreId.current = "";
+      maintenanceContextKey.current = "";
+      setRuntimeCatalogIntegrationId(null);
+      setRuntimeExternalCatalogId(null);
+      setRuntimeCatalogName(null);
+      return;
+    }
+
+    const requestVersion = ++maintenanceRequestVersion.current;
+    const storeChanged = maintenanceStoreId.current !== selectedStoreId;
+    maintenanceStoreId.current = selectedStoreId;
+    setMaintenanceLoading(true);
+    setMaintenanceError(undefined);
+    if (storeChanged) {
+      setMaintenanceContexts([]);
+      setSelectedMaintenanceContextKey("");
+      setSelectedManualCatalogId("");
+      maintenanceContextKey.current = "";
+      setCatalogId("");
+      setRuntimeCatalogIntegrationId(null);
+      setRuntimeExternalCatalogId(null);
+      setRuntimeCatalogName(null);
+      setPosPreview(null);
+      setShowPosSync(false);
+      setShowCategoryCorrespondences(false);
+      setCategoryCorrespondences([]);
+      setAvailableExternalCategories([]);
+      setSelectedExternalCategory(null);
+      setSelectedCanonicalCategoryId("");
+      setResolvingPreviewRow(null);
+      setShowApplyConfirmation(false);
+      applyIdempotencyKey.current = null;
+    }
+
+    void (async () => {
+      const poyntIntegrations = integrations.filter(
+        (integration) =>
+          !integration.isDeleted &&
+          integration.provider.trim().toUpperCase() === "POYNT",
+      );
+      const [runtimeResult, configurationResults] = await Promise.all([
+        catalogSourceApi.get(org, selectedStoreId),
+        Promise.all(
+          poyntIntegrations.map(async (integration) => ({
+            integration,
+            result: await organizationPoyntOperationalApi.configurations(
+              org,
+              integration.id,
+            ),
+          })),
+        ),
+      ]);
+
+      if (requestVersion !== maintenanceRequestVersion.current) return;
+
+      if (runtimeResult.success) {
+        setRuntimeCatalogIntegrationId(
+          runtimeResult.data.source?.integrationConfigurationId ?? null,
+        );
+        setRuntimeExternalCatalogId(
+          runtimeResult.data.source?.catalogId ?? null,
+        );
+        setRuntimeCatalogName(
+          runtimeResult.data.source?.catalogName ??
+            runtimeResult.data.source?.catalogId ??
+            null,
+        );
+      } else {
+        setMaintenanceError(
+          runtimeResult.error?.message ??
+            "Unable to load the Store runtime catalog selection.",
+        );
+      }
+
+      const contexts = new Map<string, CatalogMaintenanceContext>();
+      for (const { integration, result } of configurationResults) {
+        if (!result.success) {
+          continue;
+        }
+        const configuration = result.data.find(
+          (item) => item.storeId === selectedStoreId,
+        );
+        if (!configuration) continue;
+        const externalCatalogId =
+          configuration.effectiveCatalogId?.trim() || null;
+        if (!externalCatalogId) continue;
+        const pairKey = `${integration.id}:${externalCatalogId}`;
+        const linkedCatalogs = externalCatalogId
+          ? catalogs.filter(
+              (catalog) =>
+                catalog.integrationConfigurationId === integration.id &&
+                catalog.externalCatalogId === externalCatalogId,
+            )
+          : [];
+        const linkedCatalog =
+          linkedCatalogs.length === 1 ? linkedCatalogs[0] : undefined;
+        const reason = !externalCatalogId
+          ? "This Store configuration has no verified external catalog ID."
+          : linkedCatalogs.length > 1
+            ? "More than one canonical catalog has this integration and external catalog identity."
+            : !linkedCatalog
+              ? "No canonical Memgine catalog is linked to this verified external catalog."
+              : undefined;
+        contexts.set(`configured:${pairKey}`, {
+          key: `configured:${pairKey}`,
+          storeId: selectedStoreId,
+          integrationConfigurationId: integration.id,
+          integrationName: integration.integrationName,
+          provider: integration.provider,
+          externalCatalogId,
+          externalCatalogName: configuration.effectiveCatalogName,
+          productCatalogId: linkedCatalog?.productCatalogId,
+          catalogName: linkedCatalog?.catalogName,
+          available: Boolean(linkedCatalog),
+          canSynchronize: Boolean(linkedCatalog && externalCatalogId),
+          reason,
+        });
+      }
+
+      const resolvedContexts = [...contexts.values()].sort((left, right) =>
+        `${left.integrationName ?? left.catalogName ?? ""}`.localeCompare(
+          `${right.integrationName ?? right.catalogName ?? ""}`,
+        ),
+      );
+      const runtimeSource = runtimeResult.success
+        ? runtimeResult.data.source
+        : null;
+      if (
+        runtimeSource &&
+        !resolvedContexts.some(
+          (context) =>
+            context.integrationConfigurationId ===
+              runtimeSource.integrationConfigurationId &&
+            context.externalCatalogId === runtimeSource.catalogId,
+        )
+      ) {
+        setMaintenanceError(
+          "The runtime catalog source has no matching persisted Store catalog configuration. Review Integrations → Manage Store Terminals.",
+        );
+      }
+      setMaintenanceContexts(resolvedContexts);
+      const retainedContext = resolvedContexts.find(
+        (context) => context.key === maintenanceContextKey.current,
+      );
+      if (retainedContext) {
+        setCatalogId(retainedContext.productCatalogId ?? "");
+      } else if (
+        resolvedContexts.length === 1 &&
+        resolvedContexts[0].available
+      ) {
+        setSelectedMaintenanceContextKey(resolvedContexts[0].key);
+        maintenanceContextKey.current = resolvedContexts[0].key;
+        setCatalogId(resolvedContexts[0].productCatalogId ?? "");
+      } else {
+        setSelectedMaintenanceContextKey("");
+        maintenanceContextKey.current = "";
+        setCatalogId("");
+      }
+      setMaintenanceLoading(false);
+    })().catch((loadError: unknown) => {
+      if (requestVersion !== maintenanceRequestVersion.current) return;
+      setMaintenanceError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load Store catalog maintenance contexts.",
+      );
+      setMaintenanceLoading(false);
+    });
+  }, [catalogSourceApi, catalogs, integrations, org, selectedStoreId]);
+
+  const selectedMaintenanceContext = maintenanceContexts.find(
+    (context) => context.key === selectedMaintenanceContextKey,
+  );
+  const hasConfiguredCatalogContext = Boolean(
+    selectedMaintenanceContext?.available &&
+    selectedMaintenanceContext.externalCatalogId,
+  );
   const activeCatalog = catalogs.find((c) => c.productCatalogId === catalogId);
-  const blockingPreviewRows = posPreview?.rows.filter(
-    (row) => row.action === "CONFLICT" || row.action === "INVALID",
-  ) ?? [];
+  const manualCatalogs = useMemo(
+    () => catalogs.filter((catalog) => !catalog.integrationConfigurationId),
+    [catalogs],
+  );
+  const hasManualCatalogContext = Boolean(
+    selectedManualCatalogId &&
+    activeCatalog?.productCatalogId === selectedManualCatalogId &&
+    !activeCatalog.integrationConfigurationId,
+  );
+  const hasProductMaintenanceContext =
+    hasConfiguredCatalogContext || hasManualCatalogContext;
+  const canSetUpStoreCatalog = Boolean(
+    selectedMaintenanceContext &&
+      !selectedMaintenanceContext.available &&
+      selectedMaintenanceContext.integrationConfigurationId &&
+      selectedMaintenanceContext.externalCatalogId &&
+      !catalogs.some(
+        (catalog) =>
+          catalog.integrationConfigurationId ===
+            selectedMaintenanceContext.integrationConfigurationId &&
+          catalog.externalCatalogId ===
+            selectedMaintenanceContext.externalCatalogId,
+      ),
+  );
+
+  const applyMaintenanceContext = (contextKey: string) => {
+    const context = maintenanceContexts.find((item) => item.key === contextKey);
+    if (!context) return;
+    setSelectedMaintenanceContextKey(contextKey);
+    setSelectedManualCatalogId("");
+    maintenanceContextKey.current = contextKey;
+    setCatalogId(context.productCatalogId ?? "");
+    setPosPreview(null);
+    setShowPosSync(false);
+    setShowCategoryCorrespondences(false);
+    setCategoryCorrespondences([]);
+    setAvailableExternalCategories([]);
+    setSelectedExternalCategory(null);
+    setSelectedCanonicalCategoryId("");
+    setResolvingPreviewRow(null);
+    setShowApplyConfirmation(false);
+    applyIdempotencyKey.current = null;
+  };
+
+  const selectMaintenanceContext = (contextKey: string) => {
+    if (contextKey === selectedMaintenanceContextKey) return;
+    if (posPreview || showPosSync) {
+      Alert.alert(
+        "Discard synchronization work?",
+        "Changing catalog maintenance context discards the current preview and any unresolved rows. Persisted products and mappings are unchanged.",
+        [
+          { text: "Keep current context", style: "cancel" },
+          {
+            text: "Discard and switch",
+            style: "destructive",
+            onPress: () => applyMaintenanceContext(contextKey),
+          },
+        ],
+      );
+      return;
+    }
+    applyMaintenanceContext(contextKey);
+  };
+
+  const selectManualCatalog = (manualCatalogId: string) => {
+    if (!manualCatalogId) {
+      setSelectedManualCatalogId("");
+      setCatalogId("");
+      return;
+    }
+    const catalog = manualCatalogs.find(
+      (item) => item.productCatalogId === manualCatalogId,
+    );
+    if (!catalog) return;
+    const switchCatalog = () => {
+      setSelectedManualCatalogId(manualCatalogId);
+      setSelectedMaintenanceContextKey("");
+      maintenanceContextKey.current = "";
+      setCatalogId(manualCatalogId);
+      setPosPreview(null);
+      setShowPosSync(false);
+      setShowCategoryCorrespondences(false);
+      setCategoryCorrespondences([]);
+      setAvailableExternalCategories([]);
+      setSelectedExternalCategory(null);
+      setSelectedCanonicalCategoryId("");
+      setResolvingPreviewRow(null);
+      setShowApplyConfirmation(false);
+      applyIdempotencyKey.current = null;
+    };
+    if (posPreview || showPosSync) {
+      Alert.alert(
+        "Discard synchronization work?",
+        "Manual catalogs are organization-scoped and cannot use the current Store synchronization preview.",
+        [
+          { text: "Keep current context", style: "cancel" },
+          {
+            text: "Discard and switch",
+            style: "destructive",
+            onPress: switchCatalog,
+          },
+        ],
+      );
+      return;
+    }
+    switchCatalog();
+  };
+
+  const selectStore = (storeId: string) => {
+    if (storeId === selectedStoreId) return;
+    const switchStore = () => {
+      maintenanceRequestVersion.current += 1;
+      setSelectedStoreId(storeId);
+      setMaintenanceContexts([]);
+      setSelectedMaintenanceContextKey("");
+      setSelectedManualCatalogId("");
+      maintenanceContextKey.current = "";
+      setCatalogId("");
+      setRuntimeCatalogIntegrationId(null);
+      setRuntimeExternalCatalogId(null);
+      setRuntimeCatalogName(null);
+      setPosPreview(null);
+      setShowPosSync(false);
+      setShowCategoryCorrespondences(false);
+      setCategoryCorrespondences([]);
+      setAvailableExternalCategories([]);
+      setSelectedExternalCategory(null);
+      setSelectedCanonicalCategoryId("");
+      setResolvingPreviewRow(null);
+      setShowApplyConfirmation(false);
+      applyIdempotencyKey.current = null;
+    };
+    if (posPreview || showPosSync) {
+      Alert.alert(
+        "Discard synchronization work?",
+        "Changing Stores discards the current preview and any unresolved rows. Persisted products and mappings are unchanged.",
+        [
+          { text: "Keep current Store", style: "cancel" },
+          {
+            text: "Discard and switch",
+            style: "destructive",
+            onPress: switchStore,
+          },
+        ],
+      );
+      return;
+    }
+    switchStore();
+  };
+
+  const catalogProducts = useMemo(
+    () => products.filter((product) => product.productCatalogId === catalogId),
+    [catalogId, products],
+  );
+  const catalogMappings = useMemo(
+    () =>
+      mappings.filter(
+        (mapping) =>
+          catalogProducts.some(
+            (product) => product.productId === mapping.productId,
+          ) &&
+          (!selectedMaintenanceContext?.integrationConfigurationId ||
+            mapping.integrationConfigurationId ===
+              selectedMaintenanceContext.integrationConfigurationId),
+      ),
+    [catalogProducts, mappings, selectedMaintenanceContext],
+  );
+  const blockingPreviewRows =
+    posPreview?.rows.filter(
+      (row) => row.action === "CONFLICT" || row.action === "INVALID",
+    ) ?? [];
   const filteredPreviewRows = useMemo(() => {
     if (!posPreview) return [] as CommerceCatalogSyncPreviewRow[];
     const search = previewSearch.trim().toLowerCase();
     const rows = posPreview.rows.filter((row) => {
-      const actionMatches = previewAction === "ALL" || row.action === previewAction;
-      const textMatches = !search || [row.productName, row.externalSku, row.externalProductId, row.externalVariantId, row.canonicalProductId, row.reason].some((value) => value?.toLowerCase().includes(search));
+      const actionMatches =
+        previewAction === "ALL" || row.action === previewAction;
+      const textMatches =
+        !search ||
+        [
+          row.productName,
+          row.externalSku,
+          row.externalProductId,
+          row.externalVariantId,
+          row.canonicalProductId,
+          row.reason,
+        ].some((value) => value?.toLowerCase().includes(search));
       return actionMatches && textMatches;
     });
     if (previewAction !== "ALL") return rows;
     const priority = (action: CommerceCatalogSyncPreviewRow["action"]) =>
       action === "CONFLICT" ? 0 : action === "INVALID" ? 1 : 2;
-    return rows.sort((left, right) => priority(left.action) - priority(right.action));
+    return rows.sort(
+      (left, right) => priority(left.action) - priority(right.action),
+    );
   }, [posPreview, previewAction, previewSearch]);
   const summaryValue = (action: string) =>
-    posPreview && Object.prototype.hasOwnProperty.call(posPreview.summary, action)
+    posPreview &&
+    Object.prototype.hasOwnProperty.call(posPreview.summary, action)
       ? posPreview.summary[action]
       : "—";
   const openPreviewResolution = (row: CommerceCatalogSyncPreviewRow) => {
@@ -183,27 +638,58 @@ export default function OrgAdminProducts() {
   const formatMinor = (minor: number, currency: string) =>
     `${currency} ${(minor / 100).toFixed(2)}`;
   const resolutionCandidates = resolvingPreviewRow
-    ? products.filter((product) =>
-        product.productCatalogId === catalogId &&
-        product.active &&
-        product.sku?.trim().toUpperCase() === resolvingPreviewRow.externalSku?.trim().toUpperCase(),
+    ? products.filter(
+        (product) =>
+          product.productCatalogId === catalogId &&
+          product.active &&
+          product.sku?.trim().toUpperCase() ===
+            resolvingPreviewRow.externalSku?.trim().toUpperCase(),
       )
     : [];
   const externalCategories = useMemo(() => {
     const byId = new Map<string, CommerceCatalogSyncExternalCategory>();
-    posPreview?.rows.forEach((row) => row.externalCategories?.forEach((category) => byId.set(category.externalCategoryId, category)));
-    return [...byId.values()].sort((a, b) => (a.categoryName ?? a.externalCategoryId).localeCompare(b.categoryName ?? b.externalCategoryId));
+    posPreview?.rows.forEach((row) =>
+      row.externalCategories?.forEach((category) =>
+        byId.set(category.externalCategoryId, category),
+      ),
+    );
+    return [...byId.values()].sort((a, b) =>
+      (a.categoryName ?? a.externalCategoryId).localeCompare(
+        b.categoryName ?? b.externalCategoryId,
+      ),
+    );
   }, [posPreview]);
   const canonicalCategories = useMemo(() => {
     const byId = new Map<string, string>();
-    products.filter((product) => product.productCatalogId === catalogId && product.productCatalogCategoryId)
-      .forEach((product) => byId.set(product.productCatalogCategoryId!, product.categoryName ?? product.productCatalogCategoryId!));
-    return [...byId.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+    products
+      .filter(
+        (product) =>
+          product.productCatalogId === catalogId &&
+          product.productCatalogCategoryId,
+      )
+      .forEach((product) =>
+        byId.set(
+          product.productCatalogCategoryId!,
+          product.categoryName ?? product.productCatalogCategoryId!,
+        ),
+      );
+    return [...byId.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [catalogId, products]);
   const loadCategoryCorrespondences = async () => {
     if (!selectedSyncIntegrationId || !catalogId) return;
-    const result = await organizationProductApi.categoryCorrespondences(org, selectedSyncIntegrationId, catalogId);
-    if (!result.success) { setError(result.error?.message ?? "Unable to load category correspondences."); return; }
+    const result = await organizationProductApi.categoryCorrespondences(
+      org,
+      selectedSyncIntegrationId,
+      catalogId,
+    );
+    if (!result.success) {
+      setError(
+        result.error?.message ?? "Unable to load category correspondences.",
+      );
+      return;
+    }
     setCategoryCorrespondences(result.data);
   };
   const openCategoryCorrespondences = async () => {
@@ -214,55 +700,115 @@ export default function OrgAdminProducts() {
     setShowCategoryCorrespondences(true);
   };
   const saveCategoryCorrespondence = async () => {
-    if (!selectedExternalCategory || !selectedCanonicalCategoryId || !selectedSyncIntegrationId || !catalogId) return;
+    if (
+      !selectedExternalCategory ||
+      !selectedCanonicalCategoryId ||
+      !selectedSyncIntegrationId ||
+      !catalogId
+    )
+      return;
     setSavingCategoryCorrespondence(true);
-    const existing = categoryCorrespondences.find((item) => item.externalCategoryId === selectedExternalCategory.externalCategoryId);
-    const result = await organizationProductApi.saveCategoryCorrespondence(org, selectedSyncIntegrationId, catalogId, {
-      externalCategoryId: selectedExternalCategory.externalCategoryId,
-      externalCategoryName: selectedExternalCategory.categoryName,
-      externalParentCategoryId: selectedExternalCategory.parentExternalCategoryId,
-      productCatalogCategoryId: selectedCanonicalCategoryId,
-      versionNo: existing?.versionNo,
-    });
+    const existing = categoryCorrespondences.find(
+      (item) =>
+        item.externalCategoryId === selectedExternalCategory.externalCategoryId,
+    );
+    const result = await organizationProductApi.saveCategoryCorrespondence(
+      org,
+      selectedSyncIntegrationId,
+      catalogId,
+      {
+        externalCategoryId: selectedExternalCategory.externalCategoryId,
+        externalCategoryName: selectedExternalCategory.categoryName,
+        externalParentCategoryId:
+          selectedExternalCategory.parentExternalCategoryId,
+        productCatalogCategoryId: selectedCanonicalCategoryId,
+        versionNo: existing?.versionNo,
+      },
+    );
     setSavingCategoryCorrespondence(false);
-    if (!result.success) { setError(result.error?.message ?? "Unable to save category correspondence."); return; }
+    if (!result.success) {
+      setError(
+        result.error?.message ?? "Unable to save category correspondence.",
+      );
+      return;
+    }
     await loadCategoryCorrespondences();
     setPosPreview(null);
-    setSuccessMessage("Category correspondence saved. Generate a fresh preview before applying synchronization.");
+    setSuccessMessage(
+      "Category correspondence saved. Generate a fresh preview before applying synchronization.",
+    );
   };
-  const deactivateCategoryCorrespondence = async (item: CommerceCatalogCategoryCorrespondence) => {
-    const result = await organizationProductApi.deactivateCategoryCorrespondence(org, item.correspondenceId, item.versionNo);
-    if (!result.success) { setError(result.error?.message ?? "Unable to deactivate category correspondence."); return; }
+  const deactivateCategoryCorrespondence = async (
+    item: CommerceCatalogCategoryCorrespondence,
+  ) => {
+    const result =
+      await organizationProductApi.deactivateCategoryCorrespondence(
+        org,
+        item.correspondenceId,
+        item.versionNo,
+      );
+    if (!result.success) {
+      setError(
+        result.error?.message ??
+          "Unable to deactivate category correspondence.",
+      );
+      return;
+    }
     await loadCategoryCorrespondences();
     setPosPreview(null);
     setCorrespondenceToDeactivate(null);
-    setSuccessMessage("Category correspondence deactivated. Generate a fresh preview before applying synchronization.");
+    setSuccessMessage(
+      "Category correspondence deactivated. Generate a fresh preview before applying synchronization.",
+    );
   };
   const resolvePreviewRow = async () => {
-    if (!posPreview || !resolvingPreviewRow || !selectedCanonicalProductId) return;
-    const product = resolutionCandidates.find((item) => item.productId === selectedCanonicalProductId);
+    if (!posPreview || !resolvingPreviewRow || !selectedCanonicalProductId)
+      return;
+    const product = resolutionCandidates.find(
+      (item) => item.productId === selectedCanonicalProductId,
+    );
     if (!product) return;
     setSavingResolution(true);
-    const result = await organizationProductApi.resolvePosCatalogConflict(org, posPreview.previewId, resolvingPreviewRow.rowId, {
-      canonicalProductId: product.productId,
-      expectedCanonicalProductVersionNo: product.versionNo,
-    });
+    const result = await organizationProductApi.resolvePosCatalogConflict(
+      org,
+      posPreview.previewId,
+      resolvingPreviewRow.rowId,
+      {
+        canonicalProductId: product.productId,
+        expectedCanonicalProductVersionNo: product.versionNo,
+      },
+    );
     setSavingResolution(false);
     if (!result.success) {
-      setError(result.error?.message ?? "Unable to save the catalog resolution.");
+      setError(
+        result.error?.message ?? "Unable to save the catalog resolution.",
+      );
       return;
     }
-    setPosPreview((current) => current ? {
-      ...current,
-      rows: current.rows.map((row) => row.rowId === resolvingPreviewRow.rowId
-        ? { ...row, canonicalProductId: product.productId, action: "MATCHED", eligibleForApply: true, reason: "Administrator selected canonical product for ambiguous SKU" }
-        : row),
-      summary: {
-        ...current.summary,
-        CONFLICT: Math.max(0, (current.summary.CONFLICT ?? 0) - 1),
-        MATCHED: (current.summary.MATCHED ?? 0) + 1,
-      },
-    } : current);
+    setPosPreview((current) =>
+      current
+        ? {
+            ...current,
+            rows: current.rows.map((row) =>
+              row.rowId === resolvingPreviewRow.rowId
+                ? {
+                    ...row,
+                    canonicalProductId: product.productId,
+                    action: "MATCHED",
+                    eligibleForApply: true,
+                    reason:
+                      "Administrator selected canonical product for ambiguous SKU",
+                  }
+                : row,
+            ),
+            summary: {
+              ...current.summary,
+              CONFLICT: Math.max(0, (current.summary.CONFLICT ?? 0) - 1),
+              MATCHED: (current.summary.MATCHED ?? 0) + 1,
+            },
+          }
+        : current,
+    );
     setResolvingPreviewRow(null);
     setSelectedCanonicalProductId("");
   };
@@ -279,17 +825,32 @@ export default function OrgAdminProducts() {
     applyIdempotencyKey.current = null;
   };
   const fetchPosPreview = async () => {
-    if (!catalogId || !selectedSyncIntegrationId) {
-      setError("Choose a canonical catalog and an integration configuration.");
+    if (
+      !catalogId ||
+      !selectedMaintenanceContext?.canSynchronize ||
+      selectedMaintenanceContext.productCatalogId !== catalogId ||
+      selectedMaintenanceContext.integrationConfigurationId !==
+        selectedSyncIntegrationId ||
+      selectedSyncStoreId !== selectedStoreId
+    ) {
+      setError(
+        "Select one verified Store catalog maintenance context before generating a preview.",
+      );
       return;
     }
     setPreviewLoading(true);
     setError(undefined);
     setSuccessMessage(undefined);
-    const result = await organizationProductApi.previewPosCatalog(org, selectedSyncIntegrationId, { productCatalogId: catalogId, storeId: selectedSyncStoreId });
+    const result = await organizationProductApi.previewPosCatalog(
+      org,
+      selectedSyncIntegrationId,
+      { productCatalogId: catalogId, storeId: selectedSyncStoreId },
+    );
     setPreviewLoading(false);
     if (!result.success) {
-      setError(result.error?.message ?? "Unable to fetch the POS catalog preview.");
+      setError(
+        result.error?.message ?? "Unable to fetch the POS catalog preview.",
+      );
       return;
     }
     setPosPreview(result.data);
@@ -308,54 +869,115 @@ export default function OrgAdminProducts() {
     setApplyingPreview(true);
     setApplyUncertain(false);
     setError(undefined);
-    const result = await organizationProductApi.applyPosCatalogSync(org, posPreview.previewId, {
-      approved: true,
-      idempotencyKey: applyIdempotencyKey.current,
-    });
+    const result = await organizationProductApi.applyPosCatalogSync(
+      org,
+      posPreview.previewId,
+      {
+        approved: true,
+        idempotencyKey: applyIdempotencyKey.current,
+      },
+    );
     setApplyingPreview(false);
     if (!result.success) {
       const code = result.error?.code?.toUpperCase() ?? "";
       const message = result.error?.message ?? "";
-      setPreviewExpired(code.includes("EXPIRED") || code.includes("STALE") || /expired|stale/i.test(message));
+      setPreviewExpired(
+        code.includes("EXPIRED") ||
+          code.includes("STALE") ||
+          /expired|stale/i.test(message),
+      );
       setApplyUncertain(true);
       setShowApplyConfirmation(false);
-      setError(message || "We could not confirm the catalog sync outcome. Retry uses the same approval key.");
+      setError(
+        message ||
+          "We could not confirm the catalog sync outcome. Retry uses the same approval key.",
+      );
       return;
     }
     setShowApplyConfirmation(false);
-    setSuccessMessage(`Catalog sync applied: ${result.data.createdCount} created, ${result.data.appliedCount} updated, ${result.data.mappedCount} mappings changed.`);
+    setSuccessMessage(
+      `Catalog sync applied: ${result.data.createdCount} created, ${result.data.appliedCount} updated, ${result.data.mappedCount} mappings changed.`,
+    );
     setPosPreview(null);
     applyIdempotencyKey.current = null;
     await load();
   };
-  const mappingHealth = (item: OrganizationProduct) => {
-    if (!item.integrationConfigurationId) return { label: "—" };
-    const activeCount = mappings.filter(
+  const activeMappingsForProduct = (item: OrganizationProduct) => {
+    const integrationConfigurationId =
+      selectedMaintenanceContext?.integrationConfigurationId;
+    if (!integrationConfigurationId) return [];
+    return mappings.filter(
       (mapping) =>
         mapping.active &&
         mapping.productId === item.productId &&
-        mapping.integrationConfigurationId ===
-          item.integrationConfigurationId &&
-        !mapping.storeId,
-    ).length;
-    if (activeCount === 1) return { label: "Mapped" };
-    return {
-      label: "Needs attention",
-      detail:
-        activeCount === 0
-          ? "No active mapping"
-          : `${activeCount} active mappings`,
-    };
+        mapping.integrationConfigurationId === integrationConfigurationId,
+    );
   };
-  const activeMappingsForProduct = (item: OrganizationProduct) =>
-    mappings.filter(
-      (mapping) =>
-        mapping.active &&
-        mapping.productId === item.productId &&
-        mapping.integrationConfigurationId === item.integrationConfigurationId,
+  const activeStoreScopeMappings = (item: OrganizationProduct) =>
+    activeMappingsForProduct(item).filter(
+      (mapping) => mapping.storeId === selectedStoreId,
     );
   const activeOrganizationScopeMappings = (item: OrganizationProduct) =>
     activeMappingsForProduct(item).filter((mapping) => !mapping.storeId);
+  const mappingHealth = (item: OrganizationProduct): ProductMappingHealth => {
+    if (
+      !selectedStoreId ||
+      !selectedMaintenanceContext?.integrationConfigurationId
+    ) {
+      return {
+        label: "Not applicable",
+        detail: "Select a configured POS catalog to review mappings.",
+      };
+    }
+
+    const storeMappings = activeStoreScopeMappings(item);
+    if (storeMappings.length > 1) {
+      return {
+        label: "Needs attention",
+        detail: `${storeMappings.length} active Store-specific mappings`,
+        scope: "STORE",
+        effectiveMappings: storeMappings,
+      };
+    }
+    if (storeMappings.length === 1) {
+      return {
+        label: "Mapped",
+        detail: "Store-specific mapping",
+        scope: "STORE",
+        effectiveMappings: storeMappings,
+      };
+    }
+
+    const organizationMappings = activeOrganizationScopeMappings(item);
+    if (organizationMappings.length > 1) {
+      return {
+        label: "Needs attention",
+        detail: `${organizationMappings.length} active organization-wide mappings`,
+        scope: "ORGANIZATION",
+        effectiveMappings: organizationMappings,
+      };
+    }
+    if (organizationMappings.length === 1) {
+      return {
+        label: "Mapped",
+        detail: "Organization-wide mapping",
+        scope: "ORGANIZATION",
+        effectiveMappings: organizationMappings,
+      };
+    }
+    return {
+      label: "Not mapped",
+      detail: "No active mapping for this Store and integration.",
+    };
+  };
+  const canFixOrganizationScopeMapping = (item: OrganizationProduct) => {
+    const health = mappingHealth(item);
+    return (
+      health.label === "Needs attention" &&
+      health.scope === "ORGANIZATION" &&
+      (health.effectiveMappings?.length ?? 0) > 1
+    );
+  };
   const recommendedMappingIds = (item: OrganizationProduct) => {
     const canonicalSku = item.sku?.trim().toUpperCase();
     if (!canonicalSku) return [];
@@ -398,6 +1020,60 @@ export default function OrgAdminProducts() {
       setError("Catalog Name is required.");
       return;
     }
+    if (catalogSetupContext) {
+      const currentContext = maintenanceContexts.find(
+        (context) => context.key === catalogSetupContext.key,
+      );
+      const alreadyLinked = catalogs.some(
+        (item) =>
+          item.integrationConfigurationId ===
+            catalogSetupContext.integrationConfigurationId &&
+          item.externalCatalogId === catalogSetupContext.externalCatalogId,
+      );
+      if (
+        selectedStoreId !== catalogSetupContext.storeId ||
+        selectedMaintenanceContextKey !== catalogSetupContext.key ||
+        !currentContext ||
+        currentContext.available ||
+        !catalogSetupContext.integrationConfigurationId ||
+        !catalogSetupContext.externalCatalogId ||
+        alreadyLinked
+      ) {
+        setError(
+          "This Store catalog configuration changed or is already linked. Refresh the selected Store before setting up a catalog.",
+        );
+        return;
+      }
+      const [configurationResult, catalogsResult] = await Promise.all([
+        organizationPoyntOperationalApi.configurations(
+          org,
+          catalogSetupContext.integrationConfigurationId,
+        ),
+        organizationProductApi.catalogs(org),
+      ]);
+      const verifiedConfiguration = configurationResult.success
+        ? configurationResult.data.find(
+            (configuration) =>
+              configuration.storeId === catalogSetupContext.storeId &&
+              configuration.effectiveCatalogId?.trim() ===
+                catalogSetupContext.externalCatalogId,
+          )
+        : null;
+      const refreshedLinkExists = catalogsResult.success
+        ? catalogsResult.data.some(
+            (item) =>
+              item.integrationConfigurationId ===
+                catalogSetupContext.integrationConfigurationId &&
+              item.externalCatalogId === catalogSetupContext.externalCatalogId,
+          )
+        : true;
+      if (!verifiedConfiguration || refreshedLinkExists) {
+        setError(
+          "This Store catalog configuration changed or is already linked. Refresh the selected Store before setting up a catalog.",
+        );
+        return;
+      }
+    }
     if (
       catalog.source === "INTEGRATION" &&
       !catalog.integrationConfigurationId
@@ -412,12 +1088,14 @@ export default function OrgAdminProducts() {
       productCatalogId: catalogEditing?.productCatalogId,
       catalogName: catalog.catalogName.trim(),
       description: undefined,
-      integrationConfigurationId:
-        catalog.source === "INTEGRATION"
+      integrationConfigurationId: catalogSetupContext
+        ? catalogSetupContext.integrationConfigurationId
+        : catalog.source === "INTEGRATION"
           ? catalog.integrationConfigurationId
           : null,
-      externalCatalogId:
-        catalog.source === "INTEGRATION"
+      externalCatalogId: catalogSetupContext
+        ? catalogSetupContext.externalCatalogId
+        : catalog.source === "INTEGRATION"
           ? catalog.externalCatalogId.trim() || null
           : null,
       active: catalog.active,
@@ -431,11 +1109,18 @@ export default function OrgAdminProducts() {
     setCatalogId(result.data.productCatalogId);
     setShowCatalog(false);
     setCatalogEditing(null);
+    setCatalogSetupContext(null);
+    setCatalogManualOnly(false);
     setCatalog(emptyCatalog);
     await load();
   };
-  const openCatalog = (selected?: OrganizationProductCatalog) => {
+  const openCatalog = (
+    selected?: OrganizationProductCatalog,
+    manualOnly = false,
+  ) => {
     setError(undefined);
+    setCatalogSetupContext(null);
+    setCatalogManualOnly(manualOnly);
     setCatalogEditing(selected ?? null);
     setCatalog(
       selected
@@ -451,6 +1136,32 @@ export default function OrgAdminProducts() {
           }
         : emptyCatalog,
     );
+    setShowCatalog(true);
+  };
+  const openStoreCatalogSetup = () => {
+    if (
+      !selectedMaintenanceContext ||
+      !canSetUpStoreCatalog ||
+      !selectedMaintenanceContext.integrationConfigurationId ||
+      !selectedMaintenanceContext.externalCatalogId
+    ) {
+      return;
+    }
+    setError(undefined);
+    setCatalogEditing(null);
+    setCatalogSetupContext(selectedMaintenanceContext);
+    setCatalogManualOnly(false);
+    setCatalog({
+      catalogName:
+        selectedMaintenanceContext.externalCatalogName?.trim() ||
+        selectedMaintenanceContext.integrationName?.trim() ||
+        "Memgine Product Catalog",
+      source: "INTEGRATION",
+      integrationConfigurationId:
+        selectedMaintenanceContext.integrationConfigurationId,
+      externalCatalogId: selectedMaintenanceContext.externalCatalogId,
+      active: true,
+    });
     setShowCatalog(true);
   };
   const save = async () => {
@@ -625,10 +1336,11 @@ export default function OrgAdminProducts() {
       }}
     >
       <View style={{ gap: theme.spacing.xs }}>
-        <Text variant="h1">Products</Text>
+        <Text variant="h1">Products & Catalogs</Text>
         <Text color="textMuted">
-          Manage your organization’s catalog. Integration-linked products keep
-          their canonical Memgine Product identity.
+          View and maintain configured catalogs by Store. Changing this
+          maintenance context never changes the operational Product Catalog
+          selection in Integrations.
         </Text>
       </View>
       {error ? <Text color="danger">{error}</Text> : null}
@@ -642,47 +1354,134 @@ export default function OrgAdminProducts() {
           borderRadius: theme.radius.lg,
         }}
       >
-        <Text variant="bodyStrong">Catalog</Text>
-        {catalogs.length ? (
-          <View style={{ gap: theme.spacing.sm }}>
-            {catalogs.map((item) => (
-              <Pressable
-                key={item.productCatalogId}
-                onPress={() => setCatalogId(item.productCatalogId)}
-                style={{
-                  padding: theme.spacing.sm,
-                  borderWidth: 1,
-                  borderColor:
-                    catalogId === item.productCatalogId
-                      ? theme.colors.primary
-                      : theme.colors.border,
-                  borderRadius: theme.radius.md,
-                }}
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            gap: theme.spacing.md,
+          }}
+        >
+          <View style={{ flexGrow: 1, minWidth: 220 }}>
+            <ReferenceSelect
+              label="Memgine Store"
+              value={selectedStoreId}
+              items={stores}
+              getItemId={(store) => store.id}
+              renderItemLabel={(store) => `${store.name} (${store.storeCode})`}
+              onChange={selectStore}
+              placeholder="Select a Memgine Store"
+            />
+          </View>
+          <View style={{ flexGrow: 1, minWidth: 260 }}>
+            <ReferenceSelect
+              label="Catalog Configuration"
+              value={selectedMaintenanceContextKey}
+              items={maintenanceContexts}
+              getItemId={(context) => context.key}
+              renderItemLabel={(context) =>
+                `${context.integrationName ?? context.catalogName ?? "Catalog configuration"} — ${context.externalCatalogName ?? context.catalogName ?? context.externalCatalogId ?? "Catalog unavailable"}`
+              }
+              onChange={selectMaintenanceContext}
+              placeholder={
+                maintenanceLoading
+                  ? "Loading configured catalogs…"
+                  : "Select a catalog configuration"
+              }
+              disabled={!selectedStoreId || maintenanceLoading}
+            />
+          </View>
+        </View>
+        {manualCatalogs.length ? (
+          <View style={{ gap: theme.spacing.xs }}>
+            <ReferenceSelect
+              label="Manual Catalog (organization-wide)"
+              value={selectedManualCatalogId}
+              items={manualCatalogs}
+              getItemId={(catalog) => catalog.productCatalogId}
+              renderItemLabel={(catalog) => catalog.catalogName}
+              onChange={selectManualCatalog}
+              placeholder="Select a manual catalog"
+              allowClear
+            />
+            <Text color="textMuted">
+              Manual catalogs are maintained independently and are not attached
+              to this Store or a Poynt catalog.
+            </Text>
+          </View>
+        ) : null}
+        {maintenanceError ? (
+          <Text color="danger">{maintenanceError}</Text>
+        ) : null}
+        {selectedMaintenanceContext ? (
+          <View style={{ gap: theme.spacing.xs }}>
+            <Text variant="bodyStrong">
+              {selectedMaintenanceContext.catalogName ??
+                selectedMaintenanceContext.externalCatalogName ??
+                "Unlinked catalog configuration"}
+            </Text>
+            <Text color="textMuted">
+              {selectedMaintenanceContext.provider ?? "Provider"} ·{" "}
+              {selectedMaintenanceContext.integrationName ?? "No integration"}
+            </Text>
+            <Text color="textMuted">
+              Poynt Catalog:{" "}
+              {selectedMaintenanceContext.externalCatalogName?.trim() ||
+                selectedMaintenanceContext.externalCatalogId ||
+                "Not available"}
+            </Text>
+            {runtimeCatalogIntegrationId && runtimeExternalCatalogId ? (
+              runtimeCatalogIntegrationId ===
+                selectedMaintenanceContext.integrationConfigurationId &&
+              runtimeExternalCatalogId ===
+                selectedMaintenanceContext.externalCatalogId ? (
+                <View style={{ gap: theme.spacing.xs }}>
+                  <Text variant="bodyStrong">Selected for Store</Text>
+                  <Text color="textMuted">
+                    This catalog is selected for this Store in Integrations.
+                  </Text>
+                </View>
+              ) : (
+                <View style={{ gap: theme.spacing.xs }}>
+                  <Text variant="bodyStrong">Not selected for Store</Text>
+                  <Text color="textMuted">
+                    This Store has selected{" "}
+                    {runtimeCatalogName || "another catalog"} in Integrations.
+                    You can maintain this catalog here without changing that
+                    selection.
+                  </Text>
+                  <Text color="textMuted">
+                    To change the Store selection, go to Integrations → Store
+                    Capability Configuration.
+                  </Text>
+                </View>
+              )
+            ) : (
+              <Text color="textMuted">
+                No catalog selected for Store in Integrations.
+              </Text>
+            )}
+            {selectedMaintenanceContext.reason ? (
+              <Text
+                color={
+                  selectedMaintenanceContext.available ? "textMuted" : "danger"
+                }
               >
-                <Text variant="bodyStrong">{item.catalogName}</Text>
-                <Text color="textMuted">
-                  {item.integrationName
-                    ? `${item.integrationName} · ${item.provider ?? "Integration"}`
-                    : "Manual"}
-                </Text>
-              </Pressable>
-            ))}
-            {activeCatalog ? (
-              <Button
-                label="Edit Catalog"
-                size="sm"
-                variant="outline"
-                onPress={() => openCatalog(activeCatalog)}
-              />
+                {selectedMaintenanceContext.reason}
+              </Text>
             ) : null}
           </View>
-        ) : (
+        ) : selectedManualCatalogId ? (
           <Text color="textMuted">
-            No product catalog configured yet. Create a catalog before adding or
-            importing products.
+            Manual catalog selected. It is organization-scoped and does not
+            configure this Store’s POS catalog.
           </Text>
-        )}
-        <Button label="Add Catalog" size="sm" onPress={() => openCatalog()} />
+        ) : selectedStoreId && !maintenanceLoading ? (
+          <Text color="textMuted">
+            {maintenanceContexts.length
+              ? "Select a catalog configuration. An unambiguous context is selected automatically; otherwise no catalog is assumed."
+              : "No product catalog configured for this Store. Configure one in Integrations → Manage Store Terminals."}
+          </Text>
+        ) : null}
       </View>
       <View
         style={{
@@ -691,127 +1490,287 @@ export default function OrgAdminProducts() {
           flexWrap: "wrap",
         }}
       >
-        <Button
-          label="Add Product"
-          disabled={!catalogId}
-          onPress={() => {
-            setEditing(null);
-            setProduct(emptyProduct);
-            setShowProduct(true);
-          }}
-        />
-        <Button
-          label="Upload Excel"
-          variant="outline"
-          disabled={!catalogId}
-          onPress={() => setShowImport(true)}
-        />
-        <Button
-          label="Sync from POS"
-          variant="outline"
-          disabled={!catalogId || !integrations.length}
-          onPress={() => {
-            setError(undefined);
-            setSuccessMessage(undefined);
-            setSelectedSyncIntegrationId(integrations.length === 1 ? integrations[0].id : "");
-            setSelectedSyncStoreId(null);
-            setShowPosSync(true);
-          }}
-        />
-        <Button
-          label="Download Template"
-          variant="outline"
-          onPress={downloadImportTemplate}
-        />
+        {(
+          ["PRODUCTS", "CATEGORIES", "MAPPINGS", "SYNCHRONIZATION"] as const
+        ).map((section) => (
+          <Button
+            key={section}
+            label={section[0] + section.slice(1).toLowerCase()}
+            size="sm"
+            variant={activeSection === section ? "primary" : "outline"}
+            onPress={() => setActiveSection(section)}
+          />
+        ))}
       </View>
-      <DataTable
-        data={products}
-        keyExtractor={(p) => p.productId}
-        columns={[
-          {
-            key: "name",
-            title: "Product",
-            render: (p) => (
-              <View>
-                <Text variant="bodyStrong">{p.productName}</Text>
-                <Text color="textMuted">{p.productCode}</Text>
-              </View>
-            ),
-          },
-          {
-            key: "catalog",
-            title: "Catalog",
-            render: (p) => <Text>{p.catalogName ?? "—"}</Text>,
-          },
-          {
-            key: "price",
-            title: "Price",
-            render: (p) => (
-              <Text>
-                {p.basePriceMinor != null
-                  ? `${p.currencyCode ?? ""} ${(p.basePriceMinor / 100).toFixed(2)}`
-                  : "—"}
-              </Text>
-            ),
-          },
-          {
-            key: "external",
-            title: "External ID",
-            render: (p) => <Text>{p.externalProductIds ?? "—"}</Text>,
-          },
-          {
-            key: "mapping",
-            title: "Mapping",
-            render: (p) => {
-              const health = mappingHealth(p);
-              const canFix =
-                health.label === "Needs attention" &&
-                activeOrganizationScopeMappings(p).length > 1;
-              return (
-                <View>
-                  <Text
-                    variant={
-                      health.label === "Needs attention" ? "bodyStrong" : "body"
-                    }
-                    color={
-                      health.label === "Needs attention" ? "danger" : "text"
-                    }
-                  >
-                    {health.label}
+      {activeSection === "PRODUCTS" ? (
+        <>
+          <View
+            style={{
+              flexDirection: "row",
+              gap: theme.spacing.sm,
+              flexWrap: "wrap",
+            }}
+          >
+            <Button
+              label="Add Product"
+              disabled={!catalogId || !hasProductMaintenanceContext}
+              onPress={() => {
+                setEditing(null);
+                setProduct(emptyProduct);
+                setShowProduct(true);
+              }}
+            />
+            <Button
+              label="Upload Excel"
+              variant="outline"
+              disabled={!catalogId || !hasProductMaintenanceContext}
+              onPress={() => setShowImport(true)}
+            />
+            {activeCatalog ? (
+              <Button
+                label="Edit Catalog"
+                size="sm"
+                variant="outline"
+                disabled={!hasProductMaintenanceContext}
+                onPress={() => openCatalog(activeCatalog)}
+              />
+            ) : null}
+            {canSetUpStoreCatalog ? (
+              <Button
+                label="Set Up Memgine Catalog"
+                size="sm"
+                variant="outline"
+                onPress={openStoreCatalogSetup}
+              />
+            ) : null}
+            <Button
+              label="Add Manual Catalog"
+              size="sm"
+              variant="outline"
+              onPress={() => openCatalog(undefined, true)}
+            />
+            <Button
+              label="Download Template"
+              variant="outline"
+              onPress={downloadImportTemplate}
+            />
+          </View>
+          <DataTable
+            data={catalogProducts}
+            keyExtractor={(p) => p.productId}
+            columns={[
+              {
+                key: "name",
+                title: "Product",
+                render: (p) => (
+                  <View>
+                    <Text variant="bodyStrong">{p.productName}</Text>
+                    <Text color="textMuted">{p.productCode}</Text>
+                  </View>
+                ),
+              },
+              {
+                key: "catalog",
+                title: "Catalog",
+                render: (p) => <Text>{p.catalogName ?? "—"}</Text>,
+              },
+              {
+                key: "price",
+                title: "Price",
+                render: (p) => (
+                  <Text>
+                    {p.basePriceMinor != null
+                      ? `${p.currencyCode ?? ""} ${(p.basePriceMinor / 100).toFixed(2)}`
+                      : "—"}
                   </Text>
-                  {health.detail ? (
-                    <Text color="textMuted">{health.detail}</Text>
-                  ) : null}
-                  {canFix ? (
-                    <Button
-                      label="Fix mapping"
-                      size="sm"
-                      variant="outline"
-                      onPress={() => openMappingFix(p)}
-                    />
-                  ) : null}
-                </View>
+                ),
+              },
+              {
+                key: "external",
+                title: "External ID",
+                render: (p) => <Text>{p.externalProductIds ?? "—"}</Text>,
+              },
+              {
+                key: "mapping",
+                title: "Mapping",
+                render: (p) => {
+                  const health = mappingHealth(p);
+                  const canFix = canFixOrganizationScopeMapping(p);
+                  return (
+                    <View>
+                      <Text
+                        variant={
+                          health.label === "Needs attention"
+                            ? "bodyStrong"
+                            : "body"
+                        }
+                        color={
+                          health.label === "Needs attention" ? "danger" : "text"
+                        }
+                      >
+                        {health.label}
+                      </Text>
+                      {health.detail ? (
+                        <Text color="textMuted">{health.detail}</Text>
+                      ) : null}
+                      {canFix ? (
+                        <Button
+                          label="Fix mapping"
+                          size="sm"
+                          variant="outline"
+                          onPress={() => openMappingFix(p)}
+                        />
+                      ) : null}
+                    </View>
+                  );
+                },
+              },
+            ]}
+            actions={[
+              {
+                label: "Edit",
+                onPress: (p) => {
+                  setEditing(p);
+                  setProduct({
+                    ...p,
+                    basePriceMinor: String(p.basePriceMinor ?? ""),
+                    externalProductId:
+                      p.externalProductIds?.split(", ")[0] ?? "",
+                  });
+                  setShowProduct(true);
+                },
+              },
+            ]}
+            emptyMessage={
+              catalogId
+                ? "No products are associated with this canonical catalog."
+                : "Select a linked canonical catalog to view products."
+            }
+          />
+        </>
+      ) : null}
+      {activeSection === "CATEGORIES" ? (
+        <View
+          style={{
+            gap: theme.spacing.sm,
+            padding: theme.spacing.md,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            borderRadius: theme.radius.md,
+          }}
+        >
+          <Text variant="bodyStrong">Canonical categories</Text>
+          {canonicalCategories.length ? (
+            canonicalCategories.map((category) => (
+              <Text key={category.id}>
+                {category.name} · {category.id}
+              </Text>
+            ))
+          ) : (
+            <Text color="textMuted">
+              No canonical category data is available for this catalog.
+            </Text>
+          )}
+          <Text color="textMuted">
+            External Poynt category correspondences are managed from a
+            synchronization preview because the existing API exposes external
+            categories only in that verified preview.
+          </Text>
+          <Button
+            label="Open synchronization"
+            size="sm"
+            variant="outline"
+            disabled={!selectedMaintenanceContext?.canSynchronize}
+            onPress={() => setActiveSection("SYNCHRONIZATION")}
+          />
+        </View>
+      ) : null}
+      {activeSection === "MAPPINGS" ? (
+        <View
+          style={{
+            gap: theme.spacing.sm,
+            padding: theme.spacing.md,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            borderRadius: theme.radius.md,
+          }}
+        >
+          <Text variant="bodyStrong">Product mappings</Text>
+          <Text color="textMuted">
+            Mappings remain integration-scoped. Store context is shown for
+            maintenance only; mappings without Store scope are not represented
+            as Store-isolated.
+          </Text>
+          {catalogMappings.length ? (
+            catalogMappings.map((mapping) => (
+              <View
+                key={mapping.mappingId}
+                style={{
+                  gap: theme.spacing.xs,
+                  padding: theme.spacing.sm,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  borderRadius: theme.radius.sm,
+                }}
+              >
+                <Text>{mapping.externalSku ?? mapping.externalProductId}</Text>
+                <Text color="textMuted">
+                  External ID: {mapping.externalProductId} ·{" "}
+                  {mapping.storeId
+                    ? `Store scope: ${mapping.storeId}`
+                    : "Organization scope"}{" "}
+                  · {mapping.active ? "Active" : "Inactive"}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <Text color="textMuted">
+              No mappings are available for this canonical catalog and
+              integration context. Mapping conflict resolution remains available
+              from Products when a product has multiple active mappings.
+            </Text>
+          )}
+        </View>
+      ) : null}
+      {activeSection === "SYNCHRONIZATION" ? (
+        <View
+          style={{
+            gap: theme.spacing.sm,
+            padding: theme.spacing.md,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            borderRadius: theme.radius.md,
+          }}
+        >
+          <Text variant="bodyStrong">Synchronization</Text>
+          <Text color="textMuted">
+            Preview and apply are locked to the selected Store, integration, and
+            canonical catalog. Opening this section does not fetch or apply
+            changes.
+          </Text>
+          <Button
+            label="Sync from POS"
+            variant="outline"
+            disabled={!selectedMaintenanceContext?.canSynchronize || !catalogId}
+            onPress={() => {
+              setError(undefined);
+              setSuccessMessage(undefined);
+              setSelectedSyncIntegrationId(
+                selectedMaintenanceContext?.integrationConfigurationId ?? "",
               );
-            },
-          },
-        ]}
-        actions={[
-          {
-            label: "Edit",
-            onPress: (p) => {
-              setEditing(p);
-              setCatalogId(p.productCatalogId ?? catalogId);
-              setProduct({
-                ...p,
-                basePriceMinor: String(p.basePriceMinor ?? ""),
-                externalProductId: p.externalProductIds?.split(", ")[0] ?? "",
-              });
-              setShowProduct(true);
-            },
-          },
-        ]}
-        emptyMessage="No products yet. Add products manually or import an Excel workbook."
-      />
+              setSelectedSyncStoreId(selectedStoreId || null);
+              setShowPosSync(true);
+            }}
+          />
+          {!selectedMaintenanceContext?.canSynchronize ? (
+            <Text color="textMuted">
+              Synchronization is unavailable until this Store configuration has
+              one verified external catalog and an exact canonical catalog
+              association.
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
       <Modal
         visible={showPosSync}
         onClose={resetPosSync}
@@ -820,63 +1779,50 @@ export default function OrgAdminProducts() {
       >
         <View style={{ gap: theme.spacing.md }}>
           <Text color="textMuted">
-            Fetch a read-only preview from a POS integration. The selected canonical catalog remains the destination; membership and subscription products are never imported here.
+            Fetch a read-only preview from a POS integration. The selected
+            canonical catalog remains the destination; membership and
+            subscription products are never imported here.
           </Text>
           <View style={{ gap: theme.spacing.xs }}>
             <Text variant="bodyStrong">Canonical catalog</Text>
             <Text>{activeCatalog?.catalogName ?? "No catalog selected"}</Text>
           </View>
           <View style={{ gap: theme.spacing.sm }}>
-            <Text variant="bodyStrong">POS integration</Text>
-            {integrations.map((integration) => (
-              <Pressable
-                key={integration.id}
-                onPress={() => setSelectedSyncIntegrationId(integration.id)}
-                style={{
-                  padding: theme.spacing.sm,
-                  borderWidth: 1,
-                  borderColor: selectedSyncIntegrationId === integration.id ? theme.colors.primary : theme.colors.border,
-                  borderRadius: theme.radius.md,
-                }}
-              >
-                <Text variant="bodyStrong">{selectedSyncIntegrationId === integration.id ? "●" : "○"} {integration.integrationName}</Text>
-                <Text color="textMuted">{integration.provider}</Text>
-              </Pressable>
-            ))}
+            <Text variant="bodyStrong">Locked maintenance context</Text>
+            <Text>
+              {selectedMaintenanceContext?.integrationName ??
+                "Integration unavailable"}
+            </Text>
+            <Text color="textMuted">
+              Store:{" "}
+              {stores.find((store) => store.id === selectedStoreId)?.name ??
+                selectedStoreId}
+              {selectedMaintenanceContext?.externalCatalogId
+                ? ` · Poynt Catalog: ${selectedMaintenanceContext.externalCatalogName?.trim() || selectedMaintenanceContext.externalCatalogId}`
+                : ""}
+            </Text>
           </View>
-          <View style={{ gap: theme.spacing.sm }}>
-            <Text variant="bodyStrong">Store scope</Text>
-            <Pressable
-              onPress={() => setSelectedSyncStoreId(null)}
-              style={{
-                padding: theme.spacing.sm,
-                borderWidth: 1,
-                borderColor: selectedSyncStoreId === null ? theme.colors.primary : theme.colors.border,
-                borderRadius: theme.radius.md,
-              }}
-            >
-              <Text>{selectedSyncStoreId === null ? "●" : "○"} Organization-wide</Text>
-            </Pressable>
-            {stores.map((store) => (
-              <Pressable
-                key={store.id}
-                onPress={() => setSelectedSyncStoreId(store.id)}
-                style={{
-                  padding: theme.spacing.sm,
-                  borderWidth: 1,
-                  borderColor: selectedSyncStoreId === store.id ? theme.colors.primary : theme.colors.border,
-                  borderRadius: theme.radius.md,
-                }}
-              >
-                <Text>{selectedSyncStoreId === store.id ? "●" : "○"} {store.name}</Text>
-                <Text color="textMuted">{store.storeCode}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <Text color="textMuted">The server verifies that the selected integration supports catalog synchronization.</Text>
-          <View style={{ flexDirection: "row", gap: theme.spacing.sm, flexWrap: "wrap" }}>
+          <Text color="textMuted">
+            The server verifies this selected integration and Store context.
+            Change the maintenance context before opening a different preview.
+          </Text>
+          <View
+            style={{
+              flexDirection: "row",
+              gap: theme.spacing.sm,
+              flexWrap: "wrap",
+            }}
+          >
             <Button label="Cancel" variant="outline" onPress={resetPosSync} />
-            <Button label={previewLoading ? "Fetching preview…" : "Fetch & Preview"} disabled={previewLoading || !catalogId || !selectedSyncIntegrationId} onPress={() => void fetchPosPreview()} />
+            <Button
+              label={previewLoading ? "Fetching preview…" : "Fetch & Preview"}
+              disabled={
+                previewLoading ||
+                !selectedMaintenanceContext?.canSynchronize ||
+                !catalogId
+              }
+              onPress={() => void fetchPosPreview()}
+            />
           </View>
         </View>
       </Modal>
@@ -890,139 +1836,736 @@ export default function OrgAdminProducts() {
         scrollable={false}
       >
         {posPreview ? (
-          <View style={{ height: viewportHeight * 0.86, maxHeight: viewportHeight * 0.9, minHeight: 0, flexShrink: 1, position: "relative" }}>
-          <ScrollView ref={previewListRef} style={{ flex: 1, minHeight: 0, ...(Platform.OS === "web" ? ({ overflowY: "auto" } as any) : {}) }} contentContainerStyle={{ gap: theme.spacing.md, paddingBottom: theme.spacing.xl }} showsVerticalScrollIndicator onScroll={(event) => setPreviewListScrolled(event.nativeEvent.contentOffset.y > 40)} scrollEventThrottle={16}>
-          <View style={{ gap: theme.spacing.md }}>
-            <View style={{ gap: theme.spacing.xs }}>
-              <Text variant="bodyStrong">{activeCatalog?.catalogName ?? posPreview.productCatalogId}</Text>
-              <Text color="textMuted">Integration: {integrations.find((item) => item.id === posPreview.integrationConfigurationId)?.integrationName ?? posPreview.integrationConfigurationId}</Text>
-              <Text color="textMuted">Scope: {posPreview.storeId ?? "Organization-wide"}</Text>
-              <Text color="textMuted">Preview status: {posPreview.status}. It expires after 30 minutes; generate a fresh preview if apply reports expiry.</Text>
-            </View>
-            {!posPreview.fullCatalogComplete ? (
-              <View style={{ gap: theme.spacing.xs, padding: theme.spacing.sm, borderWidth: 1, borderColor: theme.colors.danger, borderRadius: theme.radius.md }}>
-                <Text color="danger" variant="bodyStrong">Incomplete provider catalog</Text>
-                <Text color="textMuted">The provider did not return a complete catalog. Missing records are not treated as absent and this preview cannot safely apply changes.</Text>
+          <View
+            style={{
+              height: viewportHeight * 0.86,
+              maxHeight: viewportHeight * 0.9,
+              minHeight: 0,
+              flexShrink: 1,
+              position: "relative",
+            }}
+          >
+            <ScrollView
+              ref={previewListRef}
+              style={{
+                flex: 1,
+                minHeight: 0,
+                ...(Platform.OS === "web"
+                  ? ({ overflowY: "auto" } as any)
+                  : {}),
+              }}
+              contentContainerStyle={{
+                gap: theme.spacing.md,
+                paddingBottom: theme.spacing.xl,
+              }}
+              showsVerticalScrollIndicator
+              onScroll={(event) =>
+                setPreviewListScrolled(event.nativeEvent.contentOffset.y > 40)
+              }
+              scrollEventThrottle={16}
+            >
+              <View style={{ gap: theme.spacing.md }}>
+                <View style={{ gap: theme.spacing.xs }}>
+                  <Text variant="bodyStrong">
+                    {activeCatalog?.catalogName ?? posPreview.productCatalogId}
+                  </Text>
+                  <Text color="textMuted">
+                    Integration:{" "}
+                    {integrations.find(
+                      (item) =>
+                        item.id === posPreview.integrationConfigurationId,
+                    )?.integrationName ?? posPreview.integrationConfigurationId}
+                  </Text>
+                  <Text color="textMuted">
+                    Scope: {posPreview.storeId ?? "Organization-wide"}
+                  </Text>
+                  <Text color="textMuted">
+                    Preview status: {posPreview.status}. It expires after 30
+                    minutes; generate a fresh preview if apply reports expiry.
+                  </Text>
+                </View>
+                {!posPreview.fullCatalogComplete ? (
+                  <View
+                    style={{
+                      gap: theme.spacing.xs,
+                      padding: theme.spacing.sm,
+                      borderWidth: 1,
+                      borderColor: theme.colors.danger,
+                      borderRadius: theme.radius.md,
+                    }}
+                  >
+                    <Text color="danger" variant="bodyStrong">
+                      Incomplete provider catalog
+                    </Text>
+                    <Text color="textMuted">
+                      The provider did not return a complete catalog. Missing
+                      records are not treated as absent and this preview cannot
+                      safely apply changes.
+                    </Text>
+                  </View>
+                ) : null}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    flexWrap: "wrap",
+                    gap: theme.spacing.sm,
+                  }}
+                >
+                  {(
+                    [
+                      "NEW",
+                      "MATCHED",
+                      "UPDATE",
+                      "UNCHANGED",
+                      "INACTIVE",
+                      "MISSING",
+                      "CONFLICT",
+                      "INVALID",
+                    ] as const
+                  ).map((action) => (
+                    <Text
+                      key={action}
+                      color={
+                        action === "CONFLICT" || action === "INVALID"
+                          ? "danger"
+                          : "textMuted"
+                      }
+                    >
+                      {action}: {summaryValue(action)}
+                    </Text>
+                  ))}
+                </View>
+                {blockingPreviewRows.length > 0 ? (
+                  <View
+                    style={{
+                      gap: theme.spacing.xs,
+                      padding: theme.spacing.md,
+                      borderWidth: 1,
+                      borderColor: theme.colors.danger,
+                      borderRadius: theme.radius.md,
+                    }}
+                  >
+                    <Text color="danger" variant="bodyStrong">
+                      {blockingPreviewRows.length} blocking record
+                      {blockingPreviewRows.length === 1 ? "" : "s"}
+                    </Text>
+                    <Text color="textMuted">
+                      P3 applies approved previews atomically. No valid rows
+                      will be imported until every conflict and invalid record
+                      is resolved and a fresh preview is generated. Partial
+                      import is unavailable.
+                    </Text>
+                  </View>
+                ) : null}
+                <View
+                  style={{
+                    gap: theme.spacing.sm,
+                    paddingBottom: theme.spacing.sm,
+                    borderBottomWidth: 1,
+                    borderColor: theme.colors.border,
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      gap: theme.spacing.sm,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <Button
+                      label="Category correspondences"
+                      variant="outline"
+                      onPress={() => void openCategoryCorrespondences()}
+                    />
+                    <Button
+                      label="Generate fresh preview"
+                      variant="outline"
+                      onPress={() => {
+                        setPosPreview(null);
+                        setShowPosSync(true);
+                      }}
+                    />
+                    <Button
+                      label="Review changes"
+                      disabled={previewExpired}
+                      onPress={() => setShowReviewChanges(true)}
+                    />
+                  </View>
+                  <Input
+                    label="Search preview"
+                    value={previewSearch}
+                    onChangeText={setPreviewSearch}
+                    placeholder="Name, SKU, external ID, canonical ID, reason"
+                  />
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      flexWrap: "wrap",
+                      gap: theme.spacing.xs,
+                    }}
+                  >
+                    {[
+                      "ALL",
+                      "NEW",
+                      "MATCHED",
+                      "UPDATE",
+                      "UNCHANGED",
+                      "INACTIVE",
+                      "MISSING",
+                      "CONFLICT",
+                      "INVALID",
+                    ].map((action) => (
+                      <Button
+                        key={action}
+                        label={action}
+                        size="sm"
+                        variant={
+                          previewAction === action ? "primary" : "outline"
+                        }
+                        onPress={() => setPreviewAction(action)}
+                      />
+                    ))}
+                  </View>
+                </View>
+                <View
+                  style={{
+                    gap: theme.spacing.sm,
+                    paddingVertical: theme.spacing.xs,
+                  }}
+                >
+                  {filteredPreviewRows.map((row) => (
+                    <View
+                      key={row.rowId}
+                      style={{
+                        gap: theme.spacing.xs,
+                        padding: theme.spacing.md,
+                        borderWidth: 1,
+                        borderColor:
+                          row.action === "CONFLICT" || row.action === "INVALID"
+                            ? theme.colors.danger
+                            : theme.colors.border,
+                        borderRadius: theme.radius.md,
+                      }}
+                    >
+                      <Text
+                        variant="bodyStrong"
+                        color={
+                          row.action === "CONFLICT" || row.action === "INVALID"
+                            ? "danger"
+                            : "text"
+                        }
+                      >
+                        {row.action} · {row.productName}
+                      </Text>
+                      <Text color="textMuted">
+                        Product ID: {row.externalProductId}
+                        {row.externalVariantId
+                          ? ` · Variant: ${row.externalVariantId}`
+                          : ""}
+                      </Text>
+                      <Text>
+                        SKU: {row.externalSku ?? "—"} ·{" "}
+                        {formatMinor(row.unitPriceMinor, row.currencyCode)}
+                      </Text>
+                      <Text>
+                        Poynt categories:{" "}
+                        {row.externalCategories?.length
+                          ? row.externalCategories
+                              .map(
+                                (category) =>
+                                  `${category.categoryName ?? "Unnamed"} (${category.externalCategoryId})`,
+                              )
+                              .join(", ")
+                          : row.categoryMetadataAvailable
+                            ? "Uncategorized"
+                            : "Metadata unavailable"}
+                      </Text>
+                      <Text>
+                        Canonical match: {row.canonicalProductId ?? "—"}
+                      </Text>
+                      <Text color={row.reason ? "textMuted" : "text"}>
+                        Reason: {row.reason ?? "—"}
+                      </Text>
+                      {row.hasDependentBusinessRules ? (
+                        <Text color="danger">
+                          Dependent business rules require review.
+                        </Text>
+                      ) : null}
+                      {row.action === "CONFLICT" && row.externalSku ? (
+                        <Button
+                          label="Resolve"
+                          size="sm"
+                          variant="outline"
+                          onPress={() => openPreviewResolution(row)}
+                        />
+                      ) : null}
+                    </View>
+                  ))}
+                </View>
+                {applyUncertain ? (
+                  <Text color="danger">
+                    The server did not confirm apply. Do not create a new
+                    preview; retry uses the same approval key.
+                  </Text>
+                ) : null}
+                {previewExpired ? (
+                  <Text color="danger">
+                    This preview is no longer valid. Generate a fresh preview
+                    before applying any changes.
+                  </Text>
+                ) : null}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    gap: theme.spacing.sm,
+                    flexWrap: "wrap",
+                    paddingTop: theme.spacing.sm,
+                    borderTopWidth: 1,
+                    borderColor: theme.colors.border,
+                  }}
+                >
+                  <Button
+                    label="Close"
+                    variant="outline"
+                    onPress={() => setPosPreview(null)}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+            {previewListScrolled ? (
+              <View
+                style={{
+                  position: "absolute",
+                  right: theme.spacing.sm,
+                  bottom: theme.spacing.sm,
+                }}
+              >
+                <Button
+                  label="Back to top"
+                  size="sm"
+                  variant="primary"
+                  onPress={() => {
+                    previewListRef.current?.scrollTo({ y: 0, animated: true });
+                    setPreviewListScrolled(false);
+                  }}
+                />
               </View>
             ) : null}
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-              {(["NEW", "MATCHED", "UPDATE", "UNCHANGED", "INACTIVE", "MISSING", "CONFLICT", "INVALID"] as const).map((action) => (
-                <Text key={action} color={action === "CONFLICT" || action === "INVALID" ? "danger" : "textMuted"}>{action}: {summaryValue(action)}</Text>
-              ))}
-            </View>
-            {blockingPreviewRows.length > 0 ? (
-              <View style={{ gap: theme.spacing.xs, padding: theme.spacing.md, borderWidth: 1, borderColor: theme.colors.danger, borderRadius: theme.radius.md }}>
-                <Text color="danger" variant="bodyStrong">{blockingPreviewRows.length} blocking record{blockingPreviewRows.length === 1 ? "" : "s"}</Text>
-                <Text color="textMuted">P3 applies approved previews atomically. No valid rows will be imported until every conflict and invalid record is resolved and a fresh preview is generated. Partial import is unavailable.</Text>
-              </View>
-            ) : null}
-            <View style={{ gap: theme.spacing.sm, paddingBottom: theme.spacing.sm, borderBottomWidth: 1, borderColor: theme.colors.border }}>
-              <View style={{ flexDirection: "row", gap: theme.spacing.sm, flexWrap: "wrap" }}>
-                <Button label="Category correspondences" variant="outline" onPress={() => void openCategoryCorrespondences()} />
-                <Button label="Generate fresh preview" variant="outline" onPress={() => { setPosPreview(null); setShowPosSync(true); }} />
-                <Button label="Review changes" disabled={previewExpired} onPress={() => setShowReviewChanges(true)} />
-              </View>
-              <Input label="Search preview" value={previewSearch} onChangeText={setPreviewSearch} placeholder="Name, SKU, external ID, canonical ID, reason" />
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.xs }}>
-                {["ALL", "NEW", "MATCHED", "UPDATE", "UNCHANGED", "INACTIVE", "MISSING", "CONFLICT", "INVALID"].map((action) => (
-                  <Button key={action} label={action} size="sm" variant={previewAction === action ? "primary" : "outline"} onPress={() => setPreviewAction(action)} />
-                ))}
-              </View>
-            </View>
-            <View style={{ gap: theme.spacing.sm, paddingVertical: theme.spacing.xs }}>
-              {filteredPreviewRows.map((row) => <View key={row.rowId} style={{ gap: theme.spacing.xs, padding: theme.spacing.md, borderWidth: 1, borderColor: row.action === "CONFLICT" || row.action === "INVALID" ? theme.colors.danger : theme.colors.border, borderRadius: theme.radius.md }}>
-              <Text variant="bodyStrong" color={row.action === "CONFLICT" || row.action === "INVALID" ? "danger" : "text"}>{row.action} · {row.productName}</Text>
-              <Text color="textMuted">Product ID: {row.externalProductId}{row.externalVariantId ? ` · Variant: ${row.externalVariantId}` : ""}</Text>
-              <Text>SKU: {row.externalSku ?? "—"} · {formatMinor(row.unitPriceMinor, row.currencyCode)}</Text>
-              <Text>Poynt categories: {row.externalCategories?.length ? row.externalCategories.map((category) => `${category.categoryName ?? "Unnamed"} (${category.externalCategoryId})`).join(", ") : row.categoryMetadataAvailable ? "Uncategorized" : "Metadata unavailable"}</Text>
-              <Text>Canonical match: {row.canonicalProductId ?? "—"}</Text>
-              <Text color={row.reason ? "textMuted" : "text"}>Reason: {row.reason ?? "—"}</Text>
-              {row.hasDependentBusinessRules ? <Text color="danger">Dependent business rules require review.</Text> : null}
-              {row.action === "CONFLICT" && row.externalSku ? <Button label="Resolve" size="sm" variant="outline" onPress={() => openPreviewResolution(row)} /> : null}
-              </View>)}
-            </View>
-            {applyUncertain ? <Text color="danger">The server did not confirm apply. Do not create a new preview; retry uses the same approval key.</Text> : null}
-            {previewExpired ? <Text color="danger">This preview is no longer valid. Generate a fresh preview before applying any changes.</Text> : null}
-            <View style={{ flexDirection: "row", gap: theme.spacing.sm, flexWrap: "wrap", paddingTop: theme.spacing.sm, borderTopWidth: 1, borderColor: theme.colors.border }}>
-              <Button label="Close" variant="outline" onPress={() => setPosPreview(null)} />
-            </View>
-          </View>
-          </ScrollView>
-          {previewListScrolled ? <View style={{ position: "absolute", right: theme.spacing.sm, bottom: theme.spacing.sm }}><Button label="Back to top" size="sm" variant="primary" onPress={() => { previewListRef.current?.scrollTo({ y: 0, animated: true }); setPreviewListScrolled(false); }} /></View> : null}
           </View>
         ) : null}
       </Modal>
-      <Modal visible={showCategoryCorrespondences} onClose={() => setShowCategoryCorrespondences(false)} title="Verified Poynt category correspondences" scrollable>
+      <Modal
+        visible={showCategoryCorrespondences}
+        onClose={() => setShowCategoryCorrespondences(false)}
+        title="Verified Poynt category correspondences"
+        scrollable
+      >
         <View style={{ gap: theme.spacing.md }}>
-          <Text color="textMuted">Approve each correspondence explicitly. Category names are informational; the saved IDs control reconciliation. Saving or deactivating one invalidates the current preview.</Text>
+          <Text color="textMuted">
+            Approve each correspondence explicitly. Category names are
+            informational; the saved IDs control reconciliation. Saving or
+            deactivating one invalidates the current preview.
+          </Text>
           {availableExternalCategories.map((external) => {
-            const existing = categoryCorrespondences.find((item) => item.externalCategoryId === external.externalCategoryId);
-            const canonical = canonicalCategories.find((item) => item.id === existing?.productCatalogCategoryId);
-            return <Pressable key={external.externalCategoryId} onPress={() => { setSelectedExternalCategory(external); setSelectedCanonicalCategoryId(existing?.productCatalogCategoryId ?? ""); }} style={{ padding: theme.spacing.sm, borderWidth: 1, borderColor: selectedExternalCategory?.externalCategoryId === external.externalCategoryId ? theme.colors.primary : theme.colors.border, borderRadius: theme.radius.md }}>
-              <Text variant="bodyStrong">{external.categoryName ?? "Unnamed Poynt category"}</Text>
-              <Text color="textMuted">Poynt ID: {external.externalCategoryId}{external.parentExternalCategoryId ? ` · Parent: ${external.parentExternalCategoryId}` : ""}</Text>
-              <Text color={existing ? "text" : "textMuted"}>{existing ? `Approved → ${canonical?.name ?? existing.productCatalogCategoryId} (${existing.productCatalogCategoryId})` : "No approved correspondence"}</Text>
-              {existing ? <Button label="Deactivate" size="sm" variant="outline" onPress={() => setCorrespondenceToDeactivate(existing)} /> : null}
-            </Pressable>;
+            const existing = categoryCorrespondences.find(
+              (item) => item.externalCategoryId === external.externalCategoryId,
+            );
+            const canonical = canonicalCategories.find(
+              (item) => item.id === existing?.productCatalogCategoryId,
+            );
+            return (
+              <Pressable
+                key={external.externalCategoryId}
+                onPress={() => {
+                  setSelectedExternalCategory(external);
+                  setSelectedCanonicalCategoryId(
+                    existing?.productCatalogCategoryId ?? "",
+                  );
+                }}
+                style={{
+                  padding: theme.spacing.sm,
+                  borderWidth: 1,
+                  borderColor:
+                    selectedExternalCategory?.externalCategoryId ===
+                    external.externalCategoryId
+                      ? theme.colors.primary
+                      : theme.colors.border,
+                  borderRadius: theme.radius.md,
+                }}
+              >
+                <Text variant="bodyStrong">
+                  {external.categoryName ?? "Unnamed Poynt category"}
+                </Text>
+                <Text color="textMuted">
+                  Poynt ID: {external.externalCategoryId}
+                  {external.parentExternalCategoryId
+                    ? ` · Parent: ${external.parentExternalCategoryId}`
+                    : ""}
+                </Text>
+                <Text color={existing ? "text" : "textMuted"}>
+                  {existing
+                    ? `Approved → ${canonical?.name ?? existing.productCatalogCategoryId} (${existing.productCatalogCategoryId})`
+                    : "No approved correspondence"}
+                </Text>
+                {existing ? (
+                  <Button
+                    label="Deactivate"
+                    size="sm"
+                    variant="outline"
+                    onPress={() => setCorrespondenceToDeactivate(existing)}
+                  />
+                ) : null}
+              </Pressable>
+            );
           })}
-          {!availableExternalCategories.length ? <Text color="textMuted">No Poynt categories are available in this preview. Configure the provider catalog ID and generate a fresh preview.</Text> : null}
-          {selectedExternalCategory ? <View style={{ gap: theme.spacing.sm, borderTopWidth: 1, borderColor: theme.colors.border, paddingTop: theme.spacing.md }}>
-            <Text variant="bodyStrong">Approve correspondence for {selectedExternalCategory.categoryName ?? selectedExternalCategory.externalCategoryId}</Text>
-            <Text color="textMuted">Poynt category ID: {selectedExternalCategory.externalCategoryId}</Text>
-            {canonicalCategories.map((category) => <Pressable key={category.id} onPress={() => setSelectedCanonicalCategoryId(category.id)} style={{ padding: theme.spacing.sm, borderWidth: 1, borderColor: selectedCanonicalCategoryId === category.id ? theme.colors.primary : theme.colors.border, borderRadius: theme.radius.md }}><Text>{selectedCanonicalCategoryId === category.id ? "●" : "○"} {category.name} · {category.id}</Text></Pressable>)}
-            <Button label={savingCategoryCorrespondence ? "Saving…" : "Confirm verified correspondence"} disabled={!selectedCanonicalCategoryId || savingCategoryCorrespondence} onPress={() => void saveCategoryCorrespondence()} />
-          </View> : null}
-          <View style={{ flexDirection: "row", gap: theme.spacing.sm, flexWrap: "wrap" }}><Button label="Close" variant="outline" onPress={() => setShowCategoryCorrespondences(false)} /><Button label="Generate fresh preview" variant="outline" onPress={() => { setShowCategoryCorrespondences(false); setShowPosSync(true); }} /></View>
+          {!availableExternalCategories.length ? (
+            <Text color="textMuted">
+              No Poynt categories are available in this preview. Configure the
+              provider catalog ID and generate a fresh preview.
+            </Text>
+          ) : null}
+          {selectedExternalCategory ? (
+            <View
+              style={{
+                gap: theme.spacing.sm,
+                borderTopWidth: 1,
+                borderColor: theme.colors.border,
+                paddingTop: theme.spacing.md,
+              }}
+            >
+              <Text variant="bodyStrong">
+                Approve correspondence for{" "}
+                {selectedExternalCategory.categoryName ??
+                  selectedExternalCategory.externalCategoryId}
+              </Text>
+              <Text color="textMuted">
+                Poynt category ID: {selectedExternalCategory.externalCategoryId}
+              </Text>
+              {canonicalCategories.map((category) => (
+                <Pressable
+                  key={category.id}
+                  onPress={() => setSelectedCanonicalCategoryId(category.id)}
+                  style={{
+                    padding: theme.spacing.sm,
+                    borderWidth: 1,
+                    borderColor:
+                      selectedCanonicalCategoryId === category.id
+                        ? theme.colors.primary
+                        : theme.colors.border,
+                    borderRadius: theme.radius.md,
+                  }}
+                >
+                  <Text>
+                    {selectedCanonicalCategoryId === category.id ? "●" : "○"}{" "}
+                    {category.name} · {category.id}
+                  </Text>
+                </Pressable>
+              ))}
+              <Button
+                label={
+                  savingCategoryCorrespondence
+                    ? "Saving…"
+                    : "Confirm verified correspondence"
+                }
+                disabled={
+                  !selectedCanonicalCategoryId || savingCategoryCorrespondence
+                }
+                onPress={() => void saveCategoryCorrespondence()}
+              />
+            </View>
+          ) : null}
+          <View
+            style={{
+              flexDirection: "row",
+              gap: theme.spacing.sm,
+              flexWrap: "wrap",
+            }}
+          >
+            <Button
+              label="Close"
+              variant="outline"
+              onPress={() => setShowCategoryCorrespondences(false)}
+            />
+            <Button
+              label="Generate fresh preview"
+              variant="outline"
+              onPress={() => {
+                setShowCategoryCorrespondences(false);
+                setShowPosSync(true);
+              }}
+            />
+          </View>
         </View>
       </Modal>
-      <Modal visible={correspondenceToDeactivate !== null} onClose={() => setCorrespondenceToDeactivate(null)} title="Deactivate category correspondence">
-        <View style={{ gap: theme.spacing.md }}><Text>Deactivate this approved correspondence? It will not change products or mappings, but a fresh preview is required.</Text><View style={{ flexDirection: "row", gap: theme.spacing.sm }}><Button label="Cancel" variant="outline" onPress={() => setCorrespondenceToDeactivate(null)} /><Button label="Deactivate" onPress={() => correspondenceToDeactivate && void deactivateCategoryCorrespondence(correspondenceToDeactivate)} /></View></View>
+      <Modal
+        visible={correspondenceToDeactivate !== null}
+        onClose={() => setCorrespondenceToDeactivate(null)}
+        title="Deactivate category correspondence"
+      >
+        <View style={{ gap: theme.spacing.md }}>
+          <Text>
+            Deactivate this approved correspondence? It will not change products
+            or mappings, but a fresh preview is required.
+          </Text>
+          <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+            <Button
+              label="Cancel"
+              variant="outline"
+              onPress={() => setCorrespondenceToDeactivate(null)}
+            />
+            <Button
+              label="Deactivate"
+              onPress={() =>
+                correspondenceToDeactivate &&
+                void deactivateCategoryCorrespondence(
+                  correspondenceToDeactivate,
+                )
+              }
+            />
+          </View>
+        </View>
       </Modal>
       <Modal
         visible={resolvingPreviewRow !== null}
-        onClose={() => { setResolvingPreviewRow(null); setSelectedCanonicalProductId(""); }}
+        onClose={() => {
+          setResolvingPreviewRow(null);
+          setSelectedCanonicalProductId("");
+        }}
         title="Resolve catalog conflict"
         scrollable
       >
         {resolvingPreviewRow ? (
           <View style={{ gap: theme.spacing.md }}>
             <Text variant="bodyStrong">{resolvingPreviewRow.productName}</Text>
-            <Text color="textMuted">External SKU: {resolvingPreviewRow.externalSku ?? "Not provided"}</Text>
-            <Text color="textMuted">Poynt categories: {resolvingPreviewRow.externalCategories?.length ? resolvingPreviewRow.externalCategories.map((category) => `${category.categoryName ?? "Unnamed"} (${category.externalCategoryId})`).join(", ") : resolvingPreviewRow.categoryMetadataAvailable ? "Uncategorized" : "Metadata unavailable"}</Text>
-            <Text color="textMuted">Select the existing canonical product. This creates no mapping until the separate atomic preview apply.</Text>
+            <Text color="textMuted">
+              External SKU: {resolvingPreviewRow.externalSku ?? "Not provided"}
+            </Text>
+            <Text color="textMuted">
+              Poynt categories:{" "}
+              {resolvingPreviewRow.externalCategories?.length
+                ? resolvingPreviewRow.externalCategories
+                    .map(
+                      (category) =>
+                        `${category.categoryName ?? "Unnamed"} (${category.externalCategoryId})`,
+                    )
+                    .join(", ")
+                : resolvingPreviewRow.categoryMetadataAvailable
+                  ? "Uncategorized"
+                  : "Metadata unavailable"}
+            </Text>
+            <Text color="textMuted">
+              Select the existing canonical product. This creates no mapping
+              until the separate atomic preview apply.
+            </Text>
             {resolutionCandidates.map((product) => (
-              <Pressable key={product.productId} onPress={() => setSelectedCanonicalProductId(product.productId)} style={{ padding: theme.spacing.sm, borderWidth: 1, borderColor: selectedCanonicalProductId === product.productId ? theme.colors.primary : theme.colors.border, borderRadius: theme.radius.md }}>
-                <Text variant="bodyStrong">{selectedCanonicalProductId === product.productId ? "●" : "○"} {product.productName}</Text>
-                <Text color="textMuted">{product.productId} · {product.categoryName ?? "No category"} · SKU {product.sku ?? "—"}</Text>
-                <Text color="textMuted">{product.basePriceMinor != null ? formatMinor(product.basePriceMinor, product.currencyCode ?? "") : "No canonical price"}</Text>
+              <Pressable
+                key={product.productId}
+                onPress={() => setSelectedCanonicalProductId(product.productId)}
+                style={{
+                  padding: theme.spacing.sm,
+                  borderWidth: 1,
+                  borderColor:
+                    selectedCanonicalProductId === product.productId
+                      ? theme.colors.primary
+                      : theme.colors.border,
+                  borderRadius: theme.radius.md,
+                }}
+              >
+                <Text variant="bodyStrong">
+                  {selectedCanonicalProductId === product.productId ? "●" : "○"}{" "}
+                  {product.productName}
+                </Text>
+                <Text color="textMuted">
+                  {product.productId} · {product.categoryName ?? "No category"}{" "}
+                  · SKU {product.sku ?? "—"}
+                </Text>
+                <Text color="textMuted">
+                  {product.basePriceMinor != null
+                    ? formatMinor(
+                        product.basePriceMinor,
+                        product.currencyCode ?? "",
+                      )
+                    : "No canonical price"}
+                </Text>
               </Pressable>
             ))}
-            {!resolutionCandidates.length ? <Text color="danger">No eligible same-catalog SKU candidates are available. Correct the canonical catalog or source data, then create a fresh preview.</Text> : null}
+            {!resolutionCandidates.length ? (
+              <Text color="danger">
+                No eligible same-catalog SKU candidates are available. Correct
+                the canonical catalog or source data, then create a fresh
+                preview.
+              </Text>
+            ) : null}
             <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-              <Button label="Cancel" variant="outline" onPress={() => setResolvingPreviewRow(null)} />
-              <Button label={savingResolution ? "Saving…" : "Confirm selection"} disabled={!selectedCanonicalProductId || savingResolution} onPress={() => void resolvePreviewRow()} />
+              <Button
+                label="Cancel"
+                variant="outline"
+                onPress={() => setResolvingPreviewRow(null)}
+              />
+              <Button
+                label={savingResolution ? "Saving…" : "Confirm selection"}
+                disabled={!selectedCanonicalProductId || savingResolution}
+                onPress={() => void resolvePreviewRow()}
+              />
             </View>
           </View>
         ) : null}
       </Modal>
-      <Modal visible={showReviewChanges} onClose={() => setShowReviewChanges(false)} title="Review POS synchronization changes" scrollable={false}>
-        {posPreview ? <View style={{ height: viewportHeight * 0.86, maxHeight: viewportHeight * 0.9, minHeight: 0, flexShrink: 1 }}>
-          <ScrollView style={{ flex: 1, minHeight: 0, ...(Platform.OS === "web" ? ({ overflowY: "auto" } as any) : {}) }} contentContainerStyle={{ gap: theme.spacing.md, paddingBottom: theme.spacing.md }} showsVerticalScrollIndicator>
-          <View style={{ gap: theme.spacing.md }}>
-            <Text color="textMuted">Review every proposed mapping before approval. Apply remains atomic and is unavailable while conflicts or invalid records remain.</Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>{(["NEW", "MATCHED", "UPDATE", "UNCHANGED", "INACTIVE", "MISSING", "CONFLICT", "INVALID"] as const).map((action) => <Text key={action} color={action === "CONFLICT" || action === "INVALID" ? "danger" : "textMuted"}>{action}: {summaryValue(action)}</Text>)}</View>
-          {posPreview.rows.map((row) => <View key={row.rowId} style={{ gap: theme.spacing.xs, padding: theme.spacing.sm, borderWidth: 1, borderColor: row.action === "CONFLICT" || row.action === "INVALID" ? theme.colors.danger : theme.colors.border, borderRadius: theme.radius.md }}>
-            <Text variant="bodyStrong">{row.action} · {row.productName}</Text>
-            <Text color="textMuted">Provider: {row.externalProductId} · SKU {row.externalSku ?? "—"} · Canonical: {row.canonicalProductId ?? "—"}</Text>
-            <Text color="textMuted">Categories: {row.externalCategories?.length ? row.externalCategories.map((category) => `${category.categoryName ?? category.externalCategoryId} (${category.externalCategoryId})`).join(", ") : row.categoryMetadataAvailable ? "Uncategorized" : "Metadata unavailable"}</Text>
-            <Text color={row.reason ? "textMuted" : "text"}>{row.reason ?? "No additional reason."}</Text>
-            {row.hasDependentBusinessRules ? <Text color="danger">Dependent business-rule warning.</Text> : null}
-            {row.action === "CONFLICT" && row.externalSku ? <Button label="Inspect / resolve" size="sm" variant="outline" onPress={() => { setShowReviewChanges(false); openPreviewResolution(row); }} /> : null}
-          </View>)}
+      <Modal
+        visible={showReviewChanges}
+        onClose={() => setShowReviewChanges(false)}
+        title="Review POS synchronization changes"
+        scrollable={false}
+      >
+        {posPreview ? (
+          <View
+            style={{
+              height: viewportHeight * 0.86,
+              maxHeight: viewportHeight * 0.9,
+              minHeight: 0,
+              flexShrink: 1,
+            }}
+          >
+            <ScrollView
+              style={{
+                flex: 1,
+                minHeight: 0,
+                ...(Platform.OS === "web"
+                  ? ({ overflowY: "auto" } as any)
+                  : {}),
+              }}
+              contentContainerStyle={{
+                gap: theme.spacing.md,
+                paddingBottom: theme.spacing.md,
+              }}
+              showsVerticalScrollIndicator
+            >
+              <View style={{ gap: theme.spacing.md }}>
+                <Text color="textMuted">
+                  Review every proposed mapping before approval. Apply remains
+                  atomic and is unavailable while conflicts or invalid records
+                  remain.
+                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    flexWrap: "wrap",
+                    gap: theme.spacing.sm,
+                  }}
+                >
+                  {(
+                    [
+                      "NEW",
+                      "MATCHED",
+                      "UPDATE",
+                      "UNCHANGED",
+                      "INACTIVE",
+                      "MISSING",
+                      "CONFLICT",
+                      "INVALID",
+                    ] as const
+                  ).map((action) => (
+                    <Text
+                      key={action}
+                      color={
+                        action === "CONFLICT" || action === "INVALID"
+                          ? "danger"
+                          : "textMuted"
+                      }
+                    >
+                      {action}: {summaryValue(action)}
+                    </Text>
+                  ))}
+                </View>
+                {posPreview.rows.map((row) => (
+                  <View
+                    key={row.rowId}
+                    style={{
+                      gap: theme.spacing.xs,
+                      padding: theme.spacing.sm,
+                      borderWidth: 1,
+                      borderColor:
+                        row.action === "CONFLICT" || row.action === "INVALID"
+                          ? theme.colors.danger
+                          : theme.colors.border,
+                      borderRadius: theme.radius.md,
+                    }}
+                  >
+                    <Text variant="bodyStrong">
+                      {row.action} · {row.productName}
+                    </Text>
+                    <Text color="textMuted">
+                      Provider: {row.externalProductId} · SKU{" "}
+                      {row.externalSku ?? "—"} · Canonical:{" "}
+                      {row.canonicalProductId ?? "—"}
+                    </Text>
+                    <Text color="textMuted">
+                      Categories:{" "}
+                      {row.externalCategories?.length
+                        ? row.externalCategories
+                            .map(
+                              (category) =>
+                                `${category.categoryName ?? category.externalCategoryId} (${category.externalCategoryId})`,
+                            )
+                            .join(", ")
+                        : row.categoryMetadataAvailable
+                          ? "Uncategorized"
+                          : "Metadata unavailable"}
+                    </Text>
+                    <Text color={row.reason ? "textMuted" : "text"}>
+                      {row.reason ?? "No additional reason."}
+                    </Text>
+                    {row.hasDependentBusinessRules ? (
+                      <Text color="danger">
+                        Dependent business-rule warning.
+                      </Text>
+                    ) : null}
+                    {row.action === "CONFLICT" && row.externalSku ? (
+                      <Button
+                        label="Inspect / resolve"
+                        size="sm"
+                        variant="outline"
+                        onPress={() => {
+                          setShowReviewChanges(false);
+                          openPreviewResolution(row);
+                        }}
+                      />
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+            <View
+              style={{
+                flexDirection: "row",
+                gap: theme.spacing.sm,
+                flexWrap: "wrap",
+                paddingTop: theme.spacing.md,
+                borderTopWidth: 1,
+                borderColor: theme.colors.border,
+              }}
+            >
+              <Button
+                label="Close"
+                variant="outline"
+                onPress={() => setShowReviewChanges(false)}
+              />
+              <Button
+                label="Approve and continue"
+                disabled={
+                  blockingPreviewRows.length > 0 ||
+                  !posPreview.fullCatalogComplete ||
+                  previewExpired ||
+                  applyingPreview
+                }
+                onPress={() => {
+                  setShowReviewChanges(false);
+                  setShowApplyConfirmation(true);
+                }}
+              />
+            </View>
           </View>
-          </ScrollView>
-          <View style={{ flexDirection: "row", gap: theme.spacing.sm, flexWrap: "wrap", paddingTop: theme.spacing.md, borderTopWidth: 1, borderColor: theme.colors.border }}><Button label="Close" variant="outline" onPress={() => setShowReviewChanges(false)} /><Button label="Approve and continue" disabled={blockingPreviewRows.length > 0 || !posPreview.fullCatalogComplete || previewExpired || applyingPreview} onPress={() => { setShowReviewChanges(false); setShowApplyConfirmation(true); }} /></View>
-        </View> : null}
+        ) : null}
       </Modal>
       <Modal
         visible={showApplyConfirmation}
@@ -1030,11 +2573,25 @@ export default function OrgAdminProducts() {
         title="Apply catalog sync"
       >
         <View style={{ gap: theme.spacing.md }}>
-          <Text variant="bodyStrong">Apply this approved preview to the selected canonical catalog?</Text>
-          <Text color="textMuted">Apply is all-or-nothing. The server rejects the entire preview if it has expired, changed, or contains blocking records. No partial import will occur.</Text>
+          <Text variant="bodyStrong">
+            Apply this approved preview to the selected canonical catalog?
+          </Text>
+          <Text color="textMuted">
+            Apply is all-or-nothing. The server rejects the entire preview if it
+            has expired, changed, or contains blocking records. No partial
+            import will occur.
+          </Text>
           <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-            <Button label="Cancel" variant="outline" onPress={() => setShowApplyConfirmation(false)} />
-            <Button label={applyingPreview ? "Applying…" : "Confirm apply"} disabled={applyingPreview} onPress={() => void applyPosPreview()} />
+            <Button
+              label="Cancel"
+              variant="outline"
+              onPress={() => setShowApplyConfirmation(false)}
+            />
+            <Button
+              label={applyingPreview ? "Applying…" : "Confirm apply"}
+              disabled={applyingPreview}
+              onPress={() => void applyPosPreview()}
+            />
           </View>
         </View>
       </Modal>
@@ -1128,11 +2685,37 @@ export default function OrgAdminProducts() {
       </Modal>
       <Modal
         visible={showCatalog}
-        onClose={() => setShowCatalog(false)}
-        title={catalogEditing ? "Edit Catalog" : "Add Catalog"}
+        onClose={() => {
+          setShowCatalog(false);
+          setCatalogSetupContext(null);
+          setCatalogManualOnly(false);
+        }}
+        title={
+          catalogSetupContext
+            ? "Set Up Memgine Catalog"
+            : catalogEditing
+              ? "Edit Catalog"
+              : "Add Manual Catalog"
+        }
         scrollable
       >
         <View style={{ gap: theme.spacing.md }}>
+          {catalogSetupContext ? (
+            <View style={{ gap: theme.spacing.xs }}>
+              <Text color="textMuted">
+                Store: {stores.find((store) => store.id === catalogSetupContext.storeId)?.name ?? catalogSetupContext.storeId}
+              </Text>
+              <Text color="textMuted">
+                Integration: {catalogSetupContext.integrationName ?? "Poynt"}
+              </Text>
+              <Text color="textMuted">
+                Verified Poynt catalog: {catalogSetupContext.externalCatalogName ?? catalogSetupContext.externalCatalogId}
+              </Text>
+              <Text color="textMuted">
+                The verified integration and external catalog identities are fixed for this setup.
+              </Text>
+            </View>
+          ) : null}
           <Input
             label="Catalog Name"
             required
@@ -1141,6 +2724,8 @@ export default function OrgAdminProducts() {
               setCatalog((current: any) => ({ ...current, catalogName: value }))
             }
           />
+          {!catalogSetupContext && !catalogManualOnly ? (
+            <>
           <Text variant="bodyStrong">Source</Text>
           {(["MANUAL", "INTEGRATION"] as const).map((source) => (
             <Pressable
@@ -1238,13 +2823,17 @@ export default function OrgAdminProducts() {
               />
             </View>
           ) : null}
-          <Checkbox
-            label="Active"
-            value={catalog.active !== false}
-            onValueChange={(active) =>
-              setCatalog((current: any) => ({ ...current, active }))
-            }
-          />
+            </>
+          ) : null}
+          {!catalogSetupContext && !catalogManualOnly ? (
+            <Checkbox
+              label="Active"
+              value={catalog.active !== false}
+              onValueChange={(active) =>
+                setCatalog((current: any) => ({ ...current, active }))
+              }
+            />
+          ) : null}
           <Button
             label={savingCatalog ? "Saving…" : "Save Catalog"}
             disabled={savingCatalog}
