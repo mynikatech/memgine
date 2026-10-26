@@ -156,6 +156,44 @@ export type CounterRedemptionCheckout = {
   paymentRequired: boolean;
 };
 
+export type CounterRedemptionReviewAllocation = {
+  redemptionItemId: ID;
+  itemType: string;
+  benefitId?: ID | null;
+  offerId?: ID | null;
+  adjustmentId: ID;
+  adjustmentType: string;
+  appliedAmountMinor: number;
+};
+
+export type CounterRedemptionReviewLine = {
+  redemptionItemId: ID;
+  productMappingId: ID;
+  canonicalProductId: ID;
+  productName: string;
+  quantity: number;
+  unitPriceMinor: number;
+  lineSubtotalMinor: number;
+  currencyCode: string;
+  allocations: CounterRedemptionReviewAllocation[];
+};
+
+export type CounterRedemptionCheckoutReview = {
+  redemptionTransactionId: ID;
+  transactionNumber: string;
+  redemptionVersionNo: number;
+  expiresAt?: string | null;
+  providerCode: string;
+  currencyCode: string;
+  lines: CounterRedemptionReviewLine[];
+  subtotalMinor: number;
+  adjustmentTotalMinor: number;
+  taxTotalMinor?: number | null;
+  payableTotalMinor: number;
+  pricingStatus: "ESTIMATED_PROVIDER_ORDER_PENDING" | string;
+  reviewHash: string;
+};
+
 export type CounterRedemptionPaymentDispatch = {
   commerceTransactionId: ID;
 
@@ -847,6 +885,7 @@ export class CounterApi {
   prepareRedemptionCheckout(
     ctx: CounterContext,
     transactionId: ID,
+    reviewHash?: string,
   ): Promise<ApiResult<CounterRedemptionCheckout>> {
     return httpClient.post(
       this.path(
@@ -856,7 +895,17 @@ export class CounterApi {
       {
         storeId: ctx.storeId,
         staffId: ctx.staffId,
+        reviewHash,
       },
+    );
+  }
+
+  redemptionCheckoutReview(
+    ctx: CounterContext,
+    transactionId: ID,
+  ): Promise<ApiResult<CounterRedemptionCheckoutReview>> {
+    return httpClient.get(
+      `${this.path(ctx, `redemption-transactions/${encodeURIComponent(transactionId)}/checkout/review`)}?storeId=${encodeURIComponent(ctx.storeId)}&staffId=${encodeURIComponent(ctx.staffId)}`,
     );
   }
 

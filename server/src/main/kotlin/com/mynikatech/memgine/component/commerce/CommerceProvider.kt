@@ -28,7 +28,10 @@ data class CommerceCatalogProductRequest(
      * Counter-authorized transaction boundary instead of an Org Admin catalog
      * configuration lookup.
      */
-    val transactionId: String? = null
+    val transactionId: String? = null,
+    /** Pending Counter redemption context used only for read-only catalog GETs. */
+    val redemptionTransactionId: String? = null,
+    val counterStaffId: String? = null
 )
 
 data class CommerceCatalogSyncRequest(

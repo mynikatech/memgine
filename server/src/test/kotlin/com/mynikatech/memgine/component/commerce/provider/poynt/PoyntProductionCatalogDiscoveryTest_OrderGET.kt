@@ -88,6 +88,7 @@ class PoyntProductionCatalogDiscoveryTest_OrderGET {
         }
         inspectBlueberryCheesecakeCurrency(inspections, business, listOf(store))
         inspectTestLabCurrencyComparison(inspections, business, store, config, transport, authorization)
+        inspectPaginatedProductCurrency(config, transport, authorization)
         inspectTestLabOrderCurrency(config, store, transport, authorization)
         println("Poynt Test Lab catalog currency diagnostic complete. GET requests only.")
     }
@@ -391,6 +392,62 @@ class PoyntProductionCatalogDiscoveryTest_OrderGET {
             else -> "INCONCLUSIVE (one or more sources missing or ambiguous)"
         }}")
         println("Memgine currency fallback: NOT_USED")
+    }
+
+    /** Inspect the exact paginated GET used by PoyntCommerceProvider.syncCatalog(), without mapping or writing. */
+    private fun inspectPaginatedProductCurrency(
+        config: ProductionConfig,
+        transport: PoyntCloudHttpTransport,
+        authorization: String,
+    ) {
+        println("=== Poynt syncCatalog paginated product currency (GET only) ===")
+        var offset = 0
+        val pageSize = 100
+        val seenOffsets = mutableSetOf<Int>()
+        var pageCount = 0
+        while (pageCount < 20 && seenOffsets.add(offset)) {
+            // Match PoyntCommerceProvider.syncCatalog() exactly; no fallback or mapping is applied.
+            val response = transport.get(transport.productsUri(config.businessId, offset), authorization)
+            println("Paginated products GET offset=$offset HTTP ${response.statusCode}")
+            if (response.statusCode != 200) {
+                println("Paginated products result: ${classify(response.statusCode)}")
+                return
+            }
+            val root = parseObject(response.body, "Paginated products") ?: return
+            val array = (root["products"] ?: root["items"]) as? JsonArray
+            if (array == null) {
+                println("Paginated products: UNKNOWN (products/items array missing)")
+                return
+            }
+            val matches = array.mapNotNull { it as? JsonObject }.filter {
+                primitive(it, "id") == BLUEBERRY_CHEESECAKE_PRODUCT_ID &&
+                    primitive(it, "sku")?.equals(BLUEBERRY_CHEESECAKE_SKU, ignoreCase = true) == true
+            }
+            if (matches.size > 1) {
+                println("Target product: INCONCLUSIVE (multiple ID/SKU matches on page)")
+                return
+            }
+            if (matches.size == 1) {
+                val item = matches.single()
+                val price = item["price"]
+                val observation = observedCurrency(price, "\$.price")
+                val configuredCurrency = "CAD" // Test Lab PoyntCatalogConfiguration.merchantCurrencyCode
+                println("Target ID/SKU: VERIFIED")
+                println("Raw paginated price.amount: ${priceAmount(price) ?: "NOT_EXPOSED"} (path: \$.price.amount)")
+                println("Raw paginated price.currency: ${safe(observation.value)} (field: ${observation.state}, path: ${observation.path})")
+                println("Memgine configured currency: $configuredCurrency (configuration, NOT provider response)")
+                println("Currency from current mapProduct() logic: ${(observation.value ?: configuredCurrency).trim().uppercase()}" )
+                println("Currency fallback applied: ${if (observation.value == null) "YES" else "NO"}")
+                return
+            }
+            pageCount++
+            if (array.size < pageSize) {
+                println("Target product: NOT_FOUND_IN_PAGINATED_RESULTS")
+                return
+            }
+            offset += array.size
+        }
+        println("Target product: INCONCLUSIVE (page scan safety limit reached)")
     }
 
     /** Existing persisted Test Lab order only; strictly one GET, no state mutation. */

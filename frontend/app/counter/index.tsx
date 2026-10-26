@@ -44,6 +44,7 @@ import {
 } from "@/src/ui/admin/CustomerForm";
 import type {
   CounterRedemptionCheckout,
+  CounterRedemptionCheckoutReview,
   CounterRedemptionTransaction,
   CounterRedemptionTransactionValidation,
 } from "@/src/data/api/counter-api";
@@ -257,6 +258,8 @@ export default function StaffCounter() {
 
   const [redemptionCheckout, setRedemptionCheckout] =
     useState<CounterRedemptionCheckout | null>(null);
+  const [redemptionReview, setRedemptionReview] =
+    useState<CounterRedemptionCheckoutReview | null>(null);
   const [redemptionCheckoutStage, setRedemptionCheckoutStage] =
     useState<RedemptionCheckoutStage>("idle");
   const redemptionCheckoutValidationRef = useRef<
@@ -345,6 +348,7 @@ export default function StaffCounter() {
     setTransactionValidation([]);
     setExecutedTransaction(null);
     setRedemptionCheckout(null);
+    setRedemptionReview(null);
     setRedemptionCheckoutStage("idle");
     redemptionCheckoutValidationRef.current = [];
     redemptionCheckoutInFlight.current = false;
@@ -1401,6 +1405,7 @@ export default function StaffCounter() {
   const beginRedemptionCheckout = async (
     transaction: CounterRedemptionTransaction,
     validation: CounterRedemptionTransactionValidation[],
+    reviewHash: string,
   ) => {
     if (redemptionCheckoutInFlight.current) return;
 
@@ -1423,28 +1428,106 @@ export default function StaffCounter() {
       const checkout = await services.counter.prepareRedemptionCheckout(
         counterContext(),
         transaction.transactionId,
+        reviewHash,
       );
-
-      if (
-        checkout.providerCode === "TEST" &&
-        checkout.commerceStatus === "ORDER_CREATED" &&
-        checkout.paymentRequired
-      ) {
-        const completed = await services.counter.confirmRedemptionTestPayment(
-          counterContext(),
-          checkout.redemptionTransactionId,
-          "SUCCEEDED",
-        );
-
-        await applyRedemptionCheckoutState(completed, false);
-      } else {
-        await applyRedemptionCheckoutState(checkout, true);
-      }
+      // A provider order can establish final tax/order totals. It is displayed
+      // before TEST completion or terminal dispatch; neither action starts
+      // merely because the staff requested the review confirmation.
+      await applyRedemptionCheckoutState(checkout, false);
     } catch (failure) {
       setRedemptionCheckoutStage("failed");
       throw failure;
     } finally {
       redemptionCheckoutInFlight.current = false;
+      setBusy(false);
+    }
+  };
+
+  const loadRedemptionReview = async (
+    transaction: CounterRedemptionTransaction,
+    validation: CounterRedemptionTransactionValidation[],
+  ) => {
+    if (redemptionCheckoutInFlight.current) return;
+    const rejected = validation.find((item) => !item.eligible);
+    if (rejected) {
+      throw new Error(
+        rejected.rejectionReason ?? "A selected item is no longer available.",
+      );
+    }
+    redemptionCheckoutInFlight.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const review = await services.counter.redemptionCheckoutReview(
+        counterContext(),
+        transaction.transactionId,
+      );
+      setResolvedTransaction(transaction);
+      setTransactionValidation(validation);
+      setRedemptionReview(review);
+    } finally {
+      redemptionCheckoutInFlight.current = false;
+      setBusy(false);
+    }
+  };
+
+  const confirmRedemptionReview = async () => {
+    if (!resolvedTransaction || !redemptionReview || busy) return;
+    try {
+      await beginRedemptionCheckout(
+        resolvedTransaction,
+        transactionValidation,
+        redemptionReview.reviewHash,
+      );
+      setRedemptionReview(null);
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Unable to confirm redemption checkout.",
+      );
+    }
+  };
+
+  const returnToRedemptionSelection = () => {
+    // The existing pending transaction remains untouched and expires under its
+    // existing backend rules. A changed selection creates a new transaction,
+    // then receives a fresh review hash before it can be confirmed.
+    setRedemptionReview(null);
+    setResolvedTransaction(null);
+    setTransactionValidation([]);
+    if (mode === "qr") {
+      setDynamicRedemptionStage("scan");
+    } else {
+      setOtpRequestId("");
+      setOtpSent(false);
+      setOtpCode("");
+      setDevCode("");
+    }
+    setError("");
+  };
+
+  const startReviewedRedemptionPayment = async () => {
+    if (!redemptionCheckout || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await services.counter.startRedemptionRemoteTerminalPayment(
+        counterContext(),
+        redemptionCheckout.redemptionTransactionId,
+      );
+      const checkout = await services.counter.redemptionCheckout(
+        counterContext(),
+        redemptionCheckout.redemptionTransactionId,
+      );
+      await applyRedemptionCheckoutState(checkout, false);
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Unable to start terminal payment.",
+      );
+    } finally {
       setBusy(false);
     }
   };
@@ -1646,7 +1729,7 @@ export default function StaffCounter() {
     setError("");
 
     try {
-      await beginRedemptionCheckout(resolvedTransaction, transactionValidation);
+      await loadRedemptionReview(resolvedTransaction, transactionValidation);
     } catch (failure) {
       setError(redemptionQrError(failure));
     } finally {
@@ -1724,7 +1807,7 @@ export default function StaffCounter() {
       setOtpCode("");
       setDevCode("");
 
-      await beginRedemptionCheckout(completed, validation);
+      await loadRedemptionReview(completed, validation);
     } catch (failure) {
       setError(
         failure instanceof Error
@@ -1841,7 +1924,7 @@ export default function StaffCounter() {
         transactionValidation.length > 0 &&
         transactionValidation.every((item) => item.eligible)
       ) {
-        await beginRedemptionCheckout(
+        await loadRedemptionReview(
           resolvedTransaction,
           transactionValidation,
         );
@@ -1889,7 +1972,7 @@ export default function StaffCounter() {
       setResolvedTransaction(transaction);
       setTransactionValidation(validation);
 
-      await beginRedemptionCheckout(transaction, validation);
+      await loadRedemptionReview(transaction, validation);
     } catch (failure) {
       setError(
         failure instanceof Error
@@ -1965,6 +2048,9 @@ export default function StaffCounter() {
 
   const renderBenefitSelection = (method: RedemptionMethod) => {
     if (!customer) {
+      return null;
+    }
+    if (redemptionReview) {
       return null;
     }
 
@@ -3088,7 +3174,7 @@ export default function StaffCounter() {
             testID="counter-redemption-retry-checkout"
             disabled={busy}
             onPress={() =>
-              void beginRedemptionCheckout(
+              void loadRedemptionReview(
                 resolvedTransaction,
                 transactionValidation,
               )
@@ -3099,6 +3185,84 @@ export default function StaffCounter() {
               {busy ? "Retrying..." : "Retry POS Checkout"}
             </Text>
           </Pressable>
+        </View>
+      ) : null}
+
+      {action === "redeem" &&
+      redemptionReview &&
+      redemptionCheckoutStage === "idle" ? (
+        <View testID="counter-redemption-review" style={styles.card}>
+          <Text style={styles.cardTitle}>Review Redemption</Text>
+          <Text style={styles.muted}>
+            Redemption {redemptionReview.transactionNumber}
+          </Text>
+          {redemptionReview.lines.map((line) => (
+            <View key={line.redemptionItemId} style={styles.redemptionItem}>
+              <View style={styles.redemptionItemContent}>
+                <Text style={styles.benefitTitle}>{line.productName}</Text>
+                <Text style={styles.muted}>
+                  Quantity {line.quantity} · {line.currencyCode} {(
+                    line.unitPriceMinor / 100
+                  ).toFixed(2)} each
+                </Text>
+                {line.allocations.map((allocation) => (
+                  <Text
+                    key={allocation.adjustmentId}
+                    style={styles.muted}
+                  >
+                    {allocation.itemType === "BENEFIT" ? "Benefit" : "Offer"}{" "}
+                    allocation: -{line.currencyCode} {(
+                      allocation.appliedAmountMinor / 100
+                    ).toFixed(2)}
+                  </Text>
+                ))}
+              </View>
+              <Text style={styles.ctxValue}>
+                {line.currencyCode} {(line.lineSubtotalMinor / 100).toFixed(2)}
+              </Text>
+            </View>
+          ))}
+          <View style={styles.ctxRow}>
+            <Text style={styles.ctxLabel}>Subtotal</Text>
+            <Text style={styles.ctxValue}>
+              {redemptionReview.currencyCode} {(redemptionReview.subtotalMinor / 100).toFixed(2)}
+            </Text>
+          </View>
+          <View style={styles.ctxRow}>
+            <Text style={styles.ctxLabel}>Benefits / Offers</Text>
+            <Text style={styles.ctxValue}>
+              -{redemptionReview.currencyCode} {(redemptionReview.adjustmentTotalMinor / 100).toFixed(2)}
+            </Text>
+          </View>
+          <View style={styles.ctxRow}>
+            <Text style={styles.ctxLabel}>Net payable</Text>
+            <Text style={styles.ctxValue}>
+              {redemptionReview.currencyCode} {(redemptionReview.payableTotalMinor / 100).toFixed(2)}
+            </Text>
+          </View>
+          <Text style={styles.muted}>
+            Tax and final provider-order totals are confirmed before payment is sent.
+          </Text>
+          <View style={styles.rowWrap}>
+            <Pressable
+              testID="counter-redemption-review-back"
+              disabled={busy}
+              onPress={returnToRedemptionSelection}
+              style={[styles.secondaryBtn, busy && styles.btnDisabled]}
+            >
+              <Text style={styles.secondaryBtnText}>Back / Edit Selection</Text>
+            </Pressable>
+            <Pressable
+              testID="counter-redemption-review-confirm"
+              disabled={busy}
+              onPress={() => void confirmRedemptionReview()}
+              style={[styles.primaryBtn, busy && styles.btnDisabled]}
+            >
+              <Text style={styles.primaryBtnText}>
+                {busy ? "Confirming..." : "Confirm Redemption"}
+              </Text>
+            </Pressable>
+          </View>
         </View>
       ) : null}
 
@@ -3226,6 +3390,20 @@ export default function StaffCounter() {
               <Text style={styles.primaryBtnText}>
                 {busy ? "Completing..." : "Complete TEST Payment"}
               </Text>
+            </Pressable>
+          ) : null}
+
+          {redemptionCheckoutStage === "ready" &&
+          redemptionCheckout.providerCode === "POYNT" &&
+          (!redemptionCheckout.pricingReconciliationRequired ||
+            redemptionCheckout.pricingAcknowledged) ? (
+            <Pressable
+              testID="counter-redemption-start-payment"
+              disabled={busy}
+              onPress={() => void startReviewedRedemptionPayment()}
+              style={[styles.primaryBtn, busy && styles.btnDisabled]}
+            >
+              <Text style={styles.primaryBtnText}>Confirm & Send Payment</Text>
             </Pressable>
           ) : null}
 

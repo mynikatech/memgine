@@ -88,6 +88,8 @@ class PoyntProductionCatalogDiscoveryTest {
         }
         inspectBlueberryCheesecakeCurrency(inspections, business, listOf(store))
         inspectTestLabCurrencyComparison(inspections, business, store, config, transport, authorization)
+        inspectPaginatedProductCurrency(config, transport, authorization)
+        inspectTestLabOrderCurrency(config, store, transport, authorization)
         println("Poynt Test Lab catalog currency diagnostic complete. GET requests only.")
     }
 
@@ -390,6 +392,149 @@ class PoyntProductionCatalogDiscoveryTest {
             else -> "INCONCLUSIVE (one or more sources missing or ambiguous)"
         }}")
         println("Memgine currency fallback: NOT_USED")
+    }
+
+    /** Inspect the exact paginated GET used by PoyntCommerceProvider.syncCatalog(), without mapping or writing. */
+    private fun inspectPaginatedProductCurrency(
+        config: ProductionConfig,
+        transport: PoyntCloudHttpTransport,
+        authorization: String,
+    ) {
+        println("=== Poynt syncCatalog paginated product currency (GET only) ===")
+        var offset = 0
+        val pageSize = 100
+        val seenOffsets = mutableSetOf<Int>()
+        var pageCount = 0
+        while (pageCount < 20 && seenOffsets.add(offset)) {
+            // Match PoyntCommerceProvider.syncCatalog() exactly; no fallback or mapping is applied.
+            val response = transport.get(transport.productsUri(config.businessId, offset), authorization)
+            println("Paginated products GET offset=$offset HTTP ${response.statusCode}")
+            if (response.statusCode != 200) {
+                println("Paginated products result: ${classify(response.statusCode)}")
+                return
+            }
+            val root = parseObject(response.body, "Paginated products") ?: return
+            val array = (root["products"] ?: root["items"]) as? JsonArray
+            if (array == null) {
+                println("Paginated products: UNKNOWN (products/items array missing)")
+                return
+            }
+            val matches = array.mapNotNull { it as? JsonObject }.filter {
+                primitive(it, "id") == BLUEBERRY_CHEESECAKE_PRODUCT_ID &&
+                    primitive(it, "sku")?.equals(BLUEBERRY_CHEESECAKE_SKU, ignoreCase = true) == true
+            }
+            if (matches.size > 1) {
+                println("Target product: INCONCLUSIVE (multiple ID/SKU matches on page)")
+                return
+            }
+            if (matches.size == 1) {
+                val item = matches.single()
+                val price = item["price"]
+                val observation = observedCurrency(price, "\$.price")
+                val configuredCurrency = "CAD" // Test Lab PoyntCatalogConfiguration.merchantCurrencyCode
+                println("Target ID/SKU: VERIFIED")
+                println("Raw paginated price.amount: ${priceAmount(price) ?: "NOT_EXPOSED"} (path: \$.price.amount)")
+                println("Raw paginated price.currency: ${safe(observation.value)} (field: ${observation.state}, path: ${observation.path})")
+                println("Memgine configured currency: $configuredCurrency (configuration, NOT provider response)")
+                println("Currency from current mapProduct() logic: ${(observation.value ?: configuredCurrency).trim().uppercase()}" )
+                println("Currency fallback applied: ${if (observation.value == null) "YES" else "NO"}")
+                return
+            }
+            pageCount++
+            if (array.size < pageSize) {
+                println("Target product: NOT_FOUND_IN_PAGINATED_RESULTS")
+                return
+            }
+            offset += array.size
+        }
+        println("Target product: INCONCLUSIVE (page scan safety limit reached)")
+    }
+
+    /** Existing persisted Test Lab order only; strictly one GET, no state mutation. */
+    private fun inspectTestLabOrderCurrency(
+        config: ProductionConfig,
+        store: JsonObject,
+        transport: PoyntCloudHttpTransport,
+        authorization: String,
+    ) {
+        val orderId = TEST_LAB_REDEMPTION_ORDER_ID
+        println("=== Poynt Test Lab existing order currency (GET only) ===")
+        val response = transport.get(
+            URI.create("${config.baseUrl}/businesses/${config.businessId}/orders/$orderId"),
+            authorization,
+        )
+        println("Existing Poynt order GET HTTP ${response.statusCode}")
+        if (response.statusCode != 200) {
+            println("Existing Poynt order: ${classify(response.statusCode)}")
+            println("Existing Poynt order error code: ${safeErrorCode(response.body)}")
+            return
+        }
+        val order = parseObject(response.body, "Existing Poynt order") ?: return
+        if (primitive(order, "id") != orderId) {
+            println("Existing Poynt order: INCONCLUSIVE (returned order ID does not match)")
+            return
+        }
+        val orderBusiness = primitive(order, "businessId")
+        if (orderBusiness != null && orderBusiness != config.businessId) {
+            println("Existing Poynt order: INCONCLUSIVE (business ID mismatch)")
+            return
+        }
+        val context = order["context"] as? JsonObject
+        val contextBusiness = context?.let { primitive(it, "businessId") }
+        val contextStore = context?.let { primitive(it, "storeId") }
+        if ((contextBusiness != null && contextBusiness != config.businessId) ||
+            (contextStore != null && contextStore != config.storeId)) {
+            println("Existing Poynt order: INCONCLUSIVE (order context business/store mismatch)")
+            return
+        }
+        println("Existing Poynt order identity: VERIFIED")
+        println("Existing Poynt order context Store: ${if (contextStore == null) "NOT_EXPOSED" else "MATCHED"}")
+        val amounts = order["amounts"] as? JsonObject
+        val amountCurrency = observedCurrency(order["amounts"], "\$.amounts")
+        println("Order amounts currency: ${safe(amountCurrency.value)} (field: ${amountCurrency.state}, path: ${amountCurrency.path})")
+        for (field in listOf("subTotal", "discountTotal", "taxTotal", "netTotal")) {
+            val value = (amounts?.get(field) as? JsonPrimitive)?.let { if (it.isString) null else it.longOrNull }
+            println("Order amounts $field: ${value ?: "NOT_EXPOSED"} (path: \$.amounts.$field)")
+        }
+        val items = order["items"] as? JsonArray
+        if (items == null) {
+            println("Order line items: NOT_EXPOSED")
+        } else {
+            println("Order line item count: ${items.size}")
+            items.take(20).forEachIndexed { i, node ->
+                val item = node as? JsonObject
+                val direct = item?.let { observedCurrency(it["price"], "\$.items[$i].price") }
+                val itemAmounts = item?.let { observedCurrency(it["amounts"], "\$.items[$i].amounts") }
+                val scalar = item?.let { observedScalarCurrency(it, "\$.items[$i]") }
+                println("Order item[$i] price currency: ${direct?.let { safe(it.value) + " (" + it.state + ", " + it.path + ")" } ?: "NOT_EXPOSED"}")
+                println("Order item[$i] amounts currency: ${itemAmounts?.let { safe(it.value) + " (" + it.state + ", " + it.path + ")" } ?: "NOT_EXPOSED"}")
+                println("Order item[$i] direct currency: ${scalar?.let { safe(it.value) + " (" + it.state + ", " + it.path + ")" } ?: "NOT_EXPOSED"}")
+            }
+            if (items.size > 20) println("Remaining order items omitted from diagnostic")
+        }
+        val transactions = order["transactions"] as? JsonArray
+        println("Order linked transaction count: ${transactions?.size ?: "NOT_EXPOSED"}")
+        transactions?.take(10)?.forEachIndexed { i, node ->
+            val amountsNode = (node as? JsonObject)?.get("amounts")
+            val currency = observedCurrency(amountsNode, "\$.transactions[$i].amounts")
+            println("Order linked transaction[$i] amounts currency: ${safe(currency.value)} (field: ${currency.state}, path: ${currency.path})")
+        }
+        val storeCurrency = primitive(store, "currency")
+        println("Poynt Store currency (GET): ${safe(storeCurrency)}")
+        println("Order and Store currency mismatch: ${when {
+            amountCurrency.value == null || storeCurrency == null -> "INCONCLUSIVE (currency missing)"
+            amountCurrency.value == storeCurrency -> "NO (values agree)"
+            else -> "YES (order=${safe(amountCurrency.value)}, store=${safe(storeCurrency)})"
+        }}")
+    }
+
+    private fun observedScalarCurrency(node: JsonObject, path: String): CurrencyObservation {
+        val field = node["currency"]
+        return CurrencyObservation(
+            (field as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank),
+            when (field) { null -> "ABSENT"; JsonNull -> "EXPLICIT_NULL"; is JsonPrimitive -> "PRESENT"; else -> "UNEXPECTED_TYPE" },
+            "$path.currency",
+        )
     }
 
     private data class CurrencyObservation(val value: String?, val state: String, val path: String)
@@ -810,5 +955,6 @@ class PoyntProductionCatalogDiscoveryTest {
         const val MATCHA_COOKIE_SKU = "MTCH-CK"
         const val BLUEBERRY_CHEESECAKE_SKU = "BLBRRY-CHSCK"
         const val BLUEBERRY_CHEESECAKE_PRODUCT_ID = "c92c787c-8d4e-43a1-8ff3-4d868a78a062"
+        const val TEST_LAB_REDEMPTION_ORDER_ID = "b875b9bd-be0d-423d-b2f1-9cfc36bf2746"
     }
 }

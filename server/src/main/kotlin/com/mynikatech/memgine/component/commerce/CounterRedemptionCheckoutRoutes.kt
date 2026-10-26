@@ -57,6 +57,22 @@ fun Route.counterRedemptionCheckoutRoutes(
     }
 
     route("/organizations/{organizationId}/counter/redemption-transactions/{transactionId}") {
+        get("/checkout/review") {
+            val organizationId = required(call.parameters["organizationId"], "Organization id")
+            val transactionId = required(call.parameters["transactionId"], "Redemption transaction id")
+            val storeId = required(call.request.queryParameters["storeId"], "Store id")
+            val staffId = required(call.request.queryParameters["staffId"], "Staff id")
+            call.respond(ApiResponse.success(
+                service.reviewRedemptionCheckout(
+                    organizationId,
+                    transactionId,
+                    storeId,
+                    staffId,
+                    call.authenticatedPrincipal().userId
+                ),
+                call.callId
+            ))
+        }
         post("/checkout") {
             val organizationId = required(call.parameters["organizationId"], "Organization id")
             val transactionId = required(call.parameters["transactionId"], "Redemption transaction id")
@@ -69,7 +85,8 @@ fun Route.counterRedemptionCheckoutRoutes(
                         redemptionTransactionId = transactionId,
                         storeId = request.storeId,
                         staffId = request.staffId,
-                        actorUserId = call.authenticatedPrincipal().userId
+                        actorUserId = call.authenticatedPrincipal().userId,
+                        reviewHash = request.reviewHash
                     ),
                     call.callId
                 )

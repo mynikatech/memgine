@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - changeSet:
+      id: 217-counter-redemption-review
+      author: mynikatech
+      runOnChange: true
+      changes:
+        - sqlFile:
+            path: ../sql/217-counter-redemption-review.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

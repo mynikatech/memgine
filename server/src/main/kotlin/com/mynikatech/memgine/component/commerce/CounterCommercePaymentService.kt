@@ -18,6 +18,9 @@ import com.mynikatech.memgine.net.dto.CommerceTerminalPaymentResultRequest
 import com.mynikatech.memgine.net.dto.CommerceTransactionAdjustmentDto
 import com.mynikatech.memgine.net.dto.CommerceTransactionLineDto
 import com.mynikatech.memgine.net.dto.CounterRedemptionCheckoutDto
+import com.mynikatech.memgine.net.dto.CounterRedemptionCheckoutReviewDto
+import com.mynikatech.memgine.net.dto.CounterRedemptionReviewAllocationDto
+import com.mynikatech.memgine.net.dto.CounterRedemptionReviewLineDto
 import com.mynikatech.memgine.net.dto.CounterPendingTransactionDto
 import com.mynikatech.memgine.net.dto.CounterRedemptionPriceDiscrepancyDto
 import com.mynikatech.memgine.net.dto.CounterRedemptionPricingAcknowledgementRequest
@@ -365,7 +368,8 @@ class CounterCommercePaymentService(
         redemptionTransactionId: String,
         storeId: String,
         staffId: String,
-        actorUserId: String
+        actorUserId: String,
+        reviewHash: String? = null
     ): CounterRedemptionCheckoutDto = translate {
         var checkout = sql().redemptionCheckout(
             organizationId,
@@ -376,6 +380,19 @@ class CounterCommercePaymentService(
         )
 
         if (checkout == null) {
+            val suppliedReviewHash = reviewHash?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: throw ConflictException("Counter redemption review is required")
+            val currentReview = reviewRedemptionCheckout(
+                organizationId,
+                redemptionTransactionId,
+                storeId,
+                staffId,
+                actorUserId
+            )
+            if (suppliedReviewHash != currentReview.reviewHash) {
+                throw ConflictException("Counter redemption selection or pricing changed; review again")
+            }
             sql().prepareRedemptionCheckout(
                 redemptionTransactionId,
                 organizationId,
@@ -444,6 +461,175 @@ class CounterCommercePaymentService(
 
         recordCompletion(checkout.commerceTransactionId, actorUserId)
         redemptionCheckoutDto(checkout, actorUserId)
+    }
+
+    /**
+     * Uses only the Counter-authorized review query and catalog GETs. No
+     * Commerce rows, provider orders, payment attempts, or entitlements are
+     * created here.
+     */
+    fun reviewRedemptionCheckout(
+        organizationId: String,
+        redemptionTransactionId: String,
+        storeId: String,
+        staffId: String,
+        actorUserId: String
+    ): CounterRedemptionCheckoutReviewDto = translate {
+        val rows = sql().reviewRedemptionCheckout(
+            redemptionTransactionId,
+            organizationId,
+            storeId,
+            staffId,
+            actorUserId
+        )
+        if (rows.isEmpty()) {
+            throw BadRequestException("Counter redemption review has no selected products")
+        }
+        val first = rows.first()
+        if (rows.any {
+                it.redemptionTransactionId != first.redemptionTransactionId ||
+                    it.redemptionVersionNo != first.redemptionVersionNo ||
+                    it.providerCode != first.providerCode ||
+                    it.integrationConfigurationId != first.integrationConfigurationId
+            }) {
+            throw ConflictException("Counter redemption review is inconsistent")
+        }
+
+        val pricedLines = rows.map { row ->
+            val price = when (row.providerCode.uppercase()) {
+                "POYNT" -> {
+                    val integrationId = row.integrationConfigurationId
+                        ?.takeIf { it.isNotBlank() }
+                        ?: throw BadRequestException("Poynt Commerce integration is unavailable")
+                    val product = providers.catalogProvider("POYNT")
+                        ?.getProduct(
+                            CommerceCatalogProductRequest(
+                                organizationId = organizationId,
+                                integrationConfigurationId = integrationId,
+                                storeId = storeId,
+                                externalProductId = row.externalProductId,
+                                externalVariantId = row.externalVariantId,
+                                actorUserId = actorUserId,
+                                redemptionTransactionId = redemptionTransactionId,
+                                counterStaffId = staffId
+                            )
+                        ) ?: throw BadRequestException("Current POS product is unavailable")
+                    if (!product.active || product.integrationConfigurationId != integrationId ||
+                        product.externalProductId != row.externalProductId ||
+                        product.externalVariantId != row.externalVariantId ||
+                        product.unitPriceMinorSnapshot < 0 ||
+                        !product.currencyCode.uppercase().matches(CURRENCY_CODE)
+                    ) {
+                        throw BadRequestException("Current POS product is invalid")
+                    }
+                    Triple(product.productName, product.unitPriceMinorSnapshot, product.currencyCode.uppercase())
+                }
+                "TEST" -> Triple(
+                    row.snapshotProductName,
+                    row.snapshotUnitPriceMinor,
+                    row.snapshotCurrencyCode.uppercase()
+                )
+                else -> throw BadRequestException("Configured Counter redemption provider is not supported")
+            }
+            if (price.second < 0 || !price.third.matches(CURRENCY_CODE)) {
+                throw BadRequestException("Counter redemption product price is invalid")
+            }
+            CommerceTransactionLineDto(
+                lineId = row.redemptionItemId,
+                transactionId = redemptionTransactionId,
+                lineType = "EXTERNAL_PRODUCT",
+                sourceEntityType = row.itemType,
+                sourceEntityId = row.benefitId ?: row.offerId,
+                productMappingId = row.commerceProductMappingId,
+                externalProductId = row.externalProductId,
+                externalVariantId = row.externalVariantId,
+                description = price.first,
+                quantity = row.quantity,
+                unitPriceMinorSnapshot = row.snapshotUnitPriceMinor,
+                unitPriceMinorAuthoritative = price.second,
+                lineSubtotalMinor = price.second * row.quantity.toLong(),
+                currencyCode = price.third,
+                priceSource = "PROVIDER_READ_ONLY",
+                versionNo = row.mappingVersionNo
+            )
+        }
+        val currency = pricedLines.map { requireNotNull(it.currencyCode) }.distinct().singleOrNull()
+            ?: throw BadRequestException("Counter redemption POS product currencies must match")
+        val adjustments = rows.map { row ->
+            CommerceTransactionAdjustmentDto(
+                adjustmentId = row.redemptionItemId,
+                transactionId = redemptionTransactionId,
+                targetLineId = row.redemptionItemId,
+                commerceAdjustmentId = row.commerceAdjustmentId,
+                sourceType = row.itemType,
+                sourceId = row.benefitId ?: row.offerId
+                    ?: throw BadRequestException("Redemption item source is unavailable"),
+                adjustmentType = row.adjustmentType,
+                percentage = row.percentage,
+                requestedAmountMinor = row.amountMinor,
+                currencyCode = row.adjustmentCurrencyCode,
+                status = "REQUESTED",
+                versionNo = row.adjustmentVersionNo
+            )
+        }
+        val allocations = materializeAdjustments(adjustments, pricedLines)
+        val subtotal = pricedLines.sumOf { requireNotNull(it.lineSubtotalMinor) }
+        val adjustmentTotal = allocations.sumOf { it.appliedAmountMinor }
+        val payable = subtotal - adjustmentTotal
+        if (payable < 0) throw BadRequestException("Counter redemption discount is invalid")
+
+        val reviewLines = pricedLines.map { line ->
+            val row = rows.first { it.redemptionItemId == line.lineId }
+            CounterRedemptionReviewLineDto(
+                redemptionItemId = row.redemptionItemId,
+                productMappingId = row.commerceProductMappingId,
+                canonicalProductId = row.canonicalProductId,
+                productName = line.description,
+                quantity = line.quantity,
+                unitPriceMinor = requireNotNull(line.unitPriceMinorAuthoritative),
+                lineSubtotalMinor = requireNotNull(line.lineSubtotalMinor),
+                currencyCode = currency,
+                allocations = allocations.filter { it.targetLineId == line.lineId }.map {
+                    CounterRedemptionReviewAllocationDto(
+                        redemptionItemId = row.redemptionItemId,
+                        itemType = row.itemType,
+                        benefitId = row.benefitId,
+                        offerId = row.offerId,
+                        adjustmentId = it.adjustmentId,
+                        adjustmentType = it.adjustmentType,
+                        appliedAmountMinor = it.appliedAmountMinor
+                    )
+                }
+            )
+        }
+        val hashInput = CounterRedemptionReviewHashInput(
+            first.redemptionTransactionId,
+            first.redemptionVersionNo,
+            first.providerCode,
+            first.integrationConfigurationId,
+            rows.sortedBy { it.redemptionItemId }.map {
+                CounterRedemptionReviewHashLine(
+                    it.redemptionItemId, it.redemptionItemVersionNo, it.commerceProductMappingId,
+                    it.mappingVersionNo, it.commerceAdjustmentId, it.adjustmentVersionNo,
+                    reviewLines.first { line -> line.redemptionItemId == it.redemptionItemId }.unitPriceMinor,
+                    reviewLines.first { line -> line.redemptionItemId == it.redemptionItemId }.currencyCode
+                )
+            }
+        )
+        CounterRedemptionCheckoutReviewDto(
+            redemptionTransactionId = first.redemptionTransactionId,
+            transactionNumber = first.transactionNumber,
+            redemptionVersionNo = first.redemptionVersionNo,
+            expiresAt = first.expiresAt,
+            providerCode = first.providerCode,
+            currencyCode = currency,
+            lines = reviewLines,
+            subtotalMinor = subtotal,
+            adjustmentTotalMinor = adjustmentTotal,
+            payableTotalMinor = payable,
+            pricingStatus = "ESTIMATED_PROVIDER_ORDER_PENDING",
+            reviewHash = sha256(Json.encodeToString(hashInput))
+        )
     }
 
     fun redemptionCheckoutStatus(
@@ -1609,6 +1795,56 @@ class CounterRedemptionPricingReconciliationRow {
     var pricingAcknowledgedHash: String? = null
 }
 
+class CounterRedemptionReviewRow {
+    var redemptionTransactionId: String = ""
+    var transactionNumber: String = ""
+    var redemptionVersionNo: Int = 0
+    var expiresAt: String? = null
+    var providerCode: String = ""
+    var integrationConfigurationId: String? = null
+    var redemptionItemId: String = ""
+    var redemptionItemVersionNo: Int = 0
+    var itemType: String = ""
+    var benefitId: String? = null
+    var offerId: String? = null
+    var commerceProductMappingId: String = ""
+    var mappingVersionNo: Int = 0
+    var canonicalProductId: String = ""
+    var externalProductId: String = ""
+    var externalVariantId: String? = null
+    var quantity: Int = 0
+    var snapshotProductName: String = ""
+    var snapshotUnitPriceMinor: Long = 0
+    var snapshotCurrencyCode: String = ""
+    var commerceAdjustmentId: String = ""
+    var adjustmentVersionNo: Int = 0
+    var adjustmentType: String = ""
+    var percentage: Double? = null
+    var amountMinor: Long? = null
+    var adjustmentCurrencyCode: String? = null
+}
+
+@Serializable
+private data class CounterRedemptionReviewHashInput(
+    val redemptionTransactionId: String,
+    val redemptionVersionNo: Int,
+    val providerCode: String,
+    val integrationConfigurationId: String?,
+    val lines: List<CounterRedemptionReviewHashLine>
+)
+
+@Serializable
+private data class CounterRedemptionReviewHashLine(
+    val redemptionItemId: String,
+    val redemptionItemVersionNo: Int,
+    val commerceProductMappingId: String,
+    val mappingVersionNo: Int,
+    val commerceAdjustmentId: String,
+    val adjustmentVersionNo: Int,
+    val unitPriceMinor: Long,
+    val currencyCode: String
+)
+
 class CounterRedemptionLineRow {
     var lineId: String = ""
     var transactionId: String = ""
@@ -1858,6 +2094,17 @@ interface CounterCommercePaymentSql {
         @Bind("staffId") staffId: String,
         @Bind("actorUserId") actorUserId: String
     ): CounterRedemptionCheckoutRow?
+
+    @SqlQuery("""SELECT * FROM commerce_review_counter_redemption_checkout(
+        :redemptionTransactionId,:organizationId,:storeId,:staffId,:actorUserId)""")
+    @RegisterBeanMapper(CounterRedemptionReviewRow::class)
+    fun reviewRedemptionCheckout(
+        @Bind("redemptionTransactionId") redemptionTransactionId: String,
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String,
+        @Bind("staffId") staffId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): List<CounterRedemptionReviewRow>
 
     @SqlQuery("""SELECT * FROM commerce_list_counter_pending_redemption_transactions(
         :organizationId,:storeId,:staffId,:actorUserId,:customerUserId,:limit,:offset)""")

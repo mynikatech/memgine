@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BusinessProvider } from "@/src/providers";
+import { BrandLogo } from "@/src/ui/BrandLogo";
 
 import { APP_ROUTES, COUNTER_ROUTES } from "@/src/constants/navigation";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
@@ -70,6 +71,7 @@ export default function CounterLayout() {
 
 function CounterShell() {
   const insets = useSafeAreaInsets();
+
   const router = useRouter();
   const pathname = usePathname();
   const { organizationId } = useGlobalSearchParams<{
@@ -153,6 +155,18 @@ function CounterShell() {
           <Nav />
           <View style={styles.accountActions}>
             <Pressable
+              testID="counter-switch-workspace"
+              onPress={() => router.replace(APP_ROUTES.workspaces as never)}
+              style={styles.accountAction}
+            >
+              <Ionicons
+                name="swap-horizontal-outline"
+                size={18}
+                color={COLORS.textMuted}
+              />
+              <Text style={styles.accountActionText}>Switch Workspace</Text>
+            </Pressable>
+            <Pressable
               onPress={() => router.push("/profile" as never)}
               style={styles.accountAction}
             >
@@ -193,6 +207,18 @@ function CounterShell() {
             <Brand compact />
 
             <View style={styles.mobileAccountActions}>
+              <Pressable
+                testID="counter-switch-workspace-mobile"
+                onPress={() => router.replace(APP_ROUTES.workspaces as never)}
+                style={styles.mobileAccountAction}
+              >
+                <Ionicons
+                  name="swap-horizontal-outline"
+                  size={18}
+                  color={COLORS.textMuted}
+                />
+                <Text style={styles.accountActionText}>Switch</Text>
+              </Pressable>
               <Pressable
                 onPress={() => router.push("/profile" as never)}
                 style={styles.mobileAccountAction}

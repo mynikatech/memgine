@@ -82,10 +82,13 @@ class PoyntCommerceProvider(
             request.organizationId,
             request.integrationConfigurationId,
             request.actorUserId,
-            request.transactionId
+            request.transactionId,
+            request.redemptionTransactionId,
+            request.storeId,
+            request.counterStaffId
         )
         val body = client.get(config, client.productUri(config.businessId, request.externalProductId))
-        val product = parseProduct(Json.parseToJsonElement(body).jsonObject) ?: return null
+        val product = parseProduct(Json.parseToJsonElement(body).jsonObject)
         return mapProduct(product, config, request.storeId)
             .firstOrNull { it.externalVariantId == request.externalVariantId }
     }
@@ -227,11 +230,25 @@ class PoyntCommerceProvider(
         org: String,
         integration: String,
         actor: String,
-        transactionId: String? = null
+        transactionId: String? = null,
+        redemptionTransactionId: String? = null,
+        storeId: String? = null,
+        counterStaffId: String? = null
     ): PoyntCatalogConfiguration {
-        val row = if (transactionId.isNullOrBlank()) {
+        val row = when {
+            !redemptionTransactionId.isNullOrBlank() ->
+                sql.counterRedemptionReviewCatalogConfiguration(
+                    org,
+                    redemptionTransactionId,
+                    storeId?.takeIf { it.isNotBlank() }
+                        ?: throw BadRequestException("Counter Store is unavailable"),
+                    counterStaffId?.takeIf { it.isNotBlank() }
+                        ?: throw BadRequestException("Counter staff context is unavailable"),
+                    actor
+                )?.takeIf { it.integrationConfigurationId == integration }
+            transactionId.isNullOrBlank() ->
             sql.catalogConfiguration(org, integration, actor)
-        } else {
+            else ->
             sql.counterCatalogConfiguration(transactionId, actor)
                 ?.takeIf { it.organizationId == org && it.integrationConfigurationId == integration }
         } ?: throw BadRequestException("Poynt catalog configuration is unavailable")
@@ -423,4 +440,17 @@ interface PoyntCommerceSql {
 
  @SqlQuery("SELECT * FROM commerce_get_poynt_catalog_configuration_for_counter_transaction(:transactionId,:actorUserId)") @RegisterBeanMapper(PoyntCatalogConfigurationRow::class)
  fun counterCatalogConfiguration(@Bind("transactionId") transactionId:String,@Bind("actorUserId") actorUserId:String):PoyntCatalogConfigurationRow?
+
+ @SqlQuery(
+    "SELECT * FROM commerce_get_poynt_catalog_configuration_for_counter_redemption_review(" +
+        ":organizationId, :redemptionTransactionId, :storeId, :staffId, :actorUserId)"
+)
+@RegisterBeanMapper(PoyntCatalogConfigurationRow::class)
+fun counterRedemptionReviewCatalogConfiguration(
+    @Bind("organizationId") organizationId: String,
+    @Bind("redemptionTransactionId") redemptionTransactionId: String,
+    @Bind("storeId") storeId: String,
+    @Bind("staffId") staffId: String,
+    @Bind("actorUserId") actorUserId: String
+): PoyntCatalogConfigurationRow?
 }

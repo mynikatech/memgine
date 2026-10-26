@@ -10,6 +10,7 @@ import {
 import type {
   MembershipPurchaseQuote,
   CounterRedemptionCheckout,
+  CounterRedemptionCheckoutReview,
 } from "@/src/data/api/counter-api";
 
 export class CounterService {
@@ -113,9 +114,19 @@ export class CounterService {
   prepareRedemptionCheckout(
     ctx: CounterContext,
     transactionId: ID,
+    reviewHash?: string,
   ): Promise<CounterRedemptionCheckout> {
     return this.api
-      .prepareRedemptionCheckout(ctx, transactionId)
+      .prepareRedemptionCheckout(ctx, transactionId, reviewHash)
+      .then((result) => this.unwrap(result));
+  }
+
+  redemptionCheckoutReview(
+    ctx: CounterContext,
+    transactionId: ID,
+  ): Promise<CounterRedemptionCheckoutReview> {
+    return this.api
+      .redemptionCheckoutReview(ctx, transactionId)
       .then((result) => this.unwrap(result));
   }
 

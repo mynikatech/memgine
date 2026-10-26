@@ -110,7 +110,54 @@ data class ExecuteRedemptionTransactionRequest(
 @Serializable
 data class CounterRedemptionCheckoutRequest(
     val storeId: String,
-    val staffId: String
+    val staffId: String,
+    /** Required for a newly prepared checkout; omitted only for persisted recovery. */
+    val reviewHash: String? = null
+)
+
+@Serializable
+data class CounterRedemptionReviewAllocationDto(
+    val redemptionItemId: String,
+    val itemType: String,
+    val benefitId: String? = null,
+    val offerId: String? = null,
+    val adjustmentId: String,
+    val adjustmentType: String,
+    val appliedAmountMinor: Long
+)
+
+@Serializable
+data class CounterRedemptionReviewLineDto(
+    val redemptionItemId: String,
+    val productMappingId: String,
+    val canonicalProductId: String,
+    val productName: String,
+    val quantity: Int,
+    val unitPriceMinor: Long,
+    val lineSubtotalMinor: Long,
+    val currencyCode: String,
+    val allocations: List<CounterRedemptionReviewAllocationDto>
+)
+
+/**
+ * Read-only price review. Amounts exclude provider-order-only tax and are
+ * explicitly labelled so Counter staff cannot treat them as final Poynt totals.
+ */
+@Serializable
+data class CounterRedemptionCheckoutReviewDto(
+    val redemptionTransactionId: String,
+    val transactionNumber: String,
+    val redemptionVersionNo: Int,
+    val expiresAt: String? = null,
+    val providerCode: String,
+    val currencyCode: String,
+    val lines: List<CounterRedemptionReviewLineDto>,
+    val subtotalMinor: Long,
+    val adjustmentTotalMinor: Long,
+    val taxTotalMinor: Long? = null,
+    val payableTotalMinor: Long,
+    val pricingStatus: String,
+    val reviewHash: String
 )
 
 /**
