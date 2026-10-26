@@ -1435,16 +1435,8 @@ export default function StaffCounter() {
       );
       await applyRedemptionCheckoutState(latest, false);
       if (latest.commerceStatus === "PROVIDER_IN_PROGRESS") {
-        const resumedAt = Date.now();
-        setRedemptionPaymentTimedOut(false);
-        setPendingRedemptionTerminalPayment((pending) => {
-          if (!pending) return pending;
-          const resumed = { ...pending, pollingWindowStartedAt: resumedAt };
-          if (counterRedemptionPaymentStorageKey) {
-            void storage.setItem(counterRedemptionPaymentStorageKey, resumed);
-          }
-          return resumed;
-        });
+        // Manual status checks are one-shot and must not restart polling.
+        setRedemptionPaymentTimedOut(true);
       }
     } catch (failure) {
       setError(
@@ -3107,8 +3099,9 @@ export default function StaffCounter() {
           ) : null}
           {redemptionCheckoutStage === "waiting" ? (
             <Text style={styles.identified}>
-              Payment was sent to the store terminal. Complete the payment on
-              the Poynt device.
+              {redemptionPaymentTimedOut
+                ? "Payment confirmation is pending. Automatic checking has stopped. Do not initiate another payment until the original payment has been investigated."
+                : "Poynt accepted the payment request. Waiting for confirmation from the terminal."}
             </Text>
           ) : null}
 
