@@ -243,8 +243,8 @@ fun inspectPendingCounterTerminalPayment() {
         return
     }
 
-    val orderId = "50c47b68-e88d-40bb-8020-01c38841da45"
-    val referenceId = "MRP-c4ef4988-43e2-48e6-84ab-112e341b1937"
+    val orderId = "b875b9bd-be0d-423d-b2f1-9cfc36bf2746"
+    val referenceId = "RDP-91bb098d-17c7-4266-9362-f3f292f34837"
 
     val token = accessToken()
     val transport = PoyntCloudHttpTransport(poyntBaseUrl, "1.2")
@@ -311,7 +311,7 @@ fun inspectPendingCounterTerminalPayment() {
                             serialized.contains(orderId) ||
                                 serialized.contains(referenceId) ||
                                 serialized.contains(
-                                    "\"transactionAmount\":42"
+                                    "\"transactionAmount\":367"
                                 )
                         }
                         .take(10)
@@ -383,8 +383,8 @@ if (order != null) {
         "POYNT TRANSACTIONS",
         URI.create(
             "$poyntBaseUrl/businesses/$businessId/transactions" +
-                "?startAt=2026-10-14T18%3A40%3A00Z" +
-                "&endAt=2026-10-14T19%3A00%3A00Z"
+               "?startAt=2026-10-25T23%3A25%3A00Z" +
+                "&endAt=2026-10-25T23%3A45%3A00Z"
         )
     )
 

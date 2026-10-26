@@ -303,7 +303,13 @@ class CounterCommercePaymentService(
 
         val integrationId = transaction.integrationConfigurationId
             ?: throw BadRequestException("Commerce transaction integration is unavailable")
-        val posDeviceId = sql().resolvePosDevice(organizationId, storeId, staffId, actorUserId)
+        val posDeviceId = sql().resolvePosDevice(
+            organizationId,
+            storeId,
+            staffId,
+            actorUserId,
+            integrationId
+        )
         val terminalTarget = terminalBindingResolver.resolve(organizationId, integrationId, posDeviceId)
         val reference = "MRP-${UUID.randomUUID()}"
         val row = sql().beginRemoteTerminalPayment(
@@ -552,7 +558,8 @@ class CounterCommercePaymentService(
             organizationId,
             storeId,
             staffId,
-            actorUserId
+            actorUserId,
+            integrationId
         )
         val terminalTarget = terminalBindingResolver.resolve(organizationId, integrationId, posDeviceId)
         val reference = "RDP-${UUID.randomUUID()}"
@@ -1716,12 +1723,21 @@ interface CounterCommercePaymentSql {
         @Bind("actorUserId") actorUserId: String
     ): Boolean
 
-    @SqlQuery("SELECT commerce_resolve_counter_pos_device(:organizationId,:storeId,:staffId,:actorUserId)")
+    @SqlQuery("""
+        SELECT commerce_resolve_counter_pos_device(
+            :organizationId,
+            :storeId,
+            :staffId,
+            :actorUserId,
+            :integrationConfigurationId
+        )
+    """)
     fun resolvePosDevice(
         @Bind("organizationId") organizationId: String,
         @Bind("storeId") storeId: String,
         @Bind("staffId") staffId: String,
-        @Bind("actorUserId") actorUserId: String
+        @Bind("actorUserId") actorUserId: String,
+        @Bind("integrationConfigurationId") integrationConfigurationId: String
     ): String
 
     @SqlQuery("SELECT * FROM commerce_begin_counter_remote_terminal_payment(:organizationId,:transactionId,:posDeviceId,:referenceId,:actorUserId)")
