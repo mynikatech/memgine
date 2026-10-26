@@ -16,6 +16,9 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 import org.postgresql.util.PSQLException
+import com.mynikatech.memgine.net.dto.RedemptionProductChoiceDto
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 class RedemptionService(
     private val sql: RedemptionSql,
@@ -42,31 +45,86 @@ class RedemptionService(
         requireId(request.storeId, "store id")
         requireId(request.staffId, "staff id")
         requireId(request.subscriptionId, "subscription id")
+
         if (request.benefitIds.isEmpty() && request.offerIds.isEmpty()) {
             throw BadRequestException("Select one or more benefits or offers")
         }
+
         if ((request.benefitIds + request.offerIds).any { it.isBlank() || it.length > 64 } ||
             request.benefitIds.distinct().size != request.benefitIds.size ||
             request.offerIds.distinct().size != request.offerIds.size ||
-            request.redemptionMethod.isBlank() || request.redemptionMethod.length > 64) {
+            request.redemptionMethod.isBlank() || request.redemptionMethod.length > 64
+        ) {
             throw BadRequestException("Invalid redemption transaction selection")
         }
-        return sql.createCounterTransaction(organizationId, request.storeId, request.staffId, request.subscriptionId,
-            request.benefitIds.toTypedArray(), request.offerIds.toTypedArray(), request.redemptionMethod.trim(), actorUserId)
-            ?: throw BadRequestException("Unable to create redemption transaction")
+
+        return sql.createCounterTransaction(
+            organizationId,
+            request.storeId,
+            request.staffId,
+            request.subscriptionId,
+            request.benefitIds.toTypedArray(),
+            request.offerIds.toTypedArray(),
+            request.redemptionMethod.trim(),
+            Json.encodeToString(request.productSelections),
+            actorUserId
+        ) ?: throw BadRequestException("Unable to create redemption transaction")
     }
 
-    fun createCustomerTransaction(
+   fun createCustomerTransaction(
         organizationId: String,
         request: CustomerCreateRedemptionTransactionRequest,
         actorUserId: String
     ): RedemptionTransactionDto {
         requireId(organizationId, "organization id")
         requireId(request.subscriptionId, "subscription id")
-        validateSelection(request.benefitIds, request.offerIds, request.redemptionMethod)
-        return sql.createCustomerTransaction(organizationId, request.subscriptionId, request.benefitIds.toTypedArray(),
-            request.offerIds.toTypedArray(), request.redemptionMethod.trim(), actorUserId)
-            ?: throw BadRequestException("Unable to create redemption transaction")
+
+        validateSelection(
+            request.benefitIds,
+            request.offerIds,
+            request.redemptionMethod
+        )
+
+        return sql.createCustomerTransaction(
+            organizationId,
+            request.subscriptionId,
+            request.benefitIds.toTypedArray(),
+            request.offerIds.toTypedArray(),
+            request.redemptionMethod.trim(),
+            Json.encodeToString(request.productSelections),
+            actorUserId
+        ) ?: throw BadRequestException("Unable to create redemption transaction")
+    }
+        fun productChoices(
+        organizationId: String,
+        subscriptionId: String,
+        itemType: String,
+        itemId: String,
+        actorUserId: String,
+        storeId: String? = null,
+        staffId: String? = null
+    ): List<RedemptionProductChoiceDto> {
+        requireId(organizationId, "organization id")
+        requireId(subscriptionId, "subscription id")
+        requireId(itemId, "item id")
+
+        if (itemType !in setOf("BENEFIT", "OFFER")) {
+            throw BadRequestException("Invalid item type")
+        }
+
+        if ((storeId == null) != (staffId == null)) {
+            throw BadRequestException("Invalid Counter context")
+        }
+
+        return sql.productChoices(
+            organizationId,
+            subscriptionId,
+            itemType,
+            itemId,
+            actorUserId,
+            storeId,
+            staffId
+        )
     }
 
     fun issueCustomerTransactionQr(

@@ -10,7 +10,14 @@ data class CreateRedemptionTransactionRequest(
     val subscriptionId: String,
     val benefitIds: List<String> = emptyList(),
     val offerIds: List<String> = emptyList(),
-    val redemptionMethod: String
+    val redemptionMethod: String,
+    val productSelections: Map<String, String> = emptyMap()
+)
+@Serializable
+data class RedemptionProductChoiceDto(
+    var productId: String = "",
+    var productName: String = "",
+    var productCode: String? = null
 )
 
 @Serializable
@@ -18,7 +25,8 @@ data class CustomerCreateRedemptionTransactionRequest(
     val subscriptionId: String,
     val benefitIds: List<String> = emptyList(),
     val offerIds: List<String> = emptyList(),
-    val redemptionMethod: String = "CUSTOMER_QR"
+    val redemptionMethod: String = "CUSTOMER_QR",
+    val productSelections: Map<String, String> = emptyMap()
 )
 
 @Serializable

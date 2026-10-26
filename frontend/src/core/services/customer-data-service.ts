@@ -110,6 +110,25 @@ export class CustomerDataService {
     return result.data;
   }
 
+  async redemptionProductChoices(
+    organizationId: ID,
+    subscriptionId: ID,
+    itemType: "BENEFIT" | "OFFER",
+    itemId: ID,
+  ) {
+    const result = await this.api.redemptionProductChoices(
+      organizationId,
+      subscriptionId,
+      itemType,
+      itemId,
+    );
+
+    if (!result.success) {
+      throw new Error(result.error.message);
+    }
+
+    return result.data;
+  }
   async discoverOrganizations(): Promise<CustomerDiscoverableOrganization[]> {
     const result = await this.api.discoverOrganizations();
 
@@ -542,7 +561,10 @@ export class CustomerDataService {
     organizationId: ID,
     paymentIntentId: ID,
   ): Promise<PaymentIntent> {
-    const result = await this.api.cancelPayment(organizationId, paymentIntentId);
+    const result = await this.api.cancelPayment(
+      organizationId,
+      paymentIntentId,
+    );
 
     if (!result.success) {
       throw new CustomerPaymentStatusError(

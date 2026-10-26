@@ -92,6 +92,16 @@ export class CounterService {
       .redemptionSelection(ctx, subscriptionId, customerUserId)
       .then((result) => this.unwrap(result));
   }
+  redemptionProductChoices(
+    ctx: CounterContext,
+    subscriptionId: ID,
+    itemType: "BENEFIT" | "OFFER",
+    itemId: ID,
+  ) {
+    return this.api
+      .redemptionProductChoices(ctx, subscriptionId, itemType, itemId)
+      .then((result) => this.unwrap(result));
+  }
 
   createRedemptionTransaction(
     ctx: CounterContext,
@@ -99,6 +109,7 @@ export class CounterService {
     benefitIds: ID[],
     offerIds: ID[],
     redemptionMethod: string,
+    productSelections: Record<string, ID> = {},
   ): Promise<CounterRedemptionTransaction> {
     return this.api
       .createRedemptionTransaction(
@@ -107,6 +118,7 @@ export class CounterService {
         benefitIds,
         offerIds,
         redemptionMethod,
+        productSelections,
       )
       .then((result) => this.unwrap(result));
   }
@@ -139,12 +151,23 @@ export class CounterService {
       .then((result) => this.unwrap(result));
   }
 
-  pendingTransactions(ctx: CounterContext, limit = 50, offset = 0): Promise<CounterPendingTransaction[]> {
-    return this.api.pendingTransactions(ctx, limit, offset).then((result) => this.unwrap(result));
+  pendingTransactions(
+    ctx: CounterContext,
+    limit = 50,
+    offset = 0,
+  ): Promise<CounterPendingTransaction[]> {
+    return this.api
+      .pendingTransactions(ctx, limit, offset)
+      .then((result) => this.unwrap(result));
   }
 
-  customerPendingTransactions(ctx: CounterContext, customerUserId: ID): Promise<CounterPendingTransaction[]> {
-    return this.api.customerPendingTransactions(ctx, customerUserId).then((result) => this.unwrap(result));
+  customerPendingTransactions(
+    ctx: CounterContext,
+    customerUserId: ID,
+  ): Promise<CounterPendingTransaction[]> {
+    return this.api
+      .customerPendingTransactions(ctx, customerUserId)
+      .then((result) => this.unwrap(result));
   }
 
   acknowledgeRedemptionPricing(
@@ -153,7 +176,11 @@ export class CounterService {
     pricingReconciliationHash: string,
   ): Promise<CounterRedemptionCheckout> {
     return this.api
-      .acknowledgeRedemptionPricing(ctx, transactionId, pricingReconciliationHash)
+      .acknowledgeRedemptionPricing(
+        ctx,
+        transactionId,
+        pricingReconciliationHash,
+      )
       .then((result) => this.unwrap(result));
   }
   startRedemptionRemoteTerminalPayment(ctx: CounterContext, transactionId: ID) {
@@ -271,6 +298,7 @@ export class CounterService {
     subscriptionId: ID,
     benefitIds: ID[],
     offerIds: ID[],
+    productSelections: Record<string, ID>,
     regionCode?: string,
   ) {
     return this.api
@@ -280,6 +308,7 @@ export class CounterService {
         subscriptionId,
         benefitIds,
         offerIds,
+        productSelections,
         regionCode,
       )
       .then((result) => this.unwrap(result));

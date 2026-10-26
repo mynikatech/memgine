@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 221-redemption-enforce-selected-product
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/221-redemption-enforce-selected-product.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

@@ -33,6 +33,12 @@ import { OfferApi } from "./offer-api";
 import { StoreApi } from "./store-api";
 const base = (organizationId: ID) =>
   `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}`;
+
+export type RedemptionProductChoice = {
+  productId: ID;
+  productName: string;
+  productCode?: string | null;
+};
 export type PoyntCollectBootstrap = {
   sdkUrl: string;
   businessId: string;
@@ -198,6 +204,7 @@ export type CustomerRedemptionTransactionRequest = {
   benefitIds: ID[];
   offerIds: ID[];
   redemptionMethod: "CUSTOMER_QR";
+  productSelections?: Record<string, ID>;
 };
 export type PendingRedemptionTransaction = {
   transactionId: ID;
@@ -254,6 +261,21 @@ export class CustomerDataApi {
     return httpClient.post(
       `${base(organizationId)}/membership-purchase-offers/${encodeURIComponent(offerId)}/qr`,
       {},
+    );
+  }
+  redemptionProductChoices(
+    organizationId: ID,
+    subscriptionId: ID,
+    itemType: "BENEFIT" | "OFFER",
+    itemId: ID,
+  ): Promise<ApiResult<RedemptionProductChoice[]>> {
+    const query =
+      `subscriptionId=${encodeURIComponent(subscriptionId)}` +
+      `&itemType=${itemType}` +
+      `&itemId=${encodeURIComponent(itemId)}`;
+
+    return httpClient.get(
+      `${base(organizationId)}/redemption-product-choices?${query}`,
     );
   }
   redemptionTransactionStatus(

@@ -628,7 +628,8 @@ class CounterService(
                 subscriptionId = request.subscriptionId,
                 benefitIds = request.benefitIds,
                 offerIds = request.offerIds,
-                redemptionMethod = "OTP"
+                redemptionMethod = "OTP",
+                productSelections = request.productSelections
             ),
             principal.userId
         )

@@ -64,6 +64,32 @@ fun Route.customerSelfServiceRoutes(service: CustomerService, redemptionService:
                     call.callId
                 ))
             }
+            get("/redemption-product-choices") {
+                val subscriptionId =
+                    call.request.queryParameters["subscriptionId"]
+                        ?: throw BadRequestException("Subscription id is required")
+
+                val itemType =
+                    call.request.queryParameters["itemType"]
+                        ?: throw BadRequestException("Item type is required")
+
+                val itemId =
+                    call.request.queryParameters["itemId"]
+                        ?: throw BadRequestException("Item id is required")
+
+                call.respond(
+                    ApiResponse.success(
+                        redemptionService.productChoices(
+                            call.organizationId(),
+                            subscriptionId,
+                            itemType,
+                            itemId,
+                            call.userId()
+                        ),
+                        call.callId
+                    )
+                )
+            }
             post("/redemption-transactions/{transactionId}/qr") {
                 val transactionId = call.parameters["transactionId"]
                     ?: throw BadRequestException("Redemption transaction id is required")

@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 219-redemption-canonical-product-selection
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/219-redemption-canonical-product-selection.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

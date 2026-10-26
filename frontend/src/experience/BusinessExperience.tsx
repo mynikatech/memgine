@@ -2,7 +2,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
 import { Image, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
+import {
+  RedemptionProductPicker,
+  type RedemptionItemChoice,
+  type RedemptionProductSelectionState,
+} from "@/src/ui/domain/RedemptionProductPicker";
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
 import { resolveCustomerBranding } from "@/src/core/customer/resolve-customer-branding";
 import type {
@@ -903,6 +907,29 @@ export function BusinessExperience({
         new Set([...previous].filter((id) => allowedOfferIds.has(id))),
     );
   }, [selectableBenefitKey, selectableOfferKey]);
+
+  const [productSelection, setProductSelection] =
+    useState<RedemptionProductSelectionState>({
+      selections: {},
+      ready: false,
+    });
+
+  const selectedRedemptionProducts: RedemptionItemChoice[] = [
+    ...selectableBenefits
+      .filter(({ benefit }) => selectedBenefitIds.has(benefit.id))
+      .map(({ benefit }) => ({
+        itemType: "BENEFIT" as const,
+        itemId: benefit.id,
+        label: benefit.benefitName,
+      })),
+    ...selectableOffers
+      .filter(({ offer }) => selectedOfferIds.has(offer.id))
+      .map(({ offer }) => ({
+        itemType: "OFFER" as const,
+        itemId: offer.id,
+        label: offer.offerName,
+      })),
+  ];
   const createRedemptionTransaction = async (
     scope: "ALL" | "OFFERS" = "ALL",
   ) => {
@@ -914,6 +941,7 @@ export function BusinessExperience({
     ) {
       return;
     }
+
     const benefitIds =
       scope === "ALL"
         ? selectableBenefits
@@ -924,6 +952,31 @@ export function BusinessExperience({
       .filter(({ offer }) => selectedOfferIds.has(offer.id))
       .map(({ offer }) => offer.id);
     if (!benefitIds.length && !offerIds.length) return;
+    const keys = [
+      ...benefitIds.map((id) => `BENEFIT:${id}`),
+      ...offerIds.map((id) => `OFFER:${id}`),
+    ];
+    console.log("CUSTOMER REDEMPTION DEBUG", {
+      scope,
+      benefitIds,
+      offerIds,
+      keys,
+      productSelection,
+    });
+    if (
+      !productSelection.ready ||
+      keys.some((key) => !productSelection.selections[key])
+    ) {
+      setCustomerActionError(
+        "Select the product for each Benefit or Offer before generating a QR.",
+      );
+      return;
+    }
+
+    const productSelections = Object.fromEntries(
+      keys.map((key) => [key, productSelection.selections[key]]),
+    );
+
     setRedemptionLoading(true);
     setCustomerActionError(null);
     try {
@@ -934,6 +987,7 @@ export function BusinessExperience({
           benefitIds,
           offerIds,
           redemptionMethod: "CUSTOMER_QR",
+          productSelections,
         },
       );
       const qr = await services.customerData.issueRedemptionTransactionQr(
@@ -1507,7 +1561,21 @@ export function BusinessExperience({
                   <Text variant="caption" color="textMuted">
                     {selectedSummary || "No items selected"}
                   </Text>
-
+                  {!isPreviewMode && selectedRedemptionProducts.length > 0 ? (
+                    <RedemptionProductPicker
+                      subscriptionId={subscription?.id ?? ""}
+                      items={selectedRedemptionProducts}
+                      loadChoices={(item) =>
+                        services.customerData.redemptionProductChoices(
+                          organization.id,
+                          subscription?.id ?? "",
+                          item.itemType,
+                          item.itemId,
+                        )
+                      }
+                      onChange={setProductSelection}
+                    />
+                  ) : null}
                   <Button
                     label={
                       redemptionLoading
@@ -1516,7 +1584,7 @@ export function BusinessExperience({
                     }
                     disabled={selectedCount === 0 || redemptionLoading}
                     onPress={() => {
-                      void createRedemptionTransaction();
+                      void createRedemptionTransaction("ALL");
                     }}
                     testID="experience-redeem-selected"
                   />

@@ -399,6 +399,32 @@ export class CounterApi {
     }
   }
 
+  redemptionProductChoices(
+    ctx: CounterContext,
+    subscriptionId: ID,
+    itemType: "BENEFIT" | "OFFER",
+    itemId: ID,
+  ): Promise<
+    ApiResult<
+      {
+        productId: ID;
+        productName: string;
+        productCode?: string | null;
+      }[]
+    >
+  > {
+    const query =
+      `storeId=${encodeURIComponent(ctx.storeId)}` +
+      `&staffId=${encodeURIComponent(ctx.staffId)}` +
+      `&subscriptionId=${encodeURIComponent(subscriptionId)}` +
+      `&itemType=${itemType}` +
+      `&itemId=${encodeURIComponent(itemId)}`;
+
+    return httpClient.get(
+      `${this.path(ctx, "redemption-product-choices")}?${query}`,
+    );
+  }
+
   pendingTransactions(
     ctx: CounterContext,
     limit = 50,
@@ -414,7 +440,10 @@ export class CounterApi {
     customerUserId: ID,
   ): Promise<ApiResult<CounterPendingTransaction[]>> {
     return httpClient.get(
-      this.query(ctx, `customers/${encodeURIComponent(customerUserId)}/pending-transactions`),
+      this.query(
+        ctx,
+        `customers/${encodeURIComponent(customerUserId)}/pending-transactions`,
+      ),
     );
   }
 
@@ -478,27 +507,20 @@ export class CounterApi {
 
   createRedemptionTransaction(
     ctx: CounterContext,
-
     subscriptionId: ID,
-
     benefitIds: ID[],
-
     offerIds: ID[],
-
     redemptionMethod: string,
+    productSelections: Record<string, ID> = {},
   ): Promise<ApiResult<CounterRedemptionTransaction>> {
     return httpClient.post(this.path(ctx, "redemption-transactions"), {
       storeId: ctx.storeId,
-
       staffId: ctx.staffId,
-
       subscriptionId,
-
       benefitIds,
-
       offerIds,
-
       redemptionMethod,
+      productSelections,
     });
   }
 
@@ -782,32 +804,23 @@ export class CounterApi {
 
   requestRedemptionOtp(
     ctx: CounterContext,
-
     phone: string,
-
     subscriptionId: ID,
-
     benefitIds: ID[],
-
     offerIds: ID[],
-
+    productSelections: Record<string, ID>,
     regionCode?: string,
   ): Promise<ApiResult<CounterOtpChallenge>> {
     return httpClient.post(this.path(ctx, "redemptions/otp/request"), {
       phone,
-
       regionCode,
-
       redemption: {
         storeId: ctx.storeId,
-
         staffId: ctx.staffId,
-
         subscriptionId,
-
         benefitIds,
-
         offerIds,
+        productSelections,
       },
     });
   }

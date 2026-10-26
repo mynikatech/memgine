@@ -11,6 +11,11 @@ import {
   TextInput,
   View,
 } from "react-native";
+import {
+  RedemptionProductPicker,
+  type RedemptionItemChoice,
+  type RedemptionProductSelectionState,
+} from "@/src/ui/domain/RedemptionProductPicker";
 
 import type {
   CountryReference,
@@ -152,6 +157,11 @@ export default function StaffCounter() {
   const [counterOrganization, setCounterOrganization] = useState<
     typeof organization | null
   >(null);
+  const [productSelection, setProductSelection] =
+    useState<RedemptionProductSelectionState>({
+      selections: {},
+      ready: false,
+    });
 
   const [activeStaffMembers, setActiveStaffMembers] = useState<Staff[]>([]);
   const [staffNamesById, setStaffNamesById] = useState<Record<string, string>>(
@@ -1268,7 +1278,8 @@ export default function StaffCounter() {
       );
       setRedemptionCheckout(latest);
       setRedemptionCheckoutStage(
-        latest.redemptionStatus === "SUCCESS" || latest.commerceStatus === "COMPLETED"
+        latest.redemptionStatus === "SUCCESS" ||
+          latest.commerceStatus === "COMPLETED"
           ? "complete"
           : "waiting",
       );
@@ -1284,7 +1295,9 @@ export default function StaffCounter() {
       }
     } catch (failure) {
       setError(
-        failure instanceof Error ? failure.message : "Unable to resume this transaction.",
+        failure instanceof Error
+          ? failure.message
+          : "Unable to resume this transaction.",
       );
     } finally {
       setBusy(false);
@@ -1590,14 +1603,16 @@ export default function StaffCounter() {
         counterContext(),
         redemptionCheckout.redemptionTransactionId,
       );
-      if (foregroundGeneration !== redemptionForegroundGeneration.current) return;
+      if (foregroundGeneration !== redemptionForegroundGeneration.current)
+        return;
       await applyRedemptionCheckoutState(latest, false);
       if (latest.commerceStatus === "PROVIDER_IN_PROGRESS") {
         // Manual status checks are one-shot and must not restart polling.
         setRedemptionPaymentTimedOut(true);
       }
     } catch (failure) {
-      if (foregroundGeneration !== redemptionForegroundGeneration.current) return;
+      if (foregroundGeneration !== redemptionForegroundGeneration.current)
+        return;
       setError(
         failure instanceof Error
           ? failure.message
@@ -1889,6 +1904,23 @@ export default function StaffCounter() {
           "This customer does not have a phone number. Use Staff-Assisted redemption.",
         );
       }
+      const keys = [
+        ...benefitIds.map((id) => `BENEFIT:${id}`),
+        ...offerIds.map((id) => `OFFER:${id}`),
+      ];
+
+      if (
+        !productSelection.ready ||
+        keys.some((key) => !productSelection.selections[key])
+      ) {
+        throw new Error(
+          "Select a product for each Benefit and Offer before requesting an OTP.",
+        );
+      }
+
+      const productSelections = Object.fromEntries(
+        keys.map((key) => [key, productSelection.selections[key]]),
+      );
 
       const challenge = await services.counter.requestRedemptionOtp(
         counterContext(),
@@ -1896,6 +1928,7 @@ export default function StaffCounter() {
         selectedSubId,
         benefitIds,
         offerIds,
+        productSelections,
       );
 
       setOtpRequestId(challenge.challengeId);
@@ -1924,10 +1957,7 @@ export default function StaffCounter() {
         transactionValidation.length > 0 &&
         transactionValidation.every((item) => item.eligible)
       ) {
-        await loadRedemptionReview(
-          resolvedTransaction,
-          transactionValidation,
-        );
+        await loadRedemptionReview(resolvedTransaction, transactionValidation);
         return;
       }
 
@@ -1949,12 +1979,31 @@ export default function StaffCounter() {
         subscriptionId: selectedSubId,
       });
 
+      const keys = [
+        ...benefitIds.map((id) => `BENEFIT:${id}`),
+        ...offerIds.map((id) => `OFFER:${id}`),
+      ];
+
+      if (
+        !productSelection.ready ||
+        keys.some((key) => !productSelection.selections[key])
+      ) {
+        throw new Error(
+          "Select a product for every Benefit and Offer before continuing.",
+        );
+      }
+
+      const productSelections = Object.fromEntries(
+        keys.map((key) => [key, productSelection.selections[key]]),
+      );
+
       const transaction = await services.counter.createRedemptionTransaction(
         counterContext(),
         selectedSubId,
         benefitIds,
         offerIds,
         "STAFF_ASSISTED",
+        productSelections,
       );
       const validation = await services.counter.validateRedemptionTransaction(
         counterContext(),
@@ -2029,6 +2078,28 @@ export default function StaffCounter() {
   ).length;
   const consolidatedSelectedCount =
     redemptionBenefitCount + redemptionOfferCount;
+
+  const selectedRedemptionProducts: RedemptionItemChoice[] = [
+    ...redemptionBenefitItems
+      .filter(
+        (item) =>
+          item.status === "AVAILABLE" && selectedBenefitIds.has(item.id),
+      )
+      .map((item) => ({
+        itemType: "BENEFIT" as const,
+        itemId: item.id,
+        label: item.displayName,
+      })),
+    ...redemptionOfferItems
+      .filter(
+        (item) => item.status === "AVAILABLE" && selectedOfferIds.has(item.id),
+      )
+      .map((item) => ({
+        itemType: "OFFER" as const,
+        itemId: item.id,
+        label: item.displayName,
+      })),
+  ];
   const consolidatedSummary = [
     redemptionBenefitCount
       ? `${redemptionBenefitCount} Benefit${redemptionBenefitCount === 1 ? "" : "s"}`
@@ -2218,7 +2289,24 @@ export default function StaffCounter() {
                 );
               })
             )}
-
+            {consolidatedRedemption &&
+            (method === RedemptionMethod.STAFF_ASSISTED || mode === "phone") &&
+            selectedSubId &&
+            selectedRedemptionProducts.length > 0 ? (
+              <RedemptionProductPicker
+                subscriptionId={selectedSubId}
+                items={selectedRedemptionProducts}
+                loadChoices={(item) =>
+                  services.counter.redemptionProductChoices(
+                    counterContext(),
+                    selectedSubId,
+                    item.itemType,
+                    item.itemId,
+                  )
+                }
+                onChange={setProductSelection}
+              />
+            ) : null}
             <View style={styles.redeemBar}>
               <Text style={styles.muted}>
                 {consolidatedRedemption
@@ -3201,19 +3289,14 @@ export default function StaffCounter() {
               <View style={styles.redemptionItemContent}>
                 <Text style={styles.benefitTitle}>{line.productName}</Text>
                 <Text style={styles.muted}>
-                  Quantity {line.quantity} · {line.currencyCode} {(
-                    line.unitPriceMinor / 100
-                  ).toFixed(2)} each
+                  Quantity {line.quantity} · {line.currencyCode}{" "}
+                  {(line.unitPriceMinor / 100).toFixed(2)} each
                 </Text>
                 {line.allocations.map((allocation) => (
-                  <Text
-                    key={allocation.adjustmentId}
-                    style={styles.muted}
-                  >
+                  <Text key={allocation.adjustmentId} style={styles.muted}>
                     {allocation.itemType === "BENEFIT" ? "Benefit" : "Offer"}{" "}
-                    allocation: -{line.currencyCode} {(
-                      allocation.appliedAmountMinor / 100
-                    ).toFixed(2)}
+                    allocation: -{line.currencyCode}{" "}
+                    {(allocation.appliedAmountMinor / 100).toFixed(2)}
                   </Text>
                 ))}
               </View>
@@ -3225,23 +3308,27 @@ export default function StaffCounter() {
           <View style={styles.ctxRow}>
             <Text style={styles.ctxLabel}>Subtotal</Text>
             <Text style={styles.ctxValue}>
-              {redemptionReview.currencyCode} {(redemptionReview.subtotalMinor / 100).toFixed(2)}
+              {redemptionReview.currencyCode}{" "}
+              {(redemptionReview.subtotalMinor / 100).toFixed(2)}
             </Text>
           </View>
           <View style={styles.ctxRow}>
             <Text style={styles.ctxLabel}>Benefits / Offers</Text>
             <Text style={styles.ctxValue}>
-              -{redemptionReview.currencyCode} {(redemptionReview.adjustmentTotalMinor / 100).toFixed(2)}
+              -{redemptionReview.currencyCode}{" "}
+              {(redemptionReview.adjustmentTotalMinor / 100).toFixed(2)}
             </Text>
           </View>
           <View style={styles.ctxRow}>
             <Text style={styles.ctxLabel}>Net payable</Text>
             <Text style={styles.ctxValue}>
-              {redemptionReview.currencyCode} {(redemptionReview.payableTotalMinor / 100).toFixed(2)}
+              {redemptionReview.currencyCode}{" "}
+              {(redemptionReview.payableTotalMinor / 100).toFixed(2)}
             </Text>
           </View>
           <Text style={styles.muted}>
-            Tax and final provider-order totals are confirmed before payment is sent.
+            Tax and final provider-order totals are confirmed before payment is
+            sent.
           </Text>
           <View style={styles.rowWrap}>
             <Pressable

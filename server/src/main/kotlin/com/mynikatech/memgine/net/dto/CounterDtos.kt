@@ -60,9 +60,12 @@ data class CounterPurchaseResult(
 
 @Serializable
 data class CounterRedeemRequest(
-    val storeId: String, val staffId: String, val subscriptionId: String,
+    val storeId: String,
+    val staffId: String,
+    val subscriptionId: String,
     val benefitIds: List<String> = emptyList(),
-    val offerIds: List<String> = emptyList()
+    val offerIds: List<String> = emptyList(),
+    val productSelections: Map<String, String> = emptyMap()
 )
 
 @Serializable

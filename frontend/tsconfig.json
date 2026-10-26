@@ -7,5 +7,11 @@
     }
   },
   "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
-  "exclude": ["node_modules", "eas-android-inspect", "android-local-backup"]
+  "exclude": [
+    "node_modules",
+    "eas-android-inspect",
+    "android-local-backup",
+    "eas-android-inspect-v2",
+    "eas-android-inspect-v3"
+  ]
 }

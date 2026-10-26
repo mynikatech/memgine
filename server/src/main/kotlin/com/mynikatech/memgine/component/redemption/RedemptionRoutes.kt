@@ -58,4 +58,44 @@ fun Route.redemptionRoutes(service: RedemptionService) {
             ))
         }
     }
+    get("/organizations/{organizationId}/counter/redemption-product-choices") {
+        val organizationId =
+            call.parameters["organizationId"]
+                ?: throw BadRequestException("Organization id is required")
+
+        val subscriptionId =
+            call.request.queryParameters["subscriptionId"]
+                ?: throw BadRequestException("Subscription id is required")
+
+        val itemType =
+            call.request.queryParameters["itemType"]
+                ?: throw BadRequestException("Item type is required")
+
+        val itemId =
+            call.request.queryParameters["itemId"]
+                ?: throw BadRequestException("Item id is required")
+
+        val storeId =
+            call.request.queryParameters["storeId"]
+                ?: throw BadRequestException("Store id is required")
+
+        val staffId =
+            call.request.queryParameters["staffId"]
+                ?: throw BadRequestException("Staff id is required")
+
+        call.respond(
+            ApiResponse.success(
+                service.productChoices(
+                    organizationId,
+                    subscriptionId,
+                    itemType,
+                    itemId,
+                    call.authenticatedPrincipal().userId,
+                    storeId,
+                    staffId
+                ),
+                call.callId
+            )
+        )
+    }
 }
