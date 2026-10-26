@@ -32,6 +32,25 @@ interface CommerceFinancialExceptionSql {
         @Bind("transactionId") transactionId: String,
         @Bind("actorUserId") actorUserId: String
     ): String?
+
+    @SqlQuery("SELECT commerce_scan_overdue_remote_terminal_attempts(:limit, :graceSeconds)")
+    fun scanOverdueRemoteTerminalAttempts(
+        @Bind("limit") limit: Int,
+        @Bind("graceSeconds") graceSeconds: Int
+    ): Int
+
+    @SqlQuery("SELECT commerce_reconcile_unresolved_remote_terminal_financial_exception(:referenceId)")
+    fun reconcileUnresolvedRemoteTerminalCase(@Bind("referenceId") referenceId: String): String?
+}
+
+/**
+ * Bounded provider-read-only processor entry point.  Hosting code may invoke
+ * it from the existing application lifecycle; the SQL function uses
+ * `FOR UPDATE SKIP LOCKED` so multiple instances safely share work.
+ */
+class CounterPaymentRecoveryProcessor(private val sql: CommerceFinancialExceptionSql) {
+    fun runOnce(limit: Int = 20, graceSeconds: Int = 300): Int =
+        sql.scanOverdueRemoteTerminalAttempts(limit.coerceIn(1, 100), graceSeconds.coerceIn(60, 86_400))
 }
 
 /**

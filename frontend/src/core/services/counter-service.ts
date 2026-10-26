@@ -5,6 +5,7 @@ import {
   type CounterPurchase,
   type CounterRedemptionTransaction,
   type CounterRedemptionSelection,
+  type CounterPendingTransaction,
 } from "@/src/data/api/counter-api";
 import type {
   MembershipPurchaseQuote,
@@ -125,6 +126,14 @@ export class CounterService {
     return this.api
       .redemptionCheckout(ctx, transactionId)
       .then((result) => this.unwrap(result));
+  }
+
+  pendingTransactions(ctx: CounterContext, limit = 50, offset = 0): Promise<CounterPendingTransaction[]> {
+    return this.api.pendingTransactions(ctx, limit, offset).then((result) => this.unwrap(result));
+  }
+
+  customerPendingTransactions(ctx: CounterContext, customerUserId: ID): Promise<CounterPendingTransaction[]> {
+    return this.api.customerPendingTransactions(ctx, customerUserId).then((result) => this.unwrap(result));
   }
 
   acknowledgeRedemptionPricing(

@@ -10,6 +10,7 @@ import {
   type PaymentInvestigation,
   type PaymentExceptionCandidate,
   type EscalatePaymentInvestigation,
+  type CounterSupportContext,
 } from "@/src/data/api/customer-support-api";
 
 export class CustomerSupportService {
@@ -66,6 +67,10 @@ export class CustomerSupportService {
   async updateOrganization(organizationId: ID, requestId: ID, request: UpdateOrganizationSupportRequest): Promise<void> {
     this.unwrap(await this.api.updateOrganization(organizationId, requestId, request));
   }
+  async counterList(organizationId: ID, context: CounterSupportContext): Promise<OrganizationSupportRequest[]> { return this.unwrap(await this.api.counterList(organizationId, context)); }
+  async counterDetail(organizationId: ID, context: CounterSupportContext, requestId: ID): Promise<OrganizationSupportRequestDetail> { return this.unwrap(await this.api.counterDetail(organizationId, context, requestId)); }
+  async counterMessage(organizationId: ID, context: CounterSupportContext, requestId: ID, message: string, internal = false): Promise<void> { this.unwrap(await this.api.counterMessage(organizationId, context, requestId, message, internal)); }
+  async counterTransition(organizationId: ID, context: CounterSupportContext, requestId: ID, request: UpdateOrganizationSupportRequest, action: "resolve" | "close"): Promise<void> { this.unwrap(await this.api.counterTransition(organizationId, context, requestId, request, action)); }
   async paymentInvestigation(organizationId: ID, requestId: ID): Promise<PaymentInvestigation | null> { return this.unwrap(await this.api.paymentInvestigation(organizationId, requestId)); }
   async paymentExceptionCandidates(organizationId: ID, requestId: ID): Promise<PaymentExceptionCandidate[]> { return this.unwrap(await this.api.paymentExceptionCandidates(organizationId, requestId)); }
   async escalatePaymentInvestigation(organizationId: ID, requestId: ID, request: EscalatePaymentInvestigation): Promise<ID> { return this.unwrap(await this.api.escalatePaymentInvestigation(organizationId, requestId, request)).investigationId; }

@@ -75,6 +75,7 @@ export type UpdateOrganizationSupportRequest = {
   resolutionSummary?: string;
   versionNo: number;
 };
+export type CounterSupportContext = { storeId: ID; staffId: ID };
 export type PaymentInvestigation = {
   investigationId: ID;
   supportRequestId: ID;
@@ -183,6 +184,28 @@ export class CustomerSupportApi {
     return httpClient.get(
       `/api/v1/organizations/${encodeURIComponent(organizationId)}/support-requests/${encodeURIComponent(requestId)}`,
     );
+  }
+
+  private counterBase(organizationId: ID, context: CounterSupportContext) {
+    const query = new URLSearchParams({ storeId: context.storeId, staffId: context.staffId });
+    return `/api/v1/organizations/${encodeURIComponent(organizationId)}/counter/support-requests?${query.toString()}`;
+  }
+
+  counterList(organizationId: ID, context: CounterSupportContext, limit = 50, offset = 0): Promise<ApiResult<OrganizationSupportRequest[]>> {
+    return httpClient.get(`${this.counterBase(organizationId, context)}&limit=${limit}&offset=${offset}`);
+  }
+
+  counterDetail(organizationId: ID, context: CounterSupportContext, requestId: ID): Promise<ApiResult<OrganizationSupportRequestDetail>> {
+    return httpClient.get(`${this.counterBase(organizationId, context).replace("?", `/${encodeURIComponent(requestId)}?`)}`);
+  }
+
+  counterMessage(organizationId: ID, context: CounterSupportContext, requestId: ID, messageBody: string, internal = false): Promise<ApiResult<{ created: boolean }>> {
+    const action = internal ? "internal-notes" : "messages";
+    return httpClient.post(`${this.counterBase(organizationId, context).replace("?", `/${encodeURIComponent(requestId)}/${action}?`)}`, { messageBody });
+  }
+
+  counterTransition(organizationId: ID, context: CounterSupportContext, requestId: ID, request: UpdateOrganizationSupportRequest, action: "resolve" | "close"): Promise<ApiResult<{ updated: boolean }>> {
+    return httpClient.post(`${this.counterBase(organizationId, context).replace("?", `/${encodeURIComponent(requestId)}/${action}?`)}`, request);
   }
 
   organizationMessage(

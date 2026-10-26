@@ -21,6 +21,7 @@ import { APP_ROUTES, COUNTER_ROUTES } from "@/src/constants/navigation";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { unauthenticatedLanding } from "@/src/core/auth/auth-navigation";
+import { useCounterSession } from "@/src/core/services/counter-session-context";
 
 export default function CounterLayout() {
   const { organizationId } = useGlobalSearchParams<{
@@ -76,22 +77,21 @@ function CounterShell() {
   }>();
   const { width } = useWindowDimensions();
   const { logout, session } = useAuth();
+  const { context: counterContext } = useCounterSession();
   const isWide = width >= 900;
 
   const go = (href: (typeof COUNTER_ROUTES)[number]["href"]) => {
-    if (organizationId) {
-      if (href === "/counter") {
-        router.push(APP_ROUTES.counter.organization(organizationId) as never);
-        return;
-      }
-      if (href === "/counter/customers") {
-        router.push(
-          APP_ROUTES.counter.organizationCustomers(organizationId) as never,
-        );
-        return;
-      }
+    const contextMatchesOrganization =
+      counterContext &&
+      (!organizationId || counterContext.organizationId === organizationId);
+    const query = new URLSearchParams();
+    if (organizationId) query.set("organizationId", organizationId);
+    if (contextMatchesOrganization) {
+      query.set("storeId", counterContext.storeId);
+      query.set("staffId", counterContext.staffId);
     }
-    router.push(href as never);
+    const suffix = query.size ? `?${query.toString()}` : "";
+    router.push(`${href}${suffix}` as never);
   };
 
   const Nav = ({ horizontal }: { horizontal?: boolean }) => (

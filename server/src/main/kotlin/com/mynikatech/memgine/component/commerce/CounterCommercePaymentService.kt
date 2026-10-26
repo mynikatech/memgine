@@ -18,6 +18,7 @@ import com.mynikatech.memgine.net.dto.CommerceTerminalPaymentResultRequest
 import com.mynikatech.memgine.net.dto.CommerceTransactionAdjustmentDto
 import com.mynikatech.memgine.net.dto.CommerceTransactionLineDto
 import com.mynikatech.memgine.net.dto.CounterRedemptionCheckoutDto
+import com.mynikatech.memgine.net.dto.CounterPendingTransactionDto
 import com.mynikatech.memgine.net.dto.CounterRedemptionPriceDiscrepancyDto
 import com.mynikatech.memgine.net.dto.CounterRedemptionPricingAcknowledgementRequest
 import com.mynikatech.memgine.net.dto.CounterRedemptionTestPaymentRequest
@@ -475,6 +476,48 @@ class CounterCommercePaymentService(
         redemptionCheckoutDto(checkout, actorUserId)
     }
 
+    /** Read-only recovery discovery.  Starting a charge remains a separate POST. */
+    fun pendingRedemptionTransactions(
+        organizationId: String,
+        storeId: String,
+        staffId: String,
+        actorUserId: String,
+        customerUserId: String? = null,
+        limit: Int = 50,
+        offset: Int = 0
+    ): List<CounterPendingTransactionDto> = translate {
+        sql().pendingRedemptionTransactions(
+            organizationId = organizationId,
+            storeId = storeId,
+            staffId = staffId,
+            actorUserId = actorUserId,
+            customerUserId = customerUserId,
+            limit = limit.coerceIn(1, 100),
+            offset = offset.coerceAtLeast(0)
+        ).map { row ->
+            CounterPendingTransactionDto(
+                redemptionTransactionId = row.redemptionTransactionId,
+                transactionNumber = row.transactionNumber,
+                commerceTransactionId = row.commerceTransactionId,
+                organizationId = row.organizationId,
+                storeId = row.storeId,
+                customerUserId = row.customerUserId,
+                customerDisplayName = row.customerDisplayName,
+                redemptionStatus = row.redemptionStatus,
+                commerceStatus = row.commerceStatus,
+                providerCode = row.providerCode,
+                amountMinor = row.amountMinor,
+                currencyCode = row.currencyCode,
+                createdAt = row.createdAt,
+                lastAttemptAt = row.lastAttemptAt,
+                lastAttemptStatus = row.lastAttemptStatus,
+                retryAllowed = row.retryAllowed,
+                unresolvedPayment = row.unresolvedPayment,
+                financialExceptionId = row.financialExceptionId
+            )
+        }
+    }
+
     fun acknowledgeRedemptionPricing(
         organizationId: String,
         redemptionTransactionId: String,
@@ -709,7 +752,11 @@ class CounterCommercePaymentService(
                     normalizedReference
                 )
             }
-        ).finalize(normalizedReference)
+        ).finalize(normalizedReference).also {
+            // A verified late callback may resolve an existing unresolved case;
+            // this is evidence-only and never starts another provider request.
+            financialExceptionSql().reconcileUnresolvedRemoteTerminalCase(normalizedReference)
+        }
     }
 
     /*
@@ -1509,6 +1556,27 @@ class CounterRedemptionCheckoutRow {
     var organizationId: String = ""
 }
 
+class CounterPendingRedemptionTransactionRow {
+    var redemptionTransactionId: String = ""
+    var transactionNumber: String = ""
+    var commerceTransactionId: String = ""
+    var organizationId: String = ""
+    var storeId: String = ""
+    var customerUserId: String? = null
+    var customerDisplayName: String? = null
+    var redemptionStatus: String = ""
+    var commerceStatus: String = ""
+    var providerCode: String = ""
+    var amountMinor: Long? = null
+    var currencyCode: String? = null
+    var createdAt: String = ""
+    var lastAttemptAt: String? = null
+    var lastAttemptStatus: String? = null
+    var retryAllowed: Boolean = false
+    var unresolvedPayment: Boolean = false
+    var financialExceptionId: String? = null
+}
+
 @Serializable
 private data class CounterRedemptionPricingSnapshot(
     val commerceTransactionId: String,
@@ -1790,6 +1858,19 @@ interface CounterCommercePaymentSql {
         @Bind("staffId") staffId: String,
         @Bind("actorUserId") actorUserId: String
     ): CounterRedemptionCheckoutRow?
+
+    @SqlQuery("""SELECT * FROM commerce_list_counter_pending_redemption_transactions(
+        :organizationId,:storeId,:staffId,:actorUserId,:customerUserId,:limit,:offset)""")
+    @RegisterBeanMapper(CounterPendingRedemptionTransactionRow::class)
+    fun pendingRedemptionTransactions(
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String,
+        @Bind("staffId") staffId: String,
+        @Bind("actorUserId") actorUserId: String,
+        @Bind("customerUserId") customerUserId: String?,
+        @Bind("limit") limit: Int,
+        @Bind("offset") offset: Int
+    ): List<CounterPendingRedemptionTransactionRow>
 
     @SqlQuery("SELECT * FROM commerce_get_counter_redemption_lines(:transactionId,:actorUserId)")
     @RegisterBeanMapper(CounterRedemptionLineRow::class)

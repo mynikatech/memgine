@@ -133,7 +133,11 @@ export default function StaffCounter() {
     staffId?: string;
     storeId?: string;
     source?: string;
+    resumeTransactionId?: string | string[];
   }>();
+  const requestedResumeTransactionId = Array.isArray(params.resumeTransactionId)
+    ? params.resumeTransactionId[0]
+    : params.resumeTransactionId;
 
   const { t, formatMoney } = useTranslation();
 
@@ -267,6 +271,9 @@ export default function StaffCounter() {
   const [redemptionPaymentTimedOut, setRedemptionPaymentTimedOut] =
     useState(false);
   const redemptionPaymentPolling = useRef(false);
+  // Invalidate foreground status work when staff moves on without changing the
+  // durable recovery record for the original transaction.
+  const redemptionForegroundGeneration = useRef(0);
   const [restoringRedemptionPayment, setRestoringRedemptionPayment] =
     useState(true);
 
@@ -644,6 +651,14 @@ export default function StaffCounter() {
       )
       .then(async (saved) => {
         if (!active || !saved) return;
+        // An explicit Pending Transactions resume must win over a different
+        // local recovery pointer for this Counter context.
+        if (
+          requestedResumeTransactionId &&
+          saved.redemptionTransactionId !== requestedResumeTransactionId
+        ) {
+          return;
+        }
         const matchesContext =
           saved.organizationId === orgId &&
           saved.storeId === storeId &&
@@ -683,7 +698,13 @@ export default function StaffCounter() {
     return () => {
       active = false;
     };
-  }, [counterRedemptionPaymentStorageKey, orgId, storeId, staffId]);
+  }, [
+    counterRedemptionPaymentStorageKey,
+    orgId,
+    requestedResumeTransactionId,
+    storeId,
+    staffId,
+  ]);
   const selectMembership = (
     subId: string,
     opts: MembershipOption[] = memberships,
@@ -1229,6 +1250,58 @@ export default function StaffCounter() {
     }
   };
 
+  const resumePendingTransaction = async (redemptionTransactionId: string) => {
+    // Cancel any foreground work for a transaction the staff member previously
+    // set aside before reopening this server-backed checkout state.
+    redemptionForegroundGeneration.current += 1;
+    setBusy(true);
+    setError("");
+    try {
+      // This GET is intentionally read-only and never dispatches a terminal payment.
+      const latest = await services.counter.redemptionCheckout(
+        counterContext(),
+        redemptionTransactionId,
+      );
+      setRedemptionCheckout(latest);
+      setRedemptionCheckoutStage(
+        latest.redemptionStatus === "SUCCESS" || latest.commerceStatus === "COMPLETED"
+          ? "complete"
+          : "waiting",
+      );
+      setRedemptionPaymentTimedOut(
+        latest.redemptionStatus !== "SUCCESS" &&
+          latest.commerceStatus !== "COMPLETED",
+      );
+      if (
+        latest.redemptionStatus === "SUCCESS" ||
+        latest.commerceStatus === "COMPLETED"
+      ) {
+        await finishRedemptionCheckout(latest);
+      }
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "Unable to resume this transaction.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const completedResumeRequest = useRef<string | null>(null);
+
+  const continueWithNextCustomer = () => {
+    // This deliberately does not clear the persisted pending-payment record.
+    // It only detaches the current screen from foreground polling; the original
+    // redemption remains available in Pending Transactions for status recovery.
+    redemptionForegroundGeneration.current += 1;
+    redemptionPaymentPolling.current = false;
+    setPendingRedemptionTerminalPayment(null);
+    setRedemptionPaymentTimedOut(false);
+    setAction("redeem");
+    setMode("qr");
+    resetIdentity();
+  };
+
   const applyRedemptionCheckoutState = async (
     latest: CounterRedemptionCheckout,
     autoStartRemotePayment: boolean,
@@ -1425,6 +1498,7 @@ export default function StaffCounter() {
 
   const checkRedemptionPaymentStatus = async () => {
     if (!redemptionCheckout || redemptionPaymentPolling.current) return;
+    const foregroundGeneration = redemptionForegroundGeneration.current;
     redemptionPaymentPolling.current = true;
     setBusy(true);
     setError("");
@@ -1433,20 +1507,24 @@ export default function StaffCounter() {
         counterContext(),
         redemptionCheckout.redemptionTransactionId,
       );
+      if (foregroundGeneration !== redemptionForegroundGeneration.current) return;
       await applyRedemptionCheckoutState(latest, false);
       if (latest.commerceStatus === "PROVIDER_IN_PROGRESS") {
         // Manual status checks are one-shot and must not restart polling.
         setRedemptionPaymentTimedOut(true);
       }
     } catch (failure) {
+      if (foregroundGeneration !== redemptionForegroundGeneration.current) return;
       setError(
         failure instanceof Error
           ? failure.message
           : "Unable to check terminal payment status.",
       );
     } finally {
-      redemptionPaymentPolling.current = false;
-      setBusy(false);
+      if (foregroundGeneration === redemptionForegroundGeneration.current) {
+        redemptionPaymentPolling.current = false;
+        setBusy(false);
+      }
     }
   };
   useEffect(() => {
@@ -1458,14 +1536,17 @@ export default function StaffCounter() {
       return;
 
     let active = true;
+    const foregroundGeneration = redemptionForegroundGeneration.current;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const isCurrentForegroundPoll = () =>
+      active && foregroundGeneration === redemptionForegroundGeneration.current;
     const timeout = () => {
-      if (!active) return;
+      if (!isCurrentForegroundPoll()) return;
       setRedemptionPaymentTimedOut(true);
       setError("Payment confirmation is taking longer than expected.");
     };
     const poll = async () => {
-      if (!active) return;
+      if (!isCurrentForegroundPoll()) return;
       if (
         Date.now() - pendingRedemptionTerminalPayment.pollingWindowStartedAt >=
         COUNTER_REDEMPTION_PAYMENT_AUTO_POLL_WINDOW_MS
@@ -1487,7 +1568,7 @@ export default function StaffCounter() {
           },
           pendingRedemptionTerminalPayment.redemptionTransactionId,
         );
-        if (!active) return;
+        if (!isCurrentForegroundPoll()) return;
         if (
           latest.redemptionStatus === "SUCCESS" ||
           latest.commerceStatus === "COMPLETED"
@@ -1522,7 +1603,7 @@ export default function StaffCounter() {
           COUNTER_REDEMPTION_PAYMENT_POLL_INTERVAL_MS,
         );
       } catch {
-        if (!active) return;
+        if (!isCurrentForegroundPoll()) return;
         if (
           Date.now() -
             pendingRedemptionTerminalPayment.pollingWindowStartedAt >=
@@ -1535,7 +1616,9 @@ export default function StaffCounter() {
             COUNTER_REDEMPTION_PAYMENT_POLL_INTERVAL_MS,
           );
       } finally {
-        redemptionPaymentPolling.current = false;
+        if (foregroundGeneration === redemptionForegroundGeneration.current) {
+          redemptionPaymentPolling.current = false;
+        }
       }
     };
     void poll();
@@ -2342,6 +2425,18 @@ export default function StaffCounter() {
             ? "Your Counter Operator profile needs an active eligible store assignment."
             : "Counter access requires an active Counter Operator profile and store assignment.";
 
+  useEffect(() => {
+    if (
+      !requestedResumeTransactionId ||
+      !counterContextReady ||
+      completedResumeRequest.current === requestedResumeTransactionId
+    ) {
+      return;
+    }
+    completedResumeRequest.current = requestedResumeTransactionId;
+    void resumePendingTransaction(requestedResumeTransactionId);
+  }, [counterContextReady, requestedResumeTransactionId]);
+
   /*
    * ------------------------------------------------------------
    * Render
@@ -3103,6 +3198,21 @@ export default function StaffCounter() {
                 ? "Payment confirmation is pending. Automatic checking has stopped. Do not initiate another payment until the original payment has been investigated."
                 : "Poynt accepted the payment request. Waiting for confirmation from the terminal."}
             </Text>
+          ) : null}
+
+          {redemptionCheckoutStage === "waiting" ? (
+            <View style={styles.rowWrap}>
+              <Pressable
+                testID="counter-redemption-next-customer"
+                disabled={busy}
+                onPress={continueWithNextCustomer}
+                style={[styles.secondaryBtn, busy && styles.btnDisabled]}
+              >
+                <Text style={styles.secondaryBtnText}>
+                  Continue with Next Customer
+                </Text>
+              </Pressable>
+            </View>
           ) : null}
 
           {redemptionCheckoutStage === "ready" &&

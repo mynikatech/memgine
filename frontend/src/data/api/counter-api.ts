@@ -164,6 +164,28 @@ export type CounterRedemptionPaymentDispatch = {
   status: string;
 };
 
+/** Server-authoritative Counter recovery entry; no payment credentials are exposed. */
+export type CounterPendingTransaction = {
+  redemptionTransactionId: ID;
+  transactionNumber: string;
+  commerceTransactionId: ID;
+  organizationId: ID;
+  storeId: ID;
+  customerUserId?: ID | null;
+  customerDisplayName?: string | null;
+  redemptionStatus: string;
+  commerceStatus: string;
+  providerCode: string;
+  amountMinor?: number | null;
+  currencyCode?: string | null;
+  createdAt: string;
+  lastAttemptAt?: string | null;
+  lastAttemptStatus?: string | null;
+  retryAllowed: boolean;
+  unresolvedPayment: boolean;
+  financialExceptionId?: ID | null;
+};
+
 export type MembershipPurchaseQuote = {
   planId: ID;
 
@@ -337,6 +359,25 @@ export class CounterApi {
         error instanceof Error ? error.message : "Unable to load customers",
       );
     }
+  }
+
+  pendingTransactions(
+    ctx: CounterContext,
+    limit = 50,
+    offset = 0,
+  ): Promise<ApiResult<CounterPendingTransaction[]>> {
+    return httpClient.get(
+      `${this.query(ctx, "pending-transactions")}&limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`,
+    );
+  }
+
+  customerPendingTransactions(
+    ctx: CounterContext,
+    customerUserId: ID,
+  ): Promise<ApiResult<CounterPendingTransaction[]>> {
+    return httpClient.get(
+      this.query(ctx, `customers/${encodeURIComponent(customerUserId)}/pending-transactions`),
+    );
   }
 
   async subscriptions(

@@ -142,6 +142,32 @@ data class CounterRedemptionCheckoutDto(
     val paymentRequired: Boolean
 )
 
+/**
+ * A server-authoritative, staff-scoped recovery entry.  It deliberately
+ * contains no payment token, terminal credential, or provider payload.
+ */
+@Serializable
+data class CounterPendingTransactionDto(
+    val redemptionTransactionId: String,
+    val transactionNumber: String,
+    val commerceTransactionId: String,
+    val organizationId: String,
+    val storeId: String,
+    val customerUserId: String? = null,
+    val customerDisplayName: String? = null,
+    val redemptionStatus: String,
+    val commerceStatus: String,
+    val providerCode: String,
+    val amountMinor: Long? = null,
+    val currencyCode: String? = null,
+    val createdAt: String,
+    val lastAttemptAt: String? = null,
+    val lastAttemptStatus: String? = null,
+    val retryAllowed: Boolean,
+    val unresolvedPayment: Boolean,
+    val financialExceptionId: String? = null
+)
+
 /** Persisted provider-vs-snapshot product price difference for Counter staff review. */
 @Serializable
 data class CounterRedemptionPriceDiscrepancyDto(

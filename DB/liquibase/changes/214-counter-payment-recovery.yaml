@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 214-counter-payment-recovery
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/214-counter-payment-recovery.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

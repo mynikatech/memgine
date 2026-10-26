@@ -188,6 +188,10 @@ export const APP_ROUTES = {
 
     organizationCustomers: (organizationId: string) =>
       `/counter/customers?organizationId=${encodeURIComponent(organizationId)}`,
+
+    pendingTransactions: "/counter/pending-transactions",
+
+    supportRequests: "/counter/support-requests",
   },
 
   customer: {
@@ -286,6 +290,26 @@ export const COUNTER_ROUTES: CounterRoute[] = [
     href: APP_ROUTES.counter.customers,
 
     icon: "people-outline",
+  },
+
+  {
+    name: "pending-transactions",
+
+    title: "Pending Transactions",
+
+    href: APP_ROUTES.counter.pendingTransactions,
+
+    icon: "time-outline",
+  },
+
+  {
+    name: "support-requests",
+
+    title: "Support Requests",
+
+    href: APP_ROUTES.counter.supportRequests,
+
+    icon: "help-circle-outline",
   },
 ];
 

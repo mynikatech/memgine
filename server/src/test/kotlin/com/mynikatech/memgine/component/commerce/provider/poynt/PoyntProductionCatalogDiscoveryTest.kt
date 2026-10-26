@@ -7,6 +7,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
 
@@ -16,6 +18,79 @@ import kotlinx.serialization.json.longOrNull
  * invocation. It only uses OAuth and Poynt GET requests.
  */
 class PoyntProductionCatalogDiscoveryTest {
+    /**
+     * Explicit Test Lab diagnostic for the catalog used by the existing Poynt
+     * OTE/Test Lab test configuration. The Poynt Test Lab is production-hosted,
+     * so this still uses services.poynt.net; it never targets a live merchant.
+     */
+    @Test
+    fun inspectTestLabBlueberryCheesecakeCurrency() {
+        if (System.getenv("POYNT_OTE_CATALOG_CURRENCY_DIAGNOSTIC") != "true") {
+            println("Poynt Test Lab catalog currency diagnostic: SKIPPED")
+            return
+        }
+
+        val config = testLabCurrencyConfiguration()
+        val transport = PoyntCloudHttpTransport(config.baseUrl, API_VERSION)
+        val token = PoyntTokenService(
+            credentials = AwsSecretsManagerPoyntCredentialResolver(config.awsRegion),
+            transport = PoyntCloudTokenTransport(config.baseUrl, API_VERSION),
+            audience = config.baseUrl,
+        ).token(
+            PoyntCatalogConfiguration(
+                integrationConfigurationId = "test-lab-catalog-currency-diagnostic",
+                organizationId = "test-lab-catalog-currency-diagnostic",
+                applicationId = config.applicationId,
+                businessId = config.businessId,
+                providerStoreId = config.storeId,
+                secretReference = config.secretReference,
+                merchantCurrencyCode = "CAD",
+                lastIncrementalSyncAt = null,
+            ),
+        )
+        val authorization = "${token.tokenType} ${token.value}"
+        val businessResponse = transport.get(
+            URI.create("${config.baseUrl}/businesses/${config.businessId}?ignoreDeactivatedDevices=false"),
+            authorization,
+        )
+        println("Test Lab business GET HTTP ${businessResponse.statusCode}")
+        if (businessResponse.statusCode != 200) {
+            println("Test Lab business result: ${classify(businessResponse.statusCode)}")
+            println("Test Lab business error code: ${safeErrorCode(businessResponse.body)}")
+            return
+        }
+        val business = parseObject(businessResponse.body, "Test Lab business") ?: return
+        assertEquals(config.businessId, primitive(business, "id"), "Configured Test Lab business did not match Poynt")
+
+        val storeResponse = transport.get(transport.storeUri(config.businessId, config.storeId), authorization)
+        println("Test Lab store GET HTTP ${storeResponse.statusCode}")
+        val store = if (storeResponse.statusCode == 200) {
+            parseObject(storeResponse.body, "Test Lab store")
+        } else {
+            println("Test Lab store result: ${classify(storeResponse.statusCode)}")
+            println("Test Lab store error code: ${safeErrorCode(storeResponse.body)}")
+            null
+        }
+        if (store == null || primitive(store, "id") != config.storeId) {
+            println("Blueberry Cheesecake catalog entry: UNKNOWN (Test Lab store was not verified)")
+            return
+        }
+
+        val devices = (devicesIn(business) + devicesIn(store)).distinctBy(::deviceIdentity)
+        val inspections = devices.map { device ->
+            inspectDevice(
+                deviceName(device).ifBlank { "Test Lab device" },
+                device,
+                config,
+                transport,
+                authorization,
+            )
+        }
+        inspectBlueberryCheesecakeCurrency(inspections, business, listOf(store))
+        inspectTestLabCurrencyComparison(inspections, business, store, config, transport, authorization)
+        println("Poynt Test Lab catalog currency diagnostic complete. GET requests only.")
+    }
+
     @Test
     fun discoverProductionDeviceCatalogs() {
         if (System.getenv("POYNT_PROD_CATALOG_DISCOVERY") != "true") {
@@ -99,6 +174,11 @@ class PoyntProductionCatalogDiscoveryTest {
         println("Device-specific catalog endpoint: NOT_EXPOSED_BY_CONFIGURED_TRANSPORT")
         val ajaxCatalog = inspectDevice("AJAX", ajax, config, transport, authorization)
         val oscCatalog = inspectDevice("OSC", osc, config, transport, authorization)
+        inspectBlueberryCheesecakeCurrency(
+            listOf(ajaxCatalog, oscCatalog),
+            business,
+            stores.values.map(StoreDocument::document),
+        )
         inspectSharedSku(config.sharedSku, ajaxCatalog, oscCatalog)
         val complete = ajaxCatalog.status == "FOUND" && oscCatalog.status == "FOUND"
         println("Catalog assignment outcome: ${if (complete) "BOTH_CATALOGS_RETRIEVED" else "DISCOVERY_INCOMPLETE"}")
@@ -170,6 +250,191 @@ class PoyntProductionCatalogDiscoveryTest {
         printSkuResult("OSC", "Shared SKU", sku, osc.productListStatus, osc.products.filter { it.sku.equals(sku, ignoreCase = true) })
     }
 
+    /**
+     * Reports only allowlisted price and currency fields from the catalog GETs
+     * already performed above. It never applies a Memgine currency fallback:
+     * a missing Poynt currency remains NOT_EXPOSED.
+     */
+    private fun inspectBlueberryCheesecakeCurrency(
+        catalogs: List<CatalogInspection>,
+        business: JsonObject,
+        stores: List<JsonObject>,
+    ) {
+        val matches = catalogs.flatMap { catalog ->
+            catalog.products.filter { product ->
+                product.id == BLUEBERRY_CHEESECAKE_PRODUCT_ID &&
+                    product.sku.equals(BLUEBERRY_CHEESECAKE_SKU, ignoreCase = true)
+            }.map { catalog to it }
+        }
+        when {
+            matches.isEmpty() -> {
+                println("Blueberry Cheesecake catalog entry: NOT_FOUND_IN_PARSED_CATALOG_ENTRIES")
+                println("Memgine currency fallback: NOT_USED")
+            }
+            matches.size > 1 -> {
+                println("Blueberry Cheesecake catalog entry: UNKNOWN (multiple matching entries)")
+                matches.forEach { (catalog, product) -> printTargetCurrency(catalog, product) }
+                println("Memgine currency fallback: NOT_USED")
+            }
+            else -> {
+                val (catalog, product) = matches.single()
+                printTargetCurrency(catalog, product)
+                if (product.currency == null) {
+                    println("Poynt product currency: NOT_EXPOSED")
+                    printConfiguredCurrency("business", business)
+                    stores.forEachIndexed { index, store ->
+                        printConfiguredCurrency("store[$index]", store)
+                    }
+                }
+                println("Memgine currency fallback: NOT_USED")
+            }
+        }
+    }
+
+    private fun printTargetCurrency(catalog: CatalogInspection, product: CatalogProduct) {
+        println("Blueberry Cheesecake catalog: ${safe(catalog.label)}")
+        println("Blueberry Cheesecake external product ID: ${safe(product.id)}")
+        println("Blueberry Cheesecake SKU: ${safe(product.sku)}")
+        println("Blueberry Cheesecake name: ${safe(product.name)}")
+        println(
+            "Poynt product price: ${product.priceMinor?.toString() ?: "NOT_EXPOSED"} " +
+                "(JSON path: ${product.pricePath ?: "NOT_EXPOSED"})",
+        )
+        println(
+            "Poynt product currency: ${safe(product.currency)} " +
+                "(JSON path: ${product.currencyPath ?: "NOT_EXPOSED"})",
+        )
+        println("Expected Test Merchant UI price: CAD 4.89 (489 minor units); diagnostic only")
+    }
+
+    private fun printConfiguredCurrency(scope: String, document: JsonObject) {
+        val paths = listOf(
+            "\$.currency" to primitive(document, "currency"),
+            "\$.currencyCode" to primitive(document, "currencyCode"),
+            "\$.merchantCurrency" to primitive(document, "merchantCurrency"),
+            "\$.merchantCurrencyCode" to primitive(document, "merchantCurrencyCode"),
+            "\$.defaultCurrency" to primitive(document, "defaultCurrency"),
+            "\$.defaultCurrencyCode" to primitive(document, "defaultCurrencyCode"),
+        ).filter { (_, value) -> !value.isNullOrBlank() }
+        if (paths.isEmpty()) {
+            println("Poynt $scope currency configuration: NOT_EXPOSED")
+        } else {
+            paths.forEach { (path, value) ->
+                println("Poynt $scope currency configuration: ${safe(value)} (JSON path: $path)")
+            }
+        }
+    }
+
+    /** Three independent GET response sources; never infer missing currency from configuration. */
+    private fun inspectTestLabCurrencyComparison(
+        catalogs: List<CatalogInspection>,
+        business: JsonObject,
+        store: JsonObject,
+        config: ProductionConfig,
+        transport: PoyntCloudHttpTransport,
+        authorization: String,
+    ) {
+        val matches = catalogs.flatMap { it.products }
+            .filter { it.id == BLUEBERRY_CHEESECAKE_PRODUCT_ID && it.sku.equals(BLUEBERRY_CHEESECAKE_SKU, true) }
+        val unique = matches.distinctBy { listOf(it.id, it.sku, it.priceMinor, it.currency, it.currencyFieldState) }
+        val catalogCurrency = unique.singleOrNull()?.currency
+        println("=== Poynt Test Lab currency comparison (GET only) ===")
+        if (unique.size != 1) {
+            println("Full catalog product: INCONCLUSIVE (matching entries=${matches.size}, distinct representations=${unique.size})")
+        } else {
+            val item = unique.single()
+            println("Full catalog product price: ${item.priceMinor ?: "NOT_EXPOSED"} (path: ${item.pricePath ?: "NOT_EXPOSED"})")
+            println("Full catalog product currency: ${safe(item.currency)} (field: ${item.currencyFieldState}, path: ${item.currencyPath ?: "NOT_EXPOSED"})")
+        }
+
+        val response = transport.get(
+            transport.productUri(config.businessId, BLUEBERRY_CHEESECAKE_PRODUCT_ID),
+            authorization,
+        )
+        println("Business product GET HTTP ${response.statusCode}")
+        var businessProductCurrency: String? = null
+        var businessProductVerified = false
+        if (response.statusCode == 200) {
+            val product = parseObject(response.body, "Blueberry business product")
+            if (product != null && primitive(product, "id") == BLUEBERRY_CHEESECAKE_PRODUCT_ID &&
+                primitive(product, "sku")?.equals(BLUEBERRY_CHEESECAKE_SKU, true) == true
+            ) {
+                businessProductVerified = true
+                val priceNode = product["price"]
+                val observation = observedCurrency(priceNode, "\$.price")
+                businessProductCurrency = observation.value
+                println("Business product price: ${priceAmount(priceNode) ?: "NOT_EXPOSED"} (path: \$.price.amount)")
+                println("Business product currency: ${safe(observation.value)} (field: ${observation.state}, path: ${observation.path})")
+            } else {
+                println("Business product: INCONCLUSIVE (ID/SKU identity mismatch or unparseable response)")
+            }
+        } else {
+            println("Business product: ${classify(response.statusCode)}")
+        }
+
+        val businessCurrencies = printCurrencyFields("Business GET", business)
+        val storeCurrencies = printCurrencyFields("Store GET", store)
+        val storeCurrency = storeCurrencies.mapNotNull { it.second }.distinct().singleOrNull()
+        val businessCurrency = businessCurrencies.mapNotNull { it.second }.distinct().singleOrNull()
+        println("Full catalog product currency summary: ${safe(catalogCurrency)}")
+        println("Business product currency summary: ${if (businessProductVerified) safe(businessProductCurrency) else "UNKNOWN"}")
+        println("Poynt business currency summary: ${safe(businessCurrency)}")
+        println("Poynt Store currency summary: ${safe(storeCurrency)}")
+        println("Memgine configured currency: CAD (test diagnostic configuration, NOT provider response)")
+        val currencies = listOfNotNull(catalogCurrency, businessProductCurrency, businessCurrency, storeCurrency).distinct()
+        val complete = unique.size == 1 && businessProductVerified &&
+            catalogCurrency != null && businessProductCurrency != null && storeCurrency != null
+        println("Currency mismatch detected: ${when {
+            currencies.size > 1 -> "YES (explicit provider response values differ)"
+            complete -> "NO (all required exposed values agree)"
+            else -> "INCONCLUSIVE (one or more sources missing or ambiguous)"
+        }}")
+        println("Memgine currency fallback: NOT_USED")
+    }
+
+    private data class CurrencyObservation(val value: String?, val state: String, val path: String)
+
+    private fun observedCurrency(node: JsonElement?, path: String): CurrencyObservation {
+        val obj = node as? JsonObject ?: return CurrencyObservation(null, when (node) {
+            null -> "ABSENT"
+            JsonNull -> "EXPLICIT_NULL"
+            else -> "NOT_OBJECT"
+        }, "$path.currency")
+        val field = obj["currency"]
+        return CurrencyObservation(
+            (field as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank),
+            when (field) { null -> "ABSENT"; JsonNull -> "EXPLICIT_NULL"; is JsonPrimitive -> "PRESENT"; else -> "UNEXPECTED_TYPE" },
+            "$path.currency",
+        )
+    }
+
+    /** Print only named currency fields and ISO currency codes, never arbitrary values or raw documents. */
+    private fun printCurrencyFields(label: String, root: JsonObject): List<Pair<String, String?>> {
+        val found = mutableListOf<Pair<String, String?>>()
+        val allowed = setOf("currency", "currencyCode", "merchantCurrency", "merchantCurrencyCode", "defaultCurrency", "defaultCurrencyCode")
+        var inspected = 0
+        fun walk(node: JsonElement, path: String, depth: Int) {
+            if (depth > 5 || ++inspected > 500) return
+            when (node) {
+                is JsonObject -> node.forEach { (key, value) ->
+                    val next = "$path.$key"
+                    if (key in allowed) {
+                        val valueString = (value as? JsonPrimitive)?.contentOrNull
+                        val currency = valueString?.takeIf { it.matches(Regex("[A-Z]{3}")) }
+                        found.add(next to currency)
+                        println("$label currency field $next: ${currency ?: if (value == JsonNull) "EXPLICIT_NULL" else "PRESENT_NON_ISO_OR_NON_SCALAR"}")
+                    }
+                    if (value is JsonObject || value is JsonArray) walk(value, next, depth + 1)
+                }
+                is JsonArray -> node.take(20).forEachIndexed { i, value -> walk(value, "$path[$i]", depth + 1) }
+                else -> Unit
+            }
+        }
+        walk(root, "\$", 0)
+        if (found.isEmpty()) println("$label currency fields: NOT_EXPOSED")
+        return found
+    }
+
     private fun printSkuResult(
         device: String,
         description: String,
@@ -227,6 +492,16 @@ class PoyntProductionCatalogDiscoveryTest {
             sharedSku = System.getenv("POYNT_PROD_SHARED_SKU")?.trim()?.takeIf { it.isNotEmpty() },
         )
     }
+
+    private fun testLabCurrencyConfiguration() = ProductionConfig(
+        baseUrl = PRODUCTION_BASE_URL,
+        applicationId = "urn:aid:fb9d62bd-12ab-4520-bf9e-54617622ed5f",
+        businessId = "08ecfebe-ad09-4afa-9974-81deb66b131e",
+        storeId = "8ecb77f6-9197-4e61-88e9-950ab428f8a7",
+        secretReference = "memgine/dev/poynt-dev/cloud-app",
+        awsRegion = "ca-central-1",
+        sharedSku = null,
+    )
 
     private fun required(name: String): String = System.getenv(name)?.trim()?.takeIf { it.isNotEmpty() }
         ?: error("Missing environment variable: $name")
@@ -389,13 +664,39 @@ class PoyntProductionCatalogDiscoveryTest {
         val id = productId ?: return null
         val normalizedSku = sku ?: return null
         val priceNode = item["price"] ?: item["unitPrice"]
+        val priceRoot = if (item.containsKey("price")) "\$.price" else if (item.containsKey("unitPrice")) "\$.unitPrice" else null
         val amount = when (priceNode) {
             is JsonPrimitive -> if (priceNode.isString) null else priceNode.longOrNull
             is JsonObject -> (priceNode["amount"] as? JsonPrimitive)?.let { if (it.isString) null else it.longOrNull }
             else -> null
         }
         val currency = if (priceNode is JsonObject) primitive(priceNode, "currency") else primitive(item, "currency")
-        return CatalogProduct(id, normalizedSku, amount, currency, primitive(item, "id")?.takeIf { origin == "CATALOG_VARIANT" }, origin)
+        val pricePath = when (priceNode) {
+            is JsonPrimitive -> priceRoot
+            is JsonObject -> priceRoot?.plus(".amount")
+            else -> null
+        }
+        val currencyPath = when {
+            priceNode is JsonObject && currency != null -> priceRoot?.plus(".currency")
+            currency != null -> "\$.currency"
+            else -> null
+        }
+        return CatalogProduct(
+            id = id,
+            sku = normalizedSku,
+            name = firstPrimitive(item, "name", "displayName"),
+            priceMinor = amount,
+            currency = currency,
+            pricePath = pricePath,
+            currencyPath = currencyPath,
+            currencyFieldState = when {
+                priceNode is JsonObject -> observedCurrency(priceNode, priceRoot ?: "\$.price").state
+                item.containsKey("currency") -> if (item["currency"] == JsonNull) "EXPLICIT_NULL" else "PRESENT"
+                else -> "ABSENT"
+            },
+            variantId = primitive(item, "id")?.takeIf { origin == "CATALOG_VARIANT" },
+            origin = origin,
+        )
     }
 
     private fun compareBusinessProduct(
@@ -479,7 +780,18 @@ class PoyntProductionCatalogDiscoveryTest {
 
     private data class StoreDocument(val id: String, val document: JsonObject, val statusCode: Int)
     private data class CatalogAssignment(val catalogId: String?, val status: String)
-    private data class CatalogProduct(val id: String, val sku: String, val priceMinor: Long?, val currency: String?, val variantId: String?, val origin: String)
+    private data class CatalogProduct(
+        val id: String,
+        val sku: String,
+        val name: String?,
+        val priceMinor: Long?,
+        val currency: String?,
+        val pricePath: String?,
+        val currencyPath: String?,
+        val currencyFieldState: String,
+        val variantId: String?,
+        val origin: String,
+    )
     private data class CatalogProducts(val status: String, val values: List<CatalogProduct>)
     private data class CatalogInspection(
         val label: String,
@@ -496,5 +808,7 @@ class PoyntProductionCatalogDiscoveryTest {
         const val API_VERSION = "1.2"
         const val PRODUCTION_BASE_URL = "https://services.poynt.net"
         const val MATCHA_COOKIE_SKU = "MTCH-CK"
+        const val BLUEBERRY_CHEESECAKE_SKU = "BLBRRY-CHSCK"
+        const val BLUEBERRY_CHEESECAKE_PRODUCT_ID = "c92c787c-8d4e-43a1-8ff3-4d868a78a062"
     }
 }

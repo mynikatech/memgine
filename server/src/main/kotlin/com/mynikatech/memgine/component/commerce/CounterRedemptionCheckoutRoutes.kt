@@ -28,6 +28,34 @@ import io.ktor.server.routing.route
 fun Route.counterRedemptionCheckoutRoutes(
     service: CounterCommercePaymentService
 ) {
+    route("/organizations/{organizationId}/counter") {
+        get("/pending-transactions") {
+            val organizationId = required(call.parameters["organizationId"], "Organization id")
+            val storeId = required(call.request.queryParameters["storeId"], "Store id")
+            val staffId = required(call.request.queryParameters["staffId"], "Staff id")
+            call.respond(ApiResponse.success(
+                service.pendingRedemptionTransactions(
+                    organizationId, storeId, staffId, call.authenticatedPrincipal().userId,
+                    limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 50,
+                    offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+                ), call.callId
+            ))
+        }
+
+        get("/customers/{customerId}/pending-transactions") {
+            val organizationId = required(call.parameters["organizationId"], "Organization id")
+            val customerId = required(call.parameters["customerId"], "Customer id")
+            val storeId = required(call.request.queryParameters["storeId"], "Store id")
+            val staffId = required(call.request.queryParameters["staffId"], "Staff id")
+            call.respond(ApiResponse.success(
+                service.pendingRedemptionTransactions(
+                    organizationId, storeId, staffId, call.authenticatedPrincipal().userId,
+                    customerUserId = customerId, limit = 100, offset = 0
+                ), call.callId
+            ))
+        }
+    }
+
     route("/organizations/{organizationId}/counter/redemption-transactions/{transactionId}") {
         post("/checkout") {
             val organizationId = required(call.parameters["organizationId"], "Organization id")

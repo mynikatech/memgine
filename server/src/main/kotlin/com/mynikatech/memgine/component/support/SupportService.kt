@@ -63,6 +63,32 @@ class SupportService(private val jdbi: Jdbi) {
     fun escalatePaymentInvestigation(org:String,actor:String,id:String,request:EscalatePaymentInvestigationDto)=sql().escalatePaymentInvestigation(id,org,actor,request.reason,request.paymentReference,request.description)
     fun linkPaymentException(org:String,actor:String,id:String,request:LinkPaymentExceptionDto)=sql().linkPaymentException(id,org,actor,request.financialExceptionId)
     fun transitionPaymentInvestigation(org:String,actor:String,id:String,request:UpdatePaymentInvestigationDto)=sql().transitionPaymentInvestigation(id,org,actor,request.state,request.reason)
+
+    fun counterList(org: String, store: String, staff: String, actor: String, limit: Int?, offset: Int?) =
+        sql().counterList(org, store, staff, actor, limit(limit), offset(offset))
+
+    fun counterDetail(org: String, store: String, staff: String, actor: String, id: String): SupportRequestDetailDto {
+        val request = sql().counterDetail(id, org, store, staff, actor)
+            ?: throw NotFoundException("Support request was not found")
+        return SupportRequestDetailDto(
+            request,
+            sql().counterMessages(id, org, store, staff, actor),
+            sql().counterEvents(id, org, store, staff, actor),
+            null
+        )
+    }
+
+    fun counterMessage(org: String, store: String, staff: String, actor: String, id: String, request: AddSupportMessageDto, internal: Boolean) =
+        sql().counterMessage("SMSG-" + UUID.randomUUID(), id, org, store, staff, actor, request.messageBody, internal)
+
+    fun counterTransition(org: String, store: String, staff: String, actor: String, id: String, request: UpdateSupportRequestDto) =
+        sql().counterTransition(id, org, store, staff, actor, request.status ?: throw BadRequestException("Status is required"), request.resolutionSummary, request.versionNo)
+
+    fun counterPaymentInvestigation(org: String, store: String, staff: String, actor: String, id: String) =
+        sql().counterPaymentInvestigation(id, org, store, staff, actor)
+
+    fun counterPaymentExceptionSummary(org: String, store: String, staff: String, actor: String, id: String) =
+        sql().counterPaymentExceptionSummary(id, org, store, staff, actor)
     
     private fun <T> translateSupportUpdate(block: () -> T): T = try {
         block()

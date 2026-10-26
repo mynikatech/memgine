@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 215-counter-staff-support
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/215-counter-staff-support.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8
