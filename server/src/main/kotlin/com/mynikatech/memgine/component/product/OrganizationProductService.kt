@@ -11,6 +11,15 @@ class OrganizationProductService(private val jdbi:Jdbi) {
  private val json=Json { encodeDefaults=true }
  fun catalogs(org:String, actor:String)=withSql(org,actor){ it.catalogs(org,actor) }
  fun products(org:String, search:String?, actor:String)=withSql(org,actor){ it.products(org,search?.trim()?.takeIf(String::isNotEmpty),actor) }
+ // W229: optional filter; callers that need organization-wide candidates retain the old method.
+ fun catalogProducts(org:String, catalogId:String, search:String?, actor:String):List<OrganizationProductDto> {
+   if(catalogId.isBlank() || catalogId.length > 64) throw BadRequestException("Invalid catalog id")
+   return withSql(org,actor) {
+     val belongsToOrg=it.catalogs(org,actor).any { c -> c.productCatalogId == catalogId }
+     if(!belongsToOrg) throw NotFoundException("Product catalog was not found")
+     it.catalogProducts(org,catalogId,search?.trim()?.takeIf(String::isNotEmpty),actor)
+   }
+ }
  fun saveCatalog(org:String, request:OrganizationProductCatalogWriteDto, actor:String):OrganizationProductCatalogDto {
    validateOrg(org); if(request.catalogName.isBlank()) throw BadRequestException("Catalog name is required")
    val id=withSql(org,actor){ it.saveCatalog(OrganizationProductCatalogParams(org,request.productCatalogId,request.integrationConfigurationId,request.catalogName.trim(),request.description?.trim(),request.externalCatalogId?.trim(),request.active,request.versionNo,actor)) }

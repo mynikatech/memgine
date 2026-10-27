@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 229-catalog-scoped-organization-products
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/229-catalog-scoped-organization-products.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

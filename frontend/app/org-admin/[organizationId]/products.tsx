@@ -33,6 +33,7 @@ import {
   type CommerceCatalogCategoryCorrespondence,
   type CommerceCatalogSyncExternalCategory,
 } from "@/src/data/api/organization-product-api";
+import { catalogScopedProductsApi } from "@/src/data/api/catalog-scoped-products-api";
 import { CommerceStoreCatalogSourceApi } from "@/src/data/api/commerce-store-catalog-source-api";
 import { organizationPoyntOperationalApi } from "@/src/data/api/platform-poynt-payment-api";
 import {
@@ -63,7 +64,11 @@ type CatalogMaintenanceContext = {
 };
 
 type ProductMappingHealth = {
-  label: "Mapped" | "Not mapped" | "Needs attention" | "Not applicable";
+  label:
+    | "Linked to Business System"
+    | "Not linked"
+    | "Needs attention"
+    | "Not applicable";
   detail?: string;
   scope?: "STORE" | "ORGANIZATION";
   effectiveMappings?: OrganizationCommerceProductMapping[];
@@ -144,7 +149,13 @@ export default function OrgAdminProducts() {
   const [maintenanceError, setMaintenanceError] = useState<string>();
   const [activeSection, setActiveSection] =
     useState<ProductSection>("PRODUCTS");
+  // Selected catalog only: no organization-wide Product preload.
   const [products, setProducts] = useState<OrganizationProduct[]>([]);
+  const [productsRefreshToken, setProductsRefreshToken] = useState(0);
+  const [scopedProducts, setScopedProducts] = useState<OrganizationProduct[]>(
+    [],
+  );
+  const [scopedProductsLoading, setScopedProductsLoading] = useState(false);
   const [mappings, setMappings] = useState<
     OrganizationCommerceProductMapping[]
   >([]);
@@ -184,6 +195,9 @@ export default function OrgAdminProducts() {
     string | null
   >(null);
   const [expandedMappingDetailsId, setExpandedMappingDetailsId] = useState<
+    string | null
+  >(null);
+  const [expandedMappingTechnicalId, setExpandedMappingTechnicalId] = useState<
     string | null
   >(null);
   const [showCatalogTechnicalDetails, setShowCatalogTechnicalDetails] =
@@ -257,9 +271,8 @@ export default function OrgAdminProducts() {
   const load = useCallback(async () => {
     if (!org) return;
     setLoading(true);
-    const [c, p, i, m, storeResult] = await Promise.all([
+    const [c, i, m, storeResult] = await Promise.all([
       organizationProductApi.catalogs(org),
-      organizationProductApi.products(org),
       apis.integrationConfiguration.list(org),
       organizationProductApi.mappings(org),
       apis.store.list(org),
@@ -268,8 +281,6 @@ export default function OrgAdminProducts() {
     else {
       setCatalogs(c.data);
     }
-    if (!p.success) setError(p.error?.message);
-    else setProducts(p.data);
     if (!i.success) setError(i.error?.message);
     else setIntegrations(i.data);
     if (!m.success) setError(m.error?.message);
@@ -280,6 +291,7 @@ export default function OrgAdminProducts() {
       setStores(activeStores);
       setSelectedStoreId((current) => current || activeStores[0]?.id || "");
     }
+    setProductsRefreshToken((current) => current + 1);
     setLoading(false);
   }, [org]);
   useFocusEffect(
@@ -624,38 +636,42 @@ export default function OrgAdminProducts() {
     switchStore();
   };
 
-  const catalogProducts = useMemo(
-    () => products.filter((product) => product.productCatalogId === catalogId),
-    [catalogId, products],
-  );
-  // Mapping ownership is scoped by its Store/integration, NOT by the catalog
-  // containing its canonical Product. A relink may intentionally target a
-  // canonical Product from another catalog in the same organization.
-  const catalogMappings = useMemo(
-    () =>
-      mappings.filter(
-        (mapping) =>
-          Boolean(selectedStoreId) &&
-          mapping.storeId === selectedStoreId &&
-          Boolean(selectedMaintenanceContext?.integrationConfigurationId) &&
-          mapping.integrationConfigurationId ===
-            selectedMaintenanceContext?.integrationConfigurationId,
-      ),
-    [
-      mappings,
-      selectedStoreId,
-      selectedMaintenanceContext?.integrationConfigurationId,
-    ],
-  );
-  const productNameById = useMemo(
-    () =>
-      new Map(
-        products
-          .filter((product) => product.organizationId === org)
-          .map((product) => [product.productId, product]),
-      ),
-    [products, org],
-  );
+  // W229: the main Products list uses a server-filtered query, not an org-wide
+  // array filtered in the browser. Do not dedupe by name or SKU.
+  const catalogProducts = scopedProducts;
+  useEffect(() => {
+    let cancelled = false;
+    setScopedProducts([]);
+    setProducts([]);
+    if (!org || !catalogId) {
+      setScopedProductsLoading(false);
+      return;
+    }
+    setScopedProductsLoading(true);
+    void catalogScopedProductsApi
+      .list(org, catalogId)
+      .then((response) => {
+        if (cancelled) return;
+        if (response.success) {
+          setScopedProducts(response.data);
+          setProducts(response.data);
+        } else {
+          setError(
+            response.error?.message ||
+              "Unable to load this catalog's Products.",
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setError("Unable to load this catalog's Products.");
+      })
+      .finally(() => {
+        if (!cancelled) setScopedProductsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [org, catalogId, productsRefreshToken]);
   // W222 adds externalCatalogId to mapping API responses, but the current
   // OrganizationCommerceProductMapping TypeScript declaration has not yet
   // declared it. Read the optional field without altering existing API types.
@@ -669,6 +685,37 @@ export default function OrgAdminProducts() {
       }
     ).externalCatalogId?.trim() || null;
 
+  // Mapping ownership is scoped by its Store/integration, NOT by the catalog
+  // containing its canonical Product. A relink may intentionally target a
+  // canonical Product from another catalog in the same organization.
+  const catalogMappings = useMemo(
+    () =>
+      mappings.filter(
+        (mapping) =>
+          Boolean(selectedStoreId) &&
+          mapping.storeId === selectedStoreId &&
+          Boolean(selectedMaintenanceContext?.integrationConfigurationId) &&
+          mapping.integrationConfigurationId ===
+            selectedMaintenanceContext?.integrationConfigurationId &&
+          mappingExternalCatalogId(mapping) ===
+            selectedMaintenanceContext?.externalCatalogId,
+      ),
+    [
+      mappings,
+      selectedStoreId,
+      selectedMaintenanceContext?.integrationConfigurationId,
+      selectedMaintenanceContext?.externalCatalogId,
+    ],
+  );
+  const productNameById = useMemo(
+    () =>
+      new Map(
+        products
+          .filter((product) => product.organizationId === org)
+          .map((product) => [product.productId, product]),
+      ),
+    [products, org],
+  );
   // Resolve the external Poynt catalog, not the canonical Product's catalog.
   const externalCatalogLabel = (
     mapping: OrganizationCommerceProductMapping,
@@ -1122,7 +1169,9 @@ export default function OrgAdminProducts() {
       (mapping) =>
         mapping.active &&
         mapping.productId === item.productId &&
-        mapping.integrationConfigurationId === integrationConfigurationId,
+        mapping.integrationConfigurationId === integrationConfigurationId &&
+        mappingExternalCatalogId(mapping) ===
+          selectedMaintenanceContext?.externalCatalogId,
     );
   };
   const activeStoreScopeMappings = (item: OrganizationProduct) =>
@@ -1153,7 +1202,7 @@ export default function OrgAdminProducts() {
     }
     if (storeMappings.length === 1) {
       return {
-        label: "Mapped",
+        label: "Linked to Business System",
         detail: "Store-specific mapping",
         scope: "STORE",
         effectiveMappings: storeMappings,
@@ -1171,14 +1220,14 @@ export default function OrgAdminProducts() {
     }
     if (organizationMappings.length === 1) {
       return {
-        label: "Mapped",
+        label: "Linked to Business System",
         detail: "Organization-wide mapping",
         scope: "ORGANIZATION",
         effectiveMappings: organizationMappings,
       };
     }
     return {
-      label: "Not mapped",
+      label: "Not linked",
       detail: "No active mapping for this Store and integration.",
     };
   };
@@ -1962,7 +2011,9 @@ export default function OrgAdminProducts() {
           </View>
           <View style={{ gap: theme.spacing.sm }}>
             <Text color="textMuted">
-              Showing {catalogProducts.length} Products in the selected catalog.
+              {scopedProductsLoading
+                ? "Loading selected catalog…"
+                : `Showing ${catalogProducts.length} Products in the selected catalog.`}
               Expand a Product to view its details and available actions.
             </Text>
             <View
@@ -1977,6 +2028,9 @@ export default function OrgAdminProducts() {
             >
               <Text variant="bodyStrong" style={{ flex: 3 }}>
                 Product
+              </Text>
+              <Text variant="bodyStrong" style={{ flex: 2 }}>
+                Category
               </Text>
               <Text variant="bodyStrong" style={{ flex: 2 }}>
                 Price
@@ -2024,6 +2078,9 @@ export default function OrgAdminProducts() {
                         <Text color="textMuted">
                           {p.sku || p.productCode || "No SKU"}
                         </Text>
+                      </View>
+                      <View style={{ flex: 2, minWidth: 0 }}>
+                        <Text>{p.categoryName || "Uncategorized"}</Text>
                       </View>
                       <View style={{ flex: 2, minWidth: 0 }}>
                         <Text>
@@ -2215,112 +2272,209 @@ export default function OrgAdminProducts() {
             Store-specific Poynt Product mappings. Technical identifiers are
             available under Details when needed for reconciliation.
           </Text>
+          <View
+            style={{
+              flexDirection: "row",
+              gap: theme.spacing.sm,
+              padding: theme.spacing.sm,
+              borderBottomWidth: 1,
+              borderColor: theme.colors.border,
+            }}
+          >
+            <Text variant="bodyStrong" style={{ flex: 3 }}>
+              Product
+            </Text>
+            <Text variant="bodyStrong" style={{ flex: 2 }}>
+              Category
+            </Text>
+            <Text variant="bodyStrong" style={{ flex: 2 }}>
+              SKU
+            </Text>
+            <Text variant="bodyStrong" style={{ flex: 2 }}>
+              POS Catalog
+            </Text>
+            <Text variant="bodyStrong" style={{ flex: 2 }}>
+              Status
+            </Text>
+            <Text variant="bodyStrong" style={{ width: 38 }}>
+              Link
+            </Text>
+            <Text variant="bodyStrong" style={{ width: 28 }}>
+              {" "}
+            </Text>
+          </View>
           {filteredCatalogMappings.length ? (
             filteredCatalogMappings.map((mapping) => {
               const canonical = mapping.productId
                 ? productNameById.get(mapping.productId)
                 : undefined;
-              const category =
-                canonical?.categoryName?.trim() || "Uncategorized";
               const isExpanded = expandedMappingDetailsId === mapping.mappingId;
               return (
                 <View
                   key={mapping.mappingId}
                   style={{
-                    gap: theme.spacing.xs,
-                    padding: theme.spacing.sm,
                     borderWidth: 1,
                     borderColor: theme.colors.border,
                     borderRadius: theme.radius.sm,
+                    overflow: "hidden",
                   }}
                 >
-                  <Text variant="bodyStrong">
-                    {canonical?.productName || "Unlinked Product"} ({category})
-                  </Text>
-                  <Text>
-                    SKU: {mapping.externalSku || canonical?.sku || "—"}
-                  </Text>
-                  <Text color="textMuted">
-                    Store:{" "}
-                    {stores.find((item) => item.id === mapping.storeId)?.name ??
-                      (mapping.storeId
-                        ? "Store name unavailable"
-                        : "Organization-wide mapping")}
-                  </Text>
-                  <Text color="textMuted">
-                    Poynt Catalog: {externalCatalogLabel(mapping)}
-                  </Text>
-                  <Text color="textMuted">
-                    Status: {mapping.active ? "Active" : "Inactive"}
-                  </Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      isExpanded
-                        ? "Hide technical mapping details"
-                        : "Show technical mapping details"
-                    }
-                    onPress={() =>
-                      setExpandedMappingDetailsId(
-                        isExpanded ? null : mapping.mappingId,
-                      )
-                    }
+                  <View
                     style={{
-                      alignSelf: "flex-start",
-                      paddingVertical: theme.spacing.xs,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: theme.spacing.sm,
+                      padding: theme.spacing.sm,
                     }}
                   >
-                    <Text color="textMuted">
-                      {isExpanded
-                        ? "Hide technical details ▲"
-                        : "Technical details ▼"}
+                    <Text style={{ flex: 3 }} variant="bodyStrong">
+                      {canonical?.productName ||
+                        (mapping.productId
+                          ? "Linked Memgine Product"
+                          : "Unlinked Product")}
                     </Text>
-                  </Pressable>
+                    <Text style={{ flex: 2 }}>
+                      {canonical?.categoryName || "Uncategorized"}
+                    </Text>
+                    <Text style={{ flex: 2 }}>
+                      {mapping.externalSku || canonical?.sku || "—"}
+                    </Text>
+                    <Text style={{ flex: 2 }}>
+                      {externalCatalogLabel(mapping)}
+                    </Text>
+                    <Text
+                      style={{ flex: 2 }}
+                      color={
+                        !mapping.active || !mapping.productId
+                          ? "danger"
+                          : "text"
+                      }
+                    >
+                      {!mapping.active
+                        ? "Inactive"
+                        : mapping.productId
+                          ? "Linked to Business System"
+                          : "Not linked"}
+                    </Text>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Link or change Product for ${canonical?.productName || mapping.externalSku || "POS item"}`}
+                      disabled={!mapping.active || !mapping.storeId}
+                      onPress={() => openManualRelink(mapping)}
+                      style={{
+                        width: 38,
+                        minHeight: 40,
+                        justifyContent: "center",
+                        alignItems: "center",
+                        opacity: mapping.active && mapping.storeId ? 1 : 0.35,
+                      }}
+                    >
+                      <Text color="primary" style={{ fontSize: 21 }}>
+                        ↗
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        isExpanded
+                          ? "Hide mapping details"
+                          : "Show mapping details"
+                      }
+                      accessibilityState={{ expanded: isExpanded }}
+                      onPress={() =>
+                        setExpandedMappingDetailsId(
+                          isExpanded ? null : mapping.mappingId,
+                        )
+                      }
+                      style={{
+                        width: 28,
+                        minHeight: 40,
+                        justifyContent: "center",
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text color="textMuted">{isExpanded ? "−" : "+"}</Text>
+                    </Pressable>
+                  </View>
                   {isExpanded ? (
                     <View
                       style={{
                         gap: theme.spacing.xs,
-                        padding: theme.spacing.sm,
+                        padding: theme.spacing.md,
                         backgroundColor: theme.colors.surfaceAlt,
-                        borderRadius: theme.radius.sm,
+                        borderTopWidth: 1,
+                        borderColor: theme.colors.border,
                       }}
                     >
-                      <Text color="textMuted">
-                        Canonical Product ID: {mapping.productId || "Unlinked"}
+                      <Text variant="bodyStrong">
+                        External Product Link details
                       </Text>
-                      <Text color="textMuted">
-                        Mapping ID: {mapping.mappingId}
+                      <Text>
+                        Product:{" "}
+                        {canonical?.productName ||
+                          (mapping.productId
+                            ? "Linked Memgine Product (other catalog)"
+                            : "Not linked to a Memgine Product")}
                       </Text>
-                      <Text color="textMuted">
-                        External Product ID: {mapping.externalProductId || "—"}
+                      <Text>
+                        Store:{" "}
+                        {stores.find((store) => store.id === mapping.storeId)
+                          ?.name || "Store unavailable"}
                       </Text>
-                      <Text color="textMuted">
-                        External Catalog ID:{" "}
-                        {mappingExternalCatalogId(mapping) || "—"}
-                      </Text>
-                      <Text color="textMuted">
-                        Integration ID: {mapping.integrationConfigurationId}
-                      </Text>
-                      <Text color="textMuted">
-                        Store ID: {mapping.storeId || "—"}
-                      </Text>
+                      <Text>POS catalog: {externalCatalogLabel(mapping)}</Text>
+                      <Text>SKU: {mapping.externalSku || "—"}</Text>
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() =>
+                          setExpandedMappingTechnicalId((current) =>
+                            current === mapping.mappingId
+                              ? null
+                              : mapping.mappingId,
+                          )
+                        }
+                        style={{
+                          alignSelf: "flex-start",
+                          paddingVertical: theme.spacing.xs,
+                        }}
+                      >
+                        <Text color="textMuted">
+                          {expandedMappingTechnicalId === mapping.mappingId
+                            ? "Hide technical details ▲"
+                            : "Technical details ▼"}
+                        </Text>
+                      </Pressable>
+                      {expandedMappingTechnicalId === mapping.mappingId ? (
+                        <View style={{ gap: theme.spacing.xs }}>
+                          <Text color="textMuted">
+                            Canonical Product ID: {mapping.productId || "—"}
+                          </Text>
+                          <Text color="textMuted">
+                            Mapping ID: {mapping.mappingId}
+                          </Text>
+                          <Text color="textMuted">
+                            External Product ID:{" "}
+                            {mapping.externalProductId || "—"}
+                          </Text>
+                          <Text color="textMuted">
+                            External Catalog ID:{" "}
+                            {mappingExternalCatalogId(mapping) || "—"}
+                          </Text>
+                          <Text color="textMuted">
+                            Integration ID: {mapping.integrationConfigurationId}
+                          </Text>
+                          <Text color="textMuted">
+                            Store ID: {mapping.storeId || "—"}
+                          </Text>
+                        </View>
+                      ) : null}
                     </View>
-                  ) : null}
-                  {mapping.active && mapping.storeId ? (
-                    <Button
-                      label="Link to Existing Product"
-                      size="sm"
-                      variant="outline"
-                      onPress={() => openManualRelink(mapping)}
-                    />
                   ) : null}
                 </View>
               );
             })
           ) : (
             <Text color="textMuted">
-              No mappings match the search for this Store and integration. Clear
-              the search or choose a configured Store/catalog.
+              No mappings match this Store, catalog and search.
             </Text>
           )}
         </View>
@@ -2351,7 +2505,10 @@ export default function OrgAdminProducts() {
               <Text variant="bodyStrong">
                 {(relinkMapping.productId
                   ? productNameById.get(relinkMapping.productId)?.productName
-                  : undefined) ?? "Unknown Product"}
+                  : undefined) ??
+                  (relinkMapping.productId
+                    ? "Linked Memgine Product (other catalog)"
+                    : "Unlinked Product")}
               </Text>
               <Text color="textMuted">
                 Currently linked ·{" "}

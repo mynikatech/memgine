@@ -23,129 +23,43 @@ fun Route.organizationProductRoutes(
 ) = route("/organizations/{organizationId}/products") {
 
     get("/catalogs") {
-        call.respond(
-            ApiResponse.success(
-                service.catalogs(
-                    call.organizationId(),
-                    call.authenticatedPrincipal().userId
-                ),
-                call.callId
-            )
-        )
+        call.respond(ApiResponse.success(service.catalogs(call.organizationId(),call.authenticatedPrincipal().userId),call.callId))
     }
-
     post("/catalogs") {
         val organizationId = call.organizationId()
-
-        call.respond(
-            HttpStatusCode.Created,
-            ApiResponse.success(
-                service.saveCatalog(
-                    organizationId,
-                    call.receive(),
-                    call.authenticatedPrincipal().userId
-                ),
-                call.callId
-            )
-        )
+        call.respond(HttpStatusCode.Created,ApiResponse.success(service.saveCatalog(organizationId,call.receive(),call.authenticatedPrincipal().userId),call.callId))
     }
-
     put("/catalogs/{catalogId}") {
         val organizationId = call.organizationId()
         val request = call.receive<OrganizationProductCatalogWriteDto>()
-
-        if (request.productCatalogId != call.parameters["catalogId"]) {
-            throw BadRequestException("Catalog id does not match path")
-        }
-
-        call.respond(
-            ApiResponse.success(
-                service.saveCatalog(
-                    organizationId,
-                    request,
-                    call.authenticatedPrincipal().userId
-                ),
-                call.callId
-            )
-        )
+        if (request.productCatalogId != call.parameters["catalogId"]) throw BadRequestException("Catalog id does not match path")
+        call.respond(ApiResponse.success(service.saveCatalog(organizationId,request,call.authenticatedPrincipal().userId),call.callId))
     }
-
     get {
-        call.respond(
-            ApiResponse.success(
-                service.products(
-                    call.organizationId(),
-                    call.request.queryParameters["search"],
-                    call.authenticatedPrincipal().userId
-                ),
-                call.callId
-            )
-        )
+        val org=call.organizationId()
+        val search=call.request.queryParameters["search"]
+        val catalogId=call.request.queryParameters["catalogId"]?.trim()?.takeIf(String::isNotEmpty)
+        val actor=call.authenticatedPrincipal().userId
+        call.respond(ApiResponse.success(
+            if(catalogId == null) service.products(org,search,actor)
+            else service.catalogProducts(org,catalogId,search,actor), call.callId))
     }
-
     post {
         val organizationId = call.organizationId()
-
-        call.respond(
-            HttpStatusCode.Created,
-            ApiResponse.success(
-                service.saveProduct(
-                    organizationId,
-                    call.receive(),
-                    call.authenticatedPrincipal().userId
-                ),
-                call.callId
-            )
-        )
+        call.respond(HttpStatusCode.Created,ApiResponse.success(service.saveProduct(organizationId,call.receive(),call.authenticatedPrincipal().userId),call.callId))
     }
-
     put("/{productId}") {
         val organizationId = call.organizationId()
         val request = call.receive<OrganizationProductWriteDto>()
-
-        if (request.productId != call.parameters["productId"]) {
-            throw BadRequestException("Product id does not match path")
-        }
-
-        call.respond(
-            ApiResponse.success(
-                service.saveProduct(
-                    organizationId,
-                    request,
-                    call.authenticatedPrincipal().userId
-                ),
-                call.callId
-            )
-        )
+        if (request.productId != call.parameters["productId"]) throw BadRequestException("Product id does not match path")
+        call.respond(ApiResponse.success(service.saveProduct(organizationId,request,call.authenticatedPrincipal().userId),call.callId))
     }
-
     post("/imports/preview") {
         val organizationId = call.organizationId()
-
-        call.respond(
-            ApiResponse.success(
-                service.preview(
-                    organizationId,
-                    call.receive(),
-                    call.authenticatedPrincipal().userId
-                ),
-                call.callId
-            )
-        )
+        call.respond(ApiResponse.success(service.preview(organizationId,call.receive(),call.authenticatedPrincipal().userId),call.callId))
     }
-
     post("/imports/commit") {
         val organizationId = call.organizationId()
-
-        call.respond(
-            ApiResponse.success(
-                service.commit(
-                    organizationId,
-                    call.receive(),
-                    call.authenticatedPrincipal().userId
-                ),
-                call.callId
-            )
-        )
+        call.respond(ApiResponse.success(service.commit(organizationId,call.receive(),call.authenticatedPrincipal().userId),call.callId))
     }
 }
