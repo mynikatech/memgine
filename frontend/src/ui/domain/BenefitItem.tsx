@@ -1,36 +1,27 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
-
 import type { BenefitUsageRule } from "@/src/core";
 import { services } from "@/src/core";
 import { useTheme } from "@/src/providers";
-
 import { Modal } from "../Modal";
 import { Text } from "../Text";
-
 type IoniconName = keyof typeof Ionicons.glyphMap;
-
 /** Map a benefit type to a representative icon. */
 export function benefitIconForType(benefitTypeId: string): IoniconName {
   switch (benefitTypeId) {
     case "benefit-type-discount":
       return "pricetag-outline";
-
     case "benefit-type-freebie":
       return "gift-outline";
-
     case "benefit-type-reward":
       return "ribbon-outline";
-
     case "benefit-type-perk":
       return "star-outline";
-
     default:
       return "gift-outline";
   }
 }
-
 /**
  * BenefitItem — customer-facing presentation of a single benefit.
  *
@@ -45,11 +36,15 @@ type BenefitItemProps = {
   subtitle?: string;
   disclaimerText?: string;
   eligibleProducts?: string[];
+  productStoreAvailability?: Array<{
+    productId: string;
+    productName: string;
+    availability: string;
+  }>;
   icon?: IoniconName;
   usageRules?: BenefitUsageRule[];
   testID?: string;
 };
-
 const DAY_LABELS: Record<string, string> = {
   MON: "Monday",
   TUE: "Tuesday",
@@ -59,7 +54,6 @@ const DAY_LABELS: Record<string, string> = {
   SAT: "Saturday",
   SUN: "Sunday",
 };
-
 const DAY_SHORT_LABELS: Record<string, string> = {
   MON: "Mon",
   TUE: "Tue",
@@ -69,12 +63,10 @@ const DAY_SHORT_LABELS: Record<string, string> = {
   SAT: "Sat",
   SUN: "Sun",
 };
-
 function getBenefitId(testID?: string): string | undefined {
   const match = testID?.match(/^experience-(?:preview-)?benefit-(.+)$/);
   return match?.[1];
 }
-
 function formatFrequency(rule: BenefitUsageRule): string {
   switch (rule.frequencyType) {
     case "ONE_TIME":
@@ -99,14 +91,12 @@ function formatFrequency(rule: BenefitUsageRule): string {
       return "Usage restricted";
   }
 }
-
 function formatLimit(rule: BenefitUsageRule): string {
   if (rule.frequencyType === "ONE_TIME") {
     return `Up to ${rule.usageLimit} redemption${
       rule.usageLimit === 1 ? "" : "s"
     }`;
   }
-
   const period =
     rule.frequencyType === "DAILY"
       ? rule.frequencyInterval === 1
@@ -123,51 +113,36 @@ function formatLimit(rule: BenefitUsageRule): string {
           : rule.frequencyInterval === 1
             ? "year"
             : `${rule.frequencyInterval} years`;
-
   return `Up to ${rule.usageLimit} redemption${
     rule.usageLimit === 1 ? "" : "s"
   } per ${period}`;
 }
-
 function formatTime(value?: string): string {
   if (!value) return "";
-
   const match = value.match(/^(\d{1,2}):(\d{2})$/);
   if (!match) return value;
-
   const hour = Number(match[1]);
   const minute = match[2];
   const suffix = hour >= 12 ? "PM" : "AM";
   const displayHour = hour % 12 || 12;
-
   return `${displayHour}:${minute} ${suffix}`;
 }
-
 function formatDays(days?: string[]): string {
   if (!days?.length) return "";
-
   const ordered = Object.keys(DAY_LABELS).filter((day) => days.includes(day));
-
   if (ordered.length === 7) return "Monday–Sunday";
-
   return ordered.map((day) => DAY_LABELS[day] ?? day).join(", ");
 }
-
 function formatShortDays(days?: string[]): string {
   if (!days?.length) return "";
-
   const ordered = Object.keys(DAY_SHORT_LABELS).filter((day) =>
     days.includes(day),
   );
-
   if (ordered.length === 7) return "Mon–Sun";
-
   return ordered.map((day) => DAY_SHORT_LABELS[day] ?? day).join(", ");
 }
-
 function formatTimeZone(timeZone?: string): string {
   if (!timeZone) return "";
-
   const friendlyNames: Record<string, string> = {
     "America/Toronto": "Toronto time",
     "America/Vancouver": "Vancouver time",
@@ -194,17 +169,14 @@ function formatTimeZone(timeZone?: string): string {
     "Australia/Sydney": "Sydney time",
     "Pacific/Auckland": "Auckland time",
   };
-
   return friendlyNames[timeZone] ?? timeZone.replace(/_/g, " ");
 }
-
 function formatUsage(rule: BenefitUsageRule): string {
   if (rule.frequencyType === "ONE_TIME") {
     return `One-time benefit${
       rule.usageLimit > 1 ? ` · Up to ${rule.usageLimit} times` : ""
     }`;
   }
-
   const unit =
     rule.frequencyType === "DAILY"
       ? rule.frequencyInterval === 1
@@ -221,34 +193,28 @@ function formatUsage(rule: BenefitUsageRule): string {
           : rule.frequencyInterval === 1
             ? "year"
             : `${rule.frequencyInterval} years`;
-
   if (rule.usageLimit === 1) {
     return `Once per ${unit}`;
   }
-
   return `Up to ${rule.usageLimit} times per ${unit}`;
 }
-
 function formatAvailability(rule: BenefitUsageRule): string {
   const parts: string[] = [];
-
   const days = formatShortDays(rule.applicableDays);
   if (days) parts.push(`Available ${days}`);
-
   if (rule.windowStartTime || rule.windowEndTime) {
     const start = formatTime(rule.windowStartTime) || "any time";
     const end = formatTime(rule.windowEndTime) || "any time";
     parts.push(`${start}–${end}`);
   }
-
   return parts.join(" · ");
 }
-
 export function BenefitItem({
   title,
   subtitle,
   disclaimerText,
   eligibleProducts,
+  productStoreAvailability,
   icon = "gift-outline",
   usageRules: usageRulesOverride,
   testID,
@@ -258,10 +224,8 @@ export function BenefitItem({
   const [rules, setRules] = useState<BenefitUsageRule[]>([]);
   const [ruleError, setRuleError] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-
   useEffect(() => {
     let cancelled = false;
-
     if (usageRulesOverride !== undefined) {
       setRuleError(null);
       setRules(usageRulesOverride.filter((rule) => !rule.isDeleted));
@@ -269,17 +233,14 @@ export function BenefitItem({
         cancelled = true;
       };
     }
-
     const loadRules = async () => {
       if (!benefitId) {
         setRules([]);
         setRuleError(null);
         return;
       }
-
       try {
         const result = await services.benefitUsageRule.listByBenefit(benefitId);
-
         if (!cancelled) {
           setRules(result);
           setRuleError(null);
@@ -287,28 +248,27 @@ export function BenefitItem({
       } catch (error) {
         if (!cancelled) {
           setRules([]);
-          setRuleError(error instanceof Error ? error.message : "Unable to load usage rules.");
+          setRuleError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load usage rules.",
+          );
         }
       }
     };
-
     void loadRules();
-
     return () => {
       cancelled = true;
     };
   }, [benefitId, usageRulesOverride]);
-
   const primaryRule = rules[0];
   const ruleSummary = primaryRule ? formatUsage(primaryRule) : "";
   const availability = primaryRule ? formatAvailability(primaryRule) : "";
-
   const handlePress = () => {
     if (primaryRule) {
       setDetailsOpen(true);
     }
   };
-
   return (
     <>
       <Pressable
@@ -335,12 +295,10 @@ export function BenefitItem({
         >
           <Ionicons name={icon} size={20} color={theme.colors.primary} />
         </View>
-
         <View style={{ flex: 1, gap: theme.spacing.xs }}>
           <Text variant="bodyStrong" color="text">
             {title}
           </Text>
-
           {ruleSummary ? (
             <Text variant="bodySmall" color="textSecondary">
               {subtitle ? `${subtitle} — ${ruleSummary}` : ruleSummary}
@@ -350,29 +308,27 @@ export function BenefitItem({
               {subtitle}
             </Text>
           ) : null}
-
           {disclaimerText?.trim() ? (
             <Text variant="caption" color="textMuted">
               Terms: {disclaimerText.trim()}
             </Text>
           ) : null}
-
           {eligibleProducts?.length ? (
             <Text variant="caption" color="textSecondary">
               Choose from: {eligibleProducts.join(", ")}
             </Text>
           ) : null}
-
           {availability ? (
             <Text variant="caption" color="textMuted">
               {availability}
             </Text>
           ) : null}
           {ruleError ? (
-            <Text variant="caption" color="textMuted">{ruleError}</Text>
+            <Text variant="caption" color="textMuted">
+              {ruleError}
+            </Text>
           ) : null}
         </View>
-
         {primaryRule ? (
           <Ionicons
             name="chevron-forward"
@@ -381,7 +337,6 @@ export function BenefitItem({
           />
         ) : null}
       </Pressable>
-
       {primaryRule ? (
         <Modal
           visible={detailsOpen}
@@ -394,7 +349,6 @@ export function BenefitItem({
             <Text variant="bodyStrong" color="text">
               How this benefit works
             </Text>
-
             <View style={{ gap: theme.spacing.sm }}>
               <View>
                 <Text variant="caption" color="textMuted">
@@ -404,7 +358,6 @@ export function BenefitItem({
                   {formatUsage(primaryRule)}
                 </Text>
               </View>
-
               <View>
                 <Text variant="caption" color="textMuted">
                   Available
@@ -413,7 +366,6 @@ export function BenefitItem({
                   {formatDays(primaryRule.applicableDays) || "Every day"}
                 </Text>
               </View>
-
               <View>
                 <Text variant="caption" color="textMuted">
                   Time
@@ -426,7 +378,6 @@ export function BenefitItem({
                     : "Any time"}
                 </Text>
               </View>
-
               <View>
                 <Text variant="caption" color="textMuted">
                   Time zone
@@ -437,6 +388,26 @@ export function BenefitItem({
                 </Text>
               </View>
             </View>
+            {productStoreAvailability?.length ? (
+              <View style={{ gap: theme.spacing.sm }}>
+                <Text variant="bodyStrong" color="text">
+                  Eligible Products &amp; Stores
+                </Text>
+                {productStoreAvailability.map((product) => (
+                  <View
+                    key={product.productId}
+                    style={{ gap: theme.spacing.xs }}
+                  >
+                    <Text variant="bodySmall" color="text">
+                      {product.productName}
+                    </Text>
+                    <Text variant="caption" color="textMuted">
+                      {product.availability}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </View>
         </Modal>
       ) : null}

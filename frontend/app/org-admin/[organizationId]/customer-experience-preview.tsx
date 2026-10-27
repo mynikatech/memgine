@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { offerCommerceApi } from "@/src/data/api/offer-commerce-api";
 
 import type {
   BusinessConfiguration,
@@ -899,6 +900,56 @@ function PreviewPanel({
   configuration,
   template,
 }: PreviewPanelProps) {
+  const previewOrganizationId =
+    organizationOverride?.id ?? domainData.product?.organizationId ?? "";
+
+  const [previewProductStoreIds, setPreviewProductStoreIds] = useState<
+    Record<string, string[]> | undefined
+  >(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setPreviewProductStoreIds(undefined);
+
+    if (!previewOrganizationId) {
+      return;
+    }
+
+    void offerCommerceApi
+      .mappings(previewOrganizationId)
+      .then((mappings) => {
+        if (cancelled) return;
+
+        const result: Record<string, string[]> = {};
+
+        for (const mapping of mappings) {
+          if (!mapping.active || !mapping.productId || !mapping.storeId) {
+            continue;
+          }
+
+          const ids = result[mapping.productId] ?? [];
+
+          if (!ids.includes(mapping.storeId)) {
+            result[mapping.productId] = [...ids, mapping.storeId];
+          }
+        }
+
+        setPreviewProductStoreIds(result);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error(
+            "[CustomerPreview] Unable to load Product Store availability",
+            error,
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [previewOrganizationId]);
   const selectedMembership =
     domainData.memberships.find(
       (membership) => membership.product.id === selectedMembershipId,
@@ -956,6 +1007,7 @@ function PreviewPanel({
             redemptions={selectedMembership?.redemptions ?? []}
             benefitUsageRules={domainData.benefitUsageRules}
             offerUsageRules={domainData.offerUsageRules}
+            previewProductStoreIds={previewProductStoreIds}
             memberships={domainData.memberships
               .filter((membership) => membership.subscription)
               .map((membership) => ({

@@ -171,6 +171,8 @@ type Props = {
    */
   organizationOverride?: Organization;
 
+  previewProductStoreIds?: Record<string, string[]>;
+
   /**
    * Optional organization-details override.
    */
@@ -243,6 +245,7 @@ type Props = {
 
 export function BusinessExperience({
   content,
+  previewProductStoreIds,
   subscription,
   subscriptionStatus,
   product,
@@ -850,6 +853,96 @@ export function BusinessExperience({
       status: isPreviewMode && previewAvailable ? "AVAILABLE" : "INACTIVE",
       displayReason: isPreviewMode && previewAvailable ? null : "Unavailable",
     };
+  // Store availability is informational. Customer QR generation never requires a Store.
+  const [benefitStoreIds, setBenefitStoreIds] = useState<
+    Record<string, string[]>
+  >({});
+  const [benefitAvailabilityLoaded, setBenefitAvailabilityLoaded] =
+    useState(false);
+  const storeNamesById = useMemo(
+    () => Object.fromEntries(stores.map((store) => [store.id, store.name])),
+    [stores],
+  );
+  const availabilityBenefitIds = benefits
+    .map((benefit) => benefit.id)
+    .sort()
+    .join("|");
+  useEffect(() => {
+    if (isPreviewMode || !subscription || isHistoricalSubscription) {
+      setBenefitStoreIds({});
+      setBenefitAvailabilityLoaded(false);
+      return;
+    }
+    let active = true;
+    setBenefitAvailabilityLoaded(false);
+    const targets = benefits.filter((benefit) => benefit.products?.length);
+    void Promise.all(
+      targets.map(async (benefit) => {
+        try {
+          const choices = await services.customerData.redemptionProductChoices(
+            organization.id,
+            subscription.id,
+            "BENEFIT",
+            benefit.id,
+          );
+          return [benefit.id, choices] as const;
+        } catch {
+          return [benefit.id, []] as const;
+        }
+      }),
+    ).then((results) => {
+      if (!active) return;
+      const available: Record<string, string[]> = {};
+      for (const [benefitId, choices] of results) {
+        for (const choice of choices) {
+          const key = `${benefitId}:${choice.productId}`;
+          available[key] = choice.availableStoreIds ?? [];
+        }
+      }
+      setBenefitStoreIds(available);
+      setBenefitAvailabilityLoaded(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [
+    organization.id,
+    subscription?.id,
+    availabilityBenefitIds,
+    isPreviewMode,
+    isHistoricalSubscription,
+  ]);
+
+  const benefitProductAvailability = (benefitId: string, productId: string) => {
+    const ids: string[] | undefined = isPreviewMode
+      ? previewProductStoreIds?.[productId]
+      : benefitStoreIds[`${benefitId}:${productId}`];
+
+    if (ids === undefined) {
+      return "Store availability unavailable";
+    }
+
+    const benefit = benefits.find((item) => item.id === benefitId);
+
+    const permittedIds =
+      benefit?.storeAvailability?.mode === "SELECTED_STORES"
+        ? new Set(benefit.storeAvailability.storeIds)
+        : null;
+
+    const names = [
+      ...new Set(
+        ids
+          .filter((id) => !permittedIds || permittedIds.has(id))
+          .map((id) => storeNamesById[id])
+          .filter((name): name is string => Boolean(name)),
+      ),
+    ];
+
+    return names.length > 0
+      ? `Available at: ${names.join(", ")}`
+      : "No verified Store availability";
+  };
+
   const benefitItems = exp.redeemableBenefits.map((benefit) => ({
     benefit,
     itemStatus: statusFor("BENEFIT", benefit.id, benefit.available),
@@ -1399,6 +1492,14 @@ export function BusinessExperience({
                   eligibleProducts={b.products?.map(
                     (product) => product.productName || product.productCode,
                   )}
+                  productStoreAvailability={b.products?.map((eligible) => ({
+                    productId: eligible.productId,
+                    productName: eligible.productName || eligible.productCode,
+                    availability: benefitProductAvailability(
+                      b.id,
+                      eligible.productId,
+                    ),
+                  }))}
                   icon={benefitIconForType(b.benefitTypeId)}
                   usageRules={benefitUsageRules?.filter(
                     (rule) => rule.benefitId === b.id,
@@ -1472,15 +1573,25 @@ export function BusinessExperience({
                             </Text>
                           ) : null}
                           {b.products?.length ? (
-                            <Text variant="bodySmall" color="textSecondary">
-                              Choose from:{" "}
-                              {b.products
-                                .map(
-                                  (product) =>
-                                    product.productName || product.productCode,
-                                )
-                                .join(", ")}
-                            </Text>
+                            <View style={{ gap: 3, marginTop: 4 }}>
+                              <Text variant="bodySmall" color="textSecondary">
+                                Choose from:
+                              </Text>
+                              {b.products.map((eligible) => (
+                                <Text
+                                  key={eligible.productId}
+                                  variant="caption"
+                                  color="textMuted"
+                                >
+                                  {eligible.productName || eligible.productCode}{" "}
+                                  —{" "}
+                                  {benefitProductAvailability(
+                                    b.id,
+                                    eligible.productId,
+                                  )}
+                                </Text>
+                              ))}
+                            </View>
                           ) : null}
                         </View>
 
@@ -1563,6 +1674,7 @@ export function BusinessExperience({
                   </Text>
                   {!isPreviewMode && selectedRedemptionProducts.length > 0 ? (
                     <RedemptionProductPicker
+                      storeNamesById={storeNamesById}
                       subscriptionId={subscription?.id ?? ""}
                       items={selectedRedemptionProducts}
                       loadChoices={(item) =>
@@ -2809,6 +2921,17 @@ export function BusinessExperience({
                         eligibleProducts={b.products?.map(
                           (product) =>
                             product.productName || product.productCode,
+                        )}
+                        productStoreAvailability={b.products?.map(
+                          (eligible) => ({
+                            productId: eligible.productId,
+                            productName:
+                              eligible.productName || eligible.productCode,
+                            availability: benefitProductAvailability(
+                              b.id,
+                              eligible.productId,
+                            ),
+                          }),
                         )}
                         icon={benefitIconForType(b.benefitTypeId)}
                         usageRules={benefitUsageRules?.filter(

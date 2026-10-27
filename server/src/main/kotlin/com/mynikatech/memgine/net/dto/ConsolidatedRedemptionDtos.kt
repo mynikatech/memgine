@@ -17,7 +17,8 @@ data class CreateRedemptionTransactionRequest(
 data class RedemptionProductChoiceDto(
     var productId: String = "",
     var productName: String = "",
-    var productCode: String? = null
+    var productCode: String? = null,
+    var availableStoreIds: List<String>? = null
 )
 
 @Serializable

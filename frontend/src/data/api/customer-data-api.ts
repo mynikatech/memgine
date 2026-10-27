@@ -38,6 +38,7 @@ export type RedemptionProductChoice = {
   productId: ID;
   productName: string;
   productCode?: string | null;
+  availableStoreIds?: string[] | null;
 };
 export type PoyntCollectBootstrap = {
   sdkUrl: string;

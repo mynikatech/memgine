@@ -116,7 +116,7 @@ class RedemptionService(
             throw BadRequestException("Invalid Counter context")
         }
 
-        return sql.productChoices(
+        val choices = sql.productChoices(
             organizationId,
             subscriptionId,
             itemType,
@@ -125,6 +125,17 @@ class RedemptionService(
             storeId,
             staffId
         )
+
+        return choices.map { choice ->
+            choice.copy(
+                availableStoreIds = sql.availableStoreIdsForProductChoice(
+                    organizationId,
+                    choice.productId,
+                    itemType,
+                    itemId
+                )
+            )
+        }
     }
 
     fun issueCustomerTransactionQr(
