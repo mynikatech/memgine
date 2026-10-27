@@ -103,7 +103,9 @@ data class CommerceProductSnapshotDto(
     val active: Boolean,
     val sourceUpdatedAt: String? = null,
     val lastSyncedAt: String,
-    val versionNo: Int
+    val versionNo: Int,
+    val externalCategories: List<CommerceExternalCategoryReferenceDto> = emptyList(),
+    val categoryMetadataAvailable: Boolean = false
 )
 
 @Serializable
@@ -160,7 +162,8 @@ data class CommerceProductMappingDto(
     val externalSku: String? = null,
     val active: Boolean,
     val snapshot: CommerceProductSnapshotDto? = null,
-    val versionNo: Int
+    val versionNo: Int,
+    val externalCatalogId: String? = null
 )
 
 @Serializable

@@ -48,6 +48,18 @@ data class CommerceStoreCatalogSourceCandidateRow(
     var ineligibilityReason: String? = null
 )
 
+data class CommerceSnapshotCategoryMetadataRow(
+    var snapshotId: String = "",
+    var externalCategoriesJson: String? = null,
+    var categoryMetadataAvailable: Boolean = false,
+    var externalCatalogId: String? = null
+)
+
+data class CommerceMappingCatalogMetadataRow(
+    var mappingId: String = "",
+    var externalCatalogId: String? = null
+)
+
 data class CommerceProductSnapshotRow(
     var snapshotId: String = "",
     var organizationId: String = "",
@@ -241,6 +253,36 @@ interface CommerceSql {
         @Bind("reason") reason: String,
         @Bind("actorUserId") actorUserId: String
     ): String
+
+    // W230-B1: Fetch snapshot categories once per organization; no per-product N+1 queries.
+    // Require organization-admin authorization even when called outside mappings().
+    @SqlQuery("""SELECT commerce_product_snapshot_id AS "snapshotId",
+                        external_categories::text AS "externalCategoriesJson",
+                        category_metadata_available AS "categoryMetadataAvailable",
+                        external_catalog_id AS "externalCatalogId"
+                   FROM commerce_product_snapshots
+                  WHERE organization_id = :organizationId
+                    AND NOT is_deleted
+                    AND can_administer_organization(:organizationId, :actorUserId)""")
+    @RegisterBeanMapper(CommerceSnapshotCategoryMetadataRow::class)
+    fun snapshotCategoryMetadata(
+        @Bind("organizationId") organizationId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): List<CommerceSnapshotCategoryMetadataRow>
+
+    // The legacy organization-wide mapping reader does not expose catalog identity.
+    // Read it from the owning mapping row, never infer it from a selected Store.
+    @SqlQuery("""SELECT commerce_product_mapping_id AS "mappingId",
+                        external_catalog_id AS "externalCatalogId"
+                   FROM commerce_product_mappings
+                  WHERE organization_id = :organizationId
+                    AND NOT is_deleted
+                    AND can_administer_organization(:organizationId, :actorUserId)""")
+    @RegisterBeanMapper(CommerceMappingCatalogMetadataRow::class)
+    fun mappingCatalogMetadata(
+        @Bind("organizationId") organizationId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): List<CommerceMappingCatalogMetadataRow>
 
     @SqlQuery("SELECT * FROM get_commerce_product_mappings(:organizationId, :actorUserId)")
     @RegisterBeanMapper(CommerceProductMappingRow::class)

@@ -1178,6 +1178,21 @@ export default function OrgAdminProducts() {
     activeMappingsForProduct(item).filter(
       (mapping) => mapping.storeId === selectedStoreId,
     );
+  // W230-B1: external attributes are always read from the mapping's own snapshot.
+  const selectedSnapshotForProduct = (item: OrganizationProduct) =>
+    activeStoreScopeMappings(item).length === 1
+      ? activeStoreScopeMappings(item)[0].snapshot
+      : null;
+  const productCategoryLabel = (item: OrganizationProduct) => {
+    const snapshot = selectedSnapshotForProduct(item);
+    if (!snapshot) return item.categoryName || "Uncategorized";
+    if (!snapshot.categoryMetadataAvailable) return "Category unavailable";
+    return snapshot.externalCategories?.length
+      ? snapshot.externalCategories
+          .map((c) => c.categoryName?.trim() || c.externalCategoryId)
+          .join(", ")
+      : "Uncategorized";
+  };
   const activeOrganizationScopeMappings = (item: OrganizationProduct) =>
     activeMappingsForProduct(item).filter((mapping) => !mapping.storeId);
   const mappingHealth = (item: OrganizationProduct): ProductMappingHealth => {
@@ -2074,19 +2089,27 @@ export default function OrgAdminProducts() {
                       }}
                     >
                       <View style={{ flex: 3, minWidth: 0 }}>
-                        <Text variant="bodyStrong">{p.productName}</Text>
+                        <Text variant="bodyStrong">
+                          {selectedSnapshotForProduct(p)?.productName ??
+                            p.productName}
+                        </Text>
                         <Text color="textMuted">
-                          {p.sku || p.productCode || "No SKU"}
+                          {selectedSnapshotForProduct(p)?.externalSku ??
+                            p.sku ??
+                            p.productCode ??
+                            "No SKU"}
                         </Text>
                       </View>
                       <View style={{ flex: 2, minWidth: 0 }}>
-                        <Text>{p.categoryName || "Uncategorized"}</Text>
+                        <Text>{productCategoryLabel(p)}</Text>
                       </View>
                       <View style={{ flex: 2, minWidth: 0 }}>
                         <Text>
-                          {p.basePriceMinor != null
-                            ? `${p.currencyCode ?? ""} ${(p.basePriceMinor / 100).toFixed(2)}`
-                            : "—"}
+                          {selectedSnapshotForProduct(p)
+                            ? `${selectedSnapshotForProduct(p)!.currencyCode} ${(selectedSnapshotForProduct(p)!.unitPriceMinorSnapshot / 100).toFixed(2)}`
+                            : p.basePriceMinor != null
+                              ? `${p.currencyCode ?? ""} ${(p.basePriceMinor / 100).toFixed(2)}`
+                              : "—"}
                         </Text>
                       </View>
                       <View style={{ flex: 2, minWidth: 0 }}>
@@ -2123,9 +2146,7 @@ export default function OrgAdminProducts() {
                         }}
                       >
                         <Text variant="bodyStrong">Product details</Text>
-                        <Text>
-                          Category: {p.categoryName || "Uncategorized"}
-                        </Text>
+                        <Text>Category: {productCategoryLabel(p)}</Text>
                         <Text>Catalog: {p.catalogName || "—"}</Text>
                         <Text>Product code: {p.productCode || "—"}</Text>
                         <Text>SKU: {p.sku || "—"}</Text>
@@ -2334,7 +2355,11 @@ export default function OrgAdminProducts() {
                           : "Unlinked Product")}
                     </Text>
                     <Text style={{ flex: 2 }}>
-                      {canonical?.categoryName || "Uncategorized"}
+                      {mapping.snapshot?.categoryMetadataAvailable
+                        ? mapping.snapshot.externalCategories
+                            ?.map((c) => c.categoryName || c.externalCategoryId)
+                            .join(", ") || "Uncategorized"
+                        : "Category unavailable"}
                     </Text>
                     <Text style={{ flex: 2 }}>
                       {mapping.externalSku || canonical?.sku || "—"}

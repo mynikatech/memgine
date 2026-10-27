@@ -9,6 +9,7 @@ import com.mynikatech.memgine.net.dto.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.postgresql.util.PSQLException
@@ -161,12 +162,23 @@ class CommerceService(
             }
         }
 
-    fun snapshots(organizationId: String, actorUserId: String): List<CommerceProductSnapshotDto> =
-        translate { sql.snapshots(validId(organizationId), actorUserId).map(::snapshotDto) }
+    fun snapshots(organizationId: String, actorUserId: String): List<CommerceProductSnapshotDto> = translate {
+        val org = validId(organizationId)
+        val categories = sql.snapshotCategoryMetadata(org, actorUserId).associateBy { it.snapshotId }
+        sql.snapshots(org, actorUserId)
+            .onEach { row -> row.externalCatalogId = categories[row.snapshotId]?.externalCatalogId ?: row.externalCatalogId }
+            .map { snapshotDto(it, categories) }
+    }
 
     fun mappings(organizationId: String, actorUserId: String): List<CommerceProductMappingDto> = translate {
-        val snapshots = sql.snapshots(validId(organizationId), actorUserId)
-        sql.mappings(organizationId, actorUserId).map { mappingDto(it, snapshots) }
+        val org = validId(organizationId)
+        val categories = sql.snapshotCategoryMetadata(org, actorUserId).associateBy { it.snapshotId }
+        val catalogs = sql.mappingCatalogMetadata(org, actorUserId).associateBy { it.mappingId }
+        val snapshots = sql.snapshots(org, actorUserId)
+            .onEach { row -> row.externalCatalogId = categories[row.snapshotId]?.externalCatalogId ?: row.externalCatalogId }
+        sql.mappings(org, actorUserId)
+            .onEach { row -> row.externalCatalogId = catalogs[row.mappingId]?.externalCatalogId ?: row.externalCatalogId }
+            .map { mappingDto(it, snapshots, categories) }
     }
 
     fun deactivateMapping(
@@ -269,7 +281,7 @@ class CommerceService(
             request.unitPriceMinorSnapshot, request.active, request.sourceUpdatedAt, actorUserId
         )
         sql.snapshots(organizationId, actorUserId).firstOrNull { it.snapshotId == id }
-            ?.let(::snapshotDto) ?: throw NotFoundException("Commerce product snapshot was not saved")
+            ?.let { snapshotDto(it) } ?: throw NotFoundException("Commerce product snapshot was not saved")
     }
 
     fun saveMapping(
@@ -1046,7 +1058,8 @@ class CommerceService(
     )
     private fun mappingDto(
         row: CommerceProductMappingRow,
-        snapshots: List<CommerceProductSnapshotRow>
+        snapshots: List<CommerceProductSnapshotRow>,
+        categories: Map<String, CommerceSnapshotCategoryMetadataRow> = emptyMap()
     ) = CommerceProductMappingDto(
         row.mappingId, row.organizationId, row.productId, row.integrationConfigurationId, row.storeId,
         row.externalProductId, row.externalVariantId, row.externalSku, row.active,
@@ -1056,16 +1069,27 @@ class CommerceService(
                 it.storeId == row.storeId && it.externalCatalogId == row.externalCatalogId &&
                 it.externalProductId == row.externalProductId &&
                 it.externalVariantId == row.externalVariantId
-        }?.let(::snapshotDto),
-        row.versionNo
+        }?.let { snapshotDto(it, categories) },
+        row.versionNo,
+        row.externalCatalogId
     )
 
-    private fun snapshotDto(row: CommerceProductSnapshotRow) = CommerceProductSnapshotDto(
-        row.snapshotId, row.organizationId, row.integrationConfigurationId, row.storeId,
-        row.externalProductId, row.externalVariantId, row.externalSku, row.productName,
-        row.description, row.currencyCode, row.unitPriceMinorSnapshot, row.active,
-        row.sourceUpdatedAt, row.lastSyncedAt, row.versionNo
-    )
+    private fun snapshotDto(
+        row: CommerceProductSnapshotRow,
+        categories: Map<String, CommerceSnapshotCategoryMetadataRow> = emptyMap()
+    ): CommerceProductSnapshotDto {
+        val metadata = categories[row.snapshotId]
+        val externalCategories = metadata?.externalCategoriesJson?.let {
+            Json.decodeFromString<List<CommerceExternalCategoryReferenceDto>>(it)
+        } ?: emptyList()
+        return CommerceProductSnapshotDto(
+            row.snapshotId, row.organizationId, row.integrationConfigurationId, row.storeId,
+            row.externalProductId, row.externalVariantId, row.externalSku, row.productName,
+            row.description, row.currencyCode, row.unitPriceMinorSnapshot, row.active,
+            row.sourceUpdatedAt, row.lastSyncedAt, row.versionNo,
+            externalCategories, metadata?.categoryMetadataAvailable ?: false
+        )
+    }
 
     private fun validId(value: String): String {
         if (value.isBlank() || value.length > 64) throw BadRequestException("Invalid id")

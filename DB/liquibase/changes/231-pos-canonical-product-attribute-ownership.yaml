@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 231-pos-canonical-product-attribute-ownership
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/231-pos-canonical-product-attribute-ownership.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
