@@ -13,6 +13,7 @@ class CommerceCatalogReconciliationService {
         val mappings = input.mappings.filter {
             it.organizationId == input.organizationId &&
                 it.integrationConfigurationId == input.integrationConfigurationId &&
+                (input.catalogQualifiedMappingIds == null || it.mappingId in input.catalogQualifiedMappingIds) &&
                 it.active
         }
         val orderedSnapshots = input.snapshots.sortedWith(snapshotComparator)
@@ -81,6 +82,10 @@ class CommerceCatalogReconciliationService {
         if (sku == null) {
             return row(snapshot, null, CommerceCatalogReconciliationAction.NEW,
                 "No canonical SKU match is available", null, proposed, input)
+        }
+        if (!input.allowAutomaticSkuMatching) {
+            return row(snapshot, null, CommerceCatalogReconciliationAction.NEW,
+                "Catalog-specific Product requires administrator mapping or creation", null, proposed, input)
         }
         val candidates = products.filter { it.active && normalized(it.sku) == sku }
         val categoryCandidates = candidates.filter { candidate ->
@@ -267,6 +272,7 @@ class CommerceCatalogReconciliationService {
         val candidates = input.previousSnapshots.filter {
             it.organizationId == input.organizationId &&
                 it.integrationConfigurationId == input.integrationConfigurationId &&
+                (input.catalogQualifiedSnapshotIds == null || it.snapshotId in input.catalogQualifiedSnapshotIds) &&
                 it.externalProductId == mapping.externalProductId &&
                 it.externalVariantId == mapping.externalVariantId
         }
@@ -336,7 +342,13 @@ data class CommerceCatalogReconciliationInput(
     val previousSnapshots: List<CommerceProductSnapshotRow> = emptyList(),
     /** Product IDs known by the caller to have benefit, offer, or other business-rule dependencies. */
     val dependentProductIds: Set<String> = emptySet(),
-    val categoryCorrespondences: List<CommerceCatalogCategoryCorrespondence> = emptyList()
+    val categoryCorrespondences: List<CommerceCatalogCategoryCorrespondence> = emptyList(),
+    val externalCatalogId: String? = null,
+    /** Exact W222 mapping row IDs for this catalog; null retains legacy behavior. */
+    val catalogQualifiedMappingIds: Set<String>? = null,
+    val catalogQualifiedSnapshotIds: Set<String>? = null,
+    /** Never guess canonical links across different Poynt catalogs using a SKU. */
+    val allowAutomaticSkuMatching: Boolean = true
 )
 
 data class CommerceCatalogCategoryCorrespondence(

@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 223-manual-product-mapping-relink
+      author: memgine
+      changes:
+        - sqlFile:
+            path: ../sql/223-manual-product-mapping-relink.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

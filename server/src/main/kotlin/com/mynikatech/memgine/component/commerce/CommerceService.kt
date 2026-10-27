@@ -10,6 +10,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import org.postgresql.util.PSQLException
 
 class CommerceService(
@@ -176,6 +177,70 @@ class CommerceService(
         sql.deactivateMapping(validId(organizationId), validId(mappingId), actorUserId)
     }
 
+    fun manualRelinkCandidates(
+        organizationId: String,
+        mappingId: String,
+        search: String,
+        actorUserId: String
+    ): List<CommerceManualRelinkCandidateRow> {
+        try {
+            return translate {
+                if (search.length > 200) {
+                    throw BadRequestException("Search term is too long")
+                }
+
+                sql.manualRelinkCandidates(
+                    validId(organizationId),
+                    validId(mappingId),
+                    actorUserId,
+                    search.trim()
+                )
+            }
+        } catch (e: Exception) {
+            // Temporary DEV-only diagnostic.
+            org.slf4j.LoggerFactory
+                .getLogger(CommerceService::class.java)
+                .error(
+                    "W224 candidate search failed: organizationId={}, mappingId={}, actorUserId={}",
+                    organizationId,
+                    mappingId,
+                    actorUserId,
+                    e
+                )
+            throw e
+        }
+    }
+
+    fun previewManualProductRelink(
+        organizationId: String,
+        mappingId: String,
+        targetProductId: String,
+        actorUserId: String
+    ): kotlinx.serialization.json.JsonObject = translate {
+        Json.parseToJsonElement(sql.previewManualProductRelink(
+            validId(organizationId), validId(mappingId), validId(targetProductId), actorUserId
+        )).jsonObject
+    }
+
+    fun confirmManualProductRelink(
+        organizationId: String,
+        mappingId: String,
+        targetProductId: String,
+        expectedMappingVersionNo: Int,
+        expectedTargetProductVersionNo: Int,
+        reason: String,
+        actorUserId: String
+    ): kotlinx.serialization.json.JsonObject = translate {
+        if (expectedMappingVersionNo < 1 || expectedTargetProductVersionNo < 1 ||
+            reason.isBlank() || reason.length > 500) {
+            throw BadRequestException("Invalid manual product reconciliation request")
+        }
+        Json.parseToJsonElement(sql.confirmManualProductRelink(
+            validId(organizationId), validId(mappingId), validId(targetProductId),
+            expectedMappingVersionNo, expectedTargetProductVersionNo, reason.trim(), actorUserId
+        )).jsonObject
+    }
+
     fun resolveProductMapping(
         organizationId: String,
         productId: String,
@@ -196,6 +261,7 @@ class CommerceService(
         actorUserId: String
     ): CommerceProductSnapshotDto = translate {
         validateSnapshot(request)
+        requireNonPoyntLegacyWrite(organizationId, request.integrationConfigurationId, actorUserId)
         val id = sql.saveSnapshot(
             validId(organizationId), validId(request.integrationConfigurationId), request.storeId?.let(::validId),
             request.externalProductId.trim(), request.externalVariantId?.trim(), request.externalSku?.trim(),
@@ -212,6 +278,7 @@ class CommerceService(
         actorUserId: String
     ): CommerceProductMappingDto = translate {
         validateMapping(request)
+        requireNonPoyntLegacyWrite(organizationId, request.integrationConfigurationId, actorUserId)
         val id = sql.saveMapping(
             validId(organizationId), validId(request.integrationConfigurationId), request.storeId?.let(::validId),
             request.externalProductId.trim(), request.externalVariantId?.trim(), request.externalSku?.trim(),
@@ -288,33 +355,46 @@ class CommerceService(
         if (request.applicationId.isBlank() || request.applicationId.length > 128 || request.providerBusinessId.isBlank() || request.credentialSecretReference.isBlank() || !currencyCodes.matches(request.merchantCurrencyCode.uppercase())) throw BadRequestException("Invalid Poynt catalog configuration")
         sql.saveCatalogConfiguration(validId(organizationId),validId(integrationId),request.applicationId.trim(),request.providerBusinessId.trim(),request.providerStoreId?.trim(),request.credentialSecretReference.trim(),request.merchantCurrencyCode.uppercase(),actorUserId)
     }
-    /** Provider-specific catalog data is mapped into existing generic snapshots only. */
+    /** Legacy direct Poynt sync cannot safely persist catalog-unqualified snapshots.
+     * Poynt resync goes through catalog-sync/preview and catalog-sync/{previewId}/apply.
+     */
     fun syncCatalog(organizationId: String, integrationId: String, storeId: String?, incremental: Boolean, actorUserId: String): List<CommerceProductSnapshotDto> = translate {
-        val org = validId(organizationId); val integration = integrations(org, actorUserId).firstOrNull { it.integrationConfigurationId == validId(integrationId) }
+        val org = validId(organizationId)
+        val id = validId(integrationId)
+        val integration = sql.integrations(org, actorUserId).firstOrNull { it.integrationConfigurationId == id }
             ?: throw NotFoundException("Commerce integration was not found")
-        val provider = providers.catalogProvider(integration.providerCode) ?: throw BadRequestException("Commerce catalog provider is not available")
+        if (integration.providerCode.equals("POYNT", ignoreCase = true)) {
+            throw BadRequestException("Poynt catalog sync requires Store-specific Preview and Apply; use catalog-sync/preview")
+        }
+        val provider = providers.catalogProvider(integration.providerCode)
+            ?: throw BadRequestException("Commerce catalog provider is not available")
         val scopedStore = storeId?.let(::validId)
-        val request = CommerceCatalogSyncRequest(org, integrationId, scopedStore, null, incremental, actorUserId)
+        val request = CommerceCatalogSyncRequest(org, id, scopedStore, null, incremental, actorUserId)
         try {
             val result = provider.syncCatalog(request).map { snapshot -> saveSnapshot(org, snapshot, actorUserId) }
-            sql.recordCatalogSync(org, integrationId, scopedStore, incremental, "SUCCESS", null, null, actorUserId)
+            sql.recordCatalogSync(org, id, scopedStore, incremental, "SUCCESS", null, null, actorUserId)
             result
         } catch (error: Exception) {
-            sql.recordCatalogSync(org, integrationId, scopedStore, incremental, "FAILED", "CATALOG_SYNC_FAILED", "Poynt catalog synchronization failed", actorUserId)
+            sql.recordCatalogSync(org, id, scopedStore, incremental, "FAILED", "CATALOG_SYNC_FAILED", "Catalog synchronization failed", actorUserId)
             throw error
         }
     }
 
     fun refreshProductMapping(organizationId: String, mappingId: String, actorUserId: String): CommerceProductSnapshotDto? = translate {
-        val mapping = sql.mappings(validId(organizationId), actorUserId).firstOrNull { it.mappingId == validId(mappingId) }
+        val org = validId(organizationId)
+        val mapping = sql.mappings(org, actorUserId).firstOrNull { it.mappingId == validId(mappingId) }
             ?: throw NotFoundException("Commerce product mapping was not found")
-        val integration = integrations(organizationId, actorUserId).firstOrNull { it.integrationConfigurationId == mapping.integrationConfigurationId }
+        val integration = sql.integrations(org, actorUserId).firstOrNull { it.integrationConfigurationId == mapping.integrationConfigurationId }
             ?: throw BadRequestException("Commerce integration is unavailable")
+        if (integration.providerCode.equals("POYNT", ignoreCase = true)) {
+            throw BadRequestException("Poynt mapping refresh requires Store-specific catalog Preview and Apply")
+        }
         val snapshot = providers.catalogProvider(integration.providerCode)?.syncProduct(
-            CommerceCatalogProductRequest(organizationId, mapping.integrationConfigurationId, mapping.storeId, mapping.externalProductId, mapping.externalVariantId, actorUserId)
+            CommerceCatalogProductRequest(org, mapping.integrationConfigurationId, mapping.storeId, mapping.externalProductId, mapping.externalVariantId, actorUserId)
         ) ?: throw BadRequestException("Commerce catalog provider is not available")
-        saveSnapshot(organizationId, snapshot, actorUserId)
+        saveSnapshot(org, snapshot, actorUserId)
     }
+
     /** Generic transaction orchestration. It persists a basket but never invokes a provider in Phase 2. */
     fun createTransaction(organizationId: String, request: CommerceTransactionCreateDto, actorUserId: String): CommerceTransactionDetailDto = translate {
         validateTransactionRequest(request)
@@ -407,6 +487,9 @@ class CommerceService(
                 val mappingId = line.productMappingId ?: throw BadRequestException("Commerce product mapping is required")
                 val mapping = mappingsById[mappingId] ?: throw BadRequestException("Commerce product mapping is unavailable")
                 validateMappingForTransaction(mapping, transaction, integrationId, line)
+                if (integration.providerCode.equals("POYNT", ignoreCase = true)) {
+                    requireVerifiedPoyntStoreMapping(organization, mapping, transaction.storeId, actorUserId)
+                }
                 val current = requireNotNull(catalogProvider).getProduct(CommerceCatalogProductRequest(organization, integrationId, transaction.storeId, mapping.externalProductId, mapping.externalVariantId, actorUserId))
                     ?: throw BadRequestException("Current provider product is unavailable")
                 validateCurrentProviderProduct(current, mapping)
@@ -694,6 +777,7 @@ class CommerceService(
         benefit: Boolean
     ): CommerceApplicabilityDto = translate {
         validateApplicability(request)
+        validateApplicablePoyntMappings(organizationId, request.productMappingIds, actorUserId)
         val adjustmentId = if (benefit) {
             sql.saveBenefitApplicability(
                 organizationId, entityId, request.adjustmentType, request.percentage,
@@ -780,6 +864,66 @@ class CommerceService(
     }
 
     private fun invalidAdjustment(): Nothing = throw BadRequestException("Invalid commerce adjustment value")
+
+    /** Fail closed: legacy write endpoints do not carry an external catalog ID. */
+    private fun requireNonPoyntLegacyWrite(organizationId: String, integrationId: String, actorUserId: String) {
+        val integration = sql.integrations(validId(organizationId), actorUserId)
+            .firstOrNull { it.integrationConfigurationId == validId(integrationId) }
+            ?: throw NotFoundException("Commerce integration was not found")
+        if (integration.providerCode.equals("POYNT", ignoreCase = true)) {
+            throw BadRequestException("Poynt product changes must use Store-specific catalog Preview and Apply")
+        }
+    }
+
+    /** Require the identity actually persisted by the approved catalog preview.
+     * NULL/legacy catalog IDs are never inferred from current Store assignment.
+     */
+    private fun requireVerifiedPoyntStoreMapping(
+        organizationId: String,
+        mapping: CommerceProductMappingRow,
+        storeId: String?,
+        actorUserId: String
+    ) {
+        val store = storeId?.takeIf { it.isNotBlank() }
+            ?: throw BadRequestException("Poynt Product requires a selected Store")
+        val catalogId = mapping.externalCatalogId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: throw BadRequestException("Poynt Product has no verified catalog identity; resync its Store")
+        if (mapping.storeId != store || !mapping.active || mapping.productId.isNullOrBlank()) {
+            throw BadRequestException("Poynt Product is not available at the selected Store")
+        }
+        val source = sql.storeCatalogSource(organizationId, store, actorUserId)
+            ?: throw BadRequestException("Store has no selected Commerce catalog source")
+        if (!source.providerCode.equals("POYNT", ignoreCase = true) ||
+            source.integrationConfigurationId != mapping.integrationConfigurationId ||
+            source.catalogId?.trim() != catalogId
+        ) throw BadRequestException("Poynt Product is not in the Store's effective catalog")
+        val eligible = sql.storeEligiblePoyntMappings(organizationId, store, actorUserId)
+        if (eligible.none { it.mappingId == mapping.mappingId && it.integrationConfigurationId == mapping.integrationConfigurationId &&
+                it.externalCatalogId == catalogId && it.productId == mapping.productId }) {
+            throw BadRequestException("Poynt Product mapping is not verified for this Store catalog")
+        }
+    }
+
+    /** Product-targeted Benefits/Offers may reference several Stores, but each Poynt
+     * mapping must be from the Store's currently selected verified catalog.
+     */
+    private fun validateApplicablePoyntMappings(organizationId: String, mappingIds: List<String>, actorUserId: String) {
+        if (mappingIds.isEmpty()) return
+        val mappingsById = sql.mappings(organizationId, actorUserId).associateBy { it.mappingId }
+        val integrations = sql.integrations(organizationId, actorUserId).associateBy { it.integrationConfigurationId }
+        mappingIds.forEach { mappingId ->
+            val mapping = mappingsById[mappingId]
+                ?: throw BadRequestException("Commerce applicability Product mapping is unavailable")
+            if (!mapping.active || mapping.productId.isNullOrBlank()) {
+                throw BadRequestException("Commerce applicability requires an active mapped canonical Product")
+            }
+            val provider = integrations[mapping.integrationConfigurationId]?.providerCode
+                ?: throw BadRequestException("Commerce applicability integration is unavailable")
+            if (provider.equals("POYNT", ignoreCase = true)) {
+                requireVerifiedPoyntStoreMapping(organizationId, mapping, mapping.storeId, actorUserId)
+            }
+        }
+    }
 
     private fun validateMappingForTransaction(
         mapping: CommerceProductMappingRow,
@@ -909,7 +1053,8 @@ class CommerceService(
         snapshots.firstOrNull {
             it.organizationId == row.organizationId &&
                 it.integrationConfigurationId == row.integrationConfigurationId &&
-                it.storeId == row.storeId && it.externalProductId == row.externalProductId &&
+                it.storeId == row.storeId && it.externalCatalogId == row.externalCatalogId &&
+                it.externalProductId == row.externalProductId &&
                 it.externalVariantId == row.externalVariantId
         }?.let(::snapshotDto),
         row.versionNo

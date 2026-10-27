@@ -65,6 +65,8 @@ class PoyntCommerceProviderTest {
             this.postBody = body
             return responses[calls++]
         }
+        override fun catalogFullUri(businessId: String, catalogId: String) =
+            URI.create("https://example.test/businesses/$businessId/catalogs/$catalogId/full")
         override fun productUri(businessId: String, productId: String) = URI.create("https://example.test/product")
         override fun productsUri(businessId: String, offset: Int) =
             URI.create("https://example.test/businesses/$businessId/products?limit=100&startOffset=$offset")
@@ -587,4 +589,68 @@ class PoyntCommerceProviderTest {
         assertFailsWith<BadRequestException> { provider.startCheckout(checkoutRequest(lines = listOf(externalLine(externalProductId = null)))) }
         assertEquals(0, orderClient.createCalls)
     }
+
+    @Test fun `W222 selected catalogs isolate products prices and currency`() {
+        val original = """{"id":"catalog-original","businessId":"business","products":[{"product":{"id":"coffee-a","name":"Coffee","sku":"COFFEE","price":{"amount":350,"currency":"USD"}}}],"categories":[]}"""
+        val ajax = """{"id":"catalog-ajax","businessId":"business","categories":[{"id":"cat-1","name":"Drinks","products":[{"product":{"id":"coffee-b","name":"Coffee","sku":"COFFEE","price":{"amount":199,"currency":"CAD"}}}]}]}"""
+        val http = FakeTransport(mutableListOf(PoyntHttpResponse(200, original), PoyntHttpResponse(200, ajax)))
+        val provider = PoyntCommerceProvider(sql, PoyntAuthenticatedCatalogClient(http, tokens()))
+        val originalResults = provider.syncCatalog(CommerceCatalogSyncRequest("org", "integration", storeId = "memgine-a", externalCatalogId = "catalog-original", actorUserId = "admin"))
+        val ajaxResults = provider.syncCatalog(CommerceCatalogSyncRequest("org", "integration", storeId = "memgine-b", externalCatalogId = "catalog-ajax", actorUserId = "admin"))
+        assertEquals(listOf("coffee-a"), originalResults.map { it.externalProductId })
+        assertEquals(listOf("coffee-b"), ajaxResults.map { it.externalProductId })
+        assertEquals(350L, originalResults.single().unitPriceMinorSnapshot)
+        assertEquals("USD", originalResults.single().currencyCode)
+        assertEquals(199L, ajaxResults.single().unitPriceMinorSnapshot)
+        assertEquals("CAD", ajaxResults.single().currencyCode)
+        assertEquals("memgine-b", ajaxResults.single().storeId)
+        assertEquals("cat-1", ajaxResults.single().externalCategories.single().externalCategoryId)
+        assertTrue(ajaxResults.single().categoryMetadataAvailable)
+        assertEquals(2, http.calls)
+        assertEquals(listOf(
+            "https://example.test/businesses/business/catalogs/catalog-original/full",
+            "https://example.test/businesses/business/catalogs/catalog-ajax/full"
+        ), http.getUris.map(URI::toString))
+        assertEquals(listOf<String?>(null, null), http.modifiedSinceValues)
+    }
+
+    @Test fun `W222 repeated root and category memberships deduplicate and retain categories`() {
+        val item = """{"product":{"id":"p1","name":"Cookie","sku":"COOKIE","price":{"amount":450,"currency":"CAD"}}}"""
+        val catalog = """{"id":"cat","businessId":"business","products":[$item],"categories":[{"id":"a","name":"Bakery","products":[$item]},{"id":"b","name":"Offers","products":[$item]}]}"""
+        val http = FakeTransport(mutableListOf(PoyntHttpResponse(200, catalog)))
+        val result = PoyntCommerceProvider(sql, PoyntAuthenticatedCatalogClient(http, tokens()))
+            .syncCatalog(CommerceCatalogSyncRequest("org", "integration", externalCatalogId = "cat", actorUserId = "admin"))
+        assertEquals(1, result.size)
+        assertEquals("p1", result.single().externalProductId)
+        assertEquals(setOf("a", "b"), result.single().externalCategories.map { it.externalCategoryId }.toSet())
+    }
+
+    @Test fun `W222 mismatched catalog or business identity fails closed`() {
+        val mismatch = """{"id":"other-catalog","businessId":"business","categories":[]}"""
+        val http = FakeTransport(mutableListOf(PoyntHttpResponse(200, mismatch)))
+        assertFailsWith<BadRequestException> {
+            PoyntCommerceProvider(sql, PoyntAuthenticatedCatalogClient(http, tokens()))
+                .syncCatalog(CommerceCatalogSyncRequest("org", "integration", externalCatalogId = "expected", actorUserId = "admin"))
+        }
+        assertEquals(1, http.calls)
+    }
+
+    @Test fun `W222 conflicting repeated product IDs are rejected`() {
+        val catalog = """{"id":"cat","businessId":"business","products":[{"product":{"id":"p1","name":"Coffee","price":{"amount":100,"currency":"CAD"}}}],"categories":[{"id":"a","products":[{"product":{"id":"p1","name":"Coffee","price":{"amount":200,"currency":"CAD"}}}]}]}"""
+        val http = FakeTransport(mutableListOf(PoyntHttpResponse(200, catalog)))
+        assertFailsWith<BadRequestException> {
+            PoyntCommerceProvider(sql, PoyntAuthenticatedCatalogClient(http, tokens()))
+                .syncCatalog(CommerceCatalogSyncRequest("org", "integration", externalCatalogId = "cat", actorUserId = "admin"))
+        }
+    }
+
+    @Test fun `W222 invalid nested membership is never interpreted as an empty catalog`() {
+        val catalog = """{"id":"cat","businessId":"business","categories":[{"id":"a","products":[{"displayOrder":1}]}]}"""
+        val http = FakeTransport(mutableListOf(PoyntHttpResponse(200, catalog)))
+        assertFailsWith<BadRequestException> {
+            PoyntCommerceProvider(sql, PoyntAuthenticatedCatalogClient(http, tokens()))
+                .syncCatalog(CommerceCatalogSyncRequest("org", "integration", externalCatalogId = "cat", actorUserId = "admin"))
+        }
+    }
+
 }

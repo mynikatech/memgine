@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 224-manual-relink-candidates
+      author: memgine
+      changes:
+        - sqlFile:
+            path: ../sql/224-manual-relink-candidates.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

@@ -58,13 +58,41 @@ class CommerceCatalogSyncService(
         val catalog = productSql.catalogs(organizationId, actorUserId)
             .firstOrNull { it.productCatalogId == request.productCatalogId }
             ?: throw NotFoundException("Product catalog was not found")
+        val isPoynt = integration.providerCode.equals("POYNT", ignoreCase = true)
+        if (isPoynt && storeId == null) {
+            throw BadRequestException("Poynt catalog synchronization requires a Memgine Store")
+        }
+        // W222: the Store's selected integration and effective catalog, not
+        // the canonical Product Catalog ID, control which Poynt Products may sync.
+        val externalCatalogId = if (isPoynt) {
+            jdbi.withHandle<String?, Exception> { handle ->
+                handle.createQuery("""
+                    SELECT configuration.effective_catalog_id
+                      FROM commerce_store_catalog_sources source
+                      JOIN poynt_store_catalog_configurations configuration
+                        ON configuration.organization_id = source.organization_id
+                       AND configuration.store_id = source.store_id
+                       AND configuration.integration_configuration_id = source.integration_configuration_id
+                     WHERE source.organization_id = :organizationId
+                       AND source.store_id = :storeId
+                       AND source.integration_configuration_id = :integrationId
+                """.trimIndent())
+                    .bind("organizationId", organizationId)
+                    .bind("storeId", storeId)
+                    .bind("integrationId", integrationConfigurationId)
+                    .mapTo(String::class.java)
+                    .findOne().orElse(null)
+            }?.trim()?.takeIf { it.isNotEmpty() }
+                ?: throw BadRequestException("Store has no selected verified Poynt catalog")
+        } else catalog.externalCatalogId?.trim()?.takeIf { it.isNotEmpty() }
+
         val fetched = provider.syncCatalog(
             CommerceCatalogSyncRequest(
                 organizationId = organizationId,
                 integrationConfigurationId = integrationConfigurationId,
                 storeId = storeId,
                 incremental = false,
-                externalCatalogId = catalog.externalCatalogId,
+                externalCatalogId = externalCatalogId,
                 actorUserId = actorUserId
             )
         )
@@ -72,12 +100,13 @@ class CommerceCatalogSyncService(
         if (fetched.any { it.integrationConfigurationId != integrationConfigurationId || it.storeId != storeId }) {
             throw BadRequestException("Catalog provider returned a mismatched integration or store scope")
         }
-        // Reconciliation candidates are deliberately limited to the selected
-        // canonical catalog. A SKU in another catalog must never influence a
-        // POS mapping decision for this preview.
+        // Canonical Products can be shared across Store catalogs. SKU matching
+        // is restricted to the selected catalog's products for non-Poynt;
+        // for Poynt, mappings are catalog scoped and new cross-catalog links
+        // need an explicit administrator resolution rather than a guessed SKU.
         val products = productSql.products(organizationId, null, actorUserId)
             .asSequence()
-            .filter { it.productCatalogId == request.productCatalogId }
+            .filter { !isPoynt && it.productCatalogId == request.productCatalogId || isPoynt }
             .map {
                 CommerceCatalogCanonicalProduct(
                     it.productId,
@@ -93,13 +122,26 @@ class CommerceCatalogSyncService(
                 )
             }
             .toList()
-        val mappings = commerce.mappings(organizationId, actorUserId)
-        val snapshots = commerce.snapshots(organizationId, actorUserId)
+        val mappings = if (isPoynt) {
+            commerce.catalogMappings(organizationId, integrationConfigurationId, externalCatalogId!!, actorUserId)
+        } else commerce.mappings(organizationId, actorUserId)
+        val snapshots = if (isPoynt) {
+            commerce.catalogSnapshots(organizationId, integrationConfigurationId, externalCatalogId!!, actorUserId)
+        } else commerce.snapshots(organizationId, actorUserId)
+        // Catalog-aware readers already return only authorized rows in the
+        // selected integration and external catalog. Keep the reconciliation
+        // identity guard as defence in depth.
+        val mappingIds = if (isPoynt) mappings.mapTo(mutableSetOf()) { it.mappingId } else emptySet()
+        val snapshotIds = if (isPoynt) snapshots.mapTo(mutableSetOf()) { it.snapshotId } else emptySet()
         val plan = reconciliation.plan(
             CommerceCatalogReconciliationInput(
                 organizationId = organizationId,
                 integrationConfigurationId = integrationConfigurationId,
                 storeId = storeId,
+                externalCatalogId = externalCatalogId,
+                catalogQualifiedMappingIds = if (isPoynt) mappingIds else null,
+                catalogQualifiedSnapshotIds = if (isPoynt) snapshotIds else null,
+                allowAutomaticSkuMatching = !isPoynt,
                 fullCatalogComplete = true,
                 snapshots = fetched,
                 canonicalProducts = products,
@@ -116,7 +158,7 @@ class CommerceCatalogSyncService(
         }
         val previewId = jdbi.onDemand(CommerceCatalogSyncSql::class.java).createPreview(
             organizationId, integrationConfigurationId, request.productCatalogId, storeId,
-            json.encodeToString(stageRows), actorUserId
+            externalCatalogId, json.encodeToString(stageRows), actorUserId
         )
         previewDto(previewId, organizationId, integrationConfigurationId, request.productCatalogId, storeId, plan, stageRows)
     }
@@ -328,9 +370,10 @@ private fun attributesDto(attributes: CommerceCatalogProductAttributes) = Commer
     attributes.sourceUpdatedAt
 )
 interface CommerceCatalogSyncSql {
-    @SqlQuery("SELECT commerce_create_catalog_sync_preview(:organizationId,:integrationId,:catalogId,:storeId,CAST(:rows AS jsonb),:actorUserId)")
+    @SqlQuery("SELECT commerce_create_catalog_sync_preview(:organizationId,:integrationId,:catalogId,:storeId,:externalCatalogId,CAST(:rows AS jsonb),:actorUserId)")
     fun createPreview(@Bind("organizationId") organizationId: String, @Bind("integrationId") integrationId: String,
-                      @Bind("catalogId") catalogId: String, @Bind("storeId") storeId: String?, @Bind("rows") rows: String,
+                      @Bind("catalogId") catalogId: String, @Bind("storeId") storeId: String?,
+                      @Bind("externalCatalogId") externalCatalogId: String?, @Bind("rows") rows: String,
                       @Bind("actorUserId") actorUserId: String): String
     @SqlQuery("SELECT commerce_apply_catalog_sync_preview(:organizationId,:previewId,:idempotencyKey,:actorUserId)::text")
     fun applyPreview(@Bind("organizationId") organizationId: String, @Bind("previewId") previewId: String,

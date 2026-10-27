@@ -521,6 +521,134 @@ fun inspectExistingCollectRefund() {
 
 
 
+    /** W222: read-only comparison of the two Poynt Test Lab catalogs. */
+    @Test
+    fun inspectW222CatalogSeparation() {
+        if (System.getenv("POYNT_W222_CATALOG_DISCOVERY") != "true") {
+            println("W222 catalog diagnostic: SKIPPED")
+            return
+        }
+
+        val token = accessToken()
+        val transport = PoyntCloudHttpTransport(poyntBaseUrl, "1.2")
+        val authorization = "${token.tokenType} ${token.value}"
+
+        // Discover the actual catalog IDs instead of requiring them from the Poynt GUI.
+        val listing = transport.get(URI.create("$poyntBaseUrl/businesses/$businessId/catalogs"), authorization)
+        println("W222 catalog listing HTTP ${listing.statusCode}")
+        if (listing.statusCode != 200) printSafeErrorCode("W222 catalog listing", listing.body)
+        assertEquals(200, listing.statusCode, "Poynt catalog listing unavailable; IDs cannot be verified")
+        val listingRoot = Json.parseToJsonElement(listing.body)
+        val catalogEntries = when (listingRoot) {
+            is JsonArray -> listingRoot
+            is JsonObject -> {
+                println("W222 listing root fields: ${listingRoot.keys.sorted()}")
+                (listingRoot["catalogs"] as? JsonArray)
+                    ?: (listingRoot["items"] as? JsonArray)
+                    ?: error("Poynt catalog listing response has no recognized catalog array")
+            }
+            else -> error("Unexpected Poynt catalog listing response")
+        }
+        val catalogObjects = catalogEntries.mapNotNull { it as? JsonObject }
+        println("W222 catalogs returned: ${catalogObjects.size}")
+        catalogObjects.forEach { catalog ->
+            val name = (catalog["name"] as? JsonPrimitive)?.content ?: "NOT_EXPOSED"
+            println("W222 discovered catalog name: ${name.replace(Regex("[\\r\\n\\t]"), " ").take(100)}")
+        }
+        fun catalogIdFor(name: String): String {
+            val matches = catalogObjects.filter {
+                (it["name"] as? JsonPrimitive)?.content?.trim()?.equals(name, ignoreCase = true) == true
+            }
+            check(matches.size == 1) { "Expected one catalog named '$name', found ${matches.size}" }
+            val id = (matches.single()["id"] as? JsonPrimitive)?.content?.trim()
+            check(id != null && id.matches(Regex("^[A-Za-z0-9_-]{1,160}$"))) {
+                "Catalog '$name' does not expose a valid ID"
+            }
+            return id
+        }
+        val originalId = catalogIdFor("Memgine Dev Cafe")
+        val ajaxId = catalogIdFor("Memgine Dev Cafe Ajax")
+        check(originalId != ajaxId) { "Catalog IDs unexpectedly match" }
+        println("W222 two distinct catalog identities discovered")
+
+        fun inspect(label: String, catalogId: String): Set<String> {
+            val response = transport.get(transport.catalogFullUri(businessId, catalogId), authorization)
+            println("W222 $label catalog GET HTTP ${response.statusCode}")
+            if (response.statusCode != 200) printSafeErrorCode("W222 $label", response.body)
+            assertEquals(200, response.statusCode, "W222 $label catalog GET failed")
+            val root = Json.parseToJsonElement(response.body) as? JsonObject
+                ?: error("W222 $label catalog response is not a JSON object")
+            val returnedId = (root["id"] as? JsonPrimitive)?.content
+            assertEquals(catalogId, returnedId, "W222 $label catalog identity mismatch")
+            println("W222 $label catalog name: ${(root["name"] as? JsonPrimitive)?.content ?: "NOT_EXPOSED"}")
+            println("W222 $label root fields: ${root.keys.sorted()}")
+
+            val productIds = linkedSetOf<String>()
+            var inspectedEntries = 0
+            var printedSamples = 0
+            var missingIdentity = 0
+            var missingPrice = 0
+            fun safeValue(obj: JsonObject?, key: String): String =
+                (obj?.get(key) as? JsonPrimitive)?.content
+                    ?.replace(Regex("[\r\n\t]"), " ")?.take(100) ?: "NOT_EXPOSED"
+
+            fun productArray(path: String, array: JsonArray) {
+                println("W222 $label $path entries: ${array.size}")
+                array.forEachIndexed { index, value ->
+                    inspectedEntries++
+                    val wrapper = value as? JsonObject
+                    val product = (wrapper?.get("product") as? JsonObject)
+                        ?: wrapper?.takeIf { it["id"] is JsonPrimitive }
+                    if (product == null) {
+                        missingIdentity++
+                        if (printedSamples < 5) {
+                            println("W222 $label $path[$index]: PRODUCT_OBJECT_NOT_EXPOSED; wrapper fields=${wrapper?.keys?.sorted() ?: emptyList<String>()}")
+                            printedSamples++
+                        }
+                        return@forEachIndexed
+                    }
+                    val id = safeValue(product, "id")
+                    if (id == "NOT_EXPOSED" || id.isBlank()) missingIdentity++ else productIds.add(id)
+                    val price = product["price"] as? JsonObject
+                    if (price == null || price["amount"] !is JsonPrimitive) missingPrice++
+                    if (printedSamples < 5) {
+                        println("W222 $label $path[$index] nested product fields: ${product.keys.sorted()}")
+                        println("W222 $label sample[$index]: id=$id, name=${safeValue(product, "name")}, sku=${safeValue(product, "sku")}, amount=${safeValue(price, "amount")}, currency=${safeValue(price, "currency")}")
+                        printedSamples++
+                    }
+                }
+            }
+
+            listOf("products", "items").forEach { key ->
+                (root[key] as? JsonArray)?.let { productArray("root.$key", it) }
+            }
+            (root["categories"] as? JsonArray)?.let { categories ->
+                println("W222 $label categories: ${categories.size}")
+                categories.forEachIndexed { index, entry ->
+                    val category = entry as? JsonObject ?: return@forEachIndexed
+                    listOf("products", "items").forEach { key ->
+                        (category[key] as? JsonArray)?.let { productArray("categories[$index].$key", it) }
+                    }
+                }
+            }
+            println("W222 $label total wrapped entries: $inspectedEntries")
+            println("W222 $label unique product IDs: ${productIds.size}")
+            println("W222 $label missing product identity entries: $missingIdentity")
+            println("W222 $label entries without direct price.amount: $missingPrice")
+            check(missingIdentity == 0) { "W222 $label catalog contains product entries without usable identities" }
+            check(productIds.isNotEmpty()) { "W222 $label catalog contains no identifiable products" }
+            return productIds
+        }
+
+        val original = inspect("original", originalId)
+        val ajax = inspect("ajax", ajaxId)
+        println("W222 candidate product ID overlap: ${(original intersect ajax).size}")
+        println("W222 Ajax-only product IDs: ${(ajax - original).size}")
+        println("W222 Original-only product IDs: ${(original - ajax).size}")
+        println("W222 UI reference counts: original=126, ajax=1; API response may count category links differently")
+        println("W222 catalog diagnostic complete: GET requests only; no payment or data changes")
+    }
+
     private fun accessToken(): PoyntAccessToken {
         val config = PoyntCatalogConfiguration(
             "test-lab-verification",

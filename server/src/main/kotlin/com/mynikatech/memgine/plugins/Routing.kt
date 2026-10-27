@@ -42,6 +42,7 @@ import com.mynikatech.memgine.component.payment.orgTransactionInvestigationRoute
 import com.mynikatech.memgine.component.notification.NotificationService
 import com.mynikatech.memgine.component.notification.NotificationSql
 import com.mynikatech.memgine.component.notification.notificationRoutes
+import com.mynikatech.memgine.component.commerce.commerceManualRelinkRoutes
 import com.mynikatech.memgine.component.support.SupportNotificationSettingsService
 import com.mynikatech.memgine.component.support.supportNotificationSettingsRoutes
 import com.mynikatech.memgine.component.notification.NotificationDispatchService
@@ -364,6 +365,7 @@ fun Application.configureRouting(
             notificationRoutes(notificationService)
             integrationConfigurationRoutes(integrationConfigurationService)
             commerceRoutes(commerceService)
+            commerceManualRelinkRoutes(commerceService)
             commerceCatalogSyncRoutes(commerceCatalogSyncService)
             poyntPaymentBridgeCallbackRoutes(
                 commerceService,

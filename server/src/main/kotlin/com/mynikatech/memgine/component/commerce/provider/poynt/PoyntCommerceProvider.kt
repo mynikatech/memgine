@@ -35,6 +35,22 @@ class PoyntCommerceProvider(
     override fun syncProduct(request: CommerceCatalogProductRequest): CommerceProductSnapshotWriteDto? = product(request)
     override fun syncCatalog(request: CommerceCatalogSyncRequest): List<CommerceProductSnapshotWriteDto> {
         val config = config(request.organizationId, request.integrationConfigurationId, request.actorUserId)
+        val catalogId = request.externalCatalogId?.trim()?.takeIf { it.isNotEmpty() }
+        if (catalogId != null) {
+            // A full catalog is authoritative for membership; the business-wide
+            // products endpoint is NOT a substitute for the selected catalog.
+            // Full-catalog GETs do not support incremental pagination semantics.
+            val body = client.get(config, client.catalogFullUri(config.businessId, catalogId))
+            val entries = parseFullCatalog(body, catalogId, config.businessId)
+            return entries.flatMap { (product, categories) ->
+                mapProduct(product, config, request.storeId).map { snapshot ->
+                    snapshot.copy(externalCategories = categories, categoryMetadataAvailable = true)
+                }
+            }
+        }
+
+        // Preserve the existing legacy path for integrations which do not yet
+        // have an explicit external catalog configured.
         val mapped = mutableListOf<CommerceProductSnapshotWriteDto>()
         var offset = 0
         val seenProductIds = mutableSetOf<String>()
@@ -53,9 +69,7 @@ class PoyntCommerceProvider(
             if (products.size < CATALOG_PAGE_SIZE) break
             offset += products.size
         }
-        val catalogId = request.externalCatalogId?.trim()?.takeIf { it.isNotEmpty() } ?: return mapped
-        val categories = parseCatalogCategories(client.get(config, client.catalogFullUri(config.businessId, catalogId)))
-        return mapped.map { snapshot -> snapshot.copy(externalCategories = categories[snapshot.externalProductId].orEmpty(), categoryMetadataAvailable = true) }
+        return mapped
     }
 
     /** Validates the currently supported provider-order shape without creating an order. */
@@ -286,6 +300,73 @@ class PoyntCommerceProvider(
                 variant?.updatedAt ?: product.updatedAt
             )
         }
+    }
+
+    /**
+     * Read the provider-verified full-catalog shape. Root and category entries
+     * are wrappers `{ "product": { ... } }`. A Product can appear multiple times
+     * across categories; duplicates must have identical provider attributes.
+     * Any incomplete or conflicting entry fails the entire synchronization.
+     */
+    private fun parseFullCatalog(
+        body: String,
+        expectedCatalogId: String,
+        expectedBusinessId: String
+    ): List<Pair<PoyntProduct, List<CommerceExternalCategoryReferenceDto>>> {
+        val root = try { Json.parseToJsonElement(body).jsonObject }
+        catch (_: Exception) { throw BadRequestException("Poynt full catalog response was invalid") }
+        if (string(root, "id") != expectedCatalogId || string(root, "businessId") != expectedBusinessId) {
+            throw BadRequestException("Poynt full catalog identity did not match the requested catalog")
+        }
+
+        data class Member(
+            val product: PoyntProduct,
+            val categories: MutableList<CommerceExternalCategoryReferenceDto> = mutableListOf()
+        )
+        val members = linkedMapOf<String, Member>()
+        fun visitProducts(value: JsonElement?, label: String, category: CommerceExternalCategoryReferenceDto?) {
+            if (value == null) return
+            val entries = value as? JsonArray
+                ?: throw BadRequestException("Poynt full catalog $label products were invalid")
+            entries.forEachIndexed { index, entry ->
+                val wrapper = entry as? JsonObject
+                    ?: throw BadRequestException("Poynt full catalog $label product $index was invalid")
+                val nested = wrapper["product"] as? JsonObject
+                    ?: throw BadRequestException("Poynt full catalog $label product $index was missing")
+                val product = parseProduct(nested)
+                val existing = members[product.id]
+                if (existing == null) {
+                    members[product.id] = Member(product)
+                } else if (existing.product != product) {
+                    throw BadRequestException("Poynt full catalog contained conflicting product identities")
+                }
+                if (category != null) {
+                    val refs = members.getValue(product.id).categories
+                    if (refs.none { it.externalCategoryId == category.externalCategoryId }) refs += category
+                }
+            }
+        }
+        fun visitCategory(category: JsonObject, parentId: String?) {
+            val id = string(category, "id")
+                ?: throw BadRequestException("Poynt full catalog category ID was missing")
+            val reference = CommerceExternalCategoryReferenceDto(id, string(category, "name"), parentId)
+            visitProducts(category["products"], "category", reference)
+            val nested = category["categories"] ?: return
+            val children = nested as? JsonArray
+                ?: throw BadRequestException("Poynt full catalog nested categories were invalid")
+            children.forEach { item ->
+                visitCategory(item as? JsonObject
+                    ?: throw BadRequestException("Poynt full catalog nested category was invalid"), id)
+            }
+        }
+        visitProducts(root["products"], "root", null)
+        val categories = root["categories"] as? JsonArray
+            ?: throw BadRequestException("Poynt full catalog categories were missing or invalid")
+        categories.forEach { item ->
+            visitCategory(item as? JsonObject
+                ?: throw BadRequestException("Poynt full catalog category was invalid"), null)
+        }
+        return members.values.map { it.product to it.categories.toList() }
     }
 
     private fun parseProducts(body: String): List<PoyntProduct> = try {

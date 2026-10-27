@@ -63,7 +63,8 @@ data class CommerceProductSnapshotRow(
     var active: Boolean = true,
     var sourceUpdatedAt: String? = null,
     var lastSyncedAt: String = "",
-    var versionNo: Int = 1
+    var versionNo: Int = 1,
+    var externalCatalogId: String? = null
 )
 
 data class CommerceProductMappingRow(
@@ -76,7 +77,8 @@ data class CommerceProductMappingRow(
     var externalVariantId: String? = null,
     var externalSku: String? = null,
     var active: Boolean = true,
-    var versionNo: Int = 1
+    var versionNo: Int = 1,
+    var externalCatalogId: String? = null
 )
 
 data class MembershipOfferApplicabilityRow(
@@ -212,10 +214,69 @@ interface CommerceSql {
         @Bind("actorUserId") actorUserId: String
     ): List<CommerceProductSnapshotRow>
 
+    @SqlQuery("SELECT * FROM commerce_get_manual_relink_candidates(:organizationId, :mappingId, :actorUserId, :search)")
+    @RegisterBeanMapper(CommerceManualRelinkCandidateRow::class)
+    fun manualRelinkCandidates(
+        @Bind("organizationId") organizationId: String,
+        @Bind("mappingId") mappingId: String,
+        @Bind("actorUserId") actorUserId: String,
+        @Bind("search") search: String
+    ): List<CommerceManualRelinkCandidateRow>
+
+    @SqlQuery("SELECT CAST(commerce_preview_manual_product_relink(:organizationId, :mappingId, :targetProductId, :actorUserId) AS text)")
+    fun previewManualProductRelink(
+        @Bind("organizationId") organizationId: String,
+        @Bind("mappingId") mappingId: String,
+        @Bind("targetProductId") targetProductId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): String
+
+    @SqlQuery("SELECT CAST(commerce_confirm_manual_product_relink(:organizationId, :mappingId, :targetProductId, :expectedMappingVersionNo, :expectedTargetProductVersionNo, :reason, :actorUserId) AS text)")
+    fun confirmManualProductRelink(
+        @Bind("organizationId") organizationId: String,
+        @Bind("mappingId") mappingId: String,
+        @Bind("targetProductId") targetProductId: String,
+        @Bind("expectedMappingVersionNo") expectedMappingVersionNo: Int,
+        @Bind("expectedTargetProductVersionNo") expectedTargetProductVersionNo: Int,
+        @Bind("reason") reason: String,
+        @Bind("actorUserId") actorUserId: String
+    ): String
+
     @SqlQuery("SELECT * FROM get_commerce_product_mappings(:organizationId, :actorUserId)")
     @RegisterBeanMapper(CommerceProductMappingRow::class)
     fun mappings(
         @Bind("organizationId") organizationId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): List<CommerceProductMappingRow>
+
+    /** W222 catalog-qualified reads. Unlike the legacy functions, these expose
+     * external_catalog_id and never mix mappings from other Poynt catalogs.
+     * Use only after migration 222 has been applied; SECURITY DEFINER authorizes reads. */
+    @SqlQuery("SELECT * FROM commerce_get_catalog_product_mappings(:organizationId, :integrationId, :externalCatalogId, :actorUserId)")
+    @RegisterBeanMapper(CommerceProductMappingRow::class)
+    fun catalogMappings(
+        @Bind("organizationId") organizationId: String,
+        @Bind("integrationId") integrationId: String,
+        @Bind("externalCatalogId") externalCatalogId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): List<CommerceProductMappingRow>
+
+    @SqlQuery("SELECT * FROM commerce_get_catalog_product_snapshots(:organizationId, :integrationId, :externalCatalogId, :actorUserId)")
+    @RegisterBeanMapper(CommerceProductSnapshotRow::class)
+    fun catalogSnapshots(
+        @Bind("organizationId") organizationId: String,
+        @Bind("integrationId") integrationId: String,
+        @Bind("externalCatalogId") externalCatalogId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): List<CommerceProductSnapshotRow>
+
+    /** W222: only active mapped Products for the Store's currently selected
+     * Poynt integration and effective catalog. No organization-wide fallback. */
+    @SqlQuery("SELECT * FROM commerce_get_store_eligible_poynt_mappings(:organizationId, :storeId, :actorUserId)")
+    @RegisterBeanMapper(CommerceProductMappingRow::class)
+    fun storeEligiblePoyntMappings(
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String,
         @Bind("actorUserId") actorUserId: String
     ): List<CommerceProductMappingRow>
 

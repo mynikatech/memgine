@@ -406,18 +406,35 @@ export function OfferForm({
         ?.plans.filter((plan) => !plan.isDeleted) ?? []
     );
   }, [membershipProducts, membershipApplicability?.sourceMembershipProductId]);
+  // This is a UX-only Store filter. The backend must verify the effective
+  // external catalog before accepting or applying an Offer mapping.
+  const storeScopedPosProductIds = useMemo(() => {
+    if (!draft.storeId) return new Set<string>();
+    return new Set(
+      commerceMappings
+        .filter(
+          (mapping) =>
+            mapping.active &&
+            mapping.storeId === draft.storeId &&
+            Boolean(mapping.productId),
+        )
+        .map((mapping) => mapping.productId as string),
+    );
+  }, [commerceMappings, draft.storeId]);
   const filteredPosProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
+    const scoped = posProducts.filter((product) =>
+      storeScopedPosProductIds.has(product.id),
+    );
     return query
-      ? posProducts.filter((product) =>
-          product.name.toLowerCase().includes(query),
-        )
-      : posProducts;
-  }, [posProducts, productSearch]);
+      ? scoped.filter((product) => product.name.toLowerCase().includes(query))
+      : scoped;
+  }, [posProducts, productSearch, storeScopedPosProductIds]);
   const posProductNames = (configuration: OfferCommerceConfiguration) =>
     configuration.productIds.map(
       (productId) =>
-        posProducts.find((product) => product.id === productId)?.name ?? productId,
+        posProducts.find((product) => product.id === productId)?.name ??
+        productId,
     );
 
   const readOnlyMode: "POS_PRODUCT" | "MEMBERSHIP_PRODUCT" | null = readOnly
@@ -790,8 +807,13 @@ export function OfferForm({
     }
 
     if (mode === "POS_PRODUCT") {
+      if (!draft.storeId) return "Select a Store for POS Product availability.";
       if (!applicability?.productIds.length)
         return "Select at least one Org Product.";
+      if (
+        applicability.productIds.some((id) => !storeScopedPosProductIds.has(id))
+      )
+        return "One or more selected POS Products are no longer mapped to this Store. Remove them before saving.";
     } else if (mode === "MEMBERSHIP_PRODUCT") {
       if (!membershipApplicability)
         return "Membership Product configuration is required.";
@@ -982,9 +1004,12 @@ export function OfferForm({
       await onSave(
         {
           ...normalizedOffer,
-          productIds: mode === "POS_PRODUCT"
-            ? (applicability?.productIds ?? [])
-            : additionalPosCommerceConfiguration ? (offer.productIds ?? []) : [],
+          productIds:
+            mode === "POS_PRODUCT"
+              ? (applicability?.productIds ?? [])
+              : additionalPosCommerceConfiguration
+                ? (offer.productIds ?? [])
+                : [],
         },
         normalizedRules,
         pendingImage,
@@ -1465,7 +1490,51 @@ export function OfferForm({
                       onChangeText={setProductSearch}
                       placeholder="Search name or code"
                     />
+                    <Text variant="bodySmall" color="textMuted">
+                      Only active Store-scoped mappings are shown. Final
+                      eligibility is validated against the Store&apos;s
+                      effective Poynt catalog by the server.
+                    </Text>
+                    {!draft.storeId ? (
+                      <Text variant="bodySmall" color="danger">
+                        Select a Store to choose POS Products.
+                      </Text>
+                    ) : filteredPosProducts.length === 0 ? (
+                      <Text variant="bodySmall" color="textMuted">
+                        No Store-mapped POS Products available.
+                      </Text>
+                    ) : null}
+                    {applicability?.productIds.some(
+                      (id) => !storeScopedPosProductIds.has(id),
+                    ) ? (
+                      <Text variant="bodySmall" color="danger">
+                        Some previously selected Products are unavailable at
+                        this Store. Remove them before saving. Existing
+                        selections have been retained.
+                      </Text>
+                    ) : null}
                     <ScrollView style={styles.productList} nestedScrollEnabled>
+                      {(applicability?.productIds ?? [])
+                        .filter((id) => !storeScopedPosProductIds.has(id))
+                        .map((id) => (
+                          <Checkbox
+                            key={`unavailable-${id}`}
+                            value
+                            label={`${posProducts.find((product) => product.id === id)?.name ?? id} — unavailable at this Store (remove)`}
+                            onValueChange={() =>
+                              setApplicability((current) =>
+                                current
+                                  ? {
+                                      ...current,
+                                      productIds: current.productIds.filter(
+                                        (productId) => productId !== id,
+                                      ),
+                                    }
+                                  : current,
+                              )
+                            }
+                          />
+                        ))}
                       {filteredPosProducts.map((product) => (
                         <Checkbox
                           key={product.id}
@@ -1497,7 +1566,8 @@ export function OfferForm({
                     <CommercePricePreview
                       productIds={applicability?.productIds ?? []}
                       productName={(productId) =>
-                        posProducts.find((product) => product.id === productId)?.name ?? productId
+                        posProducts.find((product) => product.id === productId)
+                          ?.name ?? productId
                       }
                       mappings={commerceMappings}
                       adjustment={applicability}

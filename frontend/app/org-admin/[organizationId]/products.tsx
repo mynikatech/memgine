@@ -36,6 +36,11 @@ import {
 } from "@/src/data/api/organization-product-api";
 import { CommerceStoreCatalogSourceApi } from "@/src/data/api/commerce-store-catalog-source-api";
 import { organizationPoyntOperationalApi } from "@/src/data/api/platform-poynt-payment-api";
+import {
+  commerceManualRelinkApi,
+  type CommerceManualRelinkPreview,
+  type CommerceManualRelinkCandidate,
+} from "@/src/data/api/commerce-manual-relink-api";
 
 type ProductSection =
   | "PRODUCTS"
@@ -163,6 +168,27 @@ export default function OrgAdminProducts() {
   const [mappingProduct, setMappingProduct] =
     useState<OrganizationProduct | null>(null);
   const [selectedMappingId, setSelectedMappingId] = useState("");
+  const [relinkMapping, setRelinkMapping] =
+    useState<OrganizationCommerceProductMapping | null>(null);
+  const [relinkTargetId, setRelinkTargetId] = useState("");
+  const [relinkSearch, setRelinkSearch] = useState("");
+  const [relinkCandidates, setRelinkCandidates] = useState<
+    CommerceManualRelinkCandidate[]
+  >([]);
+  const [relinkCandidatesLoading, setRelinkCandidatesLoading] = useState(false);
+  const [relinkCandidatesError, setRelinkCandidatesError] = useState<string>();
+  const [mappingSearch, setMappingSearch] = useState("");
+  const [expandedMappingDetailsId, setExpandedMappingDetailsId] = useState<
+    string | null
+  >(null);
+  const [showCatalogTechnicalDetails, setShowCatalogTechnicalDetails] =
+    useState(false);
+  const [relinkReason, setRelinkReason] = useState("");
+  const [relinkPreview, setRelinkPreview] =
+    useState<CommerceManualRelinkPreview | null>(null);
+  const [relinkBusy, setRelinkBusy] = useState(false);
+  const [relinkError, setRelinkError] = useState<string>();
+
   const [resolvingMapping, setResolvingMapping] = useState(false);
   const [importRows, setImportRows] = useState<ProductImportRow[]>([]);
   const [preview, setPreview] = useState<ProductImportPreview[]>([]);
@@ -443,21 +469,22 @@ export default function OrgAdminProducts() {
     hasConfiguredCatalogContext || hasManualCatalogContext;
   const canSetUpStoreCatalog = Boolean(
     selectedMaintenanceContext &&
-      !selectedMaintenanceContext.available &&
-      selectedMaintenanceContext.integrationConfigurationId &&
-      selectedMaintenanceContext.externalCatalogId &&
-      !catalogs.some(
-        (catalog) =>
-          catalog.integrationConfigurationId ===
-            selectedMaintenanceContext.integrationConfigurationId &&
-          catalog.externalCatalogId ===
-            selectedMaintenanceContext.externalCatalogId,
-      ),
+    !selectedMaintenanceContext.available &&
+    selectedMaintenanceContext.integrationConfigurationId &&
+    selectedMaintenanceContext.externalCatalogId &&
+    !catalogs.some(
+      (catalog) =>
+        catalog.integrationConfigurationId ===
+          selectedMaintenanceContext.integrationConfigurationId &&
+        catalog.externalCatalogId ===
+          selectedMaintenanceContext.externalCatalogId,
+    ),
   );
 
   const applyMaintenanceContext = (contextKey: string) => {
     const context = maintenanceContexts.find((item) => item.key === contextKey);
     if (!context) return;
+    setShowCatalogTechnicalDetails(false);
     setSelectedMaintenanceContextKey(contextKey);
     setSelectedManualCatalogId("");
     maintenanceContextKey.current = contextKey;
@@ -542,6 +569,8 @@ export default function OrgAdminProducts() {
     if (storeId === selectedStoreId) return;
     const switchStore = () => {
       maintenanceRequestVersion.current += 1;
+      setShowCatalogTechnicalDetails(false);
+      setExpandedMappingDetailsId(null);
       setSelectedStoreId(storeId);
       setMaintenanceContexts([]);
       setSelectedMaintenanceContextKey("");
@@ -584,19 +613,115 @@ export default function OrgAdminProducts() {
     () => products.filter((product) => product.productCatalogId === catalogId),
     [catalogId, products],
   );
+  // Mapping ownership is scoped by its Store/integration, NOT by the catalog
+  // containing its canonical Product. A relink may intentionally target a
+  // canonical Product from another catalog in the same organization.
   const catalogMappings = useMemo(
     () =>
       mappings.filter(
         (mapping) =>
-          catalogProducts.some(
-            (product) => product.productId === mapping.productId,
-          ) &&
-          (!selectedMaintenanceContext?.integrationConfigurationId ||
-            mapping.integrationConfigurationId ===
-              selectedMaintenanceContext.integrationConfigurationId),
+          Boolean(selectedStoreId) &&
+          mapping.storeId === selectedStoreId &&
+          Boolean(selectedMaintenanceContext?.integrationConfigurationId) &&
+          mapping.integrationConfigurationId ===
+            selectedMaintenanceContext?.integrationConfigurationId,
       ),
-    [catalogProducts, mappings, selectedMaintenanceContext],
+    [
+      mappings,
+      selectedStoreId,
+      selectedMaintenanceContext?.integrationConfigurationId,
+    ],
   );
+  const productNameById = useMemo(
+    () =>
+      new Map(
+        products
+          .filter((product) => product.organizationId === org)
+          .map((product) => [product.productId, product]),
+      ),
+    [products, org],
+  );
+  // W222 adds externalCatalogId to mapping API responses, but the current
+  // OrganizationCommerceProductMapping TypeScript declaration has not yet
+  // declared it. Read the optional field without altering existing API types.
+  // Missing IDs must never be replaced by the selected Store's catalog ID.
+  const mappingExternalCatalogId = (
+    mapping: OrganizationCommerceProductMapping,
+  ): string | null =>
+    (
+      mapping as OrganizationCommerceProductMapping & {
+        externalCatalogId?: string | null;
+      }
+    ).externalCatalogId?.trim() || null;
+
+  // Resolve the external Poynt catalog, not the canonical Product's catalog.
+  const externalCatalogLabel = (
+    mapping: OrganizationCommerceProductMapping,
+  ): string => {
+    const externalCatalogId = mappingExternalCatalogId(mapping);
+    if (!externalCatalogId) return "Catalog not specified";
+    const linked = catalogs.find(
+      (item) =>
+        item.integrationConfigurationId ===
+          mapping.integrationConfigurationId &&
+        item.externalCatalogId === externalCatalogId,
+    );
+    if (
+      selectedMaintenanceContext?.integrationConfigurationId ===
+        mapping.integrationConfigurationId &&
+      selectedMaintenanceContext?.externalCatalogId === externalCatalogId &&
+      selectedMaintenanceContext.externalCatalogName?.trim()
+    )
+      return selectedMaintenanceContext.externalCatalogName.trim();
+    return linked?.catalogName?.trim() || "Catalog name unavailable";
+  };
+  const filteredCatalogMappings = useMemo(() => {
+    const term = mappingSearch.trim().toLocaleLowerCase();
+    return catalogMappings
+      .filter((mapping) => {
+        const product = mapping.productId
+          ? productNameById.get(mapping.productId)
+          : undefined;
+        return (
+          !term ||
+          [
+            product?.productName,
+            product?.categoryName,
+            product?.sku,
+            product?.productCode,
+            mapping.externalSku,
+            mapping.externalProductId,
+            externalCatalogLabel(mapping),
+            mapping.mappingId,
+            mapping.productId,
+            mapping.storeId,
+          ].some((value) => value?.toLocaleLowerCase().includes(term))
+        );
+      })
+      .sort((a, b) => {
+        const pa = a.productId ? productNameById.get(a.productId) : undefined;
+        const pb = b.productId ? productNameById.get(b.productId) : undefined;
+        return (
+          (
+            pa?.productName ||
+            a.externalSku ||
+            a.externalProductId
+          ).localeCompare(
+            pb?.productName || b.externalSku || b.externalProductId,
+            undefined,
+            { sensitivity: "base" },
+          ) ||
+          (a.externalSku ?? "").localeCompare(b.externalSku ?? "") ||
+          a.mappingId.localeCompare(b.mappingId)
+        );
+      });
+  }, [
+    catalogMappings,
+    mappingSearch,
+    productNameById,
+    catalogs,
+    selectedMaintenanceContext,
+  ]);
   const blockingPreviewRows =
     posPreview?.rows.filter(
       (row) => row.action === "CONFLICT" || row.action === "INVALID",
@@ -1015,6 +1140,124 @@ export default function OrgAdminProducts() {
     setSuccessMessage("Mapping fixed.");
     await load();
   };
+  const openManualRelink = (mapping: OrganizationCommerceProductMapping) => {
+    setRelinkMapping(mapping);
+    setRelinkTargetId("");
+    setRelinkSearch("");
+    setRelinkCandidates([]);
+    setRelinkCandidatesError(undefined);
+    setRelinkReason("");
+    setRelinkPreview(null);
+    setRelinkError(undefined);
+  };
+  const previewManualRelink = async () => {
+    if (!relinkMapping || !relinkTargetId) return;
+    setRelinkBusy(true);
+    setRelinkPreview(null);
+    setRelinkError(undefined);
+    try {
+      const result = await commerceManualRelinkApi.preview(
+        org,
+        relinkMapping.mappingId,
+        relinkTargetId,
+      );
+      if (!result.success) {
+        setRelinkError(
+          result.error?.message ?? "Cannot preview this mapping change.",
+        );
+      } else {
+        setRelinkPreview(result.data);
+      }
+    } catch {
+      setRelinkError("Unable to load a verified mapping preview.");
+    } finally {
+      setRelinkBusy(false);
+    }
+  };
+  const confirmManualRelink = async () => {
+    if (!relinkMapping || !relinkPreview || relinkBusy || !relinkReason.trim())
+      return;
+    if (
+      relinkPreview.mappingId !== relinkMapping.mappingId ||
+      relinkPreview.targetProductId !== relinkTargetId ||
+      relinkPreview.alreadyLinked
+    )
+      return;
+    setRelinkBusy(true);
+    setRelinkError(undefined);
+    try {
+      const result = await commerceManualRelinkApi.confirm(
+        org,
+        relinkMapping.mappingId,
+        {
+          targetProductId: relinkPreview.targetProductId,
+          expectedMappingVersionNo: relinkPreview.expectedMappingVersionNo,
+          expectedTargetProductVersionNo: relinkPreview.targetProductVersionNo,
+          reason: relinkReason.trim(),
+        },
+      );
+      if (!result.success) {
+        setRelinkError(
+          result.error?.message ??
+            "Mapping change rejected. Generate a fresh preview.",
+        );
+        setRelinkPreview(null);
+      } else {
+        setRelinkMapping(null);
+        setRelinkPreview(null);
+        setPosPreview(null);
+        setSuccessMessage(
+          "Product mapping linked. Generate a fresh catalog sync preview before applying another sync.",
+        );
+        await load();
+      }
+    } catch {
+      setRelinkError(
+        "Unable to confirm mapping change. Refresh mappings before retrying.",
+      );
+      setRelinkPreview(null);
+    } finally {
+      setRelinkBusy(false);
+    }
+  };
+  // All authorization, Store integration scoping and exclusion of the current
+  // canonical Product take place in PostgreSQL. Never fall back to local products.
+  useEffect(() => {
+    if (!relinkMapping || !org) {
+      setRelinkCandidates([]);
+      setRelinkCandidatesLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setRelinkCandidatesLoading(true);
+    setRelinkCandidatesError(undefined);
+    // No automatic retry or local fallback on errors.
+    void commerceManualRelinkApi
+      .candidates(org, relinkMapping.mappingId, relinkSearch)
+      .then((result) => {
+        if (cancelled) return;
+        if (result.success) setRelinkCandidates(result.data);
+        else {
+          setRelinkCandidates([]);
+          setRelinkCandidatesError(
+            result.error?.message ?? "Cannot load eligible Products.",
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRelinkCandidates([]);
+          setRelinkCandidatesError("Cannot load eligible Products.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRelinkCandidatesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [org, relinkMapping?.mappingId, relinkSearch]);
+
   const saveCatalog = async () => {
     if (!catalog.catalogName?.trim()) {
       setError("Catalog Name is required.");
@@ -1367,7 +1610,7 @@ export default function OrgAdminProducts() {
               value={selectedStoreId}
               items={stores}
               getItemId={(store) => store.id}
-              renderItemLabel={(store) => `${store.name} (${store.storeCode})`}
+              renderItemLabel={(store) => store.name}
               onChange={selectStore}
               placeholder="Select a Memgine Store"
             />
@@ -1379,7 +1622,7 @@ export default function OrgAdminProducts() {
               items={maintenanceContexts}
               getItemId={(context) => context.key}
               renderItemLabel={(context) =>
-                `${context.integrationName ?? context.catalogName ?? "Catalog configuration"} — ${context.externalCatalogName ?? context.catalogName ?? context.externalCatalogId ?? "Catalog unavailable"}`
+                `${context.integrationName ?? context.catalogName ?? "Catalog configuration"} — ${context.externalCatalogName ?? context.catalogName ?? "Catalog unavailable"}`
               }
               onChange={selectMaintenanceContext}
               placeholder={
@@ -1426,9 +1669,60 @@ export default function OrgAdminProducts() {
             <Text color="textMuted">
               Poynt Catalog:{" "}
               {selectedMaintenanceContext.externalCatalogName?.trim() ||
-                selectedMaintenanceContext.externalCatalogId ||
+                selectedMaintenanceContext.catalogName ||
                 "Not available"}
             </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                showCatalogTechnicalDetails
+                  ? "Hide Store and catalog technical details"
+                  : "Show Store and catalog technical details"
+              }
+              onPress={() => setShowCatalogTechnicalDetails((value) => !value)}
+              style={{
+                alignSelf: "flex-start",
+                paddingVertical: theme.spacing.xs,
+              }}
+            >
+              <Text color="textMuted">
+                {showCatalogTechnicalDetails
+                  ? "Hide technical details ▲"
+                  : "Technical details ▼"}
+              </Text>
+            </Pressable>
+            {showCatalogTechnicalDetails ? (
+              <View
+                style={{
+                  gap: theme.spacing.xs,
+                  padding: theme.spacing.sm,
+                  backgroundColor: theme.colors.surfaceAlt,
+                  borderRadius: theme.radius.sm,
+                }}
+              >
+                <Text color="textMuted">Store ID: {selectedStoreId}</Text>
+                <Text color="textMuted">
+                  Store Code:{" "}
+                  {stores.find((item) => item.id === selectedStoreId)
+                    ?.storeCode ?? "—"}
+                </Text>
+                <Text color="textMuted">
+                  External Catalog ID:{" "}
+                  {selectedMaintenanceContext.externalCatalogId ??
+                    "Not configured"}
+                </Text>
+                <Text color="textMuted">
+                  Integration ID:{" "}
+                  {selectedMaintenanceContext.integrationConfigurationId ??
+                    "Not configured"}
+                </Text>
+                <Text color="textMuted">
+                  Memgine Catalog ID:{" "}
+                  {selectedMaintenanceContext.productCatalogId ??
+                    "Not configured"}
+                </Text>
+              </View>
+            ) : null}
             {runtimeCatalogIntegrationId && runtimeExternalCatalogId ? (
               runtimeCatalogIntegrationId ===
                 selectedMaintenanceContext.integrationConfigurationId &&
@@ -1518,6 +1812,28 @@ export default function OrgAdminProducts() {
                 setEditing(null);
                 setProduct(emptyProduct);
                 setShowProduct(true);
+              }}
+            />
+            <Button
+              label="Resync Catalog"
+              variant="outline"
+              disabled={
+                maintenanceLoading ||
+                previewLoading ||
+                applyingPreview ||
+                !selectedMaintenanceContext?.canSynchronize ||
+                !catalogId ||
+                Boolean(posPreview)
+              }
+              onPress={() => {
+                setActiveSection("SYNCHRONIZATION");
+                setError(undefined);
+                setSuccessMessage(undefined);
+                setSelectedSyncIntegrationId(
+                  selectedMaintenanceContext?.integrationConfigurationId ?? "",
+                );
+                setSelectedSyncStoreId(selectedStoreId || null);
+                setShowPosSync(true);
               }}
             />
             <Button
@@ -1696,42 +2012,293 @@ export default function OrgAdminProducts() {
           }}
         >
           <Text variant="bodyStrong">Product mappings</Text>
+          <Input
+            label="Search mappings"
+            value={mappingSearch}
+            onChangeText={setMappingSearch}
+            placeholder="Product name, category or SKU"
+          />
           <Text color="textMuted">
-            Mappings remain integration-scoped. Store context is shown for
-            maintenance only; mappings without Store scope are not represented
-            as Store-isolated.
+            Showing {filteredCatalogMappings.length} of {catalogMappings.length}{" "}
+            mappings for the selected Store and integration.
           </Text>
-          {catalogMappings.length ? (
-            catalogMappings.map((mapping) => (
-              <View
-                key={mapping.mappingId}
-                style={{
-                  gap: theme.spacing.xs,
-                  padding: theme.spacing.sm,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  borderRadius: theme.radius.sm,
-                }}
-              >
-                <Text>{mapping.externalSku ?? mapping.externalProductId}</Text>
-                <Text color="textMuted">
-                  External ID: {mapping.externalProductId} ·{" "}
-                  {mapping.storeId
-                    ? `Store scope: ${mapping.storeId}`
-                    : "Organization scope"}{" "}
-                  · {mapping.active ? "Active" : "Inactive"}
-                </Text>
-              </View>
-            ))
+          <Text color="textMuted">
+            Store-specific Poynt Product mappings. Technical identifiers are
+            available under Details when needed for reconciliation.
+          </Text>
+          {filteredCatalogMappings.length ? (
+            filteredCatalogMappings.map((mapping) => {
+              const canonical = mapping.productId
+                ? productNameById.get(mapping.productId)
+                : undefined;
+              const category =
+                canonical?.categoryName?.trim() || "Uncategorized";
+              const isExpanded = expandedMappingDetailsId === mapping.mappingId;
+              return (
+                <View
+                  key={mapping.mappingId}
+                  style={{
+                    gap: theme.spacing.xs,
+                    padding: theme.spacing.sm,
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                    borderRadius: theme.radius.sm,
+                  }}
+                >
+                  <Text variant="bodyStrong">
+                    {canonical?.productName || "Unlinked Product"} ({category})
+                  </Text>
+                  <Text>
+                    SKU: {mapping.externalSku || canonical?.sku || "—"}
+                  </Text>
+                  <Text color="textMuted">
+                    Store:{" "}
+                    {stores.find((item) => item.id === mapping.storeId)?.name ??
+                      (mapping.storeId
+                        ? "Store name unavailable"
+                        : "Organization-wide mapping")}
+                  </Text>
+                  <Text color="textMuted">
+                    Poynt Catalog: {externalCatalogLabel(mapping)}
+                  </Text>
+                  <Text color="textMuted">
+                    Status: {mapping.active ? "Active" : "Inactive"}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      isExpanded
+                        ? "Hide technical mapping details"
+                        : "Show technical mapping details"
+                    }
+                    onPress={() =>
+                      setExpandedMappingDetailsId(
+                        isExpanded ? null : mapping.mappingId,
+                      )
+                    }
+                    style={{
+                      alignSelf: "flex-start",
+                      paddingVertical: theme.spacing.xs,
+                    }}
+                  >
+                    <Text color="textMuted">
+                      {isExpanded
+                        ? "Hide technical details ▲"
+                        : "Technical details ▼"}
+                    </Text>
+                  </Pressable>
+                  {isExpanded ? (
+                    <View
+                      style={{
+                        gap: theme.spacing.xs,
+                        padding: theme.spacing.sm,
+                        backgroundColor: theme.colors.surfaceAlt,
+                        borderRadius: theme.radius.sm,
+                      }}
+                    >
+                      <Text color="textMuted">
+                        Canonical Product ID: {mapping.productId || "Unlinked"}
+                      </Text>
+                      <Text color="textMuted">
+                        Mapping ID: {mapping.mappingId}
+                      </Text>
+                      <Text color="textMuted">
+                        External Product ID: {mapping.externalProductId || "—"}
+                      </Text>
+                      <Text color="textMuted">
+                        External Catalog ID:{" "}
+                        {mappingExternalCatalogId(mapping) || "—"}
+                      </Text>
+                      <Text color="textMuted">
+                        Integration ID: {mapping.integrationConfigurationId}
+                      </Text>
+                      <Text color="textMuted">
+                        Store ID: {mapping.storeId || "—"}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {mapping.active && mapping.storeId ? (
+                    <Button
+                      label="Link to Existing Product"
+                      size="sm"
+                      variant="outline"
+                      onPress={() => openManualRelink(mapping)}
+                    />
+                  ) : null}
+                </View>
+              );
+            })
           ) : (
             <Text color="textMuted">
-              No mappings are available for this canonical catalog and
-              integration context. Mapping conflict resolution remains available
-              from Products when a product has multiple active mappings.
+              No mappings match the search for this Store and integration. Clear
+              the search or choose a configured Store/catalog.
             </Text>
           )}
         </View>
       ) : null}
+      <Modal
+        visible={relinkMapping !== null}
+        onClose={() => {
+          if (!relinkBusy) setRelinkMapping(null);
+        }}
+        title="Link to Existing Memgine Product"
+        scrollable
+      >
+        <View style={{ gap: theme.spacing.md }}>
+          <Text color="textMuted">
+            Only this Store-specific Poynt mapping will be reassigned. Existing
+            Products, Benefits, Offers, and historical transactions will not be
+            merged.
+          </Text>
+          {relinkMapping ? (
+            <View style={{ gap: theme.spacing.xs }}>
+              <Text variant="bodyStrong">
+                External SKU: {relinkMapping.externalSku || "—"}
+              </Text>
+              <Text color="textMuted">
+                Store:{" "}
+                {stores.find((item) => item.id === relinkMapping.storeId)
+                  ?.name ?? relinkMapping.storeId}
+              </Text>
+              <Text color="textMuted">
+                External Product ID: {relinkMapping.externalProductId}
+              </Text>
+              <Text color="textMuted">
+                Current Product:{" "}
+                {products.find(
+                  (item) => item.productId === relinkMapping.productId,
+                )?.productName ?? relinkMapping.productId}
+              </Text>
+            </View>
+          ) : null}
+          <Text color="textMuted">
+            Organization: {org} · Candidates are limited by the database to this
+            organization and the selected mapping’s integration.
+          </Text>
+          <Input
+            label="Search existing Memgine Products"
+            value={relinkSearch}
+            onChangeText={(value) => {
+              setRelinkSearch(value);
+              setRelinkCandidates([]);
+              setRelinkTargetId("");
+              setRelinkPreview(null);
+            }}
+            placeholder="Search by Product Name"
+          />
+          <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled>
+            {relinkCandidatesLoading ? (
+              <Text color="textMuted">Loading eligible Products…</Text>
+            ) : null}
+            {relinkCandidatesError ? (
+              <Text color="danger">{relinkCandidatesError}</Text>
+            ) : null}
+            {!relinkCandidatesLoading &&
+            !relinkCandidatesError &&
+            relinkCandidates.length === 0 ? (
+              <Text color="textMuted">No eligible Products found.</Text>
+            ) : null}
+            {relinkCandidates.map((item) => (
+              <Pressable
+                key={item.productId}
+                onPress={() => {
+                  setRelinkTargetId(item.productId);
+                  setRelinkPreview(null);
+                  setRelinkError(undefined);
+                }}
+                style={{
+                  padding: theme.spacing.sm,
+                  backgroundColor:
+                    relinkTargetId === item.productId
+                      ? theme.colors.surfaceAlt
+                      : "transparent",
+                }}
+              >
+                <Text variant="bodyStrong">
+                  {item.productName} (
+                  {item.categoryName?.trim() || "Uncategorized"})
+                </Text>
+                <Text color="textMuted">
+                  {item.catalogName} · SKU: {item.sku || "—"} ·{" "}
+                  {item.productCode}
+                </Text>
+                <Text color="textMuted">
+                  {item.currencyCode || "—"}{" "}
+                  {item.basePriceMinor == null
+                    ? "—"
+                    : (item.basePriceMinor / 100).toFixed(2)}{" "}
+                  · {item.productId}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <Button
+            label="Preview mapping change"
+            variant="outline"
+            disabled={
+              !relinkTargetId ||
+              relinkBusy ||
+              relinkCandidatesLoading ||
+              Boolean(relinkCandidatesError) ||
+              !relinkCandidates.some(
+                (item) => item.productId === relinkTargetId,
+              )
+            }
+            onPress={() => void previewManualRelink()}
+          />
+          {relinkPreview ? (
+            <View style={{ gap: theme.spacing.xs }}>
+              <Text variant="bodyStrong">Verified change preview</Text>
+              <Text>
+                From: {relinkPreview.currentProductName} (
+                {relinkPreview.currentProductId})
+              </Text>
+              <Text>
+                To: {relinkPreview.targetProductName} (
+                {relinkPreview.targetProductId})
+              </Text>
+              <Text color="textMuted">
+                Catalog: {relinkPreview.externalCatalogId}
+              </Text>
+              <Text color="textMuted">
+                Pending sync previews:{" "}
+                {relinkPreview.pendingCatalogPreviewCount}
+              </Text>
+              <Text color="textMuted">{relinkPreview.warning}</Text>
+              {relinkPreview.alreadyLinked ? (
+                <Text>Already linked to this Product.</Text>
+              ) : null}
+            </View>
+          ) : null}
+          <Input
+            label="Reason for reconciliation"
+            value={relinkReason}
+            onChangeText={setRelinkReason}
+            placeholder="Confirmed identical product across stores"
+          />
+          {relinkError ? <Text color="danger">{relinkError}</Text> : null}
+          <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+            <Button
+              label="Cancel"
+              variant="outline"
+              disabled={relinkBusy}
+              onPress={() => setRelinkMapping(null)}
+            />
+            <Button
+              label="Confirm Link"
+              disabled={
+                relinkBusy ||
+                !relinkPreview ||
+                relinkPreview.alreadyLinked ||
+                relinkPreview.targetProductId !== relinkTargetId ||
+                !relinkReason.trim() ||
+                relinkReason.length > 500
+              }
+              onPress={() => void confirmManualRelink()}
+            />
+          </View>
+        </View>
+      </Modal>
       {activeSection === "SYNCHRONIZATION" ? (
         <View
           style={{
@@ -2703,16 +3270,22 @@ export default function OrgAdminProducts() {
           {catalogSetupContext ? (
             <View style={{ gap: theme.spacing.xs }}>
               <Text color="textMuted">
-                Store: {stores.find((store) => store.id === catalogSetupContext.storeId)?.name ?? catalogSetupContext.storeId}
+                Store:{" "}
+                {stores.find(
+                  (store) => store.id === catalogSetupContext.storeId,
+                )?.name ?? catalogSetupContext.storeId}
               </Text>
               <Text color="textMuted">
                 Integration: {catalogSetupContext.integrationName ?? "Poynt"}
               </Text>
               <Text color="textMuted">
-                Verified Poynt catalog: {catalogSetupContext.externalCatalogName ?? catalogSetupContext.externalCatalogId}
+                Verified Poynt catalog:{" "}
+                {catalogSetupContext.externalCatalogName ??
+                  catalogSetupContext.externalCatalogId}
               </Text>
               <Text color="textMuted">
-                The verified integration and external catalog identities are fixed for this setup.
+                The verified integration and external catalog identities are
+                fixed for this setup.
               </Text>
             </View>
           ) : null}
@@ -2726,103 +3299,108 @@ export default function OrgAdminProducts() {
           />
           {!catalogSetupContext && !catalogManualOnly ? (
             <>
-          <Text variant="bodyStrong">Source</Text>
-          {(["MANUAL", "INTEGRATION"] as const).map((source) => (
-            <Pressable
-              key={source}
-              onPress={() =>
-                setCatalog((current: any) => ({
-                  ...current,
-                  source,
-                  integrationConfigurationId:
-                    source === "MANUAL"
-                      ? ""
-                      : current.integrationConfigurationId,
-                }))
-              }
-              style={{
-                padding: theme.spacing.sm,
-                borderWidth: 1,
-                borderColor:
-                  catalog.source === source
-                    ? theme.colors.primary
-                    : theme.colors.border,
-                borderRadius: theme.radius.md,
-              }}
-            >
-              <Text>{source === "MANUAL" ? "Manual" : "Integration"}</Text>
-            </Pressable>
-          ))}
-          {catalog.source === "INTEGRATION" ? (
-            <View style={{ gap: theme.spacing.sm }}>
-              <Text variant="bodyStrong">Integration Configuration</Text>
-              {integrations.length ? (
+              <Text variant="bodyStrong">Source</Text>
+              {(["MANUAL", "INTEGRATION"] as const).map((source) => (
+                <Pressable
+                  key={source}
+                  onPress={() =>
+                    setCatalog((current: any) => ({
+                      ...current,
+                      source,
+                      integrationConfigurationId:
+                        source === "MANUAL"
+                          ? ""
+                          : current.integrationConfigurationId,
+                    }))
+                  }
+                  style={{
+                    padding: theme.spacing.sm,
+                    borderWidth: 1,
+                    borderColor:
+                      catalog.source === source
+                        ? theme.colors.primary
+                        : theme.colors.border,
+                    borderRadius: theme.radius.md,
+                  }}
+                >
+                  <Text>{source === "MANUAL" ? "Manual" : "Integration"}</Text>
+                </Pressable>
+              ))}
+              {catalog.source === "INTEGRATION" ? (
                 <View style={{ gap: theme.spacing.sm }}>
-                  {integrations.map((integration) => (
-                    <Pressable
-                      key={integration.id}
-                      onPress={() =>
-                        setCatalog((current: any) => ({
-                          ...current,
-                          integrationConfigurationId: integration.id,
-                        }))
-                      }
-                      style={{
-                        padding: theme.spacing.sm,
-                        borderWidth: 1,
-                        borderColor:
-                          catalog.integrationConfigurationId === integration.id
-                            ? theme.colors.primary
-                            : theme.colors.border,
-                        borderRadius: theme.radius.md,
-                      }}
-                    >
-                      <Text variant="bodyStrong">
-                        {integration.integrationName}
+                  <Text variant="bodyStrong">Integration Configuration</Text>
+                  {integrations.length ? (
+                    <View style={{ gap: theme.spacing.sm }}>
+                      {integrations.map((integration) => (
+                        <Pressable
+                          key={integration.id}
+                          onPress={() =>
+                            setCatalog((current: any) => ({
+                              ...current,
+                              integrationConfigurationId: integration.id,
+                            }))
+                          }
+                          style={{
+                            padding: theme.spacing.sm,
+                            borderWidth: 1,
+                            borderColor:
+                              catalog.integrationConfigurationId ===
+                              integration.id
+                                ? theme.colors.primary
+                                : theme.colors.border,
+                            borderRadius: theme.radius.md,
+                          }}
+                        >
+                          <Text variant="bodyStrong">
+                            {integration.integrationName}
+                          </Text>
+                          <Text color="textMuted">{integration.provider}</Text>
+                        </Pressable>
+                      ))}
+                      <Button
+                        label="Manage Integrations"
+                        size="sm"
+                        variant="ghost"
+                        onPress={() =>
+                          router.push(
+                            APP_ROUTES.orgAdmin.settings.integrations(
+                              org,
+                            ) as never,
+                          )
+                        }
+                      />
+                    </View>
+                  ) : (
+                    <View style={{ gap: theme.spacing.sm }}>
+                      <Text color="textMuted">
+                        No Integration Configurations are available for this
+                        organization.
                       </Text>
-                      <Text color="textMuted">{integration.provider}</Text>
-                    </Pressable>
-                  ))}
-                  <Button
-                    label="Manage Integrations"
-                    size="sm"
-                    variant="ghost"
-                    onPress={() =>
-                      router.push(
-                        APP_ROUTES.orgAdmin.settings.integrations(org) as never,
-                      )
+                      <Button
+                        label="Set Up Integration"
+                        size="sm"
+                        onPress={() =>
+                          router.push(
+                            APP_ROUTES.orgAdmin.settings.integrations(
+                              org,
+                            ) as never,
+                          )
+                        }
+                      />
+                    </View>
+                  )}
+                  <Input
+                    label="External Catalog ID"
+                    value={catalog.externalCatalogId ?? ""}
+                    onChangeText={(value) =>
+                      setCatalog((current: any) => ({
+                        ...current,
+                        externalCatalogId: value,
+                      }))
                     }
                   />
                 </View>
-              ) : (
-                <View style={{ gap: theme.spacing.sm }}>
-                  <Text color="textMuted">
-                    No Integration Configurations are available for this
-                    organization.
-                  </Text>
-                  <Button
-                    label="Set Up Integration"
-                    size="sm"
-                    onPress={() =>
-                      router.push(
-                        APP_ROUTES.orgAdmin.settings.integrations(org) as never,
-                      )
-                    }
-                  />
-                </View>
-              )}
-              <Input
-                label="External Catalog ID"
-                value={catalog.externalCatalogId ?? ""}
-                onChangeText={(value) =>
-                  setCatalog((current: any) => ({
-                    ...current,
-                    externalCatalogId: value,
-                  }))
-                }
-              />
-            </View>
-          ) : null}
+              ) : null}
             </>
           ) : null}
           {!catalogSetupContext && !catalogManualOnly ? (

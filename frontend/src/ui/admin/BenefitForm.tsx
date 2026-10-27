@@ -401,7 +401,8 @@ export function BenefitForm({
   const [costInput, setCostInput] = useState(moneyToInput(benefit.cost));
   const [commerceProductIds, setCommerceProductIds] = useState<string[]>(
     () =>
-      benefit.productIds ?? commerceConfiguration?.productIds ??
+      benefit.productIds ??
+      commerceConfiguration?.productIds ??
       (benefit.productId ? [benefit.productId] : []),
   );
   const [percentageInput, setPercentageInput] = useState(
@@ -421,22 +422,19 @@ export function BenefitForm({
   const [pickerProducts, setPickerProducts] = useState<OrganizationProduct[]>(
     [],
   );
-  const [selectedPickerStoreId, setSelectedPickerStoreId] = useState("");
-  const [availabilityMode, setAvailabilityMode] = useState<"ALL_STORES" | "SELECTED_STORES">(
-    () => benefit.storeAvailability?.mode ?? "ALL_STORES",
-  );
+  const [availabilityMode, setAvailabilityMode] = useState<
+    "ALL_STORES" | "SELECTED_STORES"
+  >(() => benefit.storeAvailability?.mode ?? "ALL_STORES");
   const [availabilityStoreIds, setAvailabilityStoreIds] = useState<string[]>(
     () => benefit.storeAvailability?.storeIds ?? [],
   );
   const [pickerLoading, setPickerLoading] = useState(true);
   const [pickerError, setPickerError] = useState<string>();
+  const [storeCatalogs, setStoreCatalogs] = useState<
+    Record<string, { catalogId: string; integrationId: string; name: string }>
+  >({});
   const [pickerSourceLoading, setPickerSourceLoading] = useState(false);
-  const [pickerCatalogId, setPickerCatalogId] = useState<string>();
-  const [pickerIntegrationConfigurationId, setPickerIntegrationConfigurationId] =
-    useState<string>();
-  const [pickerCatalogSourceName, setPickerCatalogSourceName] = useState<
-    string | undefined
-  >();
+  const [pickerSourceError, setPickerSourceError] = useState<string>();
   const pickerSourceRequest = useRef(0);
   const catalogSourceApi = useMemo(
     () => new CommerceStoreCatalogSourceApi(),
@@ -460,7 +458,8 @@ export function BenefitForm({
     setRetailPriceInput(moneyToInput(benefit.retailPrice));
     setCostInput(moneyToInput(benefit.cost));
     setCommerceProductIds(
-      benefit.productIds ?? commerceConfiguration?.productIds ??
+      benefit.productIds ??
+        commerceConfiguration?.productIds ??
         (benefit.productId ? [benefit.productId] : []),
     );
     setPercentageInput(commerceConfiguration?.percentage?.toString() ?? "");
@@ -471,10 +470,6 @@ export function BenefitForm({
     );
     setCommerceError(undefined);
     setProductSearch("");
-    setSelectedPickerStoreId("");
-    setPickerCatalogId(undefined);
-    setPickerIntegrationConfigurationId(undefined);
-    setPickerCatalogSourceName(undefined);
     setAvailabilityMode(benefit.storeAvailability?.mode ?? "ALL_STORES");
     setAvailabilityStoreIds(benefit.storeAvailability?.storeIds ?? []);
 
@@ -504,7 +499,8 @@ export function BenefitForm({
         if (!mounted) return;
         if (!storesResult.success) {
           setPickerError(
-            storesResult.error?.message ?? "Unable to load Stores for product selection.",
+            storesResult.error?.message ??
+              "Unable to load Stores for product selection.",
           );
           return;
         }
@@ -536,11 +532,12 @@ export function BenefitForm({
         setPickerStores(activeStores);
         setPickerCatalogs(catalogsResult.data);
         setPickerProducts(productsResult.data);
-        setSelectedPickerStoreId((current) => current || activeStores[0]?.id || "");
       })
       .catch(() => {
         if (mounted) {
-          setPickerError("Unable to load catalog products for product selection.");
+          setPickerError(
+            "Unable to load catalog products for product selection.",
+          );
         }
       })
       .finally(() => {
@@ -552,69 +549,88 @@ export function BenefitForm({
     };
   }, [benefit.organizationId]);
 
+  const eligibleStores = useMemo(
+    () =>
+      pickerStores.filter(
+        (store) =>
+          availabilityMode === "ALL_STORES" ||
+          availabilityStoreIds.includes(store.id),
+      ),
+    [pickerStores, availabilityMode, availabilityStoreIds],
+  );
+
   useEffect(() => {
     const request = ++pickerSourceRequest.current;
-    if (!selectedPickerStoreId) {
-      setPickerCatalogId(undefined);
-      setPickerIntegrationConfigurationId(undefined);
-      setPickerCatalogSourceName(undefined);
+    setStoreCatalogs({});
+    setPickerSourceError(undefined);
+    if (pickerLoading || pickerError || eligibleStores.length === 0) {
       setPickerSourceLoading(false);
       return;
     }
     setPickerSourceLoading(true);
-    setPickerError(undefined);
-    setPickerCatalogId(undefined);
-    setPickerIntegrationConfigurationId(undefined);
-    setPickerCatalogSourceName(undefined);
-
-    void catalogSourceApi
-      .get(benefit.organizationId, selectedPickerStoreId)
-      .then((result) => {
-        if (request !== pickerSourceRequest.current) return;
-        if (!result.success) {
-          setPickerError(
-            result.error?.message ?? "Unable to load this Store's Product Catalog selection.",
+    void Promise.all(
+      eligibleStores.map(async (store) => {
+        const result = await catalogSourceApi.get(
+          benefit.organizationId,
+          store.id,
+        );
+        if (!result.success)
+          throw new Error(
+            result.error?.message ?? `Could not load ${store.name} catalog`,
           );
-          return;
-        }
         const source = result.data.source;
-        const integrationConfigurationId = source?.integrationConfigurationId;
-        const externalCatalogId = source?.catalogId?.trim();
-        if (!integrationConfigurationId || !externalCatalogId) {
-          setPickerError("No Product Catalog is configured for this Store.");
-          return;
-        }
-        const matchingCatalogs = pickerCatalogs.filter(
+        const catalogId = source?.catalogId?.trim();
+        const integrationId = source?.integrationConfigurationId;
+        if (!catalogId || !integrationId)
+          throw new Error(`No Product Catalog configured for ${store.name}`);
+        const matches = pickerCatalogs.filter(
           (catalog) =>
             catalog.active &&
-            catalog.integrationConfigurationId === integrationConfigurationId &&
-            catalog.externalCatalogId === externalCatalogId,
+            catalog.integrationConfigurationId === integrationId &&
+            catalog.externalCatalogId === catalogId,
         );
-        if (matchingCatalogs.length !== 1) {
-          setPickerError(
-            "This Store's selected Product Catalog is not linked to exactly one canonical Memgine catalog.",
+        if (matches.length !== 1)
+          throw new Error(
+            `No unique canonical Memgine catalog linked for ${store.name}`,
           );
-          return;
-        }
-        setPickerCatalogId(matchingCatalogs[0].productCatalogId);
-        setPickerIntegrationConfigurationId(integrationConfigurationId);
-        setPickerCatalogSourceName(source?.catalogName?.trim() || undefined);
+        return [
+          store.id,
+          {
+            catalogId: matches[0].productCatalogId,
+            integrationId,
+            name: source?.catalogName?.trim() || catalogId,
+          },
+        ] as const;
+      }),
+    )
+      .then((rows) => {
+        if (request === pickerSourceRequest.current)
+          setStoreCatalogs(Object.fromEntries(rows));
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (request === pickerSourceRequest.current) {
-          setPickerError("Unable to load this Store's Product Catalog selection.");
+          setStoreCatalogs({});
+          setPickerSourceError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load Store catalogs",
+          );
         }
       })
       .finally(() => {
-        if (request === pickerSourceRequest.current) {
+        if (request === pickerSourceRequest.current)
           setPickerSourceLoading(false);
-        }
       });
+    return () => {
+      pickerSourceRequest.current += 1;
+    };
   }, [
     benefit.organizationId,
     catalogSourceApi,
     pickerCatalogs,
-    selectedPickerStoreId,
+    eligibleStores,
+    pickerLoading,
+    pickerError,
   ]);
 
   /*
@@ -782,18 +798,53 @@ export function BenefitForm({
     return byId;
   }, [pickerProducts, products]);
   const pickerProductById = useMemo(
-    () => new Map(pickerProducts.map((product) => [product.productId, product])),
+    () =>
+      new Map(pickerProducts.map((product) => [product.productId, product])),
     [pickerProducts],
   );
+  // W223/W224 manual relinks can point a Store mapping at a canonical Product
+  // owned by another Memgine catalog. Eligibility is determined by the active
+  // Store + integration mapping, NOT by the canonical Product's home catalog.
+  const eligibleProductStores = useMemo(() => {
+    const byProduct = new Map<string, string[]>();
+    const storesById = new Map(pickerStores.map((store) => [store.id, store]));
+    const activeProducts = new Set(
+      pickerProducts
+        .filter((product) => product.active)
+        .map((product) => product.productId),
+    );
+    for (const mapping of commerceMappings) {
+      const storeId = mapping.storeId ?? "";
+      const source = storeCatalogs[storeId];
+      if (
+        !mapping.active ||
+        !mapping.productId ||
+        !activeProducts.has(mapping.productId) ||
+        !source ||
+        mapping.integrationConfigurationId !== source.integrationId
+      )
+        continue;
+      const storeName = storesById.get(storeId)?.name;
+      if (!storeName) continue;
+      const names = byProduct.get(mapping.productId) ?? [];
+      if (!names.includes(storeName)) names.push(storeName);
+      byProduct.set(mapping.productId, names);
+    }
+    for (const names of byProduct.values()) {
+      names.sort((left, right) => left.localeCompare(right));
+    }
+    return byProduct;
+  }, [commerceMappings, pickerProducts, pickerStores, storeCatalogs]);
+
+  // A canonical Product must appear only once, regardless of how many Stores
+  // expose it through distinct catalog-qualified mappings.
   const currentCatalogProducts = useMemo(
     () =>
-      pickerCatalogId
-        ? pickerProducts.filter(
-            (product) =>
-              product.active && product.productCatalogId === pickerCatalogId,
-          )
-        : [],
-    [pickerCatalogId, pickerProducts],
+      pickerProducts.filter(
+        (product) =>
+          product.active && eligibleProductStores.has(product.productId),
+      ),
+    [pickerProducts, eligibleProductStores],
   );
   const normalizedProductName = (name?: string | null) =>
     name?.trim().toLocaleLowerCase() ?? "";
@@ -807,7 +858,10 @@ export function BenefitForm({
   }, [currentCatalogProducts]);
   const productPickerLabel = (productId: string, fallback?: Product) => {
     const product = pickerProductById.get(productId);
-    const name = product?.productName ?? fallback?.productName ?? "Previously selected product";
+    const name =
+      product?.productName ??
+      fallback?.productName ??
+      "Previously selected product";
     if ((duplicateProductNames.get(normalizedProductName(name)) ?? 0) < 2) {
       return name;
     }
@@ -815,13 +869,17 @@ export function BenefitForm({
     const categoryName = product?.categoryName?.trim();
     const matchingCategoryCount = currentCatalogProducts.filter(
       (candidate) =>
-        normalizedProductName(candidate.productName) === normalizedProductName(name) &&
+        normalizedProductName(candidate.productName) ===
+          normalizedProductName(name) &&
         candidate.categoryName?.trim().toLocaleLowerCase() ===
           categoryName?.toLocaleLowerCase(),
     ).length;
     const qualifier = categoryName ? [categoryName] : [];
     if (matchingCategoryCount > 1) {
-      const productAttribute = product?.sku?.trim() || product?.upc?.trim() || product?.productCode?.trim();
+      const productAttribute =
+        product?.sku?.trim() ||
+        product?.upc?.trim() ||
+        product?.productCode?.trim();
       if (productAttribute) qualifier.push(`SKU ${productAttribute}`);
     }
     return qualifier.length ? `${name} (${qualifier.join(" · ")})` : name;
@@ -835,10 +893,7 @@ export function BenefitForm({
     [commerceProductIds, productById],
   );
   const selectedCatalogProductIds = useMemo(
-    () =>
-      new Set(
-        currentCatalogProducts.map((product) => product.productId),
-      ),
+    () => new Set(currentCatalogProducts.map((product) => product.productId)),
     [currentCatalogProducts],
   );
   const filteredProducts = useMemo(() => {
@@ -933,6 +988,15 @@ export function BenefitForm({
       form.benefitTypeId.length > 0 &&
       form.effectiveDate.trim().length > 0 &&
       (availabilityMode === "ALL_STORES" || availabilityStoreIds.length > 0) &&
+      (!selectedAdjustmentType ||
+        (commerceProductIds.length > 0 &&
+          !pickerLoading &&
+          !pickerSourceLoading &&
+          !pickerError &&
+          !pickerSourceError &&
+          commerceProductIds.every((id) =>
+            selectedCatalogProductIds.has(id),
+          ))) &&
       validRules
     );
   };
@@ -963,6 +1027,14 @@ export function BenefitForm({
 
   const handleSave = async () => {
     if (!validate()) {
+      if (
+        selectedAdjustmentType &&
+        commerceProductIds.some((id) => !selectedCatalogProductIds.has(id))
+      ) {
+        setCommerceError(
+          "One or more selected Products are not available in the selected Stores. Remove them before saving.",
+        );
+      }
       return;
     }
 
@@ -988,7 +1060,10 @@ export function BenefitForm({
           productId: [...commerceProductIds].sort()[0],
           storeAvailability: {
             mode: availabilityMode,
-            storeIds: availabilityMode === "SELECTED_STORES" ? availabilityStoreIds : [],
+            storeIds:
+              availabilityMode === "SELECTED_STORES"
+                ? availabilityStoreIds
+                : [],
           },
           disclaimerText: form.disclaimerText?.trim() || undefined,
         },
@@ -1088,73 +1163,76 @@ export function BenefitForm({
           </View>
           <View style={styles.fullWidth}>
             <View style={styles.storeAvailability}>
-                <Text variant="bodyStrong" color="text">
-                  Store Availability
+              <Text variant="bodyStrong" color="text">
+                Store Availability
+              </Text>
+              <Text variant="bodySmall" color="textMuted">
+                Choose where this Benefit can be redeemed. Products below are
+                automatically filtered to these Stores.
+              </Text>
+              <Pressable
+                onPress={() => setAvailabilityMode("ALL_STORES")}
+                style={[
+                  styles.availabilityChoice,
+                  availabilityMode === "ALL_STORES" &&
+                    styles.availabilityChoiceSelected,
+                ]}
+              >
+                <Text variant="body" color="text">
+                  {availabilityMode === "ALL_STORES" ? "●" : "○"} All active
+                  Stores
                 </Text>
-                <Text variant="bodySmall" color="textMuted">
-                  Choose where this Benefit can be redeemed. This is separate
-                  from the Store used below to browse products.
+              </Pressable>
+              <Pressable
+                onPress={() => setAvailabilityMode("SELECTED_STORES")}
+                style={[
+                  styles.availabilityChoice,
+                  availabilityMode === "SELECTED_STORES" &&
+                    styles.availabilityChoiceSelected,
+                ]}
+              >
+                <Text variant="body" color="text">
+                  {availabilityMode === "SELECTED_STORES" ? "●" : "○"} Selected
+                  Stores
                 </Text>
-                <Pressable
-                  onPress={() => setAvailabilityMode("ALL_STORES")}
-                  style={[
-                    styles.availabilityChoice,
-                    availabilityMode === "ALL_STORES" && styles.availabilityChoiceSelected,
-                  ]}
-                >
-                  <Text variant="body" color="text">
-                    {availabilityMode === "ALL_STORES" ? "●" : "○"} All active Stores
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setAvailabilityMode("SELECTED_STORES")}
-                  style={[
-                    styles.availabilityChoice,
-                    availabilityMode === "SELECTED_STORES" && styles.availabilityChoiceSelected,
-                  ]}
-                >
-                  <Text variant="body" color="text">
-                    {availabilityMode === "SELECTED_STORES" ? "●" : "○"} Selected Stores
-                  </Text>
-                </Pressable>
-                {availabilityMode === "SELECTED_STORES" ? (
-                  <View style={styles.availableStores}>
-                    {pickerLoading ? (
-                      <Text variant="bodySmall" color="textMuted">
-                        Loading active Stores…
-                      </Text>
-                    ) : pickerStores.length ? (
-                      pickerStores.map((store) => {
-                        const selected = availabilityStoreIds.includes(store.id);
-                        return (
-                          <Checkbox
-                            key={store.id}
-                            value={selected}
-                            label={store.name}
-                            onValueChange={() =>
-                              setAvailabilityStoreIds((current) =>
-                                selected
-                                  ? current.filter((id) => id !== store.id)
-                                  : [...current, store.id],
-                              )
-                            }
-                          />
-                        );
-                      })
-                    ) : (
-                      <Text variant="bodySmall" color="danger">
-                        No active Stores are available for selection.
-                      </Text>
-                    )}
-                    {!availabilityStoreIds.length ? (
-                      <Text variant="bodySmall" color="danger">
-                        Select at least one Store.
-                      </Text>
-                    ) : null}
-                  </View>
-                ) : null}
+              </Pressable>
+              {availabilityMode === "SELECTED_STORES" ? (
+                <View style={styles.availableStores}>
+                  {pickerLoading ? (
+                    <Text variant="bodySmall" color="textMuted">
+                      Loading active Stores…
+                    </Text>
+                  ) : pickerStores.length ? (
+                    pickerStores.map((store) => {
+                      const selected = availabilityStoreIds.includes(store.id);
+                      return (
+                        <Checkbox
+                          key={store.id}
+                          value={selected}
+                          label={store.name}
+                          onValueChange={() =>
+                            setAvailabilityStoreIds((current) =>
+                              selected
+                                ? current.filter((id) => id !== store.id)
+                                : [...current, store.id],
+                            )
+                          }
+                        />
+                      );
+                    })
+                  ) : (
+                    <Text variant="bodySmall" color="danger">
+                      No active Stores are available for selection.
+                    </Text>
+                  )}
+                  {!availabilityStoreIds.length ? (
+                    <Text variant="bodySmall" color="danger">
+                      Select at least one Store.
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
             </View>
-
           </View>
 
           {selectedAdjustmentType ? (
@@ -1175,30 +1253,20 @@ export function BenefitForm({
               </Text>
 
               <Text variant="bodySmall" color="textMuted">
-                Select every canonical Product this adjustment can apply to.
+                Choose the Products this Benefit applies to.
               </Text>
-              <ReferenceSelect<Store>
-                label="Browse products for Store"
-                value={selectedPickerStoreId}
-                items={pickerStores}
-                placeholder={pickerLoading ? "Loading Stores…" : "Select a Store"}
-                getItemId={(store) => store.id}
-                renderItemLabel={(store) => store.name}
-                disabled={pickerLoading || !pickerStores.length}
-                onChange={setSelectedPickerStoreId}
-              />
               <Text variant="bodySmall" color="textMuted">
-                This Store selection only filters products for browsing. It does
-                not set Benefit Store Availability.
+                Each Product appears once. Store availability is based on active
+                POS mappings for the {eligibleStores.length} selected Store(s).
               </Text>
               {pickerLoading || pickerSourceLoading ? (
                 <Text variant="bodySmall" color="textMuted">
-                  Loading this Store&apos;s selected Product Catalog…
+                  Loading eligible Store catalogs…
                 </Text>
               ) : null}
-              {pickerError ? (
+              {pickerError || pickerSourceError ? (
                 <Text variant="bodySmall" color="danger">
-                  {pickerError}
+                  {pickerError || pickerSourceError}
                 </Text>
               ) : null}
               {selectedProducts.length ? (
@@ -1215,11 +1283,9 @@ export function BenefitForm({
                         onValueChange={() => toggleCommerceProduct(id)}
                         label={productPickerLabel(id, product)}
                         description={
-                          !pickerCatalogId
-                            ? "Previously selected — Store catalog unavailable"
-                            : inCurrentCatalog
-                              ? undefined
-                              : "Previously selected — different catalog"
+                          inCurrentCatalog
+                            ? `Available at: ${(eligibleProductStores.get(id) ?? []).join(", ")}`
+                            : "Not available at any selected Store — remove before saving"
                         }
                       />
                     );
@@ -1231,49 +1297,36 @@ export function BenefitForm({
                 value={productSearch}
                 onChangeText={setProductSearch}
                 placeholder="Search product names"
-                editable={Boolean(pickerCatalogId) && !pickerSourceLoading}
+                editable={
+                  !pickerLoading &&
+                  !pickerSourceLoading &&
+                  !pickerError &&
+                  !pickerSourceError &&
+                  eligibleStores.length > 0
+                }
               />
               <ScrollView style={styles.productList} nestedScrollEnabled>
-                {!pickerLoading && !pickerSourceLoading && pickerCatalogId &&
+                {!pickerLoading &&
+                !pickerSourceLoading &&
+                !pickerSourceError &&
                 !filteredProducts.length ? (
                   <Text variant="bodySmall" color="textMuted">
-                    No unselected products match this Store catalog and search.
+                    No additional eligible Products match the selected Stores
+                    and search.
                   </Text>
                 ) : null}
                 {filteredProducts.map((product) => (
                   <Checkbox
                     key={product.productId}
                     value={false}
-                    onValueChange={() => toggleCommerceProduct(product.productId)}
+                    onValueChange={() =>
+                      toggleCommerceProduct(product.productId)
+                    }
                     label={productPickerLabel(product.productId)}
+                    description={`Available at: ${(eligibleProductStores.get(product.productId) ?? []).join(", ")}`}
                   />
                 ))}
               </ScrollView>
-              <CommercePricePreview
-                productIds={commerceProductIds}
-                productName={(productId) =>
-                  productPickerLabel(productId, productById.get(productId))
-                }
-                mappings={commerceMappings}
-                storeId={selectedPickerStoreId || undefined}
-                integrationConfigurationId={pickerIntegrationConfigurationId}
-                catalogSourceName={pickerCatalogSourceName}
-                adjustment={
-                  selectedAdjustmentType
-                    ? {
-                        adjustmentType: selectedAdjustmentType,
-                        percentage: Number(percentageInput) || 0,
-                        amountMinor: Math.round((Number(fixedAmountInput) || 0) * 100),
-                        currencyCode: commerceConfiguration?.currencyCode,
-                      }
-                    : null
-                }
-              />
-              {commerceError ? (
-                <Text variant="bodySmall" color="danger">
-                  {commerceError}
-                </Text>
-              ) : null}
               {selectedAdjustmentType === "PRODUCT_PERCENT_OFF" ? (
                 <Input
                   label="Percentage"
@@ -1293,6 +1346,43 @@ export function BenefitForm({
                   error={commerceError}
                   onChangeText={setFixedAmountInput}
                 />
+              ) : null}
+              <CommercePricePreview
+                productIds={commerceProductIds}
+                productName={(productId) =>
+                  productPickerLabel(productId, productById.get(productId))
+                }
+                mappings={commerceMappings}
+                storeContexts={eligibleStores.flatMap((store) => {
+                  const source = storeCatalogs[store.id];
+                  return source
+                    ? [
+                        {
+                          storeId: store.id,
+                          storeName: store.name,
+                          integrationConfigurationId: source.integrationId,
+                          catalogSourceName: source.name,
+                        },
+                      ]
+                    : [];
+                })}
+                adjustment={
+                  selectedAdjustmentType
+                    ? {
+                        adjustmentType: selectedAdjustmentType,
+                        percentage: Number(percentageInput) || 0,
+                        amountMinor: Math.round(
+                          (Number(fixedAmountInput) || 0) * 100,
+                        ),
+                        currencyCode: commerceConfiguration?.currencyCode,
+                      }
+                    : null
+                }
+              />
+              {commerceError ? (
+                <Text variant="bodySmall" color="danger">
+                  {commerceError}
+                </Text>
               ) : null}
             </View>
           ) : (
