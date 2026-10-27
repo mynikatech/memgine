@@ -42,11 +42,7 @@ import {
   type CommerceManualRelinkCandidate,
 } from "@/src/data/api/commerce-manual-relink-api";
 
-type ProductSection =
-  | "PRODUCTS"
-  | "CATEGORIES"
-  | "MAPPINGS"
-  | "SYNCHRONIZATION";
+type ProductSection = "PRODUCTS" | "MAPPINGS" | "SYNCHRONIZATION";
 
 type CatalogMaintenanceContext = {
   key: string;
@@ -151,6 +147,14 @@ export default function OrgAdminProducts() {
     useState<ProductSection>("PRODUCTS");
   // Selected catalog only: no organization-wide Product preload.
   const [products, setProducts] = useState<OrganizationProduct[]>([]);
+  const [previewCandidates, setPreviewCandidates] = useState<
+    OrganizationProduct[]
+  >([]);
+  const [previewCandidatesLoading, setPreviewCandidatesLoading] =
+    useState(false);
+  const [previewCandidateSearch, setPreviewCandidateSearch] = useState("");
+  const [previewCandidatesError, setPreviewCandidatesError] =
+    useState<string>();
   const [productsRefreshToken, setProductsRefreshToken] = useState(0);
   const [scopedProducts, setScopedProducts] = useState<OrganizationProduct[]>(
     [],
@@ -245,6 +249,25 @@ export default function OrgAdminProducts() {
   const [selectedCanonicalProductId, setSelectedCanonicalProductId] =
     useState("");
   const [savingResolution, setSavingResolution] = useState(false);
+  // W230-D: suggestions are never applied until reviewed and explicitly approved.
+  const [showBulkMatching, setShowBulkMatching] = useState(false);
+  const [bulkCandidates, setBulkCandidates] = useState<OrganizationProduct[]>(
+    [],
+  );
+  const [bulkCandidatesLoading, setBulkCandidatesLoading] = useState(false);
+  const [bulkError, setBulkError] = useState<string>();
+  const [bulkSelections, setBulkSelections] = useState<Record<string, string>>(
+    {},
+  );
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkReviewConfirmed, setBulkReviewConfirmed] = useState(false);
+  const [previewLinkNotice, setPreviewLinkNotice] = useState<string>();
+  const [partialSelections, setPartialSelections] = useState<string[]>([]);
+  const [partialSaving, setPartialSaving] = useState(false);
+  const [showPartialConfirmation, setShowPartialConfirmation] = useState(false);
+  const [partialError, setPartialError] = useState<string>();
+  const partialIdempotencyKey = useRef<string | null>(null);
+
   const [showCategoryCorrespondences, setShowCategoryCorrespondences] =
     useState(false);
   const [categoryCorrespondences, setCategoryCorrespondences] = useState<
@@ -319,6 +342,7 @@ export default function OrgAdminProducts() {
     setMaintenanceLoading(true);
     setMaintenanceError(undefined);
     if (storeChanged) {
+      setSuccessMessage(undefined);
       setMaintenanceContexts([]);
       setSelectedMaintenanceContextKey("");
       setSelectedManualCatalogId("");
@@ -636,9 +660,9 @@ export default function OrgAdminProducts() {
     switchStore();
   };
 
-  // W229: the main Products list uses a server-filtered query, not an org-wide
-  // array filtered in the browser. Do not dedupe by name or SKU.
-  const catalogProducts = scopedProducts;
+  // Manual catalogs use the catalog-scoped maintenance query. Configured Store
+  // catalogs instead derive their visible Products from external mappings below.
+
   useEffect(() => {
     let cancelled = false;
     setScopedProducts([]);
@@ -707,6 +731,36 @@ export default function OrgAdminProducts() {
       selectedMaintenanceContext?.externalCatalogId,
     ],
   );
+  // Canonical Product identity belongs to the organization, NOT the Store's
+  // catalog. Show each distinct linked canonical ID for this Store even when
+  // product.product_catalog_id points to a different historical catalog.
+  const storeProducts = useMemo<OrganizationProduct[]>(() => {
+    const byId = new Map<string, OrganizationProduct>();
+    for (const mapping of catalogMappings) {
+      if (!mapping.active || !mapping.productId) continue;
+      const snapshot = mapping.snapshot;
+      if (!byId.has(mapping.productId)) {
+        byId.set(mapping.productId, {
+          productId: mapping.productId,
+          organizationId: org,
+          productCode: "",
+          productName:
+            snapshot?.productName?.trim() ||
+            mapping.externalSku ||
+            mapping.externalProductId,
+          active: true,
+          versionNo: 0,
+          // Deliberately no productCatalogId: it is not ownership or visibility.
+        });
+      }
+    }
+    return [...byId.values()].sort((a, b) =>
+      a.productName.localeCompare(b.productName),
+    );
+  }, [catalogMappings, org]);
+  const catalogProducts = hasConfiguredCatalogContext
+    ? storeProducts
+    : scopedProducts;
   const productNameById = useMemo(
     () =>
       new Map(
@@ -747,6 +801,7 @@ export default function OrgAdminProducts() {
         return (
           !term ||
           [
+            mapping.snapshot?.productName,
             product?.productName,
             product?.categoryName,
             product?.sku,
@@ -765,11 +820,15 @@ export default function OrgAdminProducts() {
         const pb = b.productId ? productNameById.get(b.productId) : undefined;
         return (
           (
+            a.snapshot?.productName ||
             pa?.productName ||
             a.externalSku ||
             a.externalProductId
           ).localeCompare(
-            pb?.productName || b.externalSku || b.externalProductId,
+            b.snapshot?.productName ||
+              pb?.productName ||
+              b.externalSku ||
+              b.externalProductId,
             undefined,
             { sensitivity: "base" },
           ) ||
@@ -784,6 +843,66 @@ export default function OrgAdminProducts() {
     catalogs,
     selectedMaintenanceContext,
   ]);
+  const partialEligible = useMemo(
+    () =>
+      posPreview?.rows.filter(
+        (r) =>
+          r.action === "MATCHED" &&
+          r.eligibleForApply &&
+          Boolean(r.canonicalProductId) &&
+          !r.mappingId,
+      ) ?? [],
+    [posPreview],
+  );
+  const eligiblePartialIds = useMemo(
+    () => new Set(partialEligible.map((r) => r.rowId)),
+    [partialEligible],
+  );
+  const selectedPartialCount = partialSelections.filter((id) =>
+    eligiblePartialIds.has(id),
+  ).length;
+  const syncSelectedLinks = async () => {
+    if (!posPreview || partialSaving || selectedPartialCount === 0) return;
+    const rowIds = partialSelections.filter((id) => eligiblePartialIds.has(id));
+    const key =
+      partialIdempotencyKey.current ||
+      `partial-sync-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    partialIdempotencyKey.current = key;
+    setPartialSaving(true);
+    setPartialError(undefined);
+    try {
+      const result = await organizationProductApi.partialApplyPosCatalogSync(
+        org,
+        posPreview.previewId,
+        {
+          approved: true,
+          idempotencyKey: key,
+          rowIds,
+        },
+      );
+      if (!result.success) {
+        setPartialError(
+          result.error?.message ??
+            "Partial synchronization was not confirmed. Retry with the same batch; do not generate a new preview until verified.",
+        );
+        return;
+      }
+      setPosPreview(null);
+      setPartialSelections([]);
+      partialIdempotencyKey.current = null;
+      setPreviewLinkNotice(undefined);
+      setSuccessMessage(
+        `${result.data.mappedCount} selected Ajax Product links synchronized. Generate a fresh preview for the remaining Products.`,
+      );
+      await load();
+    } catch {
+      setPartialError(
+        "Partial synchronization outcome is uncertain. Retry the same selected batch; do not start a fresh synchronization yet.",
+      );
+    } finally {
+      setPartialSaving(false);
+    }
+  };
   const blockingPreviewRows =
     posPreview?.rows.filter(
       (row) => row.action === "CONFLICT" || row.action === "INVALID",
@@ -822,9 +941,24 @@ export default function OrgAdminProducts() {
     Object.prototype.hasOwnProperty.call(posPreview.summary, action)
       ? posPreview.summary[action]
       : "—";
-  const openPreviewResolution = (row: CommerceCatalogSyncPreviewRow) => {
+  const openPreviewResolution = async (row: CommerceCatalogSyncPreviewRow) => {
+    if (row.action !== "NEW" && row.action !== "CONFLICT") return;
     setResolvingPreviewRow(row);
     setSelectedCanonicalProductId("");
+    setPreviewCandidateSearch(row.productName);
+    setPreviewCandidates([]);
+    setPreviewCandidatesError(undefined);
+    setPreviewCandidatesLoading(true);
+    const result = await organizationProductApi.products(org);
+    setPreviewCandidatesLoading(false);
+    if (!result.success) {
+      setPreviewCandidatesError(
+        result.error?.message ??
+          "Could not retrieve existing Memgine Products.",
+      );
+      return;
+    }
+    setPreviewCandidates(result.data);
   };
   const formatMinor = (minor: number, currency: string) =>
     `${currency} ${(minor / 100).toFixed(2)}`;
@@ -896,15 +1030,252 @@ export default function OrgAdminProducts() {
         ? "Uncategorized"
         : "Category metadata unavailable";
 
-  const resolutionCandidates = resolvingPreviewRow
-    ? products.filter(
-        (product) =>
-          product.productCatalogId === catalogId &&
-          product.active &&
-          product.sku?.trim().toUpperCase() ===
-            resolvingPreviewRow.externalSku?.trim().toUpperCase(),
+  const resolutionCandidates = useMemo(() => {
+    if (!resolvingPreviewRow) return [];
+    const term = previewCandidateSearch.trim().toLocaleLowerCase();
+    const candidates = previewCandidates.filter(
+      (product) =>
+        product.organizationId === org &&
+        product.active &&
+        (!term ||
+          [
+            product.productName,
+            product.productCode,
+            product.sku,
+            product.catalogName,
+          ].some((value) => value?.toLocaleLowerCase().includes(term))),
+    );
+    const normalized = (value?: string | null) =>
+      value?.trim().toLocaleLowerCase() ?? "";
+    const proposed = normalized(resolvingPreviewRow.productName);
+    return candidates
+      .sort(
+        (a, b) =>
+          Number(normalized(b.productName) === proposed) -
+            Number(normalized(a.productName) === proposed) ||
+          a.productName.localeCompare(b.productName),
       )
-    : [];
+      .slice(0, 100);
+  }, [resolvingPreviewRow, previewCandidateSearch, previewCandidates, org]);
+  const newPreviewRows = useMemo(
+    () =>
+      posPreview?.rows.filter(
+        (row) => row.action === "NEW" && row.eligibleForApply,
+      ) ?? [],
+    [posPreview],
+  );
+  const bulkMatchSuggestions = useMemo(() => {
+    const normalize = (value?: string | null) =>
+      (value ?? "").trim().toLocaleLowerCase().replace(/\s+/g, " ");
+    return newPreviewRows.map((row) => {
+      const name = normalize(row.productName);
+      const sku = normalize(row.externalSku);
+      const candidates = bulkCandidates.filter((candidate) => {
+        if (!candidate.active || candidate.organizationId !== org) return false;
+        const sameName =
+          Boolean(name) && normalize(candidate.productName) === name;
+        const sameSku =
+          Boolean(sku) &&
+          mappings.some(
+            (link) =>
+              link.active &&
+              link.productId === candidate.productId &&
+              normalize(link.snapshot?.externalSku ?? link.externalSku) === sku,
+          );
+        return sameName || sameSku;
+      });
+      // A non-unique suggestion remains ambiguous and unselected.
+      return {
+        row,
+        candidates,
+        suggested: candidates.length === 1 ? candidates[0] : null,
+      };
+    });
+  }, [newPreviewRows, bulkCandidates, mappings, org]);
+  // W230-D: candidate categories belong to the external Store snapshot, not
+  // necessarily the canonical Product (whose POS-managed category may be NULL).
+  const candidateExternalLinks = (productId: string) =>
+    mappings.filter(
+      (mapping) => mapping.active && mapping.productId === productId,
+    );
+  const candidateCategoryLabel = (
+    mapping: OrganizationCommerceProductMapping,
+  ) => {
+    const snapshot = mapping.snapshot;
+    if (!snapshot || !snapshot.categoryMetadataAvailable)
+      return "Category unavailable";
+    return snapshot.externalCategories?.length
+      ? snapshot.externalCategories
+          .map(
+            (category) => category.categoryName?.trim() || "Unnamed category",
+          )
+          .join(", ")
+      : "Uncategorized";
+  };
+  const candidateStoreLabel = (mapping: OrganizationCommerceProductMapping) =>
+    stores.find((store) => store.id === mapping.storeId)?.name ||
+    (mapping.storeId ? "Store name unavailable" : "Organization-wide link");
+  const categoryComparisonLabel = (
+    importing: CommerceCatalogSyncPreviewRow,
+    mapping: OrganizationCommerceProductMapping,
+  ) => {
+    const normalize = (value?: string | null) =>
+      (value ?? "").trim().toLocaleLowerCase().replace(/\s+/g, " ");
+    const incoming = new Set(
+      (importing.externalCategories ?? [])
+        .map((category) => normalize(category.categoryName))
+        .filter(Boolean),
+    );
+    const existing = new Set(
+      (mapping.snapshot?.externalCategories ?? [])
+        .map((category) => normalize(category.categoryName))
+        .filter(Boolean),
+    );
+    if (
+      !importing.categoryMetadataAvailable ||
+      !mapping.snapshot?.categoryMetadataAvailable
+    )
+      return "Category comparison unavailable";
+    if (!incoming.size || !existing.size)
+      return "Category comparison inconclusive";
+    if (
+      incoming.size === existing.size &&
+      [...incoming].every((name) => existing.has(name))
+    )
+      return "Exact category match";
+    return [...incoming].some((name) => existing.has(name))
+      ? "Partial category match — review carefully"
+      : "Different category — review carefully";
+  };
+  const bulkSelectedEntries = useMemo(
+    () =>
+      bulkMatchSuggestions.flatMap(({ row, candidates }) => {
+        const product = candidates.find(
+          (candidate) => candidate.productId === bulkSelections[row.rowId],
+        );
+        return product ? [{ row, product }] : [];
+      }),
+    [bulkMatchSuggestions, bulkSelections],
+  );
+  const openBulkMatching = async () => {
+    if (!posPreview || previewExpired) return;
+    setBulkError(undefined);
+    setBulkSelections({});
+    setBulkReviewConfirmed(false);
+    setBulkCandidates([]);
+    setShowBulkMatching(true);
+    setBulkCandidatesLoading(true);
+    try {
+      const response = await organizationProductApi.products(org);
+      if (!response.success) {
+        setBulkError(
+          response.error?.message || "Unable to find Memgine Products.",
+        );
+      } else {
+        setBulkCandidates(response.data);
+      }
+    } catch {
+      setBulkError("Unable to search existing Memgine Products.");
+    } finally {
+      setBulkCandidatesLoading(false);
+    }
+  };
+  const saveBulkMatching = async () => {
+    if (
+      !posPreview ||
+      !bulkReviewConfirmed ||
+      bulkSaving ||
+      !bulkSelectedEntries.length
+    )
+      return;
+    setBulkSaving(true);
+    setBulkError(undefined);
+    try {
+      const response = await organizationProductApi.resolvePosCatalogBulk(
+        org,
+        posPreview.previewId,
+        {
+          selections: bulkSelectedEntries.map(({ row, product }) => ({
+            rowId: row.rowId,
+            canonicalProductId: product.productId,
+            expectedCanonicalProductVersionNo: product.versionNo,
+          })),
+        },
+      );
+      if (!response.success) {
+        setBulkError(
+          response.error?.message ||
+            "Bulk link review was rejected. Regenerate the preview if it expired.",
+        );
+        return;
+      }
+      const confirmedIds = new Set(
+        bulkSelectedEntries.map(({ row }) => row.rowId),
+      );
+      setPosPreview((previous) =>
+        previous
+          ? {
+              ...previous,
+              rows: previous.rows.map((row) => {
+                const selected = bulkSelectedEntries.find(
+                  (entry) => entry.row.rowId === row.rowId,
+                );
+                return selected
+                  ? {
+                      ...row,
+                      action: "MATCHED" as const,
+                      canonicalProductId: selected.product.productId,
+                      eligibleForApply: true,
+                      reason:
+                        "Administrator approved bulk canonical Product link",
+                    }
+                  : row;
+              }),
+              summary: {
+                ...previous.summary,
+                NEW: Math.max(
+                  0,
+                  (previous.summary.NEW ?? 0) - confirmedIds.size,
+                ),
+                MATCHED: (previous.summary.MATCHED ?? 0) + confirmedIds.size,
+              },
+            }
+          : previous,
+      );
+      setPreviewLinkNotice(
+        `${confirmedIds.size} external Products linked to existing Memgine Products in this preview. View under Matched or All records. Links take effect only on Apply.`,
+      );
+      setPreviewAction("MATCHED");
+      setPreviewSearch("");
+      setShowBulkMatching(false);
+      setBulkSelections({});
+      setBulkReviewConfirmed(false);
+    } catch {
+      setBulkError(
+        "Could not confirm the bulk resolution. The preview was not changed locally; refresh its status before retrying.",
+      );
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+  const canonicalCategories = useMemo(() => {
+    const byId = new Map<string, string>();
+
+    products
+      .filter(
+        (item) =>
+          item.productCatalogId === catalogId &&
+          Boolean(item.productCatalogCategoryId),
+      )
+      .forEach((item) => {
+        const id = item.productCatalogCategoryId!;
+        byId.set(id, item.categoryName ?? id);
+      });
+
+    return [...byId.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [products, catalogId]);
   const externalCategories = useMemo(() => {
     const byId = new Map<string, CommerceCatalogSyncExternalCategory>();
     posPreview?.rows.forEach((row) =>
@@ -918,24 +1289,6 @@ export default function OrgAdminProducts() {
       ),
     );
   }, [posPreview]);
-  const canonicalCategories = useMemo(() => {
-    const byId = new Map<string, string>();
-    products
-      .filter(
-        (product) =>
-          product.productCatalogId === catalogId &&
-          product.productCatalogCategoryId,
-      )
-      .forEach((product) =>
-        byId.set(
-          product.productCatalogCategoryId!,
-          product.categoryName ?? product.productCatalogCategoryId!,
-        ),
-      );
-    return [...byId.entries()]
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [catalogId, products]);
   const loadCategoryCorrespondences = async () => {
     if (!selectedSyncIntegrationId || !catalogId) return;
     const result = await organizationProductApi.categoryCorrespondences(
@@ -1044,6 +1397,7 @@ export default function OrgAdminProducts() {
       );
       return;
     }
+    const previousAction = resolvingPreviewRow.action;
     setPosPreview((current) =>
       current
         ? {
@@ -1056,18 +1410,26 @@ export default function OrgAdminProducts() {
                     action: "MATCHED",
                     eligibleForApply: true,
                     reason:
-                      "Administrator selected canonical product for ambiguous SKU",
+                      "Administrator explicitly linked existing Memgine Product",
                   }
                 : row,
             ),
             summary: {
               ...current.summary,
-              CONFLICT: Math.max(0, (current.summary.CONFLICT ?? 0) - 1),
+              [previousAction]: Math.max(
+                0,
+                (current.summary[previousAction] ?? 0) - 1,
+              ),
               MATCHED: (current.summary.MATCHED ?? 0) + 1,
             },
           }
         : current,
     );
+    setPreviewLinkNotice(
+      `${resolvingPreviewRow.productName} linked to an existing Memgine Product in this preview. View under Matched or All records. The link takes effect only on Apply.`,
+    );
+    setPreviewAction("MATCHED");
+    setPreviewSearch(resolvingPreviewRow.productName);
     setResolvingPreviewRow(null);
     setSelectedCanonicalProductId("");
   };
@@ -1112,7 +1474,11 @@ export default function OrgAdminProducts() {
       );
       return;
     }
+    setPartialSelections([]);
+    setPartialError(undefined);
+    partialIdempotencyKey.current = null;
     setPosPreview(result.data);
+    setPreviewLinkNotice(undefined);
     setShowPosSync(false);
     setPreviewSearch("");
     setPreviewAction("CHANGES");
@@ -1937,17 +2303,23 @@ export default function OrgAdminProducts() {
           flexWrap: "wrap",
         }}
       >
-        {(
-          ["PRODUCTS", "CATEGORIES", "MAPPINGS", "SYNCHRONIZATION"] as const
-        ).map((section) => (
-          <Button
-            key={section}
-            label={section[0] + section.slice(1).toLowerCase()}
-            size="sm"
-            variant={activeSection === section ? "primary" : "outline"}
-            onPress={() => setActiveSection(section)}
-          />
-        ))}
+        {(["PRODUCTS", "MAPPINGS", "SYNCHRONIZATION"] as const).map(
+          (section) => (
+            <Button
+              key={section}
+              label={
+                section === "MAPPINGS"
+                  ? "External Product Links"
+                  : section === "SYNCHRONIZATION"
+                    ? "Synchronization"
+                    : "Products"
+              }
+              size="sm"
+              variant={activeSection === section ? "primary" : "outline"}
+              onPress={() => setActiveSection(section)}
+            />
+          ),
+        )}
       </View>
       {activeSection === "PRODUCTS" ? (
         <>
@@ -2026,9 +2398,11 @@ export default function OrgAdminProducts() {
           </View>
           <View style={{ gap: theme.spacing.sm }}>
             <Text color="textMuted">
-              {scopedProductsLoading
-                ? "Loading selected catalog…"
-                : `Showing ${catalogProducts.length} Products in the selected catalog.`}
+              {!hasConfiguredCatalogContext && scopedProductsLoading
+                ? "Loading Products…"
+                : hasConfiguredCatalogContext
+                  ? `Showing ${catalogProducts.length} linked Memgine Products for the selected Store.`
+                  : `Showing ${catalogProducts.length} Products in the manual catalog.`}
               Expand a Product to view its details and available actions.
             </Text>
             <View
@@ -2051,7 +2425,7 @@ export default function OrgAdminProducts() {
                 Price
               </Text>
               <Text variant="bodyStrong" style={{ flex: 2 }}>
-                Mapping
+                External Link Status
               </Text>
               <Text variant="bodyStrong" style={{ width: 24 }}>
                 {" "}
@@ -2147,7 +2521,11 @@ export default function OrgAdminProducts() {
                       >
                         <Text variant="bodyStrong">Product details</Text>
                         <Text>Category: {productCategoryLabel(p)}</Text>
-                        <Text>Catalog: {p.catalogName || "—"}</Text>
+                        <Text>
+                          Store:{" "}
+                          {stores.find((store) => store.id === selectedStoreId)
+                            ?.name || "—"}
+                        </Text>
                         <Text>Product code: {p.productCode || "—"}</Text>
                         <Text>SKU: {p.sku || "—"}</Text>
                         <Text>Mapping: {health.label}</Text>
@@ -2161,24 +2539,32 @@ export default function OrgAdminProducts() {
                             gap: theme.spacing.sm,
                           }}
                         >
-                          <Button
-                            label="Edit Product"
-                            size="sm"
-                            variant="outline"
-                            onPress={() => {
-                              setEditing(p);
-                              setProduct({
-                                ...p,
-                                basePriceMinor: String(p.basePriceMinor ?? ""),
-                                externalProductId:
-                                  p.externalProductIds?.split(", ")[0] ?? "",
-                              });
-                              setShowProduct(true);
-                            }}
-                          />
+                          {!hasConfiguredCatalogContext ? (
+                            <Button
+                              label="Edit Product"
+                              size="sm"
+                              disabled={
+                                health.label === "Linked to Business System" ||
+                                health.label === "Needs attention"
+                              }
+                              variant="outline"
+                              onPress={() => {
+                                setEditing(p);
+                                setProduct({
+                                  ...p,
+                                  basePriceMinor: String(
+                                    p.basePriceMinor ?? "",
+                                  ),
+                                  externalProductId:
+                                    p.externalProductIds?.split(", ")[0] ?? "",
+                                });
+                                setShowProduct(true);
+                              }}
+                            />
+                          ) : null}
                           {canFix ? (
                             <Button
-                              label="Fix mapping"
+                              label="Resolve Conflicting External Links"
                               size="sm"
                               variant="outline"
                               onPress={() => openMappingFix(p)}
@@ -2213,7 +2599,7 @@ export default function OrgAdminProducts() {
                               {p.externalProductIds || "—"}
                             </Text>
                             <Text color="textMuted">
-                              Canonical Catalog ID: {p.productCatalogId}
+                              Canonical Product identity is organization-wide
                             </Text>
                           </View>
                         ) : null}
@@ -2225,48 +2611,12 @@ export default function OrgAdminProducts() {
             ) : (
               <Text color="textMuted">
                 {catalogId
-                  ? "No products are associated with this canonical catalog."
-                  : "Select a linked canonical catalog to view products."}
+                  ? "No linked Products are available for this Store."
+                  : "Select a Store or manual catalog to view Products."}
               </Text>
             )}
           </View>
         </>
-      ) : null}
-      {activeSection === "CATEGORIES" ? (
-        <View
-          style={{
-            gap: theme.spacing.sm,
-            padding: theme.spacing.md,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            borderRadius: theme.radius.md,
-          }}
-        >
-          <Text variant="bodyStrong">Canonical categories</Text>
-          {canonicalCategories.length ? (
-            canonicalCategories.map((category) => (
-              <Text key={category.id}>
-                {category.name} · {category.id}
-              </Text>
-            ))
-          ) : (
-            <Text color="textMuted">
-              No canonical category data is available for this catalog.
-            </Text>
-          )}
-          <Text color="textMuted">
-            External Poynt category correspondences are managed from a
-            synchronization preview because the existing API exposes external
-            categories only in that verified preview.
-          </Text>
-          <Button
-            label="Open synchronization"
-            size="sm"
-            variant="outline"
-            disabled={!selectedMaintenanceContext?.canSynchronize}
-            onPress={() => setActiveSection("SYNCHRONIZATION")}
-          />
-        </View>
       ) : null}
       {activeSection === "MAPPINGS" ? (
         <View
@@ -2278,9 +2628,9 @@ export default function OrgAdminProducts() {
             borderRadius: theme.radius.md,
           }}
         >
-          <Text variant="bodyStrong">Product mappings</Text>
+          <Text variant="bodyStrong">External Product Links</Text>
           <Input
-            label="Search mappings"
+            label="Search External Products"
             value={mappingSearch}
             onChangeText={setMappingSearch}
             placeholder="Product name, category or SKU"
@@ -2290,8 +2640,9 @@ export default function OrgAdminProducts() {
             mappings for the selected Store and integration.
           </Text>
           <Text color="textMuted">
-            Store-specific Poynt Product mappings. Technical identifiers are
-            available under Details when needed for reconciliation.
+            Store-specific external Products and their canonical Memgine Product
+            links. Technical identifiers are available under Details when needed
+            for reconciliation.
           </Text>
           <View
             style={{
@@ -2312,7 +2663,7 @@ export default function OrgAdminProducts() {
               SKU
             </Text>
             <Text variant="bodyStrong" style={{ flex: 2 }}>
-              POS Catalog
+              External Catalog
             </Text>
             <Text variant="bodyStrong" style={{ flex: 2 }}>
               Status
@@ -2349,10 +2700,10 @@ export default function OrgAdminProducts() {
                     }}
                   >
                     <Text style={{ flex: 3 }} variant="bodyStrong">
-                      {canonical?.productName ||
-                        (mapping.productId
-                          ? "Linked Memgine Product"
-                          : "Unlinked Product")}
+                      {mapping.snapshot?.productName?.trim() ||
+                        canonical?.productName ||
+                        mapping.externalSku ||
+                        mapping.externalProductId}
                     </Text>
                     <Text style={{ flex: 2 }}>
                       {mapping.snapshot?.categoryMetadataAvailable
@@ -2378,12 +2729,12 @@ export default function OrgAdminProducts() {
                       {!mapping.active
                         ? "Inactive"
                         : mapping.productId
-                          ? "Linked to Business System"
+                          ? "Linked"
                           : "Not linked"}
                     </Text>
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel={`Link or change Product for ${canonical?.productName || mapping.externalSku || "POS item"}`}
+                      accessibilityLabel={`Link or change Product for ${mapping.snapshot?.productName || mapping.externalSku || "external Product"}`}
                       disabled={!mapping.active || !mapping.storeId}
                       onPress={() => openManualRelink(mapping)}
                       style={{
@@ -2435,11 +2786,14 @@ export default function OrgAdminProducts() {
                         External Product Link details
                       </Text>
                       <Text>
-                        Product:{" "}
-                        {canonical?.productName ||
-                          (mapping.productId
-                            ? "Linked Memgine Product (other catalog)"
-                            : "Not linked to a Memgine Product")}
+                        External Product:{" "}
+                        {mapping.snapshot?.productName ||
+                          mapping.externalSku ||
+                          mapping.externalProductId}
+                      </Text>
+                      <Text>
+                        Linked canonical Product ID:{" "}
+                        {mapping.productId || "Not linked"}
                       </Text>
                       <Text>
                         Store:{" "}
@@ -2509,14 +2863,14 @@ export default function OrgAdminProducts() {
         onClose={() => {
           if (!relinkBusy) setRelinkMapping(null);
         }}
-        title="Link to Existing Memgine Product"
+        title="Change Memgine Product Link"
         scrollable
       >
         <View style={{ gap: theme.spacing.md }}>
           <Text color="textMuted">
-            Only this Store-specific Poynt mapping will be reassigned. Existing
-            Products, Benefits, Offers, and historical transactions will not be
-            merged.
+            Only this Store-specific external Product link will be reassigned.
+            Existing Products, Benefits, Offers, and historical transactions
+            will not be merged.
           </Text>
           {relinkMapping ? (
             <View
@@ -2612,7 +2966,7 @@ export default function OrgAdminProducts() {
             ))}
           </ScrollView>
           <Button
-            label="Preview mapping change"
+            label="Preview Link Change"
             variant="outline"
             disabled={
               !relinkTargetId ||
@@ -2635,7 +2989,9 @@ export default function OrgAdminProducts() {
                 borderRadius: theme.radius.md,
               }}
             >
-              <Text variant="bodyStrong">Review linking change</Text>
+              <Text variant="bodyStrong">
+                Review external Product link change
+              </Text>
               <Text>Current Product: {relinkPreview.currentProductName}</Text>
               <Text>New linked Product: {relinkPreview.targetProductName}</Text>
               {relinkPreview.alreadyLinked ? (
@@ -2974,10 +3330,10 @@ export default function OrgAdminProducts() {
                       {blockingPreviewRows.length === 1 ? "" : "s"}
                     </Text>
                     <Text color="textMuted">
-                      P3 applies approved previews atomically. No valid rows
-                      will be imported until every conflict and invalid record
-                      is resolved and a fresh preview is generated. Partial
-                      import is unavailable.
+                      Full-catalog Apply requires resolving these conflicts.
+                      Partial Sync is restricted to explicitly selected,
+                      reviewed links and may also be blocked until the preview
+                      is conflict-free.
                     </Text>
                   </View>
                 ) : null}
@@ -3010,10 +3366,102 @@ export default function OrgAdminProducts() {
                       }}
                     />
                     <Button
+                      label="Review Suggested Product Links"
+                      variant="outline"
+                      disabled={previewExpired || newPreviewRows.length === 0}
+                      onPress={() => void openBulkMatching()}
+                    />
+                    <Button
                       label="Review changes"
                       disabled={previewExpired}
                       onPress={() => setShowReviewChanges(true)}
                     />
+                  </View>
+                  {previewLinkNotice ? (
+                    <Text color="success">{previewLinkNotice}</Text>
+                  ) : null}
+                  <Text variant="bodyStrong">
+                    Create New:{" "}
+                    {posPreview?.rows.filter((row) => row.action === "NEW")
+                      .length ?? 0}
+                    {" · "}Link Existing:{" "}
+                    {posPreview?.rows.filter((row) => row.action === "MATCHED")
+                      .length ?? 0}
+                    {" · "}Total: {posPreview?.rows.length ?? 0}
+                  </Text>
+                  <View
+                    style={{
+                      gap: theme.spacing.sm,
+                      borderWidth: 1,
+                      borderColor: theme.colors.border,
+                      borderRadius: theme.radius.md,
+                      padding: theme.spacing.md,
+                    }}
+                  >
+                    <Text variant="bodyStrong">
+                      Incremental synchronization — reviewed links only
+                    </Text>
+                    <Text color="textMuted">
+                      Select already matched Ajax Products, then synchronize
+                      only those links. All unselected NEW Products remain
+                      untouched and no new canonical Products are created.
+                      Generate a fresh preview for the next batch.
+                    </Text>
+                    <Text>
+                      {selectedPartialCount} selected · {partialEligible.length}{" "}
+                      matched and eligible for this batch
+                    </Text>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        flexWrap: "wrap",
+                        gap: theme.spacing.sm,
+                      }}
+                    >
+                      <Button
+                        label="Show matched Products"
+                        size="sm"
+                        variant="outline"
+                        onPress={() => setPreviewAction("MATCHED")}
+                      />
+                      <Button
+                        label="Select all matched"
+                        size="sm"
+                        variant="outline"
+                        disabled={!partialEligible.length || partialSaving}
+                        onPress={() =>
+                          setPartialSelections(
+                            partialEligible.map((r) => r.rowId),
+                          )
+                        }
+                      />
+                      <Button
+                        label="Clear selection"
+                        size="sm"
+                        variant="outline"
+                        disabled={partialSaving || selectedPartialCount === 0}
+                        onPress={() => setPartialSelections([])}
+                      />
+                      <Button
+                        label={
+                          partialSaving
+                            ? "Synchronizing…"
+                            : `Sync ${selectedPartialCount} Selected Links`
+                        }
+                        disabled={
+                          partialSaving ||
+                          !selectedPartialCount ||
+                          previewExpired ||
+                          Boolean(partialError)
+                        }
+                        onPress={() => {
+                          setShowPartialConfirmation(true);
+                        }}
+                      />
+                    </View>
+                    {partialError ? (
+                      <Text color="danger">{partialError}</Text>
+                    ) : null}
                   </View>
                   <Input
                     label="Search preview"
@@ -3159,6 +3607,20 @@ export default function OrgAdminProducts() {
                         borderRadius: theme.radius.md,
                       }}
                     >
+                      {row.action === "MATCHED" &&
+                      eligiblePartialIds.has(row.rowId) ? (
+                        <Checkbox
+                          value={partialSelections.includes(row.rowId)}
+                          onValueChange={(checked) =>
+                            setPartialSelections((current) =>
+                              checked
+                                ? [...new Set([...current, row.rowId])]
+                                : current.filter((id) => id !== row.rowId),
+                            )
+                          }
+                          label="Include this reviewed link in the next partial synchronization"
+                        />
+                      ) : null}
                       <Text
                         variant="bodyStrong"
                         color={
@@ -3198,9 +3660,13 @@ export default function OrgAdminProducts() {
                           Dependent business rules require review.
                         </Text>
                       ) : null}
-                      {row.action === "CONFLICT" && row.externalSku ? (
+                      {row.action === "NEW" || row.action === "CONFLICT" ? (
                         <Button
-                          label="Resolve"
+                          label={
+                            row.action === "NEW"
+                              ? "Link Existing Memgine Product"
+                              : "Resolve Conflict"
+                          }
                           size="sm"
                           variant="outline"
                           onPress={() => openPreviewResolution(row)}
@@ -3464,12 +3930,251 @@ export default function OrgAdminProducts() {
         </View>
       </Modal>
       <Modal
+        visible={showPartialConfirmation}
+        onClose={() => {
+          if (!partialSaving) setShowPartialConfirmation(false);
+        }}
+        title="Confirm partial synchronization"
+      >
+        <View style={{ gap: theme.spacing.md }}>
+          <Text variant="bodyStrong">
+            Sync {selectedPartialCount} reviewed Product links?
+          </Text>
+          <Text>
+            Only the selected MATCHED preview rows will be applied. Their Ajax
+            external mappings and snapshots will be persisted against existing
+            Memgine Products. Unselected rows will not create Products or
+            mappings.
+          </Text>
+          <Text color="textMuted">
+            After success, generate a fresh Ajax preview to continue. This
+            preview will be marked applied.
+          </Text>
+          {partialError ? <Text color="danger">{partialError}</Text> : null}
+          <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+            <Button
+              label="Cancel"
+              variant="outline"
+              disabled={partialSaving}
+              onPress={() => setShowPartialConfirmation(false)}
+            />
+            <Button
+              label={
+                partialSaving
+                  ? "Synchronizing…"
+                  : `Confirm Sync ${selectedPartialCount}`
+              }
+              disabled={partialSaving || selectedPartialCount === 0}
+              onPress={() => {
+                setShowPartialConfirmation(false);
+                void syncSelectedLinks();
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={showBulkMatching}
+        onClose={() => {
+          if (!bulkSaving) setShowBulkMatching(false);
+        }}
+        title="Review Suggested Memgine Product Links"
+        scrollable={false}
+      >
+        <View
+          style={{
+            height: viewportHeight * 0.78,
+            minHeight: 0,
+            gap: theme.spacing.sm,
+          }}
+        >
+          <Text color="textMuted">
+            Suggestions are based on exact normalized names or external SKUs.
+            They are not automatically linked. Review each selected pair before
+            confirming. Unselected products remain NEW and will create a Memgine
+            Product on Apply.
+          </Text>
+          <Text variant="bodyStrong">
+            {bulkSelectedEntries.length} selected / {newPreviewRows.length} NEW
+            Products
+          </Text>
+          {bulkCandidatesLoading ? (
+            <Text>Finding existing Memgine Products…</Text>
+          ) : null}
+          {bulkError ? <Text color="danger">{bulkError}</Text> : null}
+          {!bulkCandidatesLoading &&
+          bulkMatchSuggestions.filter(({ candidates }) => candidates.length > 0)
+            .length === 0 ? (
+            <Text>
+              No exact name or SKU candidates were found. Individual Product
+              search remains available.
+            </Text>
+          ) : null}
+          <ScrollView
+            style={{
+              flex: 1,
+              minHeight: 0,
+              ...(Platform.OS === "web"
+                ? ({
+                    overflowY: "scroll",
+                    scrollbarWidth: "auto",
+                    scrollbarColor: "#888888 transparent",
+                  } as any)
+                : {}),
+            }}
+            contentContainerStyle={{
+              gap: theme.spacing.md,
+              paddingRight: theme.spacing.sm,
+              paddingBottom: theme.spacing.md,
+            }}
+            showsVerticalScrollIndicator
+            persistentScrollbar
+            nestedScrollEnabled
+          >
+            {bulkMatchSuggestions
+              .filter(({ candidates }) => candidates.length > 0)
+              .map(({ row, candidates, suggested }) => {
+                const picked = bulkSelections[row.rowId] ?? "";
+                return (
+                  <View
+                    key={row.rowId}
+                    style={{
+                      gap: theme.spacing.xs,
+                      padding: theme.spacing.sm,
+                      borderWidth: 1,
+                      borderColor: theme.colors.border,
+                      borderRadius: theme.radius.md,
+                    }}
+                  >
+                    <Text variant="bodyStrong">
+                      {row.productName} · {row.externalSku || "No SKU"}
+                    </Text>
+                    <Text color="textMuted">
+                      Importing category: {previewCategoryLabel(row)}
+                    </Text>
+                    <Text color="textMuted">
+                      External Product ID: {row.externalProductId}
+                      {row.externalVariantId
+                        ? ` · Variant: ${row.externalVariantId}`
+                        : ""}
+                    </Text>
+                    <Text color="textMuted">
+                      {candidates.length === 1
+                        ? "One suggested match"
+                        : `${candidates.length} possible matches — select carefully`}
+                    </Text>
+                    {candidates.slice(0, 10).map((candidate) => (
+                      <Pressable
+                        key={candidate.productId}
+                        accessibilityRole="button"
+                        onPress={() => {
+                          setBulkReviewConfirmed(false);
+                          setBulkSelections((previous) => {
+                            const updated = { ...previous };
+                            if (updated[row.rowId] === candidate.productId)
+                              delete updated[row.rowId];
+                            else updated[row.rowId] = candidate.productId;
+                            return updated;
+                          });
+                        }}
+                        style={{ paddingVertical: theme.spacing.xs }}
+                      >
+                        <Text>
+                          {picked === candidate.productId ? "☑" : "☐"}{" "}
+                          {candidate.productName}
+                        </Text>
+                        <Text color="textMuted">
+                          Canonical catalog:{" "}
+                          {candidate.catalogName || "Memgine catalog"}
+                        </Text>
+                        {candidateExternalLinks(candidate.productId).length ? (
+                          candidateExternalLinks(candidate.productId).map(
+                            (link) => (
+                              <View
+                                key={link.mappingId}
+                                style={{
+                                  paddingLeft: theme.spacing.md,
+                                  gap: theme.spacing.xs,
+                                }}
+                              >
+                                <Text color="textMuted">
+                                  Category: {candidateCategoryLabel(link)}
+                                </Text>
+                                <Text color="textMuted">
+                                  {candidateStoreLabel(link)} ·{" "}
+                                  {externalCatalogLabel(link)} · SKU:{" "}
+                                  {link.snapshot?.externalSku ||
+                                    link.externalSku ||
+                                    "Unavailable"}
+                                </Text>
+                                <Text color="textMuted">
+                                  {categoryComparisonLabel(row, link)}
+                                </Text>
+                              </View>
+                            ),
+                          )
+                        ) : (
+                          <Text color="textMuted">
+                            Existing external category unavailable — no active
+                            external links
+                          </Text>
+                        )}
+                      </Pressable>
+                    ))}
+                    {!picked && suggested ? (
+                      <Button
+                        label="Select unique suggestion"
+                        size="sm"
+                        variant="outline"
+                        onPress={() => {
+                          setBulkReviewConfirmed(false);
+                          setBulkSelections((previous) => ({
+                            ...previous,
+                            [row.rowId]: suggested.productId,
+                          }));
+                        }}
+                      />
+                    ) : null}
+                  </View>
+                );
+              })}
+          </ScrollView>
+          <Checkbox
+            value={bulkReviewConfirmed}
+            onValueChange={setBulkReviewConfirmed}
+            label="I reviewed these specific Product pairs and approve the selected links."
+          />
+          <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+            <Button
+              label="Cancel"
+              variant="outline"
+              disabled={bulkSaving}
+              onPress={() => setShowBulkMatching(false)}
+            />
+            <Button
+              label={
+                bulkSaving
+                  ? "Saving…"
+                  : `Confirm ${bulkSelectedEntries.length} Links`
+              }
+              disabled={
+                bulkSaving ||
+                bulkCandidatesLoading ||
+                !bulkReviewConfirmed ||
+                bulkSelectedEntries.length === 0
+              }
+              onPress={() => void saveBulkMatching()}
+            />
+          </View>
+        </View>
+      </Modal>
+      <Modal
         visible={resolvingPreviewRow !== null}
         onClose={() => {
           setResolvingPreviewRow(null);
           setSelectedCanonicalProductId("");
         }}
-        title="Resolve catalog conflict"
+        title="Link to Existing Memgine Product"
         scrollable
       >
         {resolvingPreviewRow ? (
@@ -3492,9 +4197,26 @@ export default function OrgAdminProducts() {
                   : "Metadata unavailable"}
             </Text>
             <Text color="textMuted">
-              Select the existing canonical product. This creates no mapping
-              until the separate atomic preview apply.
+              Search across all Memgine catalogs. Selecting a Product assigns
+              this external item to its canonical identity during Apply. No
+              existing Product is merged or deleted. Leave the row NEW to create
+              a new canonical Product instead.
             </Text>
+            <Input
+              label="Search existing Memgine Products (all organization catalogs)"
+              value={previewCandidateSearch}
+              onChangeText={(value) => {
+                setPreviewCandidateSearch(value);
+                setSelectedCanonicalProductId("");
+              }}
+              placeholder="Product name or internal code"
+            />
+            {previewCandidatesLoading ? (
+              <Text color="textMuted">Loading candidates…</Text>
+            ) : null}
+            {previewCandidatesError ? (
+              <Text color="danger">{previewCandidatesError}</Text>
+            ) : null}
             {resolutionCandidates.map((product) => (
               <Pressable
                 key={product.productId}
@@ -3514,24 +4236,40 @@ export default function OrgAdminProducts() {
                   {product.productName}
                 </Text>
                 <Text color="textMuted">
-                  {product.productId} · {product.categoryName ?? "No category"}{" "}
-                  · SKU {product.sku ?? "—"}
+                  Canonical catalog: {product.catalogName ?? "—"} · Code:{" "}
+                  {product.productCode}
                 </Text>
-                <Text color="textMuted">
-                  {product.basePriceMinor != null
-                    ? formatMinor(
-                        product.basePriceMinor,
-                        product.currencyCode ?? "",
-                      )
-                    : "No canonical price"}
-                </Text>
+                {mappings
+                  .filter(
+                    (link) =>
+                      link.productId === product.productId &&
+                      link.active &&
+                      link.snapshot,
+                  )
+                  .slice(0, 3)
+                  .map((link) => (
+                    <Text key={link.mappingId} color="textMuted">
+                      Existing external link:{" "}
+                      {stores.find((store) => store.id === link.storeId)
+                        ?.name ?? "Store"}
+                      {" · "}
+                      {link.snapshot?.productName ?? ""}
+                      {" · SKU "}
+                      {link.snapshot?.externalSku ?? "—"}
+                      {" · "}
+                      {formatMinor(
+                        link.snapshot!.unitPriceMinorSnapshot,
+                        link.snapshot!.currencyCode,
+                      )}
+                    </Text>
+                  ))}
               </Pressable>
             ))}
             {!resolutionCandidates.length ? (
               <Text color="danger">
-                No eligible same-catalog SKU candidates are available. Correct
-                the canonical catalog or source data, then create a fresh
-                preview.
+                {previewCandidatesLoading
+                  ? "Searching…"
+                  : "No matching Memgine Products. This row can remain NEW to create a Product on Apply."}
               </Text>
             ) : null}
             <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
@@ -3541,7 +4279,9 @@ export default function OrgAdminProducts() {
                 onPress={() => setResolvingPreviewRow(null)}
               />
               <Button
-                label={savingResolution ? "Saving…" : "Confirm selection"}
+                label={
+                  savingResolution ? "Saving…" : "Confirm Existing Product Link"
+                }
                 disabled={!selectedCanonicalProductId || savingResolution}
                 onPress={() => void resolvePreviewRow()}
               />
@@ -3829,9 +4569,13 @@ export default function OrgAdminProducts() {
                         Dependent business-rule warning.
                       </Text>
                     ) : null}
-                    {row.action === "CONFLICT" && row.externalSku ? (
+                    {row.action === "NEW" || row.action === "CONFLICT" ? (
                       <Button
-                        label="Inspect / resolve"
+                        label={
+                          row.action === "NEW"
+                            ? "Link Existing Memgine Product"
+                            : "Inspect / resolve"
+                        }
                         size="sm"
                         variant="outline"
                         onPress={() => {
@@ -3910,7 +4654,7 @@ export default function OrgAdminProducts() {
           setMappingProduct(null);
           setSelectedMappingId("");
         }}
-        title="Fix mapping"
+        title="Resolve Conflicting External Links"
         scrollable
       >
         <View style={{ gap: theme.spacing.md }}>
@@ -4006,7 +4750,7 @@ export default function OrgAdminProducts() {
                   }}
                 />
                 <Button
-                  label={resolvingMapping ? "Saving…" : "Save mapping"}
+                  label={resolvingMapping ? "Saving…" : "Resolve Legacy Links"}
                   disabled={!selectedMappingId || resolvingMapping}
                   onPress={() => void resolveMapping()}
                 />

@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 233-bulk-preview-product-linking
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/233-bulk-preview-product-linking.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

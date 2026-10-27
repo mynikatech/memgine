@@ -251,6 +251,31 @@ export const organizationProductApi = {
       `/api/v1/organizations/${organizationId}/commerce/catalog-sync/${encodeURIComponent(previewId)}/apply`,
       body,
     ),
+  partialApplyPosCatalogSync: (
+    organizationId: string,
+    previewId: string,
+    body: { approved: boolean; idempotencyKey: string; rowIds: string[] },
+  ): Promise<ApiResult<CommerceCatalogSyncApplyResult>> =>
+    httpClient.post(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/commerce/catalog-sync/${encodeURIComponent(previewId)}/partial-apply`,
+      body,
+    ),
+
+  resolvePosCatalogBulk: (
+    organizationId: string,
+    previewId: string,
+    body: {
+      selections: Array<{
+        rowId: string;
+        canonicalProductId: string;
+        expectedCanonicalProductVersionNo: number;
+      }>;
+    },
+  ): Promise<ApiResult<{ resolvedCount: number }>> =>
+    httpClient.post(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/commerce/catalog-sync/${encodeURIComponent(previewId)}/bulk-resolve`,
+      body,
+    ),
   resolvePosCatalogConflict: (
     organizationId: string,
     previewId: string,

@@ -67,6 +67,7 @@ import com.mynikatech.memgine.component.commerce.CommercePaymentProviderPolicy
 import com.mynikatech.memgine.component.commerce.CommerceRemotePaymentConfiguration
 import com.mynikatech.memgine.component.commerce.PlatformPoyntPaymentService
 import com.mynikatech.memgine.component.commerce.PlatformPoyntPaymentSql
+import com.mynikatech.memgine.component.commerce.commerceCatalogSyncBulkRoutes
 import com.mynikatech.memgine.component.commerce.PlatformPoyntTerminalBindingService
 import com.mynikatech.memgine.component.commerce.PlatformPoyntTerminalBindingSql
 import com.mynikatech.memgine.component.commerce.OrganizationPoyntTerminalBindingService
@@ -367,6 +368,7 @@ fun Application.configureRouting(
             commerceRoutes(commerceService)
             commerceManualRelinkRoutes(commerceService)
             commerceCatalogSyncRoutes(commerceCatalogSyncService)
+            commerceCatalogSyncBulkRoutes(database.jdbi)
             poyntPaymentBridgeCallbackRoutes(
                 commerceService,
                 counterCommercePaymentService,

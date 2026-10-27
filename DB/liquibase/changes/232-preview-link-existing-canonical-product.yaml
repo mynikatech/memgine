@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 232-preview-link-existing-canonical-product
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/232-preview-link-existing-canonical-product.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
