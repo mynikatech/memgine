@@ -65,7 +65,16 @@ class CommerceCatalogReconciliationService {
                     "External product is inactive", previousAttributes(mapping, input), proposed, input)
             }
             val previous = previousAttributes(mapping, input)
-            val action = if (previous != null && previous != proposed) {
+            val businessAttributesChanged = previous != null && (
+                previous.externalSku != proposed.externalSku ||
+                previous.productName != proposed.productName ||
+                previous.description != proposed.description ||
+                previous.currencyCode != proposed.currencyCode ||
+                previous.unitPriceMinor != proposed.unitPriceMinor ||
+                previous.active != proposed.active
+            )
+
+            val action = if (businessAttributesChanged) {
                 CommerceCatalogReconciliationAction.UPDATE
             } else {
                 CommerceCatalogReconciliationAction.UNCHANGED

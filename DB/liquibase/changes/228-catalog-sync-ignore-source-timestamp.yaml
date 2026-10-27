@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 228-catalog-sync-ignore-source-timestamp
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/228-catalog-sync-ignore-source-timestamp.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

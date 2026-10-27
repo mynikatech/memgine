@@ -12,7 +12,6 @@ import * as XLSX from "xlsx";
 import {
   Button,
   Checkbox,
-  DataTable,
   Input,
   Modal,
   ReferenceSelect,
@@ -178,12 +177,26 @@ export default function OrgAdminProducts() {
   const [relinkCandidatesLoading, setRelinkCandidatesLoading] = useState(false);
   const [relinkCandidatesError, setRelinkCandidatesError] = useState<string>();
   const [mappingSearch, setMappingSearch] = useState("");
+  const [expandedProductDetailsId, setExpandedProductDetailsId] = useState<
+    string | null
+  >(null);
+  const [expandedProductTechnicalId, setExpandedProductTechnicalId] = useState<
+    string | null
+  >(null);
   const [expandedMappingDetailsId, setExpandedMappingDetailsId] = useState<
     string | null
   >(null);
   const [showCatalogTechnicalDetails, setShowCatalogTechnicalDetails] =
     useState(false);
   const [relinkReason, setRelinkReason] = useState("");
+  const [showRelinkTechnicalDetails, setShowRelinkTechnicalDetails] =
+    useState(false);
+  const [showMappingFixTechnicalDetails, setShowMappingFixTechnicalDetails] =
+    useState(false);
+  const [expandedCategoryTechnicalId, setExpandedCategoryTechnicalId] =
+    useState<string | null>(null);
+  const [showPreviewTechnicalDetails, setShowPreviewTechnicalDetails] =
+    useState(false);
   const [relinkPreview, setRelinkPreview] =
     useState<CommerceManualRelinkPreview | null>(null);
   const [relinkBusy, setRelinkBusy] = useState(false);
@@ -204,11 +217,13 @@ export default function OrgAdminProducts() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [showApplyConfirmation, setShowApplyConfirmation] = useState(false);
   const [showReviewChanges, setShowReviewChanges] = useState(false);
+  const [previewDetailsRow, setPreviewDetailsRow] =
+    useState<CommerceCatalogSyncPreviewRow | null>(null);
   const [applyingPreview, setApplyingPreview] = useState(false);
   const [applyUncertain, setApplyUncertain] = useState(false);
   const [previewExpired, setPreviewExpired] = useState(false);
   const [previewSearch, setPreviewSearch] = useState("");
-  const [previewAction, setPreviewAction] = useState("ALL");
+  const [previewAction, setPreviewAction] = useState("CHANGES");
   const previewListRef = useRef<ScrollView>(null);
   const [previewListScrolled, setPreviewListScrolled] = useState(false);
   const [resolvingPreviewRow, setResolvingPreviewRow] =
@@ -731,7 +746,11 @@ export default function OrgAdminProducts() {
     const search = previewSearch.trim().toLowerCase();
     const rows = posPreview.rows.filter((row) => {
       const actionMatches =
-        previewAction === "ALL" || row.action === previewAction;
+        previewAction === "ALL" ||
+        (previewAction === "CHANGES" &&
+          row.action !== "MATCHED" &&
+          row.action !== "UNCHANGED") ||
+        row.action === previewAction;
       const textMatches =
         !search ||
         [
@@ -744,7 +763,7 @@ export default function OrgAdminProducts() {
         ].some((value) => value?.toLowerCase().includes(search));
       return actionMatches && textMatches;
     });
-    if (previewAction !== "ALL") return rows;
+    if (previewAction !== "ALL" && previewAction !== "CHANGES") return rows;
     const priority = (action: CommerceCatalogSyncPreviewRow["action"]) =>
       action === "CONFLICT" ? 0 : action === "INVALID" ? 1 : 2;
     return rows.sort(
@@ -762,6 +781,74 @@ export default function OrgAdminProducts() {
   };
   const formatMinor = (minor: number, currency: string) =>
     `${currency} ${(minor / 100).toFixed(2)}`;
+  // Only compare attributes supplied by the preview API. Never invent a previous value.
+  const previewAttributeRows = (row: CommerceCatalogSyncPreviewRow) => {
+    const before = row.previousAttributes;
+    const after = row.proposedAttributes;
+    if (!before || !after) return null;
+    const columns: Array<{
+      label: string;
+      before: string;
+      after: string;
+      changed: boolean;
+    }> = [
+      {
+        label: "Product name",
+        before: before.productName ?? "—",
+        after: after.productName ?? "—",
+        changed: before.productName !== after.productName,
+      },
+      {
+        label: "SKU",
+        before: before.externalSku ?? "—",
+        after: after.externalSku ?? "—",
+        changed: (before.externalSku ?? null) !== (after.externalSku ?? null),
+      },
+      {
+        label: "Price",
+        before: formatMinor(before.unitPriceMinor, before.currencyCode),
+        after: formatMinor(after.unitPriceMinor, after.currencyCode),
+        changed:
+          before.unitPriceMinor !== after.unitPriceMinor ||
+          before.currencyCode !== after.currencyCode,
+      },
+      {
+        label: "Description",
+        before: before.description ?? "—",
+        after: after.description ?? "—",
+        changed: (before.description ?? null) !== (after.description ?? null),
+      },
+      {
+        label: "Active",
+        before: before.active ? "Yes" : "No",
+        after: after.active ? "Yes" : "No",
+        changed: before.active !== after.active,
+      },
+    ];
+    return columns;
+  };
+  const previewChangeSummary = (row: CommerceCatalogSyncPreviewRow) => {
+    if (row.action !== "UPDATE") return null;
+    const details = previewAttributeRows(row);
+    if (!details) return "Change details unavailable";
+    const changed = details
+      .filter((entry) => entry.changed && entry.label !== "Source updated")
+      .map((entry) => entry.label);
+    return changed.length
+      ? `Changes: ${changed.join(", ")}`
+      : "No differences in supplied attributes";
+  };
+  const previewCategoryLabel = (row: CommerceCatalogSyncPreviewRow) =>
+    row.externalCategories?.length
+      ? row.externalCategories
+          .map(
+            (category) => category.categoryName?.trim() || "Unnamed category",
+          )
+          .join(", ")
+      : row.categoryMetadataAvailable
+        ? "Uncategorized"
+        : "Category metadata unavailable";
+
   const resolutionCandidates = resolvingPreviewRow
     ? products.filter(
         (product) =>
@@ -943,7 +1030,7 @@ export default function OrgAdminProducts() {
     setSelectedSyncStoreId(null);
     setPosPreview(null);
     setPreviewSearch("");
-    setPreviewAction("ALL");
+    setPreviewAction("CHANGES");
     setApplyUncertain(false);
     setPreviewExpired(false);
     setPreviewListScrolled(false);
@@ -981,7 +1068,7 @@ export default function OrgAdminProducts() {
     setPosPreview(result.data);
     setShowPosSync(false);
     setPreviewSearch("");
-    setPreviewAction("ALL");
+    setPreviewAction("CHANGES");
     setApplyUncertain(false);
     setPreviewExpired(false);
     applyIdempotencyKey.current = null;
@@ -1117,6 +1204,7 @@ export default function OrgAdminProducts() {
     setError(undefined);
     setSuccessMessage(undefined);
     setSelectedMappingId(recommendedIds.length === 1 ? recommendedIds[0] : "");
+    setShowMappingFixTechnicalDetails(false);
     setMappingProduct(item);
   };
   const resolveMapping = async () => {
@@ -1142,6 +1230,7 @@ export default function OrgAdminProducts() {
   };
   const openManualRelink = (mapping: OrganizationCommerceProductMapping) => {
     setRelinkMapping(mapping);
+    setShowRelinkTechnicalDetails(false);
     setRelinkTargetId("");
     setRelinkSearch("");
     setRelinkCandidates([]);
@@ -1871,98 +1960,198 @@ export default function OrgAdminProducts() {
               onPress={downloadImportTemplate}
             />
           </View>
-          <DataTable
-            data={catalogProducts}
-            keyExtractor={(p) => p.productId}
-            columns={[
-              {
-                key: "name",
-                title: "Product",
-                render: (p) => (
-                  <View>
-                    <Text variant="bodyStrong">{p.productName}</Text>
-                    <Text color="textMuted">{p.productCode}</Text>
-                  </View>
-                ),
-              },
-              {
-                key: "catalog",
-                title: "Catalog",
-                render: (p) => <Text>{p.catalogName ?? "—"}</Text>,
-              },
-              {
-                key: "price",
-                title: "Price",
-                render: (p) => (
-                  <Text>
-                    {p.basePriceMinor != null
-                      ? `${p.currencyCode ?? ""} ${(p.basePriceMinor / 100).toFixed(2)}`
-                      : "—"}
-                  </Text>
-                ),
-              },
-              {
-                key: "external",
-                title: "External ID",
-                render: (p) => <Text>{p.externalProductIds ?? "—"}</Text>,
-              },
-              {
-                key: "mapping",
-                title: "Mapping",
-                render: (p) => {
-                  const health = mappingHealth(p);
-                  const canFix = canFixOrganizationScopeMapping(p);
-                  return (
-                    <View>
+          <View style={{ gap: theme.spacing.sm }}>
+            <Text color="textMuted">
+              Showing {catalogProducts.length} Products in the selected catalog.
+              Expand a Product to view its details and available actions.
+            </Text>
+            <View
+              style={{
+                flexDirection: "row",
+                paddingHorizontal: theme.spacing.sm,
+                paddingVertical: theme.spacing.xs,
+                borderBottomWidth: 1,
+                borderColor: theme.colors.border,
+                gap: theme.spacing.sm,
+              }}
+            >
+              <Text variant="bodyStrong" style={{ flex: 3 }}>
+                Product
+              </Text>
+              <Text variant="bodyStrong" style={{ flex: 2 }}>
+                Price
+              </Text>
+              <Text variant="bodyStrong" style={{ flex: 2 }}>
+                Mapping
+              </Text>
+              <Text variant="bodyStrong" style={{ width: 24 }}>
+                {" "}
+              </Text>
+            </View>
+            {catalogProducts.length ? (
+              catalogProducts.map((p) => {
+                const health = mappingHealth(p);
+                const canFix = canFixOrganizationScopeMapping(p);
+                const expanded = expandedProductDetailsId === p.productId;
+                return (
+                  <View
+                    key={p.productId}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: theme.colors.border,
+                      borderRadius: theme.radius.sm,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`${expanded ? "Collapse" : "Expand"} details for ${p.productName}`}
+                      accessibilityState={{ expanded }}
+                      onPress={() =>
+                        setExpandedProductDetailsId(
+                          expanded ? null : p.productId,
+                        )
+                      }
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: theme.spacing.sm,
+                        padding: theme.spacing.sm,
+                      }}
+                    >
+                      <View style={{ flex: 3, minWidth: 0 }}>
+                        <Text variant="bodyStrong">{p.productName}</Text>
+                        <Text color="textMuted">
+                          {p.sku || p.productCode || "No SKU"}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 2, minWidth: 0 }}>
+                        <Text>
+                          {p.basePriceMinor != null
+                            ? `${p.currencyCode ?? ""} ${(p.basePriceMinor / 100).toFixed(2)}`
+                            : "—"}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 2, minWidth: 0 }}>
+                        <Text
+                          variant={
+                            health.label === "Needs attention"
+                              ? "bodyStrong"
+                              : "body"
+                          }
+                          color={
+                            health.label === "Needs attention"
+                              ? "danger"
+                              : "text"
+                          }
+                        >
+                          {health.label}
+                        </Text>
+                      </View>
                       <Text
-                        variant={
-                          health.label === "Needs attention"
-                            ? "bodyStrong"
-                            : "body"
-                        }
-                        color={
-                          health.label === "Needs attention" ? "danger" : "text"
-                        }
+                        color="textMuted"
+                        style={{ width: 24, textAlign: "center" }}
                       >
-                        {health.label}
+                        {expanded ? "−" : "+"}
                       </Text>
-                      {health.detail ? (
-                        <Text color="textMuted">{health.detail}</Text>
-                      ) : null}
-                      {canFix ? (
-                        <Button
-                          label="Fix mapping"
-                          size="sm"
-                          variant="outline"
-                          onPress={() => openMappingFix(p)}
-                        />
-                      ) : null}
-                    </View>
-                  );
-                },
-              },
-            ]}
-            actions={[
-              {
-                label: "Edit",
-                onPress: (p) => {
-                  setEditing(p);
-                  setProduct({
-                    ...p,
-                    basePriceMinor: String(p.basePriceMinor ?? ""),
-                    externalProductId:
-                      p.externalProductIds?.split(", ")[0] ?? "",
-                  });
-                  setShowProduct(true);
-                },
-              },
-            ]}
-            emptyMessage={
-              catalogId
-                ? "No products are associated with this canonical catalog."
-                : "Select a linked canonical catalog to view products."
-            }
-          />
+                    </Pressable>
+                    {expanded ? (
+                      <View
+                        style={{
+                          gap: theme.spacing.sm,
+                          padding: theme.spacing.md,
+                          backgroundColor: theme.colors.surfaceAlt,
+                          borderTopWidth: 1,
+                          borderColor: theme.colors.border,
+                        }}
+                      >
+                        <Text variant="bodyStrong">Product details</Text>
+                        <Text>
+                          Category: {p.categoryName || "Uncategorized"}
+                        </Text>
+                        <Text>Catalog: {p.catalogName || "—"}</Text>
+                        <Text>Product code: {p.productCode || "—"}</Text>
+                        <Text>SKU: {p.sku || "—"}</Text>
+                        <Text>Mapping: {health.label}</Text>
+                        {health.detail ? (
+                          <Text color="textMuted">{health.detail}</Text>
+                        ) : null}
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            flexWrap: "wrap",
+                            gap: theme.spacing.sm,
+                          }}
+                        >
+                          <Button
+                            label="Edit Product"
+                            size="sm"
+                            variant="outline"
+                            onPress={() => {
+                              setEditing(p);
+                              setProduct({
+                                ...p,
+                                basePriceMinor: String(p.basePriceMinor ?? ""),
+                                externalProductId:
+                                  p.externalProductIds?.split(", ")[0] ?? "",
+                              });
+                              setShowProduct(true);
+                            }}
+                          />
+                          {canFix ? (
+                            <Button
+                              label="Fix mapping"
+                              size="sm"
+                              variant="outline"
+                              onPress={() => openMappingFix(p)}
+                            />
+                          ) : null}
+                        </View>
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() =>
+                            setExpandedProductTechnicalId((current) =>
+                              current === p.productId ? null : p.productId,
+                            )
+                          }
+                          style={{
+                            paddingVertical: theme.spacing.xs,
+                            alignSelf: "flex-start",
+                          }}
+                        >
+                          <Text color="textMuted">
+                            {expandedProductTechnicalId === p.productId
+                              ? "Hide technical details ▲"
+                              : "Technical details ▼"}
+                          </Text>
+                        </Pressable>
+                        {expandedProductTechnicalId === p.productId ? (
+                          <View style={{ gap: theme.spacing.xs }}>
+                            <Text color="textMuted">
+                              Canonical Product ID: {p.productId}
+                            </Text>
+                            <Text color="textMuted">
+                              External Product IDs:{" "}
+                              {p.externalProductIds || "—"}
+                            </Text>
+                            <Text color="textMuted">
+                              Canonical Catalog ID: {p.productCatalogId}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })
+            ) : (
+              <Text color="textMuted">
+                {catalogId
+                  ? "No products are associated with this canonical catalog."
+                  : "Select a linked canonical catalog to view products."}
+              </Text>
+            )}
+          </View>
         </>
       ) : null}
       {activeSection === "CATEGORIES" ? (
@@ -2151,29 +2340,39 @@ export default function OrgAdminProducts() {
             merged.
           </Text>
           {relinkMapping ? (
-            <View style={{ gap: theme.spacing.xs }}>
+            <View
+              style={{
+                gap: theme.spacing.xs,
+                padding: theme.spacing.md,
+                borderRadius: theme.radius.md,
+                backgroundColor: theme.colors.surfaceAlt,
+              }}
+            >
               <Text variant="bodyStrong">
-                External SKU: {relinkMapping.externalSku || "—"}
+                {(relinkMapping.productId
+                  ? productNameById.get(relinkMapping.productId)?.productName
+                  : undefined) ?? "Unknown Product"}
+              </Text>
+              <Text color="textMuted">
+                Currently linked ·{" "}
+                {relinkMapping.externalSku
+                  ? `SKU ${relinkMapping.externalSku}`
+                  : "No SKU"}
               </Text>
               <Text color="textMuted">
                 Store:{" "}
                 {stores.find((item) => item.id === relinkMapping.storeId)
-                  ?.name ?? relinkMapping.storeId}
+                  ?.name ?? "Store name unavailable"}
               </Text>
               <Text color="textMuted">
-                External Product ID: {relinkMapping.externalProductId}
-              </Text>
-              <Text color="textMuted">
-                Current Product:{" "}
-                {products.find(
-                  (item) => item.productId === relinkMapping.productId,
-                )?.productName ?? relinkMapping.productId}
+                POS Catalog: {externalCatalogLabel(relinkMapping)}
               </Text>
             </View>
           ) : null}
           <Text color="textMuted">
-            Organization: {org} · Candidates are limited by the database to this
-            organization and the selected mapping’s integration.
+            Choose a Product from the eligible results below. Products with the
+            same name in different catalogs remain separate until you explicitly
+            select one.
           </Text>
           <Input
             label="Search existing Memgine Products"
@@ -2184,7 +2383,7 @@ export default function OrgAdminProducts() {
               setRelinkTargetId("");
               setRelinkPreview(null);
             }}
-            placeholder="Search by Product Name"
+            placeholder="Search by Product name or SKU"
           />
           <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled>
             {relinkCandidatesLoading ? (
@@ -2219,15 +2418,13 @@ export default function OrgAdminProducts() {
                   {item.categoryName?.trim() || "Uncategorized"})
                 </Text>
                 <Text color="textMuted">
-                  {item.catalogName} · SKU: {item.sku || "—"} ·{" "}
-                  {item.productCode}
+                  Catalog: {item.catalogName || "Not specified"} · SKU:{" "}
+                  {item.sku || "—"}
                 </Text>
                 <Text color="textMuted">
-                  {item.currencyCode || "—"}{" "}
                   {item.basePriceMinor == null
-                    ? "—"
-                    : (item.basePriceMinor / 100).toFixed(2)}{" "}
-                  · {item.productId}
+                    ? "Price unavailable"
+                    : `${item.currencyCode || ""} ${(item.basePriceMinor / 100).toFixed(2)}`}
                 </Text>
               </Pressable>
             ))}
@@ -2247,26 +2444,104 @@ export default function OrgAdminProducts() {
             onPress={() => void previewManualRelink()}
           />
           {relinkPreview ? (
-            <View style={{ gap: theme.spacing.xs }}>
-              <Text variant="bodyStrong">Verified change preview</Text>
-              <Text>
-                From: {relinkPreview.currentProductName} (
-                {relinkPreview.currentProductId})
-              </Text>
-              <Text>
-                To: {relinkPreview.targetProductName} (
-                {relinkPreview.targetProductId})
-              </Text>
-              <Text color="textMuted">
-                Catalog: {relinkPreview.externalCatalogId}
-              </Text>
-              <Text color="textMuted">
-                Pending sync previews:{" "}
-                {relinkPreview.pendingCatalogPreviewCount}
-              </Text>
-              <Text color="textMuted">{relinkPreview.warning}</Text>
+            <View
+              style={{
+                gap: theme.spacing.sm,
+                padding: theme.spacing.md,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.md,
+              }}
+            >
+              <Text variant="bodyStrong">Review linking change</Text>
+              <Text>Current Product: {relinkPreview.currentProductName}</Text>
+              <Text>New linked Product: {relinkPreview.targetProductName}</Text>
               {relinkPreview.alreadyLinked ? (
-                <Text>Already linked to this Product.</Text>
+                <Text color="textMuted">
+                  This POS item is already linked to the selected Product.
+                </Text>
+              ) : (
+                <Text color="textMuted">
+                  Only this POS item’s Product link will change. No Products are
+                  merged.
+                </Text>
+              )}
+              {relinkPreview.pendingCatalogPreviewCount > 0 ? (
+                <Text color="danger">
+                  {relinkPreview.pendingCatalogPreviewCount} pending catalog
+                  preview(s) may require regeneration.
+                </Text>
+              ) : null}
+              {relinkPreview.warning ? (
+                <Text color="textMuted">{relinkPreview.warning}</Text>
+              ) : null}
+            </View>
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setShowRelinkTechnicalDetails((value) => !value)}
+            style={{
+              alignSelf: "flex-start",
+              paddingVertical: theme.spacing.xs,
+            }}
+          >
+            <Text color="textMuted">
+              {showRelinkTechnicalDetails
+                ? "▾ Hide technical details"
+                : "▸ Technical details"}
+            </Text>
+          </Pressable>
+          {showRelinkTechnicalDetails && relinkMapping ? (
+            <View
+              style={{
+                gap: theme.spacing.xs,
+                backgroundColor: theme.colors.surfaceAlt,
+                padding: theme.spacing.md,
+                borderRadius: theme.radius.md,
+              }}
+            >
+              <Text color="textMuted">Organization ID: {org}</Text>
+              <Text color="textMuted">
+                External Product ID: {relinkMapping.externalProductId}
+              </Text>
+              <Text color="textMuted">
+                Mapping ID: {relinkMapping.mappingId}
+              </Text>
+              <Text color="textMuted">
+                Canonical Product ID: {relinkMapping.productId ?? "—"}
+              </Text>
+              <Text color="textMuted">
+                Store ID: {relinkMapping.storeId ?? "—"}
+              </Text>
+              <Text color="textMuted">
+                Integration ID: {relinkMapping.integrationConfigurationId}
+              </Text>
+              <Text color="textMuted">
+                External Catalog ID:{" "}
+                {mappingExternalCatalogId(relinkMapping) ?? "—"}
+              </Text>
+              {relinkPreview ? (
+                <>
+                  <Text color="textMuted">
+                    Previous Product ID: {relinkPreview.currentProductId}
+                  </Text>
+                  <Text color="textMuted">
+                    Selected Product ID: {relinkPreview.targetProductId}
+                  </Text>
+                  <Text color="textMuted">
+                    Preview Catalog ID: {relinkPreview.externalCatalogId}
+                  </Text>
+                </>
+              ) : null}
+              {relinkCandidates.find(
+                (item) => item.productId === relinkTargetId,
+              ) ? (
+                <Text color="textMuted">
+                  Selected Product code:{" "}
+                  {relinkCandidates.find(
+                    (item) => item.productId === relinkTargetId,
+                  )?.productCode ?? "—"}
+                </Text>
               ) : null}
             </View>
           ) : null}
@@ -2564,6 +2839,92 @@ export default function OrgAdminProducts() {
                     onChangeText={setPreviewSearch}
                     placeholder="Name, SKU, external ID, canonical ID, reason"
                   />
+                  {/* W229: Status overview keeps hidden rows discoverable. */}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      gap: theme.spacing.sm,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    {(
+                      [
+                        { label: "New", action: "NEW" },
+                        { label: "Updates", action: "UPDATE" },
+                        { label: "Unchanged", action: "UNCHANGED" },
+                      ] as const
+                    ).map((item) => (
+                      <Pressable
+                        key={item.action}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Show ${item.label.toLowerCase()} records`}
+                        onPress={() => setPreviewAction(item.action)}
+                        style={{
+                          flexGrow: 1,
+                          flexBasis: 110,
+                          minWidth: 110,
+                          gap: theme.spacing.xs,
+                          padding: theme.spacing.md,
+                          borderWidth: 1,
+                          borderColor: theme.colors.border,
+                          borderRadius: theme.radius.md,
+                        }}
+                      >
+                        <Text color="textMuted">{item.label}</Text>
+                        <Text variant="bodyStrong">
+                          {posPreview?.summary[item.action] ?? 0}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <Text variant="bodyStrong">Display records</Text>
+                  <View style={{ gap: theme.spacing.xs }}>
+                    {(
+                      [
+                        {
+                          action: "CHANGES",
+                          label:
+                            "Changes & items requiring attention (default)",
+                        },
+                        { action: "ALL", label: "All records" },
+                        { action: "UNCHANGED", label: "Unchanged only" },
+                        { action: "MATCHED", label: "Matched only" },
+                      ] as const
+                    ).map((item) => (
+                      <Pressable
+                        key={item.action}
+                        accessibilityRole="radio"
+                        accessibilityState={{
+                          checked: previewAction === item.action,
+                        }}
+                        onPress={() => setPreviewAction(item.action)}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: theme.spacing.sm,
+                          paddingVertical: theme.spacing.xs,
+                        }}
+                      >
+                        <Text
+                          color={
+                            previewAction === item.action
+                              ? "primary"
+                              : "textMuted"
+                          }
+                        >
+                          {previewAction === item.action ? "◉" : "○"}
+                        </Text>
+                        <Text
+                          color={
+                            previewAction === item.action ? "text" : "textMuted"
+                          }
+                        >
+                          {item.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <Text color="textMuted">Filter by status</Text>
                   <View
                     style={{
                       flexDirection: "row",
@@ -2572,11 +2933,8 @@ export default function OrgAdminProducts() {
                     }}
                   >
                     {[
-                      "ALL",
                       "NEW",
-                      "MATCHED",
                       "UPDATE",
-                      "UNCHANGED",
                       "INACTIVE",
                       "MISSING",
                       "CONFLICT",
@@ -2600,6 +2958,11 @@ export default function OrgAdminProducts() {
                     paddingVertical: theme.spacing.xs,
                   }}
                 >
+                  {filteredPreviewRows.length === 0 ? (
+                    <Text color="textMuted">
+                      No products match the selected display filter and search.
+                    </Text>
+                  ) : null}
                   {filteredPreviewRows.map((row) => (
                     <View
                       key={row.rowId}
@@ -2625,34 +2988,29 @@ export default function OrgAdminProducts() {
                         {row.action} · {row.productName}
                       </Text>
                       <Text color="textMuted">
-                        Product ID: {row.externalProductId}
-                        {row.externalVariantId
-                          ? ` · Variant: ${row.externalVariantId}`
-                          : ""}
-                      </Text>
-                      <Text>
-                        SKU: {row.externalSku ?? "—"} ·{" "}
+                        {row.externalSku ? `SKU: ${row.externalSku} · ` : ""}
                         {formatMinor(row.unitPriceMinor, row.currencyCode)}
                       </Text>
-                      <Text>
-                        Poynt categories:{" "}
-                        {row.externalCategories?.length
-                          ? row.externalCategories
-                              .map(
-                                (category) =>
-                                  `${category.categoryName ?? "Unnamed"} (${category.externalCategoryId})`,
-                              )
-                              .join(", ")
-                          : row.categoryMetadataAvailable
-                            ? "Uncategorized"
-                            : "Metadata unavailable"}
-                      </Text>
-                      <Text>
-                        Canonical match: {row.canonicalProductId ?? "—"}
-                      </Text>
-                      <Text color={row.reason ? "textMuted" : "text"}>
-                        Reason: {row.reason ?? "—"}
-                      </Text>
+                      <Text color="textMuted">{previewCategoryLabel(row)}</Text>
+                      {row.action === "UPDATE" ? (
+                        <Text color="textMuted">
+                          {previewChangeSummary(row)}
+                        </Text>
+                      ) : row.reason ? (
+                        <Text color="textMuted">{row.reason}</Text>
+                      ) : null}
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => setPreviewDetailsRow(row)}
+                        style={{
+                          alignSelf: "flex-start",
+                          paddingVertical: theme.spacing.xs,
+                        }}
+                      >
+                        <Text color="primary">
+                          › View changes and technical details
+                        </Text>
+                      </Pressable>
                       {row.hasDependentBusinessRules ? (
                         <Text color="danger">
                           Dependent business rules require review.
@@ -2763,15 +3121,46 @@ export default function OrgAdminProducts() {
                 <Text variant="bodyStrong">
                   {external.categoryName ?? "Unnamed Poynt category"}
                 </Text>
-                <Text color="textMuted">
-                  Poynt ID: {external.externalCategoryId}
-                  {external.parentExternalCategoryId
-                    ? ` · Parent: ${external.parentExternalCategoryId}`
-                    : ""}
-                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() =>
+                    setExpandedCategoryTechnicalId((current) =>
+                      current === external.externalCategoryId
+                        ? null
+                        : external.externalCategoryId,
+                    )
+                  }
+                  style={{
+                    alignSelf: "flex-start",
+                    paddingVertical: theme.spacing.xs,
+                  }}
+                >
+                  <Text color="textMuted">
+                    {expandedCategoryTechnicalId === external.externalCategoryId
+                      ? "▾ Hide technical details"
+                      : "▸ Technical details"}
+                  </Text>
+                </Pressable>
+                {expandedCategoryTechnicalId === external.externalCategoryId ? (
+                  <View style={{ gap: theme.spacing.xs }}>
+                    <Text color="textMuted">
+                      Poynt Category ID: {external.externalCategoryId}
+                    </Text>
+                    {external.parentExternalCategoryId ? (
+                      <Text color="textMuted">
+                        Parent Category ID: {external.parentExternalCategoryId}
+                      </Text>
+                    ) : null}
+                    {existing ? (
+                      <Text color="textMuted">
+                        Memgine Category ID: {existing.productCatalogCategoryId}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
                 <Text color={existing ? "text" : "textMuted"}>
                   {existing
-                    ? `Approved → ${canonical?.name ?? existing.productCatalogCategoryId} (${existing.productCatalogCategoryId})`
+                    ? `Approved → ${canonical?.name ?? "Category name unavailable"}`
                     : "No approved correspondence"}
                 </Text>
                 {existing ? (
@@ -2979,6 +3368,166 @@ export default function OrgAdminProducts() {
         ) : null}
       </Modal>
       <Modal
+        visible={previewDetailsRow !== null}
+        onClose={() => setPreviewDetailsRow(null)}
+        title={
+          previewDetailsRow
+            ? `${previewDetailsRow.productName} — details`
+            : "Product details"
+        }
+        scrollable
+      >
+        {previewDetailsRow ? (
+          <View
+            style={{ gap: theme.spacing.md, paddingBottom: theme.spacing.md }}
+          >
+            <Text variant="bodyStrong">
+              {previewDetailsRow.action} · {previewDetailsRow.productName}
+            </Text>
+            <Text color="textMuted">
+              Comparison of the stored Memgine snapshot and incoming POS values.
+            </Text>
+            {previewAttributeRows(previewDetailsRow) ? (
+              <View style={{ gap: theme.spacing.sm }}>
+                <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+                  <View style={{ flex: 1 }}>
+                    <Text variant="bodyStrong">Current Memgine</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text variant="bodyStrong">Incoming Poynt</Text>
+                  </View>
+                </View>
+                {previewAttributeRows(previewDetailsRow)!.map((field) => (
+                  <View
+                    key={field.label}
+                    style={{
+                      gap: theme.spacing.xs,
+                      paddingVertical: theme.spacing.xs,
+                      borderBottomWidth: 1,
+                      borderColor: theme.colors.border,
+                    }}
+                  >
+                    <Text
+                      variant="bodyStrong"
+                      color={field.changed ? "primary" : "textMuted"}
+                    >
+                      {field.label}
+                      {field.changed ? " · Changed" : ""}
+                    </Text>
+                    <View
+                      style={{ flexDirection: "row", gap: theme.spacing.sm }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text color="textMuted">{field.before}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text>{field.after}</Text>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+                {previewDetailsRow.action === "UPDATE" &&
+                !previewAttributeRows(previewDetailsRow)!.some(
+                  (field) => field.changed,
+                ) ? (
+                  <Text color="textMuted">
+                    No differences appear in the attributes supplied by the API.
+                    The UPDATE classification may depend on other mapping or
+                    sync data; no specific business-field change can be
+                    confirmed here.
+                  </Text>
+                ) : null}
+              </View>
+            ) : (
+              <Text color="textMuted">
+                Current-versus-incoming attributes were not returned for this
+                preview row. Its UPDATE reason cannot be confirmed from the
+                available data.
+              </Text>
+            )}
+            <View
+              style={{
+                gap: theme.spacing.xs,
+                paddingTop: theme.spacing.sm,
+                borderTopWidth: 1,
+                borderColor: theme.colors.border,
+              }}
+            >
+              <Pressable
+                accessibilityRole="button"
+                onPress={() =>
+                  setShowPreviewTechnicalDetails((value) => !value)
+                }
+                style={{
+                  alignSelf: "flex-start",
+                  paddingVertical: theme.spacing.xs,
+                }}
+              >
+                <Text color="textMuted">
+                  {showPreviewTechnicalDetails
+                    ? "▾ Hide technical details"
+                    : "▸ Technical details"}
+                </Text>
+              </Pressable>
+              {showPreviewTechnicalDetails ? (
+                <View style={{ gap: theme.spacing.xs }}>
+                  {(
+                    [
+                      ["Poynt Product ID", previewDetailsRow.externalProductId],
+                      ["Poynt Variant ID", previewDetailsRow.externalVariantId],
+                      [
+                        "Canonical Memgine Product ID",
+                        previewDetailsRow.canonicalProductId,
+                      ],
+                      ["Existing mapping ID", previewDetailsRow.mappingId],
+                      ["Preview row ID", previewDetailsRow.rowId],
+                      ["Store ID", posPreview?.storeId],
+                      [
+                        "Integration ID",
+                        posPreview?.integrationConfigurationId,
+                      ],
+                      ["Catalog ID", posPreview?.productCatalogId],
+                      [
+                        "Provider categories",
+                        previewDetailsRow.externalCategories
+                          ?.map(
+                            (category) =>
+                              `${category.categoryName ?? "Unnamed"} (${category.externalCategoryId})`,
+                          )
+                          .join(", "),
+                      ],
+                      ["Classification reason", previewDetailsRow.reason],
+                      [
+                        "Previous source timestamp",
+                        previewDetailsRow.previousAttributes?.sourceUpdatedAt,
+                      ],
+                      [
+                        "Incoming source timestamp",
+                        previewDetailsRow.proposedAttributes?.sourceUpdatedAt,
+                      ],
+                      [
+                        "Eligible to apply",
+                        previewDetailsRow.eligibleForApply ? "Yes" : "No",
+                      ],
+                    ] as Array<[string, string | null | undefined]>
+                  ).map(([label, value]) => (
+                    <View key={label} style={{ gap: 2 }}>
+                      <Text color="textMuted">{label}</Text>
+                      <Text>{value || "—"}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+            <Button
+              label="Close details"
+              variant="outline"
+              onPress={() => setPreviewDetailsRow(null)}
+            />
+          </View>
+        ) : null}
+      </Modal>
+      <Modal
         visible={showReviewChanges}
         onClose={() => setShowReviewChanges(false)}
         title="Review POS synchronization changes"
@@ -3062,26 +3611,27 @@ export default function OrgAdminProducts() {
                       {row.action} · {row.productName}
                     </Text>
                     <Text color="textMuted">
-                      Provider: {row.externalProductId} · SKU{" "}
-                      {row.externalSku ?? "—"} · Canonical:{" "}
-                      {row.canonicalProductId ?? "—"}
+                      {row.externalSku ? `SKU: ${row.externalSku} · ` : ""}
+                      {formatMinor(row.unitPriceMinor, row.currencyCode)}
                     </Text>
-                    <Text color="textMuted">
-                      Categories:{" "}
-                      {row.externalCategories?.length
-                        ? row.externalCategories
-                            .map(
-                              (category) =>
-                                `${category.categoryName ?? category.externalCategoryId} (${category.externalCategoryId})`,
-                            )
-                            .join(", ")
-                        : row.categoryMetadataAvailable
-                          ? "Uncategorized"
-                          : "Metadata unavailable"}
-                    </Text>
-                    <Text color={row.reason ? "textMuted" : "text"}>
-                      {row.reason ?? "No additional reason."}
-                    </Text>
+                    <Text color="textMuted">{previewCategoryLabel(row)}</Text>
+                    {row.action === "UPDATE" ? (
+                      <Text color="textMuted">{previewChangeSummary(row)}</Text>
+                    ) : row.reason ? (
+                      <Text color="textMuted">{row.reason}</Text>
+                    ) : null}
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => setPreviewDetailsRow(row)}
+                      style={{
+                        alignSelf: "flex-start",
+                        paddingVertical: theme.spacing.xs,
+                      }}
+                    >
+                      <Text color="primary">
+                        › View changes and technical details
+                      </Text>
+                    </Pressable>
                     {row.hasDependentBusinessRules ? (
                       <Text color="danger">
                         Dependent business-rule warning.
@@ -3211,12 +3761,19 @@ export default function OrgAdminProducts() {
                     >
                       <Text variant="bodyStrong">
                         {selected ? "●" : "○"}{" "}
-                        {mapping.externalSku || mapping.externalProductId}
+                        {mapping.externalSku || "POS Product (SKU unavailable)"}
                         {recommended ? "  Recommended" : ""}
                       </Text>
-                      <Text color="textMuted">
-                        External Product ID: {mapping.externalProductId}
-                      </Text>
+                      {showMappingFixTechnicalDetails ? (
+                        <View style={{ gap: theme.spacing.xs }}>
+                          <Text color="textMuted">
+                            External Product ID: {mapping.externalProductId}
+                          </Text>
+                          <Text color="textMuted">
+                            Mapping ID: {mapping.mappingId}
+                          </Text>
+                        </View>
+                      ) : null}
                       {mapping.externalSku ? (
                         <Text color="textMuted">
                           SKU: {mapping.externalSku}
@@ -3231,6 +3788,22 @@ export default function OrgAdminProducts() {
                   );
                 },
               )}
+              <Pressable
+                accessibilityRole="button"
+                onPress={() =>
+                  setShowMappingFixTechnicalDetails((value) => !value)
+                }
+                style={{
+                  alignSelf: "flex-start",
+                  paddingVertical: theme.spacing.xs,
+                }}
+              >
+                <Text color="textMuted">
+                  {showMappingFixTechnicalDetails
+                    ? "▾ Hide technical details"
+                    : "▸ Technical details"}
+                </Text>
+              </Pressable>
               <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
                 <Button
                   label="Cancel"
