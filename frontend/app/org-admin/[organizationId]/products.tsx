@@ -3542,9 +3542,19 @@ export default function OrgAdminProducts() {
               {previewDetailsRow.action} · {previewDetailsRow.productName}
             </Text>
             <Text color="textMuted">
-              Comparison of the stored Memgine snapshot and incoming POS values.
+              {previewDetailsRow.action === "NEW"
+                ? "New POS Product. No existing Memgine snapshot is available for comparison."
+                : previewDetailsRow.action === "MATCHED"
+                  ? "Existing canonical Memgine Product selected for this external Product."
+                  : previewDetailsRow.action === "UNCHANGED"
+                    ? "Product attributes match the stored snapshot."
+                    : previewDetailsRow.action === "UPDATE"
+                      ? "Comparison of the stored Memgine snapshot and incoming POS values. Changed fields are highlighted."
+                      : (previewDetailsRow.reason ??
+                        "Review the classification and technical details below.")}
             </Text>
-            {previewAttributeRows(previewDetailsRow) ? (
+            {previewDetailsRow.action === "UPDATE" &&
+            previewAttributeRows(previewDetailsRow) ? (
               <View style={{ gap: theme.spacing.sm }}>
                 <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
                   <View style={{ flex: 1 }}>
@@ -3595,13 +3605,13 @@ export default function OrgAdminProducts() {
                   </Text>
                 ) : null}
               </View>
-            ) : (
+            ) : previewDetailsRow.action === "UPDATE" ? (
               <Text color="textMuted">
-                Current-versus-incoming attributes were not returned for this
-                preview row. Its UPDATE reason cannot be confirmed from the
+                Previous and incoming Product attributes are unavailable. The
+                specific reason for this UPDATE cannot be confirmed from the
                 available data.
               </Text>
-            )}
+            ) : null}
             <View
               style={{
                 gap: theme.spacing.xs,

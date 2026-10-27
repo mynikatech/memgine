@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 230-pos-mapping-snapshot-categories
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/230-pos-mapping-snapshot-categories.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
