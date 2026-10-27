@@ -253,7 +253,7 @@ export default function OrgAdminMemberships() {
     membershipProductCode: string,
     existingPlans: SubscriptionPlan[] = [],
   ): string => {
-    const prefix = `${membershipProductCode.slice(0, 21)}-PLAN`;
+    const prefix = `${membershipProductCode.trim().slice(0, 55)}-PLAN`;
 
     const usedCodes = new Set(
       existingPlans
@@ -262,12 +262,14 @@ export default function OrgAdminMemberships() {
     );
 
     let sequence = 1;
+    let code: string;
 
-    while (usedCodes.has(`${prefix}-${String(sequence).padStart(3, "0")}`)) {
+    do {
+      code = `${prefix}-${String(sequence).padStart(3, "0")}`;
       sequence += 1;
-    }
+    } while (usedCodes.has(code.toUpperCase()));
 
-    return `${prefix}-${String(sequence).padStart(3, "0")}`;
+    return code;
   };
 
   const createInitialPlan = (
@@ -755,11 +757,7 @@ export default function OrgAdminMemberships() {
                   styles.secondaryButton,
                   {
                     opacity:
-                      saving || products.length === 0
-                        ? 0.5
-                        : pressed
-                          ? 0.8
-                          : 1,
+                      saving || products.length === 0 ? 0.5 : pressed ? 0.8 : 1,
                   },
                 ]}
               >

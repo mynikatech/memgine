@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 235-partial-sync-selected-new-products
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/235-partial-sync-selected-new-products.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

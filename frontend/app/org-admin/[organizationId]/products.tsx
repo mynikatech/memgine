@@ -847,9 +847,11 @@ export default function OrgAdminProducts() {
     () =>
       posPreview?.rows.filter(
         (r) =>
-          r.action === "MATCHED" &&
+          (r.action === "MATCHED" || r.action === "NEW") &&
           r.eligibleForApply &&
-          Boolean(r.canonicalProductId) &&
+          (r.action === "NEW"
+            ? !r.canonicalProductId
+            : Boolean(r.canonicalProductId)) &&
           !r.mappingId,
       ) ?? [],
     [posPreview],
@@ -860,6 +862,15 @@ export default function OrgAdminProducts() {
   );
   const selectedPartialCount = partialSelections.filter((id) =>
     eligiblePartialIds.has(id),
+  ).length;
+  const partialSelectedRows = partialEligible.filter((row) =>
+    partialSelections.includes(row.rowId),
+  );
+  const selectedNewCount = partialSelectedRows.filter(
+    (row) => row.action === "NEW",
+  ).length;
+  const selectedLinkedCount = partialSelectedRows.filter(
+    (row) => row.action === "MATCHED",
   ).length;
   const syncSelectedLinks = async () => {
     if (!posPreview || partialSaving || selectedPartialCount === 0) return;
@@ -892,7 +903,7 @@ export default function OrgAdminProducts() {
       partialIdempotencyKey.current = null;
       setPreviewLinkNotice(undefined);
       setSuccessMessage(
-        `${result.data.mappedCount} selected Ajax Product links synchronized. Generate a fresh preview for the remaining Products.`,
+        `Partial synchronization complete: ${result.data.createdCount} new Memgine Products created and ${result.data.mappedCount} Ajax mappings synchronized. Generate a fresh preview to continue.`,
       );
       await load();
     } catch {
@@ -3399,17 +3410,19 @@ export default function OrgAdminProducts() {
                     }}
                   >
                     <Text variant="bodyStrong">
-                      Incremental synchronization — reviewed links only
+                      Incremental synchronization — selected Products
                     </Text>
                     <Text color="textMuted">
-                      Select already matched Ajax Products, then synchronize
-                      only those links. All unselected NEW Products remain
-                      untouched and no new canonical Products are created.
-                      Generate a fresh preview for the next batch.
+                      Select individual NEW Products to create a canonical
+                      Memgine Product, or MATCHED Products to reuse an existing
+                      one. Only selected rows are synchronized; all other rows
+                      remain untouched. Generate a fresh preview after each
+                      batch.
                     </Text>
                     <Text>
-                      {selectedPartialCount} selected · {partialEligible.length}{" "}
-                      matched and eligible for this batch
+                      {selectedPartialCount} selected · {selectedLinkedCount}{" "}
+                      link existing · {selectedNewCount} create new ·{" "}
+                      {partialEligible.length} eligible
                     </Text>
                     <View
                       style={{
@@ -3428,11 +3441,20 @@ export default function OrgAdminProducts() {
                         label="Select all matched"
                         size="sm"
                         variant="outline"
-                        disabled={!partialEligible.length || partialSaving}
+                        disabled={
+                          !partialEligible.some(
+                            (r) => r.action === "MATCHED",
+                          ) || partialSaving
+                        }
                         onPress={() =>
-                          setPartialSelections(
-                            partialEligible.map((r) => r.rowId),
-                          )
+                          setPartialSelections((current) => [
+                            ...new Set([
+                              ...current,
+                              ...partialEligible
+                                .filter((r) => r.action === "MATCHED")
+                                .map((r) => r.rowId),
+                            ]),
+                          ])
                         }
                       />
                       <Button
@@ -3446,7 +3468,7 @@ export default function OrgAdminProducts() {
                         label={
                           partialSaving
                             ? "Synchronizing…"
-                            : `Sync ${selectedPartialCount} Selected Links`
+                            : `Sync ${selectedPartialCount} Selected Products`
                         }
                         disabled={
                           partialSaving ||
@@ -3607,8 +3629,7 @@ export default function OrgAdminProducts() {
                         borderRadius: theme.radius.md,
                       }}
                     >
-                      {row.action === "MATCHED" &&
-                      eligiblePartialIds.has(row.rowId) ? (
+                      {eligiblePartialIds.has(row.rowId) ? (
                         <Checkbox
                           value={partialSelections.includes(row.rowId)}
                           onValueChange={(checked) =>
@@ -3618,7 +3639,11 @@ export default function OrgAdminProducts() {
                                 : current.filter((id) => id !== row.rowId),
                             )
                           }
-                          label="Include this reviewed link in the next partial synchronization"
+                          label={
+                            row.action === "NEW"
+                              ? "Create new Memgine Product and sync this external Product"
+                              : "Sync this reviewed existing Product link"
+                          }
                         />
                       ) : null}
                       <Text
@@ -3938,12 +3963,13 @@ export default function OrgAdminProducts() {
       >
         <View style={{ gap: theme.spacing.md }}>
           <Text variant="bodyStrong">
-            Sync {selectedPartialCount} reviewed Product links?
+            Sync {selectedPartialCount} selected Products?
           </Text>
           <Text>
-            Only the selected MATCHED preview rows will be applied. Their Ajax
-            external mappings and snapshots will be persisted against existing
-            Memgine Products. Unselected rows will not create Products or
+            This batch will create {selectedNewCount} new Memgine Product(s) and
+            link {selectedLinkedCount} external Product(s) to existing Memgine
+            Products. Only the {selectedPartialCount} explicitly selected rows
+            will be applied. The other preview rows will not create Products or
             mappings.
           </Text>
           <Text color="textMuted">

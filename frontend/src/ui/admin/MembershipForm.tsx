@@ -102,7 +102,7 @@ export function MembershipForm({
     membershipProductCode: string,
     existingPlans: PlanDraft[],
   ): string => {
-    const prefix = `${membershipProductCode.slice(0, 21)}-PLAN`;
+    const prefix = `${membershipProductCode.trim().slice(0, 55)}-PLAN`;
 
     const usedCodes = new Set(
       existingPlans
@@ -111,12 +111,14 @@ export function MembershipForm({
     );
 
     let sequence = 1;
+    let code: string;
 
-    while (usedCodes.has(`${prefix}-${String(sequence).padStart(3, "0")}`)) {
+    do {
+      code = `${prefix}-${String(sequence).padStart(3, "0")}`;
       sequence += 1;
-    }
+    } while (usedCodes.has(code.toUpperCase()));
 
-    return `${prefix}-${String(sequence).padStart(3, "0")}`;
+    return code;
   };
 
   const createPlan = (): PlanDraft => {
