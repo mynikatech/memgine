@@ -35,6 +35,11 @@ import type {
   OfferCommerceConfiguration,
   MembershipOfferApplicabilityWrite,
 } from "@/src/data/api/offer-commerce-api";
+import {
+  organizationProductApi,
+  type OrganizationProduct,
+} from "@/src/data/api/organization-product-api";
+import { CommerceStoreCatalogSourceApi } from "@/src/data/api/commerce-store-catalog-source-api";
 import { CommercePricePreview } from "./CommercePricePreview";
 
 type OfferFormProps = {
@@ -45,7 +50,7 @@ type OfferFormProps = {
   existingOffers: Offer[];
   usageRules: OfferUsageRule[];
   commerceMappings: CommerceProductMapping[];
-  posProducts: Array<{ id: string; name: string }>;
+  posProducts: Array<{ id: string; name: string; code?: string }>;
   commerceConfiguration: OfferCommerceConfiguration | null;
   membershipConfiguration: MembershipOfferApplicabilityWrite | null;
   additionalPosCommerceConfiguration?: OfferCommerceConfiguration | null;
@@ -354,6 +359,38 @@ export function OfferForm({
   const [membershipApplicability, setMembershipApplicability] =
     useState<MembershipOfferApplicabilityWrite | null>(membershipConfiguration);
   const [defaultCurrency, setDefaultCurrency] = useState("CAD");
+  const [availabilityMode, setAvailabilityMode] = useState<
+    "ALL_STORES" | "SELECTED_STORES"
+  >(
+    () =>
+      offer.storeAvailability?.mode ??
+      (offer.storeId ? "SELECTED_STORES" : "ALL_STORES"),
+  );
+  const [availabilityStoreIds, setAvailabilityStoreIds] = useState<string[]>(
+    () => offer.storeAvailability?.storeIds ?? (offer.storeId ? [offer.storeId] : []),
+  );
+  const [activeStoreIds, setActiveStoreIds] = useState<Set<string>>(
+    () => new Set(stores.filter((store) => !store.isDeleted).map((store) => store.id)),
+  );
+  const [storeAvailabilityLoading, setStoreAvailabilityLoading] = useState(true);
+  const [organizationProducts, setOrganizationProducts] = useState<
+    OrganizationProduct[]
+  >([]);
+  const [organizationProductsLoaded, setOrganizationProductsLoaded] =
+    useState(false);
+  const [storeCatalogSources, setStoreCatalogSources] = useState<
+    Record<
+      string,
+      {
+        integrationConfigurationId?: string;
+        externalCatalogId?: string;
+        catalogName?: string;
+      }
+    >
+  >({});
+  const [storeCatalogSourcesLoading, setStoreCatalogSourcesLoading] =
+    useState(false);
+  const catalogSourceApi = useMemo(() => new CommerceStoreCatalogSourceApi(), []);
 
   const timeZoneOptions = useMemo(getTimeZoneOptions, []);
 
@@ -373,6 +410,73 @@ export function OfferForm({
       mounted = false;
     };
   }, [offer.organizationId]);
+
+  useEffect(() => {
+    let mounted = true;
+    setOrganizationProductsLoaded(false);
+    void organizationProductApi
+      .products(offer.organizationId)
+      .then((result) => {
+        if (!mounted) return;
+        if (result.success) {
+          setOrganizationProducts(result.data);
+        } else {
+          setOrganizationProducts([]);
+        }
+      })
+      .catch(() => {
+        if (mounted) setOrganizationProducts([]);
+      })
+      .finally(() => {
+        if (mounted) setOrganizationProductsLoaded(true);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [offer.organizationId]);
+
+  useEffect(() => {
+    if (mode !== "POS_PRODUCT") {
+      setStoreAvailabilityLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    setStoreAvailabilityLoading(true);
+    void services.status
+      .listStoreStatuses()
+      .then((statuses) => {
+        if (!mounted) return;
+        const activeStatusIds = new Set(
+          statuses
+            .filter(
+              (status) =>
+                status.statusCode?.trim().toUpperCase() === "ACTIVE" &&
+                status.isActive,
+            )
+            .map((status) => status.id),
+        );
+        setActiveStoreIds(
+          new Set(
+            stores
+              .filter(
+                (store) =>
+                  !store.isDeleted && activeStatusIds.has(store.storeStatusId),
+              )
+              .map((store) => store.id),
+          ),
+        );
+      })
+      .catch(() => {
+        if (mounted) setActiveStoreIds(new Set());
+      })
+      .finally(() => {
+        if (mounted) setStoreAvailabilityLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [mode, stores]);
 
   const selectedTargetProductId =
     membershipApplicability?.behavior === "PURCHASE_DISCOUNT"
@@ -406,36 +510,133 @@ export function OfferForm({
         ?.plans.filter((plan) => !plan.isDeleted) ?? []
     );
   }, [membershipProducts, membershipApplicability?.sourceMembershipProductId]);
-  // This is a UX-only Store filter. The backend must verify the effective
-  // external catalog before accepting or applying an Offer mapping.
-  const storeScopedPosProductIds = useMemo(() => {
-    if (!draft.storeId) return new Set<string>();
-    return new Set(
-      commerceMappings
-        .filter(
-          (mapping) =>
-            mapping.active &&
-            mapping.storeId === draft.storeId &&
-            Boolean(mapping.productId),
-        )
-        .map((mapping) => mapping.productId as string),
-    );
-  }, [commerceMappings, draft.storeId]);
+  const activeStores = useMemo(
+    () => stores.filter((store) => activeStoreIds.has(store.id)),
+    [activeStoreIds, stores],
+  );
+  const productMappedStoreIds = useMemo(() => {
+    const mappedStores = new Map<string, Set<string>>();
+    for (const mapping of commerceMappings) {
+      if (
+        !mapping.active ||
+        !mapping.productId ||
+        !mapping.storeId ||
+        !activeStoreIds.has(mapping.storeId)
+      ) {
+        continue;
+      }
+      const source = storeCatalogSources[mapping.storeId];
+      if (
+        !source?.integrationConfigurationId ||
+        !source.externalCatalogId ||
+        mapping.integrationConfigurationId !== source.integrationConfigurationId ||
+        mapping.externalCatalogId !== source.externalCatalogId
+      ) {
+        continue;
+      }
+      const storesForProduct = mappedStores.get(mapping.productId) ?? new Set<string>();
+      storesForProduct.add(mapping.storeId);
+      mappedStores.set(mapping.productId, storesForProduct);
+    }
+    return mappedStores;
+  }, [activeStoreIds, commerceMappings, storeCatalogSources]);
+  const scopeStoreIds = useMemo(
+    () =>
+      availabilityMode === "ALL_STORES"
+        ? activeStores.map((store) => store.id)
+        : availabilityStoreIds,
+    [activeStores, availabilityMode, availabilityStoreIds],
+  );
+  useEffect(() => {
+    let mounted = true;
+    setStoreCatalogSources({});
+    if (mode !== "POS_PRODUCT" || scopeStoreIds.length === 0) {
+      setStoreCatalogSourcesLoading(false);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    setStoreCatalogSourcesLoading(true);
+    void Promise.all(
+      scopeStoreIds.map(async (storeId) => {
+        const result = await catalogSourceApi.get(offer.organizationId, storeId);
+        const source = result.success ? result.data.source : undefined;
+        return [
+          storeId,
+          {
+            integrationConfigurationId:
+              source?.integrationConfigurationId?.trim() || undefined,
+            externalCatalogId: source?.catalogId?.trim() || undefined,
+            catalogName: source?.catalogName?.trim() || undefined,
+          },
+        ] as const;
+      }),
+    )
+      .then((rows) => {
+        if (mounted) setStoreCatalogSources(Object.fromEntries(rows));
+      })
+      .catch(() => {
+        if (mounted) setStoreCatalogSources({});
+      })
+      .finally(() => {
+        if (mounted) setStoreCatalogSourcesLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [catalogSourceApi, mode, offer.organizationId, scopeStoreIds]);
+  const canonicalPosProducts = useMemo(() => {
+    const byId = new Map<
+      string,
+      { id: string; name: string; code?: string; categoryName?: string | null }
+    >();
+    const source = organizationProductsLoaded
+      ? organizationProducts.map((product) => ({
+          id: product.productId,
+          name: product.productName,
+          code: product.productCode,
+          categoryName: product.categoryName,
+        }))
+      : posProducts;
+    for (const product of source) {
+      if (!byId.has(product.id)) byId.set(product.id, product);
+    }
+    return [...byId.values()];
+  }, [organizationProducts, organizationProductsLoaded, posProducts]);
+  const canonicalPosProductIds = useMemo(
+    () => new Set(canonicalPosProducts.map((product) => product.id)),
+    [canonicalPosProducts],
+  );
+  const canonicalProductName = (productId: string) =>
+    canonicalPosProducts.find((product) => product.id === productId)?.name ??
+    draft.products?.find((product) => product.productId === productId)
+      ?.productName ??
+    "Previously selected Product";
   const filteredPosProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
-    const scoped = posProducts.filter((product) =>
-      storeScopedPosProductIds.has(product.id),
-    );
     return query
-      ? scoped.filter((product) => product.name.toLowerCase().includes(query))
-      : scoped;
-  }, [posProducts, productSearch, storeScopedPosProductIds]);
-  const posProductNames = (configuration: OfferCommerceConfiguration) =>
-    configuration.productIds.map(
-      (productId) =>
-        posProducts.find((product) => product.id === productId)?.name ??
-        productId,
+      ? canonicalPosProducts.filter((product) =>
+          `${product.name} ${product.code ?? ""}`.toLowerCase().includes(query),
+        )
+      : canonicalPosProducts;
+  }, [canonicalPosProducts, productSearch]);
+  const productIsCompatibleWithScope = (productId: string) => {
+    const mappedStoreIds = productMappedStoreIds.get(productId);
+    return Boolean(
+      mappedStoreIds && scopeStoreIds.some((storeId) => mappedStoreIds.has(storeId)),
     );
+  };
+  const productMappingDescription = (productId: string) => {
+    const mappedStoreIds = productMappedStoreIds.get(productId) ?? new Set<string>();
+    const names = activeStores
+      .filter((store) => mappedStoreIds.has(store.id))
+      .map((store) => store.name);
+    if (!names.length) return "No active Store mapping";
+    return `Mapped at: ${names.join(", ")}`;
+  };
+  const posProductNames = (configuration: OfferCommerceConfiguration) =>
+    configuration.productIds.map(canonicalProductName);
 
   const readOnlyMode: "POS_PRODUCT" | "MEMBERSHIP_PRODUCT" | null = readOnly
     ? targetMode
@@ -807,13 +1008,26 @@ export function OfferForm({
     }
 
     if (mode === "POS_PRODUCT") {
-      if (!draft.storeId) return "Select a Store for POS Product availability.";
       if (!applicability?.productIds.length)
         return "Select at least one Org Product.";
-      if (
-        applicability.productIds.some((id) => !storeScopedPosProductIds.has(id))
-      )
-        return "One or more selected POS Products are no longer mapped to this Store. Remove them before saving.";
+      if (storeAvailabilityLoading) {
+        return "Store availability is still loading.";
+      }
+      if (storeCatalogSourcesLoading) {
+        return "Store catalog availability is still loading.";
+      }
+      if (availabilityMode === "ALL_STORES" && availabilityStoreIds.length) {
+        return "ALL_STORES availability cannot include selected Stores.";
+      }
+      if (availabilityMode === "SELECTED_STORES") {
+        if (!availabilityStoreIds.length) return "Select at least one Store.";
+        if (availabilityStoreIds.some((id) => !activeStoreIds.has(id))) {
+          return "One or more selected Stores are no longer active.";
+        }
+      }
+      if (applicability.productIds.some((id) => !productIsCompatibleWithScope(id))) {
+        return "Each selected Org Product must have an active mapping in the configured Store scope.";
+      }
     } else if (mode === "MEMBERSHIP_PRODUCT") {
       if (!membershipApplicability)
         return "Membership Product configuration is required.";
@@ -972,7 +1186,25 @@ export function OfferForm({
             ? undefined
             : draft.discountPercentage,
         membershipProductId: draft.membershipProductId || undefined,
-        storeId: draft.storeId || undefined,
+        // Canonical product eligibility is stored on the Offer itself. Commerce
+        // applicability only carries the adjustment configuration.
+        productIds:
+          mode === "POS_PRODUCT"
+            ? applicability?.productIds ?? []
+            : draft.productIds,
+        // Org Product Offer Store scope is persisted through storeAvailability.
+        // The legacy single Store projection must not represent a multi-Store scope.
+        storeId: mode === "POS_PRODUCT" ? undefined : draft.storeId || undefined,
+        storeAvailability:
+          mode === "POS_PRODUCT"
+            ? {
+                mode: availabilityMode,
+                storeIds:
+                  availabilityMode === "SELECTED_STORES"
+                    ? availabilityStoreIds
+                    : [],
+              }
+            : undefined,
         effectiveDate: draft.effectiveDate.trim(),
         expiryDate: draft.expiryDate?.trim() || undefined,
         ctaLabel: draft.ctaLabel.trim(),
@@ -1309,15 +1541,17 @@ export function OfferForm({
               disabled={readOnly}
             />
 
-            <ReferenceSelect
-              label="Store"
-              value={draft.storeId ?? ""}
-              items={storeItems}
-              allowClear
-              placeholder="All stores"
-              onChange={(value) => update("storeId", value || undefined)}
-              disabled={readOnly}
-            />
+            {mode === "MEMBERSHIP_PRODUCT" ? (
+              <ReferenceSelect
+                label="Store"
+                value={draft.storeId ?? ""}
+                items={storeItems}
+                allowClear
+                placeholder="All stores"
+                onChange={(value) => update("storeId", value || undefined)}
+                disabled={readOnly}
+              />
+            ) : null}
           </View>
           <View style={styles.section}>
             <Text variant="body" color="text">
@@ -1484,6 +1718,79 @@ export function OfferForm({
                   </Text>
                 ) : (
                   <>
+                    <View style={styles.storeAvailability}>
+                      <Text variant="bodyStrong" color="text">
+                        Store Availability
+                      </Text>
+                      <Text variant="bodySmall" color="textMuted">
+                        Choose where this Offer can be redeemed. Product mapping
+                        availability is shown separately and is not inferred from
+                        the Offer Store scope.
+                      </Text>
+                      <Pressable
+                        onPress={() => {
+                          setAvailabilityMode("ALL_STORES");
+                          setAvailabilityStoreIds([]);
+                        }}
+                        style={[
+                          styles.availabilityChoice,
+                          availabilityMode === "ALL_STORES" &&
+                            styles.availabilityChoiceSelected,
+                        ]}
+                      >
+                        <Text variant="body" color="text">
+                          {availabilityMode === "ALL_STORES" ? "●" : "○"} All active Stores
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => setAvailabilityMode("SELECTED_STORES")}
+                        style={[
+                          styles.availabilityChoice,
+                          availabilityMode === "SELECTED_STORES" &&
+                            styles.availabilityChoiceSelected,
+                        ]}
+                      >
+                        <Text variant="body" color="text">
+                          {availabilityMode === "SELECTED_STORES" ? "●" : "○"} Selected Stores
+                        </Text>
+                      </Pressable>
+                      {availabilityMode === "SELECTED_STORES" ? (
+                        <View style={styles.availableStores}>
+                          {storeAvailabilityLoading ? (
+                            <Text variant="bodySmall" color="textMuted">
+                              Loading active Stores…
+                            </Text>
+                          ) : activeStores.length ? (
+                            activeStores.map((store) => {
+                              const selected = availabilityStoreIds.includes(store.id);
+                              return (
+                                <Checkbox
+                                  key={store.id}
+                                  value={selected}
+                                  label={store.name}
+                                  onValueChange={() =>
+                                    setAvailabilityStoreIds((current) =>
+                                      selected
+                                        ? current.filter((id) => id !== store.id)
+                                        : [...current, store.id],
+                                    )
+                                  }
+                                />
+                              );
+                            })
+                          ) : (
+                            <Text variant="bodySmall" color="danger">
+                              No active Stores are available for selection.
+                            </Text>
+                          )}
+                          {!storeAvailabilityLoading && !availabilityStoreIds.length ? (
+                            <Text variant="bodySmall" color="danger">
+                              Select at least one Store.
+                            </Text>
+                          ) : null}
+                        </View>
+                      ) : null}
+                    </View>
                     <Input
                       label="Search products"
                       value={productSearch}
@@ -1491,36 +1798,28 @@ export function OfferForm({
                       placeholder="Search name or code"
                     />
                     <Text variant="bodySmall" color="textMuted">
-                      Only active Store-scoped mappings are shown. Final
-                      eligibility is validated against the Store&apos;s
-                      effective Poynt catalog by the server.
+                      Select canonical Memgine Products by name or code. Each
+                      Product appears once even when it is mapped through OSC,
+                      Ajax, or both.
                     </Text>
-                    {!draft.storeId ? (
-                      <Text variant="bodySmall" color="danger">
-                        Select a Store to choose POS Products.
-                      </Text>
-                    ) : filteredPosProducts.length === 0 ? (
+                    {filteredPosProducts.length === 0 ? (
                       <Text variant="bodySmall" color="textMuted">
-                        No Store-mapped POS Products available.
+                        No canonical Org Products found.
                       </Text>
                     ) : null}
-                    {applicability?.productIds.some(
-                      (id) => !storeScopedPosProductIds.has(id),
-                    ) ? (
-                      <Text variant="bodySmall" color="danger">
-                        Some previously selected Products are unavailable at
-                        this Store. Remove them before saving. Existing
-                        selections have been retained.
+                    {storeCatalogSourcesLoading ? (
+                      <Text variant="bodySmall" color="textMuted">
+                        Loading Store catalog availability…
                       </Text>
                     ) : null}
                     <ScrollView style={styles.productList} nestedScrollEnabled>
                       {(applicability?.productIds ?? [])
-                        .filter((id) => !storeScopedPosProductIds.has(id))
+                        .filter((id) => !canonicalPosProductIds.has(id))
                         .map((id) => (
                           <Checkbox
-                            key={`unavailable-${id}`}
+                            key={`previously-selected-${id}`}
                             value
-                            label={`${posProducts.find((product) => product.id === id)?.name ?? id} — unavailable at this Store (remove)`}
+                            label={`${canonicalProductName(id)} — previously selected Product is no longer available in the canonical Product list`}
                             onValueChange={() =>
                               setApplicability((current) =>
                                 current
@@ -1560,16 +1859,38 @@ export function OfferForm({
                             })
                           }
                           label={product.name}
+                          description={
+                            [
+                              product.categoryName?.trim()
+                                ? `Category: ${product.categoryName.trim()}`
+                                : undefined,
+                              productIsCompatibleWithScope(product.id)
+                                ? productMappingDescription(product.id)
+                                : `${productMappingDescription(product.id)} — unavailable in the configured Store scope`,
+                            ]
+                              .filter(Boolean)
+                              .join("\n")
+                          }
                         />
                       ))}
                     </ScrollView>
                     <CommercePricePreview
                       productIds={applicability?.productIds ?? []}
-                      productName={(productId) =>
-                        posProducts.find((product) => product.id === productId)
-                          ?.name ?? productId
-                      }
+                      productName={canonicalProductName}
                       mappings={commerceMappings}
+                      showUnavailableStores
+                      storeContexts={scopeStoreIds.map((storeId) => {
+                        const store = activeStores.find((item) => item.id === storeId);
+                        const source = storeCatalogSources[storeId];
+                        return {
+                          storeId,
+                          storeName: store?.name ?? "Selected Store",
+                          integrationConfigurationId:
+                            source?.integrationConfigurationId,
+                          externalCatalogId: source?.externalCatalogId,
+                          catalogSourceName: source?.catalogName,
+                        };
+                      })}
                       adjustment={applicability}
                     />
                   </>
@@ -2537,6 +2858,25 @@ const styles = StyleSheet.create({
     borderColor: "#D1D5DB",
     borderRadius: 8,
     padding: 10,
+  },
+  storeAvailability: {
+    gap: 10,
+  },
+  availabilityChoice: {
+    minHeight: 42,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    justifyContent: "center",
+  },
+  availabilityChoiceSelected: {
+    borderColor: "#0F766E",
+    backgroundColor: "#F0FDFA",
+  },
+  availableStores: {
+    gap: 8,
+    paddingLeft: 4,
   },
   additionalApplicability: {
     gap: 4,

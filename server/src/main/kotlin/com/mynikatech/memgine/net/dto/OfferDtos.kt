@@ -9,6 +9,7 @@ data class OfferDto(
     val membershipProductId: String? = null, val storeId: String? = null,
     val productIds: List<String> = emptyList(),
     val products: List<CanonicalProductDto> = emptyList(),
+    val storeAvailability: OfferStoreAvailabilityDto? = null,
     val promotionImageUrl: String, val badgeText: String? = null,
     val availabilityText: String? = null, val disclaimerText: String? = null, val ctaLabel: String,
     val ctaType: String, val ctaTarget: String? = null,
@@ -16,6 +17,24 @@ data class OfferDto(
     val expiryDate: String? = null, val statusId: String,
     val createdAt: String, val createdBy: String, val updatedAt: String,
     val updatedBy: String, val isDeleted: Boolean, val versionNo: Int
+)
+
+@Serializable
+enum class OfferStoreAvailabilityMode {
+    ALL_STORES,
+    SELECTED_STORES
+}
+
+@Serializable
+data class OfferStoreAvailabilityDto(
+    val mode: OfferStoreAvailabilityMode = OfferStoreAvailabilityMode.ALL_STORES,
+    val storeIds: List<String> = emptyList()
+)
+
+@Serializable
+data class OfferStoreAvailabilityWriteDto(
+    val mode: OfferStoreAvailabilityMode,
+    val storeIds: List<String>? = null
 )
 
 @Serializable
@@ -36,6 +55,7 @@ data class OfferWriteDto(
     val description: String? = null, val membershipProductId: String? = null,
     val productIds: List<String>? = null,
     val storeId: String? = null, val promotionImageUrl: String,
+    val storeAvailability: OfferStoreAvailabilityWriteDto? = null,
     val badgeText: String? = null, val availabilityText: String? = null,
     val disclaimerText: String? = null,
     val ctaLabel: String, val ctaType: String, val ctaTarget: String? = null,

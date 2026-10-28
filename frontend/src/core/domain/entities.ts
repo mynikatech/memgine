@@ -753,6 +753,11 @@ export interface Offer {
   membershipProductId?: ID;
   productIds?: ID[];
   products?: { productId: ID; productName: string; productCode: string }[];
+  storeAvailability?: {
+    mode: "ALL_STORES" | "SELECTED_STORES";
+    storeIds: ID[];
+  };
+  /** Legacy single-Store projection. Store availability is authoritative. */
   storeId?: ID;
 
   discountPercentage?: number;

@@ -66,6 +66,7 @@ export class OfferApi {
         description: offer.description, membershipProductId: offer.membershipProductId,
         productIds: offer.productIds,
         storeId: offer.storeId, promotionImageUrl: offer.promotionImageUrl,
+        storeAvailability: offer.storeAvailability,
         badgeText: offer.badgeText, availabilityText: offer.availabilityText,
         disclaimerText: offer.disclaimerText,
         ctaLabel: offer.ctaLabel, ctaType: offer.ctaType, ctaTarget: offer.ctaTarget,

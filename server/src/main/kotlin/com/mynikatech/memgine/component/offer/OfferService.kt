@@ -17,7 +17,11 @@ class OfferService(private val jdbi: Jdbi) {
         validateId(organizationId, 40)
         requireOrganizationAdmin(organizationId, actorUserId)
         val sql = jdbi.onDemand(OfferSql::class.java)
-        return withProducts(sql.list(organizationId, actorUserId), sql.canonicalProducts(organizationId))
+        return withDetails(
+            sql.list(organizationId, actorUserId),
+            sql.canonicalProducts(organizationId),
+            sql.storeAvailability(organizationId, actorUserId)
+        )
     }
 
     fun get(organizationId: String, offerId: String, actorUserId: String): OfferDto {
@@ -26,7 +30,11 @@ class OfferService(private val jdbi: Jdbi) {
         requireOrganizationAdmin(organizationId, actorUserId)
         val sql = jdbi.onDemand(OfferSql::class.java)
         val row = sql.get(organizationId, offerId, actorUserId) ?: throw NotFoundException("Offer not found")
-        return withProducts(listOf(row), sql.canonicalProducts(organizationId)).single()
+        return withDetails(
+            listOf(row),
+            sql.canonicalProducts(organizationId),
+            sql.storeAvailability(organizationId, actorUserId)
+        ).single()
     }
 
     fun rules(organizationId: String, offerId: String, actorUserId: String): List<OfferUsageRuleDto> {
@@ -62,6 +70,7 @@ class OfferService(private val jdbi: Jdbi) {
         request.membershipProductId?.let { validateId(it, 40) }
         request.storeId?.let { validateId(it, 40) }
         val selectedProductIds = request.productIds?.distinct()
+        val requestedStoreAvailability = validateStoreAvailability(request.storeAvailability)
         if (selectedProductIds?.any { it.isBlank() || it.length > 40 } == true) {
             throw BadRequestException("Invalid Product id")
         }
@@ -91,10 +100,20 @@ class OfferService(private val jdbi: Jdbi) {
                 val existing = sql.get(organizationId, request.id, actorUserId)
                 if (create && existing != null) throw ConflictException("Offer already exists")
                 if (!create && existing == null) throw NotFoundException("Offer not found")
+                val existingStoreAvailability = existing?.let {
+                    storeAvailabilityFor(
+                        it,
+                        sql.storeAvailability(organizationId, actorUserId)
+                    )
+                }
+                val storeAvailability = requestedStoreAvailability
+                    ?: existingStoreAvailability
+                    ?: legacyStoreAvailability(request.storeId)
+                val legacyStoreId = legacyStoreId(storeAvailability)
                 val oldRules = if (create) emptyList() else sql.rules(organizationId, request.id, actorUserId)
                 sql.save(OfferSqlParams(
                     organizationId, request.id, request.offerCode, request.offerName,
-                    request.description, request.membershipProductId, request.storeId,
+                    request.description, request.membershipProductId, legacyStoreId,
                     request.promotionImageUrl, request.badgeText, request.availabilityText, request.disclaimerText,
                     request.ctaLabel, request.ctaType, request.ctaTarget,
                     request.discountPercentage, request.effectiveDate, request.expiryDate,
@@ -116,10 +135,20 @@ class OfferService(private val jdbi: Jdbi) {
                 if (selectedProductIds != null) {
                     sql.saveCanonicalProducts(organizationId, request.id, selectedProductIds.toTypedArray(), actorUserId)
                 }
+                if (requestedStoreAvailability != null || existingStoreAvailability == null) {
+                    sql.saveStoreAvailability(
+                        organizationId,
+                        request.id,
+                        storeAvailability.mode.name,
+                        storeAvailability.storeIds.toTypedArray(),
+                        actorUserId
+                    )
+                }
                 OfferBundleDto(
-                    withProducts(listOf(sql.get(organizationId, request.id, actorUserId)
+                    withDetails(listOf(sql.get(organizationId, request.id, actorUserId)
                         ?: throw NotFoundException("Offer not found after save")),
-                        sql.canonicalProducts(organizationId)).single(),
+                        sql.canonicalProducts(organizationId),
+                        sql.storeAvailability(organizationId, actorUserId)).single(),
                     sql.rules(organizationId, request.id, actorUserId)
                 )
             }
@@ -143,11 +172,39 @@ class OfferService(private val jdbi: Jdbi) {
         if (id.isBlank() || id.length > maxLength) throw BadRequestException("Invalid id")
     }
 
+    private fun withDetails(
+        rows: List<OfferDto>,
+        products: List<CanonicalProductRow>,
+        availabilityRows: List<OfferStoreAvailabilityRow>
+    ): List<OfferDto> = withStoreAvailability(withProducts(rows, products), availabilityRows)
+
     private fun withProducts(rows: List<OfferDto>, products: List<CanonicalProductRow>): List<OfferDto> {
         val byOffer = products.groupBy { it.parentId }
         return rows.map { offer ->
             val choices = byOffer[offer.id].orEmpty().map { it.product() }
             offer.copy(productIds = choices.map { it.productId }, products = choices)
+        }
+    }
+
+    private fun withStoreAvailability(
+        rows: List<OfferDto>,
+        availabilityRows: List<OfferStoreAvailabilityRow>
+    ): List<OfferDto> {
+        val byOffer = availabilityRows.groupBy { it.offerId }
+        return rows.map { offer ->
+            val availability = byOffer[offer.id]
+                ?.takeIf { it.isNotEmpty() }
+                ?: throw IllegalStateException(
+                    "Store availability configuration missing for Offer ${offer.id}"
+                )
+            offer.copy(
+                storeAvailability = OfferStoreAvailabilityDto(
+                    mode = OfferStoreAvailabilityMode.valueOf(
+                        availability.first().availabilityMode
+                    ),
+                    storeIds = availability.mapNotNull { it.storeId }
+                )
+            )
         }
     }
 
@@ -189,3 +246,61 @@ class OfferService(private val jdbi: Jdbi) {
         throw error
     }
 }
+
+private data class ValidatedOfferStoreAvailability(
+    val mode: OfferStoreAvailabilityMode,
+    val storeIds: List<String>
+)
+
+private fun validateStoreAvailability(
+    request: OfferStoreAvailabilityWriteDto?
+): ValidatedOfferStoreAvailability? {
+    if (request == null) return null
+    val storeIds = request.storeIds.orEmpty()
+    if (storeIds.any { it.isBlank() || it.length > 64 } ||
+        storeIds.distinct().size != storeIds.size
+    ) {
+        throw BadRequestException("Store availability contains an invalid or duplicate Store id")
+    }
+    when (request.mode) {
+        OfferStoreAvailabilityMode.ALL_STORES -> {
+            if (storeIds.isNotEmpty()) {
+                throw BadRequestException("ALL_STORES availability cannot include Store ids")
+            }
+        }
+        OfferStoreAvailabilityMode.SELECTED_STORES -> {
+            if (storeIds.isEmpty()) {
+                throw BadRequestException("SELECTED_STORES availability requires at least one Store")
+            }
+        }
+    }
+    return ValidatedOfferStoreAvailability(request.mode, storeIds)
+}
+
+private fun legacyStoreAvailability(storeId: String?): ValidatedOfferStoreAvailability =
+    if (storeId == null) {
+        ValidatedOfferStoreAvailability(OfferStoreAvailabilityMode.ALL_STORES, emptyList())
+    } else {
+        ValidatedOfferStoreAvailability(OfferStoreAvailabilityMode.SELECTED_STORES, listOf(storeId))
+    }
+
+private fun storeAvailabilityFor(
+    offer: OfferDto,
+    rows: List<OfferStoreAvailabilityRow>
+): ValidatedOfferStoreAvailability {
+    val availability = rows.filter { it.offerId == offer.id }
+    if (availability.isEmpty()) return legacyStoreAvailability(offer.storeId)
+    return ValidatedOfferStoreAvailability(
+        OfferStoreAvailabilityMode.valueOf(availability.first().availabilityMode),
+        availability.mapNotNull { it.storeId }
+    )
+}
+
+private fun legacyStoreId(availability: ValidatedOfferStoreAvailability): String? =
+    if (availability.mode == OfferStoreAvailabilityMode.SELECTED_STORES &&
+        availability.storeIds.size == 1
+    ) {
+        availability.storeIds.single()
+    } else {
+        null
+    }

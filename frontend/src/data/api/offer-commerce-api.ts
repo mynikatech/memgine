@@ -8,6 +8,7 @@ export type CommerceProductMapping = {
   integrationConfigurationId: ID;
   storeId?: ID | null;
   active: boolean;
+  externalCatalogId?: string | null;
   externalProductId: string;
   externalSku?: string | null;
   snapshot?: {

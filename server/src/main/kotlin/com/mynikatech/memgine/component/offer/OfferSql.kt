@@ -27,6 +27,12 @@ data class OfferRuleSqlParams(
     val actorUserId: String, val create: Boolean
 )
 
+data class OfferStoreAvailabilityRow(
+    val offerId: String,
+    val availabilityMode: String,
+    val storeId: String?
+)
+
 interface OfferSql {
     @SqlQuery("SELECT * FROM get_offer_products(:organizationId)")
     @RegisterKotlinMapper(CanonicalProductRow::class)
@@ -36,6 +42,18 @@ interface OfferSql {
     fun saveCanonicalProducts(@Bind("organizationId") organizationId: String,
                               @Bind("offerId") offerId: String,
                               @Bind("productIds") productIds: Array<String>,
+                              @Bind("actorUserId") actorUserId: String): Boolean
+
+    @SqlQuery("SELECT * FROM get_offer_store_availability(:organizationId, :actorUserId)")
+    @RegisterKotlinMapper(OfferStoreAvailabilityRow::class)
+    fun storeAvailability(@Bind("organizationId") organizationId: String,
+                          @Bind("actorUserId") actorUserId: String): List<OfferStoreAvailabilityRow>
+
+    @SqlQuery("SELECT save_offer_store_availability(:organizationId, :offerId, :mode, :storeIds, :actorUserId)")
+    fun saveStoreAvailability(@Bind("organizationId") organizationId: String,
+                              @Bind("offerId") offerId: String,
+                              @Bind("mode") mode: String,
+                              @Bind("storeIds") storeIds: Array<String>,
                               @Bind("actorUserId") actorUserId: String): Boolean
     @SqlQuery("SELECT can_administer_organization(:organizationId, :actorUserId)")
     fun canAdminister(@Bind("organizationId") organizationId: String,

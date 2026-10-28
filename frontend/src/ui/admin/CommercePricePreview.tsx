@@ -14,6 +14,7 @@ export type CommercePricePreviewMapping = {
   productId?: string | null;
   integrationConfigurationId: string;
   storeId?: string | null;
+  externalCatalogId?: string | null;
   externalProductId: string;
   snapshot?: CatalogSnapshot | null;
 };
@@ -32,7 +33,8 @@ export type CommercePricePreviewAdjustment = {
 export type CommercePricePreviewStoreContext = {
   storeId: string;
   storeName: string;
-  integrationConfigurationId: string;
+  integrationConfigurationId?: string;
+  externalCatalogId?: string;
   catalogSourceName?: string;
 };
 
@@ -47,6 +49,8 @@ type CommercePricePreviewProps = {
   catalogSourceName?: string;
   /** Explicit active Store/catalog contexts for a multi-Store Benefit. */
   storeContexts?: CommercePricePreviewStoreContext[];
+  /** Show an explicit unavailable section for every requested Store context. */
+  showUnavailableStores?: boolean;
 };
 
 type AvailablePreview = {
@@ -88,6 +92,7 @@ function previewFor(
   context: {
     storeId?: string;
     integrationConfigurationId?: string;
+    externalCatalogId?: string;
     catalogSourceName?: string;
   },
 ): Preview {
@@ -107,6 +112,8 @@ function previewFor(
       (!context.integrationConfigurationId ||
         mapping.integrationConfigurationId ===
           context.integrationConfigurationId) &&
+      (!context.externalCatalogId ||
+        mapping.externalCatalogId === context.externalCatalogId) &&
       (!context.storeId || mapping.storeId === context.storeId),
   );
 
@@ -226,6 +233,7 @@ export function CommercePricePreview({
   integrationConfigurationId,
   catalogSourceName,
   storeContexts,
+  showUnavailableStores = false,
 }: CommercePricePreviewProps) {
   const selectedProductIds = [...new Set(productIds)];
   if (selectedProductIds.length === 0) return null;
@@ -265,9 +273,11 @@ export function CommercePricePreview({
                   (!context.storeId || mapping.storeId === context.storeId) &&
                   (!context.integrationConfigurationId ||
                     mapping.integrationConfigurationId ===
-                      context.integrationConfigurationId),
+                      context.integrationConfigurationId) &&
+                  (!context.externalCatalogId ||
+                    mapping.externalCatalogId === context.externalCatalogId),
               );
-              if (!eligible && storeContexts) return null;
+              if (!eligible && storeContexts && !showUnavailableStores) return null;
               const preview = previewFor(
                 productId,
                 mappings,

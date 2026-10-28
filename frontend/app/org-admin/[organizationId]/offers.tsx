@@ -441,6 +441,9 @@ export default function OrgAdminOffers() {
       currencyCode: configuration.currencyCode,
 
       active: configuration.active,
+      // Product IDs are persisted through the Offer aggregate. An empty mapping
+      // list deliberately keeps Commerce applicability tied to canonical
+      // eligibility instead of pinning this Offer to one external POS mapping.
       productMappingIds: [],
     };
   };
@@ -455,12 +458,19 @@ export default function OrgAdminOffers() {
     return product?.displayName ?? product?.membershipProductName ?? "Unknown";
   };
 
-  const getStoreName = (storeId?: string) => {
-    if (!storeId) {
+  const getStoreAvailabilityLabel = (offer: Offer) => {
+    const availability = offer.storeAvailability;
+    if (availability?.mode === "ALL_STORES") {
       return "All stores";
     }
-
-    return stores.find((store) => store.id === storeId)?.name ?? "Unknown";
+    if (availability?.mode === "SELECTED_STORES") {
+      const names = availability.storeIds.map(
+        (storeId) => stores.find((store) => store.id === storeId)?.name ?? "Unknown",
+      );
+      return names.length ? names.join(", ") : "Selected stores";
+    }
+    if (!offer.storeId) return "All stores";
+    return stores.find((store) => store.id === offer.storeId)?.name ?? "Unknown";
   };
 
   const getStatusName = (statusId: string) =>
@@ -629,7 +639,7 @@ export default function OrgAdminOffers() {
 
         render: (item) => (
           <Text variant="body" color="text">
-            {getStoreName(item.storeId)}
+            {getStoreAvailabilityLabel(item)}
           </Text>
         ),
       },
@@ -753,6 +763,11 @@ export default function OrgAdminOffers() {
       membershipProductId: undefined,
 
       storeId: undefined,
+
+      storeAvailability: {
+        mode: "ALL_STORES",
+        storeIds: [],
+      },
 
       discountPercentage: undefined,
 
@@ -1445,8 +1460,10 @@ export default function OrgAdminOffers() {
               id: product.id,
 
               name: product.productName
-                ? `${product.productName}${product.productCode ? ` (${product.productCode})` : ""}`
+                ? product.productName
                 : product.productCode,
+
+              code: product.productCode,
             }))}
             commerceConfiguration={
               !committedOffers.some((item) => item.id === editingOffer.id)
