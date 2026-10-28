@@ -169,6 +169,34 @@ data class CounterRedemptionCheckoutReviewDto(
     val reviewHash: String
 )
 
+/** A non-mutating Counter redemption price quote. */
+@Serializable
+data class CounterRedemptionQuoteLineDto(
+    val itemType: String,
+    val itemId: String,
+    val benefitId: String? = null,
+    val offerId: String? = null,
+    val productId: String,
+    val productName: String,
+    val quantity: Int,
+    val unitPriceMinor: Long,
+    val subtotalMinor: Long,
+    val discountMinor: Long,
+    val allocations: List<CounterRedemptionReviewAllocationDto>
+)
+
+@Serializable
+data class CounterRedemptionQuoteDto(
+    val currencyCode: String,
+    val lines: List<CounterRedemptionQuoteLineDto>,
+    val subtotalMinor: Long,
+    val adjustmentTotalMinor: Long,
+    val taxTotalMinor: Long,
+    val totalMinor: Long,
+    val pricingStatus: String,
+    val quoteHash: String
+)
+
 /**
  * Server-authoritative state for a Counter Benefit/Offer redemption checkout.
  * Monetary values are always minor units and come from persisted Commerce state.

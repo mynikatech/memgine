@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 237-counter-redemption-pre-otp-quote
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/237-counter-redemption-pre-otp-quote.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

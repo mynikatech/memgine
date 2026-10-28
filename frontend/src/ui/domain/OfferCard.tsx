@@ -242,7 +242,7 @@ export function OfferCard({
           >
             <Image
               source={{ uri: resolvedImageUrl }}
-              resizeMode="contain"
+              resizeMode="cover"
               style={{
                 width: "100%",
                 height: "100%",

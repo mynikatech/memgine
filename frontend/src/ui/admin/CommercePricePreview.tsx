@@ -246,9 +246,9 @@ export function CommercePricePreview({
           storeName: "Selected Store",
           integrationConfigurationId,
           catalogSourceName,
+          externalCatalogId: undefined,
         },
       ];
-
   return (
     <View style={styles.container}>
       <Text variant="bodySmall" color="textMuted">
@@ -277,7 +277,8 @@ export function CommercePricePreview({
                   (!context.externalCatalogId ||
                     mapping.externalCatalogId === context.externalCatalogId),
               );
-              if (!eligible && storeContexts && !showUnavailableStores) return null;
+              if (!eligible && storeContexts && !showUnavailableStores)
+                return null;
               const preview = previewFor(
                 productId,
                 mappings,

@@ -260,6 +260,10 @@ class PoyntCommerceProvider(
                         ?: throw BadRequestException("Counter staff context is unavailable"),
                     actor
                 )?.takeIf { it.integrationConfigurationId == integration }
+            !storeId.isNullOrBlank() && !counterStaffId.isNullOrBlank() ->
+                sql.counterRedemptionQuoteCatalogConfiguration(
+                    org, storeId, counterStaffId, actor, integration
+                )
             transactionId.isNullOrBlank() ->
             sql.catalogConfiguration(org, integration, actor)
             else ->
@@ -533,5 +537,18 @@ fun counterRedemptionReviewCatalogConfiguration(
     @Bind("storeId") storeId: String,
     @Bind("staffId") staffId: String,
     @Bind("actorUserId") actorUserId: String
+): PoyntCatalogConfigurationRow?
+
+ @SqlQuery(
+    "SELECT * FROM commerce_get_poynt_catalog_configuration_for_pre_otp_quote(" +
+        ":organizationId, :storeId, :staffId, :actorUserId, :integrationId)"
+)
+@RegisterBeanMapper(PoyntCatalogConfigurationRow::class)
+fun counterRedemptionQuoteCatalogConfiguration(
+    @Bind("organizationId") organizationId: String,
+    @Bind("storeId") storeId: String,
+    @Bind("staffId") staffId: String,
+    @Bind("actorUserId") actorUserId: String,
+    @Bind("integrationId") integrationId: String
 ): PoyntCatalogConfigurationRow?
 }

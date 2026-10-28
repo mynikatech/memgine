@@ -68,6 +68,17 @@ data class CounterRedeemRequest(
     val productSelections: Map<String, String> = emptyMap()
 )
 
+/** Read-only financial quote before a phone-lookup redemption OTP is requested. */
+@Serializable
+data class CounterRedemptionQuoteRequest(
+    val storeId: String,
+    val staffId: String,
+    val subscriptionId: String,
+    val benefitIds: List<String> = emptyList(),
+    val offerIds: List<String> = emptyList(),
+    val productSelections: Map<String, String> = emptyMap()
+)
+
 @Serializable
 data class CounterRedemptionResult(
     val redemptionId: String, val benefitId: String, val redemptionNumber: String

@@ -92,6 +92,23 @@ export class CounterService {
       .redemptionSelection(ctx, subscriptionId, customerUserId)
       .then((result) => this.unwrap(result));
   }
+  redemptionQuote(
+    ctx: CounterContext,
+    subscriptionId: ID,
+    benefitIds: ID[],
+    offerIds: ID[],
+    productSelections: Record<string, ID>,
+  ) {
+    return this.api
+      .redemptionQuote(
+        ctx,
+        subscriptionId,
+        benefitIds,
+        offerIds,
+        productSelections,
+      )
+      .then((result) => this.unwrap(result));
+  }
   redemptionProductChoices(
     ctx: CounterContext,
     subscriptionId: ID,

@@ -218,6 +218,13 @@ fun Route.counterRoutes(service: CounterService, commercePaymentService: Counter
         post("/redemptions") {
             throw BadRequestException("Counter redemption requires business OTP verification")
         }
+        post("/redemptions/quote") {
+            val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            call.respond(ApiResponse.success(
+                service.quoteRedemption(org, call.receive<CounterRedemptionQuoteRequest>(), call.authenticatedPrincipal()),
+                call.callId
+            ))
+        }
         post("/redemptions/otp/request") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             call.respond(ApiResponse.success(

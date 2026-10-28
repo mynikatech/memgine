@@ -50,6 +50,7 @@ import {
 import type {
   CounterRedemptionCheckout,
   CounterRedemptionCheckoutReview,
+  CounterRedemptionQuote,
   CounterRedemptionTransaction,
   CounterRedemptionTransactionValidation,
 } from "@/src/data/api/counter-api";
@@ -77,6 +78,52 @@ type PendingCounterRedemptionPayment = {
   redemptionTransactionId: string;
   commerceTransactionId: string;
   pollingWindowStartedAt: number;
+};
+
+const quoteMatchesCheckoutReview = (
+  quote: CounterRedemptionQuote | null,
+  review: CounterRedemptionCheckoutReview,
+): boolean => {
+  if (
+    !quote ||
+    quote.currencyCode !== review.currencyCode ||
+    quote.subtotalMinor !== review.subtotalMinor ||
+    quote.adjustmentTotalMinor !== review.adjustmentTotalMinor ||
+    quote.taxTotalMinor !== review.taxTotalMinor ||
+    quote.totalMinor !== review.payableTotalMinor ||
+    quote.lines.length !== review.lines.length
+  ) {
+    return false;
+  }
+  return quote.lines.every((quoteLine) =>
+    review.lines.some((reviewLine) => {
+      const matchingAllocations =
+        quoteLine.allocations.length === reviewLine.allocations.length &&
+        quoteLine.allocations.every((quoteAllocation) =>
+          reviewLine.allocations.some(
+            (reviewAllocation) =>
+              reviewAllocation.adjustmentId === quoteAllocation.adjustmentId &&
+              reviewAllocation.adjustmentType === quoteAllocation.adjustmentType &&
+              reviewAllocation.itemType === quoteAllocation.itemType &&
+              reviewAllocation.benefitId === quoteAllocation.benefitId &&
+              reviewAllocation.offerId === quoteAllocation.offerId &&
+              reviewAllocation.appliedAmountMinor ===
+                quoteAllocation.appliedAmountMinor,
+          ),
+        );
+      return (
+        matchingAllocations &&
+        reviewLine.canonicalProductId === quoteLine.productId &&
+        reviewLine.quantity === quoteLine.quantity &&
+        reviewLine.unitPriceMinor === quoteLine.unitPriceMinor &&
+        reviewLine.lineSubtotalMinor === quoteLine.subtotalMinor &&
+        reviewLine.allocations.reduce(
+          (total, item) => total + item.appliedAmountMinor,
+          0,
+        ) === quoteLine.discountMinor
+      );
+    }),
+  );
 };
 
 const COUNTER_REDEMPTION_PAYMENT_STORAGE_PREFIX =
@@ -311,11 +358,9 @@ export default function StaffCounter() {
   const [otpCode, setOtpCode] = useState("");
 
   const [otpSent, setOtpSent] = useState(false);
-  // Selection review precedes sending an action-bound redemption OTP.
-  const [preOtpReview, setPreOtpReview] = useState<
-    | { itemType: "BENEFIT" | "OFFER"; label: string; productName: string }[]
-    | null
-  >(null);
+  // A provider-priced, non-mutating quote precedes the action-bound OTP.
+  const [preOtpReview, setPreOtpReview] =
+    useState<CounterRedemptionQuote | null>(null);
 
   const [otpVerifying, setOtpVerifying] = useState(false);
 
@@ -347,6 +392,23 @@ export default function StaffCounter() {
   );
   const [redemptionSelection, setRedemptionSelection] =
     useState<CounterRedemptionSelection | null>(null);
+
+  // Any selection/context change invalidates the financial quote and an
+  // unstarted OTP. No durable redemption or payment state is touched here.
+  useEffect(() => {
+    setPreOtpReview(null);
+    setOtpSent(false);
+    setOtpRequestId("");
+    setOtpCode("");
+    setDevCode("");
+  }, [
+    selectedSubId,
+    selectedBenefitIds,
+    selectedOfferIds,
+    productSelection.selections,
+    storeId,
+    staffId,
+  ]);
 
   /*
    * ------------------------------------------------------------
@@ -1812,6 +1874,7 @@ export default function StaffCounter() {
     setOtpVerifying(true);
     setBusy(true);
     try {
+      const approvedQuote = preOtpReview;
       const completed = await services.counter.completeRedemptionOtp(
         counterContext(),
         otpRequestId,
@@ -1833,8 +1896,15 @@ export default function StaffCounter() {
       setPreOtpReview(null);
       setOtpCode("");
       setDevCode("");
-
-      await loadRedemptionReview(completed, validation);
+      const review = await services.counter.redemptionCheckoutReview(
+        counterContext(),
+        completed.transactionId,
+      );
+      if (quoteMatchesCheckoutReview(approvedQuote, review)) {
+        await beginRedemptionCheckout(completed, validation, review.reviewHash);
+      } else {
+        setRedemptionReview(review);
+      }
     } catch (failure) {
       setError(
         failure instanceof Error
@@ -1902,31 +1972,21 @@ export default function StaffCounter() {
       if (selectedRedemptionProducts.length === 0) {
         throw new Error("Select at least one Benefit or Offer.");
       }
-      const review = await Promise.all(
-        selectedRedemptionProducts.map(async (item) => {
-          const key = `${item.itemType}:${item.itemId}`;
-          const productId = productSelection.selections[key];
-          if (!productId)
-            throw new Error("Select a product for every Benefit or Offer.");
-          const choices = await services.counter.redemptionProductChoices(
-            counterContext(),
-            selectedSubId,
-            item.itemType,
-            item.itemId,
-          );
-          const matching = choices.find(
-            (choice) => choice.productId === productId,
-          );
-          if (!matching)
-            throw new Error(
-              "A selected product is no longer eligible. Please review the selection.",
-            );
-          return {
-            itemType: item.itemType,
-            label: item.label,
-            productName: matching.productName,
-          };
-        }),
+      const benefitIds = Array.from(selectedBenefitIds);
+      const offerIds = Array.from(selectedOfferIds);
+      const keys = [
+        ...benefitIds.map((id) => `BENEFIT:${id}`),
+        ...offerIds.map((id) => `OFFER:${id}`),
+      ];
+      if (keys.some((key) => !productSelection.selections[key])) {
+        throw new Error("Select a product for every Benefit or Offer.");
+      }
+      const review = await services.counter.redemptionQuote(
+        counterContext(),
+        selectedSubId,
+        benefitIds,
+        offerIds,
+        Object.fromEntries(keys.map((key) => [key, productSelection.selections[key]])),
       );
       setPreOtpReview(review);
     } catch (failure) {
@@ -1946,6 +2006,9 @@ export default function StaffCounter() {
     setError("");
 
     try {
+      if (!preOtpReview) {
+        throw new Error("Load the financial redemption review before sending an OTP.");
+      }
       const benefitIds = Array.from(selectedBenefitIds);
       const offerIds = Array.from(selectedOfferIds);
 
@@ -3349,28 +3412,37 @@ export default function StaffCounter() {
         <View testID="counter-redemption-pre-otp-review" style={styles.card}>
           <Text style={styles.cardTitle}>Review Redemption</Text>
           <Text style={styles.muted}>
-            Confirm the selected Benefits, Offers and products before requesting
-            the customer&apos;s OTP.
+            Confirm the current prices, discounts and estimated tax before
+            requesting the customer&apos;s OTP.
           </Text>
           <Text style={styles.identified}>Customer: {customer?.fullName}</Text>
-          {preOtpReview.map((item, index) => (
+          <Text style={styles.muted}>Store: {store?.name ?? storeId}</Text>
+          {preOtpReview.lines.map((item) => (
             <View
-              key={`${item.itemType}:${index}`}
+              key={`${item.itemType}:${item.itemId}`}
               style={styles.redemptionItem}
             >
               <View style={styles.redemptionItemContent}>
-                <Text style={styles.benefitTitle}>{item.label}</Text>
+                <Text style={styles.benefitTitle}>{item.productName}</Text>
                 <Text style={styles.muted}>
-                  {item.itemType === "BENEFIT" ? "Benefit" : "Offer"} ·{" "}
-                  {item.productName}
+                  {item.itemType === "BENEFIT" ? "Benefit" : "Offer"} · Quantity {item.quantity} · {preOtpReview.currencyCode} {(item.unitPriceMinor / 100).toFixed(2)} each
                 </Text>
+                {item.allocations.map((allocation) => (
+                  <Text key={allocation.adjustmentId} style={styles.muted}>
+                    {allocation.itemType === "BENEFIT" ? "Benefit" : "Offer"} discount: -{preOtpReview.currencyCode} {(allocation.appliedAmountMinor / 100).toFixed(2)}
+                  </Text>
+                ))}
               </View>
+              <Text style={styles.ctxValue}>
+                {preOtpReview.currencyCode} {(item.subtotalMinor / 100).toFixed(2)}
+              </Text>
             </View>
           ))}
-          <Text style={styles.muted}>
-            Final product prices, discounts and tax will be confirmed at POS
-            checkout.
-          </Text>
+          <View style={styles.ctxRow}><Text style={styles.ctxLabel}>Subtotal</Text><Text style={styles.ctxValue}>{preOtpReview.currencyCode} {(preOtpReview.subtotalMinor / 100).toFixed(2)}</Text></View>
+          <View style={styles.ctxRow}><Text style={styles.ctxLabel}>Benefits / Offers</Text><Text style={styles.ctxValue}>-{preOtpReview.currencyCode} {(preOtpReview.adjustmentTotalMinor / 100).toFixed(2)}</Text></View>
+          <View style={styles.ctxRow}><Text style={styles.ctxLabel}>Estimated tax</Text><Text style={styles.ctxValue}>{preOtpReview.currencyCode} {(preOtpReview.taxTotalMinor / 100).toFixed(2)}</Text></View>
+          <View style={styles.ctxRow}><Text style={styles.ctxLabel}>Estimated total payable</Text><Text style={styles.ctxValue}>{preOtpReview.currencyCode} {(preOtpReview.totalMinor / 100).toFixed(2)}</Text></View>
+          <Text style={styles.muted}>Estimated from current POS prices. The server will revalidate eligibility and pricing after OTP.</Text>
           {!otpSent ? (
             <View style={styles.rowWrap}>
               <Pressable

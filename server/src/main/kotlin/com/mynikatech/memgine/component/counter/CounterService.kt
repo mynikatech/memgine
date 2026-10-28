@@ -581,6 +581,24 @@ class CounterService(
         )
     }
 
+    /** A quote authorizes no OTP, redemption, Commerce, or provider write. */
+    fun quoteRedemption(
+        org: String,
+        request: CounterRedemptionQuoteRequest,
+        principal: AuthenticatedPrincipal
+    ): CounterRedemptionQuoteDto {
+        authorize(org, request.storeId, request.staffId, principal)
+        validateRedemption(
+            org,
+            CounterRedeemRequest(
+                request.storeId, request.staffId, request.subscriptionId,
+                request.benefitIds, request.offerIds, request.productSelections
+            ),
+            principal
+        )
+        return counterCommercePayments.quoteRedemption(org, request, principal.userId)
+    }
+
     fun completeRedemptionOtp(org: String, input: CounterBusinessOtpCompleteRequest,
                               principal: AuthenticatedPrincipal): RedemptionTransactionDto {
         val context = businessOtp.verifyAndResolve(

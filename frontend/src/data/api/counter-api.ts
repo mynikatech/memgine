@@ -194,6 +194,31 @@ export type CounterRedemptionCheckoutReview = {
   reviewHash: string;
 };
 
+export type CounterRedemptionQuoteLine = {
+  itemType: "BENEFIT" | "OFFER" | string;
+  itemId: ID;
+  benefitId?: ID | null;
+  offerId?: ID | null;
+  productId: ID;
+  productName: string;
+  quantity: number;
+  unitPriceMinor: number;
+  subtotalMinor: number;
+  discountMinor: number;
+  allocations: CounterRedemptionReviewAllocation[];
+};
+
+export type CounterRedemptionQuote = {
+  currencyCode: string;
+  lines: CounterRedemptionQuoteLine[];
+  subtotalMinor: number;
+  adjustmentTotalMinor: number;
+  taxTotalMinor: number;
+  totalMinor: number;
+  pricingStatus: string;
+  quoteHash: string;
+};
+
 export type CounterRedemptionPaymentDispatch = {
   commerceTransactionId: ID;
 
@@ -822,6 +847,23 @@ export class CounterApi {
         offerIds,
         productSelections,
       },
+    });
+  }
+
+  redemptionQuote(
+    ctx: CounterContext,
+    subscriptionId: ID,
+    benefitIds: ID[],
+    offerIds: ID[],
+    productSelections: Record<string, ID>,
+  ): Promise<ApiResult<CounterRedemptionQuote>> {
+    return httpClient.post(this.path(ctx, "redemptions/quote"), {
+      storeId: ctx.storeId,
+      staffId: ctx.staffId,
+      subscriptionId,
+      benefitIds,
+      offerIds,
+      productSelections,
     });
   }
 
