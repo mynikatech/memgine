@@ -913,13 +913,93 @@ export function BusinessExperience({
     isHistoricalSubscription,
   ]);
 
+  // Offers share the same verified customer product-mapping API as Benefits.
+  const [offerStoreIds, setOfferStoreIds] = useState<Record<string, string[]>>(
+    {},
+  );
+  const availabilityOfferIds = regularOffers
+    .map((offer) => offer.id)
+    .sort()
+    .join("|");
+  useEffect(() => {
+    if (isPreviewMode || !subscription || isHistoricalSubscription) {
+      setOfferStoreIds({});
+      return;
+    }
+    let active = true;
+    setOfferStoreIds({});
+    const targets = regularOffers.filter((offer) => offer.products?.length);
+    void Promise.all(
+      targets.map(async (offer) => {
+        try {
+          const choices = await services.customerData.redemptionProductChoices(
+            organization.id,
+            subscription.id,
+            "OFFER",
+            offer.id,
+          );
+          return [offer.id, choices] as const;
+        } catch {
+          return [offer.id, []] as const;
+        }
+      }),
+    ).then((results) => {
+      if (!active) return;
+      const available: Record<string, string[]> = {};
+      for (const [offerId, choices] of results) {
+        for (const choice of choices) {
+          available[`${offerId}:${choice.productId}`] =
+            choice.availableStoreIds ?? [];
+        }
+      }
+      setOfferStoreIds(available);
+    });
+    return () => {
+      active = false;
+    };
+  }, [
+    organization.id,
+    subscription?.id,
+    availabilityOfferIds,
+    isPreviewMode,
+    isHistoricalSubscription,
+  ]);
+
+  const offerProductAvailability = (
+    offerId: string,
+    productId: string,
+  ): string => {
+    const ids = isPreviewMode
+      ? previewProductStoreIds?.[productId]
+      : offerStoreIds[`${offerId}:${productId}`];
+    const names = [
+      ...new Set(
+        (ids ?? [])
+          .map((id) => storeNamesById[id])
+          .filter((name): name is string => Boolean(name)),
+      ),
+    ];
+    return names.length
+      ? `Available at: ${names.join(", ")}`
+      : "Please check with the store for availability.";
+  };
+
+  const offerAvailabilityText = (offer: Offer): string => {
+    if (!offer.products?.length) return offer.availabilityText ?? "";
+    const details = offer.products.map(
+      (eligible) =>
+        `${eligible.productName || eligible.productCode} — ${offerProductAvailability(offer.id, eligible.productId)}`,
+    );
+    return [offer.availabilityText, ...details].filter(Boolean).join("\n");
+  };
+
   const benefitProductAvailability = (benefitId: string, productId: string) => {
     const ids: string[] | undefined = isPreviewMode
       ? previewProductStoreIds?.[productId]
       : benefitStoreIds[`${benefitId}:${productId}`];
 
     if (ids === undefined) {
-      return "Store availability unavailable";
+      return "Please check with the store for availability.";
     }
 
     const benefit = benefits.find((item) => item.id === benefitId);
@@ -940,7 +1020,7 @@ export function BusinessExperience({
 
     return names.length > 0
       ? `Available at: ${names.join(", ")}`
-      : "No verified Store availability";
+      : "Please check with the store for availability.";
   };
 
   const benefitItems = exp.redeemableBenefits.map((benefit) => ({
@@ -1624,7 +1704,7 @@ export function BusinessExperience({
                       description={offer.description}
                       imageUrl={offer.promotionImageUrl}
                       badge={offer.badgeText}
-                      availabilityText={offer.availabilityText}
+                      availabilityText={offerAvailabilityText(offer)}
                       disclaimerText={offer.disclaimerText}
                       applicableProducts={offer.products?.map(
                         (product) => product.productName || product.productCode,
@@ -1862,7 +1942,7 @@ export function BusinessExperience({
                     description={offer.description}
                     imageUrl={offer.promotionImageUrl}
                     badge={offer.badgeText}
-                    availabilityText={offer.availabilityText}
+                    availabilityText={offerAvailabilityText(offer)}
                     disclaimerText={offer.disclaimerText}
                     applicableProducts={offer.products?.map(
                       (product) => product.productName || product.productCode,

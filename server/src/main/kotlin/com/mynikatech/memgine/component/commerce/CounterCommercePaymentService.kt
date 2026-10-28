@@ -36,6 +36,8 @@ import org.jdbi.v3.sqlobject.customizer.Bind
 import org.jdbi.v3.sqlobject.statement.SqlQuery
 import org.postgresql.util.PSQLException
 import org.slf4j.LoggerFactory
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.security.MessageDigest
 import java.util.UUID
 
@@ -575,8 +577,10 @@ class CounterCommercePaymentService(
         val allocations = materializeAdjustments(adjustments, pricedLines)
         val subtotal = pricedLines.sumOf { requireNotNull(it.lineSubtotalMinor) }
         val adjustmentTotal = allocations.sumOf { it.appliedAmountMinor }
-        val payable = subtotal - adjustmentTotal
-        if (payable < 0) throw BadRequestException("Counter redemption discount is invalid")
+        val netBeforeTax = subtotal - adjustmentTotal
+        if (netBeforeTax < 0) throw BadRequestException("Counter redemption discount is invalid")
+        val estimatedTax = retailTaxMinor(organizationId, subtotal, adjustmentTotal)
+        val payable = netBeforeTax + estimatedTax
 
         val reviewLines = pricedLines.map { line ->
             val row = rows.first { it.redemptionItemId == line.lineId }
@@ -1085,8 +1089,8 @@ class CounterCommercePaymentService(
         val materialized = materializeAdjustments(adjustments, pricedLines)
         val subtotal = pricedLines.sumOf { requireNotNull(it.lineSubtotalMinor) }
         val discount = materialized.sumOf { it.appliedAmountMinor }
-        val tax = 0L
-        val total = subtotal - discount
+        val tax = retailTaxMinor(checkout.organizationId, subtotal, discount)
+        val total = subtotal - discount + tax
 
         persistRedemptionProviderOrder(
             checkout.commerceTransactionId,
@@ -1100,6 +1104,45 @@ class CounterCommercePaymentService(
             currency,
             actorUserId
         )
+    }
+
+    /**
+     * MVP retail policy: reuse the organization's effective country tax rate,
+     * calculated on the discounted tax-exclusive product subtotal.
+     */
+    private fun retailTaxMinor(organizationId: String, subtotal: Long, discount: Long): Long {
+        if (subtotal < 0 || discount < 0 || discount > subtotal) {
+            throw BadRequestException("Counter redemption taxable amount is invalid")
+        }
+        val rate = jdbi.withHandle<BigDecimal?, Exception> { handle ->
+            handle.createQuery(
+                """
+                SELECT t.tax_rate
+                  FROM organization_details d
+                  JOIN countries c
+                    ON c.country_code = upper(nullif(btrim(d.country), ''))
+                   AND c.is_active = true AND c.is_deleted = false
+                  JOIN country_tax_configurations t
+                    ON t.country_id = c.country_id
+                   AND t.is_active = true AND t.is_deleted = false
+                   AND t.effective_from <= CURRENT_DATE
+                   AND (t.effective_to IS NULL OR t.effective_to >= CURRENT_DATE)
+                 WHERE d.organization_id = :organizationId
+                   AND d.is_deleted = false
+                 ORDER BY t.effective_from DESC, t.country_tax_configuration_id
+                 LIMIT 1
+                """.trimIndent()
+            ).bind("organizationId", organizationId)
+                .mapTo(BigDecimal::class.java).findOne().orElse(null)
+        } ?: throw BadRequestException("Retail tax configuration is unavailable for organization country")
+        return try {
+            BigDecimal.valueOf(subtotal - discount)
+                .multiply(rate)
+                .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP)
+                .longValueExact()
+        } catch (error: ArithmeticException) {
+            throw BadRequestException("Counter redemption tax amount is invalid")
+        }
     }
 
     private fun createAndPersistRedemptionOrder(
@@ -1119,6 +1162,10 @@ class CounterCommercePaymentService(
             actorUserId
         )
         val materialized = materializeAdjustments(adjustments, pricedLines)
+        val subtotal = pricedLines.sumOf { requireNotNull(it.lineSubtotalMinor) }
+        val discount = materialized.sumOf { it.appliedAmountMinor }
+        val tax = retailTaxMinor(checkout.organizationId, subtotal, discount)
+        val total = subtotal - discount + tax
 
         val request = CommerceCheckoutRequest(
             organizationId = checkout.organizationId,
@@ -1132,12 +1179,17 @@ class CounterCommercePaymentService(
             currencyCode = currency,
             integrationConfigurationId = checkout.integrationConfigurationId,
             actorUserId = actorUserId,
+            authoritativeTaxTotalMinor = tax,
+            authoritativeTotalMinor = total,
             materializedAdjustments = materialized
         )
 
         checkoutProvider.prepareCheckout(request)
         val result = checkoutProvider.startCheckout(request)
         validateProviderOrderResult(result, pricedLines, materialized, currency)
+        if (result.taxTotalMinor != tax || result.totalMinor != total) {
+            throw ConflictException("Provider redemption amounts do not match Memgine authoritative totals")
+        }
 
         persistRedemptionProviderOrder(
             checkout.commerceTransactionId,

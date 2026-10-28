@@ -43,7 +43,7 @@ function storeAvailabilityLabel(
     ];
     return names.length
       ? `Available at: ${names.join(", ")}`
-      : "No verified Store availability";
+      : "Please check with the store for availability.";
   }
   // Old API responses omit availableStores; never assume all Stores or guess.
   if (choice.availableStores == null) return null;
@@ -56,7 +56,7 @@ function storeAvailabilityLabel(
   ];
   return stores.length
     ? `Available at: ${stores.join(", ")}`
-    : "No verified Store availability";
+    : "Please check with the store for availability.";
 }
 
 export function RedemptionProductPicker({
@@ -65,6 +65,7 @@ export function RedemptionProductPicker({
   loadChoices,
   onChange,
   storeNamesById = {},
+  showStoreAvailability = true,
 }: {
   subscriptionId: string;
   items: RedemptionItemChoice[];
@@ -73,6 +74,7 @@ export function RedemptionProductPicker({
   ) => Promise<RedemptionProductChoice[]>;
   onChange: (state: RedemptionProductSelectionState) => void;
   storeNamesById?: Record<string, string>;
+  showStoreAvailability?: boolean;
 }) {
   const [options, setOptions] = useState<
     Record<string, RedemptionProductChoice[]>
@@ -163,10 +165,9 @@ export function RedemptionProductPicker({
                 ) : null}
                 {choices.map((choice) => {
                   const selected = selections[key] === choice.productId;
-                  const availability = storeAvailabilityLabel(
-                    choice,
-                    storeNamesById,
-                  );
+                  const availability = showStoreAvailability
+                    ? storeAvailabilityLabel(choice, storeNamesById)
+                    : null;
                   return (
                     <Pressable
                       key={choice.productId}

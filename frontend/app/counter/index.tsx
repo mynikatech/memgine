@@ -311,6 +311,11 @@ export default function StaffCounter() {
   const [otpCode, setOtpCode] = useState("");
 
   const [otpSent, setOtpSent] = useState(false);
+  // Selection review precedes sending an action-bound redemption OTP.
+  const [preOtpReview, setPreOtpReview] = useState<
+    | { itemType: "BENEFIT" | "OFFER"; label: string; productName: string }[]
+    | null
+  >(null);
 
   const [otpVerifying, setOtpVerifying] = useState(false);
 
@@ -378,6 +383,7 @@ export default function StaffCounter() {
     setOtpCode("");
 
     setOtpSent(false);
+    setPreOtpReview(null);
     setOtpVerifying(false);
     otpVerificationInFlight.current = false;
 
@@ -1191,6 +1197,11 @@ export default function StaffCounter() {
       setResolvedTransaction(transaction);
       setTransactionValidation(validation);
       setDynamicRedemptionStage("review");
+      // QR already authorizes a pending transaction. Show the full read-only
+      // financial summary immediately; do not prepare an order or take payment.
+      if (validation.length > 0 && validation.every((item) => item.eligible)) {
+        await loadRedemptionReview(transaction, validation);
+      }
     } catch (failure) {
       setError(redemptionQrError(failure));
       qrScanInFlight.current = false;
@@ -1819,6 +1830,7 @@ export default function StaffCounter() {
 
       setOtpRequestId("");
       setOtpSent(false);
+      setPreOtpReview(null);
       setOtpCode("");
       setDevCode("");
 
@@ -1879,6 +1891,52 @@ export default function StaffCounter() {
           ? failure.message
           : "Unable to search customers.",
       );
+    }
+  };
+
+  const reviewBeforeRedemptionOtp = async () => {
+    if (busy || !customer || !selectedSubId || !productSelection.ready) return;
+    setBusy(true);
+    setError("");
+    try {
+      if (selectedRedemptionProducts.length === 0) {
+        throw new Error("Select at least one Benefit or Offer.");
+      }
+      const review = await Promise.all(
+        selectedRedemptionProducts.map(async (item) => {
+          const key = `${item.itemType}:${item.itemId}`;
+          const productId = productSelection.selections[key];
+          if (!productId)
+            throw new Error("Select a product for every Benefit or Offer.");
+          const choices = await services.counter.redemptionProductChoices(
+            counterContext(),
+            selectedSubId,
+            item.itemType,
+            item.itemId,
+          );
+          const matching = choices.find(
+            (choice) => choice.productId === productId,
+          );
+          if (!matching)
+            throw new Error(
+              "A selected product is no longer eligible. Please review the selection.",
+            );
+          return {
+            itemType: item.itemType,
+            label: item.label,
+            productName: matching.productName,
+          };
+        }),
+      );
+      setPreOtpReview(review);
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Unable to review redemption.",
+      );
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -2121,7 +2179,10 @@ export default function StaffCounter() {
     if (!customer) {
       return null;
     }
-    if (redemptionReview) {
+    if (
+      redemptionReview ||
+      (method !== RedemptionMethod.STAFF_ASSISTED && preOtpReview)
+    ) {
       return null;
     }
 
@@ -2295,6 +2356,7 @@ export default function StaffCounter() {
             selectedRedemptionProducts.length > 0 ? (
               <RedemptionProductPicker
                 subscriptionId={selectedSubId}
+                showStoreAvailability={false}
                 items={selectedRedemptionProducts}
                 loadChoices={(item) =>
                   services.counter.redemptionProductChoices(
@@ -2335,14 +2397,14 @@ export default function StaffCounter() {
                 <Pressable
                   testID="counter-send-redemption-otp"
                   disabled={consolidatedSelectedCount === 0 || busy}
-                  onPress={sendRedemptionOtp}
+                  onPress={() => void reviewBeforeRedemptionOtp()}
                   style={[
                     styles.primaryBtn,
                     (consolidatedSelectedCount === 0 || busy) &&
                       styles.btnDisabled,
                   ]}
                 >
-                  <Text style={styles.primaryBtnText}>Send Redemption OTP</Text>
+                  <Text style={styles.primaryBtnText}>Review Redemption</Text>
                 </Pressable>
               ) : (
                 <View style={styles.otpSection}>
@@ -2904,7 +2966,9 @@ export default function StaffCounter() {
                 <Text style={styles.primaryBtnText}>Done / Scan Next</Text>
               </Pressable>
             </>
-          ) : dynamicRedemptionStage === "review" && resolvedTransaction ? (
+          ) : dynamicRedemptionStage === "review" &&
+            resolvedTransaction &&
+            !redemptionReview ? (
             <>
               <Text style={styles.cardTitle}>
                 Redeem {transactionValidation.length} item
@@ -3277,6 +3341,118 @@ export default function StaffCounter() {
       ) : null}
 
       {action === "redeem" &&
+      mode === "phone" &&
+      preOtpReview &&
+      !redemptionReview &&
+      !redemptionCheckout &&
+      !resolvedTransaction ? (
+        <View testID="counter-redemption-pre-otp-review" style={styles.card}>
+          <Text style={styles.cardTitle}>Review Redemption</Text>
+          <Text style={styles.muted}>
+            Confirm the selected Benefits, Offers and products before requesting
+            the customer&apos;s OTP.
+          </Text>
+          <Text style={styles.identified}>Customer: {customer?.fullName}</Text>
+          {preOtpReview.map((item, index) => (
+            <View
+              key={`${item.itemType}:${index}`}
+              style={styles.redemptionItem}
+            >
+              <View style={styles.redemptionItemContent}>
+                <Text style={styles.benefitTitle}>{item.label}</Text>
+                <Text style={styles.muted}>
+                  {item.itemType === "BENEFIT" ? "Benefit" : "Offer"} ·{" "}
+                  {item.productName}
+                </Text>
+              </View>
+            </View>
+          ))}
+          <Text style={styles.muted}>
+            Final product prices, discounts and tax will be confirmed at POS
+            checkout.
+          </Text>
+          {!otpSent ? (
+            <View style={styles.rowWrap}>
+              <Pressable
+                testID="counter-redemption-pre-otp-back"
+                disabled={busy}
+                onPress={() => {
+                  setPreOtpReview(null);
+                  setError("");
+                }}
+                style={styles.secondaryBtn}
+              >
+                <Text style={styles.secondaryBtnText}>
+                  Back / Edit Selection
+                </Text>
+              </Pressable>
+              <Pressable
+                testID="counter-send-redemption-otp"
+                disabled={busy}
+                onPress={() => void sendRedemptionOtp()}
+                style={[styles.primaryBtn, busy && styles.btnDisabled]}
+              >
+                <Text style={styles.primaryBtnText}>
+                  {busy ? "Sending..." : "Confirm & Send OTP"}
+                </Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.otpSection}>
+              <Text style={styles.label}>Redemption Verification</Text>
+              <Text style={styles.muted}>
+                OTP authorizes the selections reviewed above.
+              </Text>
+              {devCode ? (
+                <Text style={styles.tiny}>Dev code: {devCode}</Text>
+              ) : null}
+              <TextInput
+                testID="counter-redemption-otp"
+                value={otpCode}
+                onChangeText={(value) => setOtpCode(normalizeOtp(value))}
+                placeholder="Enter OTP"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="number-pad"
+                maxLength={OTP_LENGTH}
+                style={styles.input}
+              />
+              <Pressable
+                testID="counter-redemption-verify"
+                disabled={
+                  otpVerifying || normalizeOtp(otpCode).length !== OTP_LENGTH
+                }
+                onPress={() => void verifyRedemptionOtp()}
+                style={[
+                  styles.primaryBtn,
+                  (otpVerifying ||
+                    normalizeOtp(otpCode).length !== OTP_LENGTH) &&
+                    styles.btnDisabled,
+                ]}
+              >
+                <Text style={styles.primaryBtnText}>
+                  {otpVerifying ? "Verifying..." : "Verify & Continue"}
+                </Text>
+              </Pressable>
+              <Pressable
+                testID="counter-redemption-cancel-otp"
+                disabled={otpVerifying}
+                onPress={() => {
+                  setOtpSent(false);
+                  setOtpRequestId("");
+                  setOtpCode("");
+                  setDevCode("");
+                  setError("");
+                }}
+                style={styles.secondaryBtn}
+              >
+                <Text style={styles.secondaryBtnText}>Cancel OTP</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+      ) : null}
+
+      {action === "redeem" &&
       redemptionReview &&
       redemptionCheckoutStage === "idle" ? (
         <View testID="counter-redemption-review" style={styles.card}>
@@ -3320,15 +3496,27 @@ export default function StaffCounter() {
             </Text>
           </View>
           <View style={styles.ctxRow}>
-            <Text style={styles.ctxLabel}>Net payable</Text>
+            <Text style={styles.ctxLabel}>Estimated tax</Text>
+            <Text style={styles.ctxValue}>
+              {redemptionReview.currencyCode}{" "}
+              {(
+                (redemptionReview.payableTotalMinor -
+                  redemptionReview.subtotalMinor +
+                  redemptionReview.adjustmentTotalMinor) /
+                100
+              ).toFixed(2)}
+            </Text>
+          </View>
+          <View style={styles.ctxRow}>
+            <Text style={styles.ctxLabel}>Estimated total payable</Text>
             <Text style={styles.ctxValue}>
               {redemptionReview.currencyCode}{" "}
               {(redemptionReview.payableTotalMinor / 100).toFixed(2)}
             </Text>
           </View>
           <Text style={styles.muted}>
-            Tax and final provider-order totals are confirmed before payment is
-            sent.
+            This is an estimate. Final provider-order totals are confirmed
+            before payment is sent.
           </Text>
           <View style={styles.rowWrap}>
             <Pressable
