@@ -415,7 +415,8 @@ export function PoyntCollectWallets({
 
         if (supported.googlePay) methods.push("google_pay");
 
-        if (supported.applePay) methods.push("apple_pay");
+        if (supported.applePay && walletConfig.applePayEnabled)
+          methods.push("apple_pay");
 
         if (!methods.length) return;
 
@@ -451,9 +452,22 @@ export function PoyntCollectWallets({
                 return;
               }
 
+              walletSessionStarting.current = true;
               setWalletError(undefined);
 
-              setSelectedWallet(event.source);
+              try {
+                if (event.source === "google_pay") {
+                  walletInstance.startGooglePaySession();
+                } else {
+                  walletInstance.startApplePaySession();
+                }
+              } catch {
+                walletSessionStarting.current = false;
+
+                setWalletError(
+                  "Unable to open the wallet. Please check your payment status before retrying.",
+                );
+              }
             },
           },
         });
@@ -559,9 +573,10 @@ export function PoyntCollectWallets({
         aria-label="Secure wallet checkout"
         style={{
           width: "100%",
-
+          maxWidth: "100%",
+          minWidth: 0,
+          boxSizing: "border-box",
           minHeight: available ? 52 : 0,
-
           display: selectedWallet ? "none" : "block",
         }}
       />

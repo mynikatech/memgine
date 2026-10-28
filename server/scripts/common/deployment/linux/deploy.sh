@@ -85,6 +85,9 @@ install -d -o "$app_user" -g "$app_user" -m 0750 "$app_root/releases"
 # Backups used to restore the previous configuration on failure.
 previous_backend_env="$config_root/backend.env.pre-deploy"
 previous_backend_secrets="$config_root/backend-secrets.env.pre-deploy"
+apple_pay_backup_dir="$app_root/deployment-backups"
+apple_pay_backup_file="$apple_pay_backup_dir/apple-pay-association.pre-deploy"
+apple_pay_snapshot_available=false
 
 run_health_check_with_retry() {
   local attempts="${1:-$health_attempts}"
@@ -205,6 +208,55 @@ sync_release_frontend() {
     "$web_root/"
 }
 
+apple_pay_association_enabled() {
+  [[ "${MEMGINE_APPLE_PAY_ASSOCIATION_ENABLED:-false}" == "true" ]]
+}
+
+snapshot_apple_pay_association() {
+  local install_path="${MEMGINE_APPLE_PAY_ASSOCIATION_INSTALL_PATH:-}"
+
+  apple_pay_snapshot_available=false
+
+  if ! apple_pay_association_enabled; then
+    return 0
+  fi
+
+  if [[ -z "$install_path" || ! -f "$install_path" ]]; then
+    return 0
+  fi
+
+  install -d -o root -g root -m 0750 "$apple_pay_backup_dir"
+  cp -p -- "$install_path" "$apple_pay_backup_file"
+  apple_pay_snapshot_available=true
+}
+
+install_apple_pay_association() {
+  bash "$script_dir/install-apple-pay-association.sh" "$environment_dir"
+}
+
+restore_previous_apple_pay_association() {
+  local install_path="${MEMGINE_APPLE_PAY_ASSOCIATION_INSTALL_PATH:-}"
+
+  if ! apple_pay_association_enabled; then
+    return 0
+  fi
+
+  if [[ "$apple_pay_snapshot_available" == "true" ]]; then
+    bash "$script_dir/install-apple-pay-association.sh" \
+      "$environment_dir" \
+      --restore-from "$apple_pay_backup_file"
+  elif [[ -n "$install_path" ]]; then
+    # No prior file existed. Do not leave a newly installed, unverified file live.
+    rm -f -- "$install_path"
+  fi
+}
+
+verify_apple_pay_association() {
+  if apple_pay_association_enabled; then
+    bash "$script_dir/verify-apple-pay-association.sh" "$environment_dir"
+  fi
+}
+
 restore_previous_configuration() {
   if [[ -f "$previous_backend_env" ]]; then
     cp -p "$previous_backend_env" "$config_root/backend.env"
@@ -263,6 +315,11 @@ rollback_to_last_successful_release() {
   fi
 
   sync_release_frontend "$rollback_release_id"
+
+  # The candidate may have installed a new association artifact before its
+  # public verification failed. Restore the prior verified bytes before
+  # reloading Nginx for the rollback release.
+  restore_previous_apple_pay_association
 
   ln -sfn \
     "$rollback_release_root/server.jar" \
@@ -502,7 +559,12 @@ trap - EXIT
 #
 # Deploy candidate frontend.
 #
+snapshot_apple_pay_association
 sync_release_frontend "$release_id"
+
+# The association artifact is intentionally outside the frontend release tree:
+# aws s3 sync --delete above must never remove it.
+install_apple_pay_association
 
 #
 # Point backend service at candidate JAR.
@@ -548,6 +610,22 @@ if ! run_health_check_with_retry; then
   else
     echo ""
     echo "Deployment failed and automatic rollback did not recover the service." >&2
+  fi
+
+  exit 1
+fi
+
+# Verify the public, exact-match Nginx response before accepting the release.
+# A failed verification restores the previous association artifact before the
+# established application rollback path runs.
+if ! verify_apple_pay_association; then
+  echo "Apple Pay association verification failed for candidate release: $release_id" >&2
+  restore_previous_apple_pay_association || true
+
+  if rollback_to_last_successful_release; then
+    echo "Deployment failed Apple Pay association verification, but rollback completed successfully."
+  else
+    echo "Deployment failed Apple Pay association verification and automatic rollback did not recover the service." >&2
   fi
 
   exit 1

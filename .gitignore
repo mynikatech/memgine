@@ -299,6 +299,7 @@ frontend/eas-android-
 **/build/
 *.jar
 ~WRL3643.tmp
+*.log
 frontend/eas-android-inspect-v3
 frontend/eas-android-inspect-v3
 frontend/eas-android-inspect-v3
@@ -310,4 +311,7 @@ frontend/eas-android-inspect-v3
 frontend/eas-android-inspect-v3
 frontend/eas-android-inspect-v3
 frontend/eas-android-inspect-v3
+frontend/eas-android-inspect-v3
+hs_err_pid45672.log
+hs_err_pid43100.log
 frontend/eas-android-inspect-v3

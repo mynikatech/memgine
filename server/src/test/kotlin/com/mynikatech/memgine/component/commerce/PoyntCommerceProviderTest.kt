@@ -33,7 +33,15 @@ class PoyntCommerceProviderTest {
             staffId: String,
             actorUserId: String
         ): PoyntCatalogConfigurationRow? = null
-            override fun counterCatalogConfiguration(transactionId: String, actorUserId: String): PoyntCatalogConfigurationRow? = null
+        override fun counterRedemptionQuoteCatalogConfiguration(
+            organizationId: String,
+            storeId: String,
+            staffId: String,
+            actorUserId: String,
+            integrationId: String
+        ): PoyntCatalogConfigurationRow? = catalogConfiguration(organizationId, integrationId, actorUserId)
+
+        override fun counterCatalogConfiguration(transactionId: String, actorUserId: String): PoyntCatalogConfigurationRow? = null
     }
     private val privateKeyPem = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair().private.encoded.let {
         "-----BEGIN PRIVATE KEY-----\n${Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(it)}\n-----END PRIVATE KEY-----"
@@ -376,6 +384,14 @@ class PoyntCommerceProviderTest {
                 staffId: String,
                 actorUserId: String
             ): PoyntCatalogConfigurationRow? = null
+
+            override fun counterRedemptionQuoteCatalogConfiguration(
+                organizationId: String,
+                storeId: String,
+                staffId: String,
+                actorUserId: String,
+                integrationId: String
+            ): PoyntCatalogConfigurationRow? = catalogConfiguration(organizationId, integrationId, actorUserId)
 
             override fun counterCatalogConfiguration(transactionId: String, actorUserId: String): PoyntCatalogConfigurationRow? = null
         }

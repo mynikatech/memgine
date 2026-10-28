@@ -329,7 +329,10 @@ class PaymentService(
                     currency = current.currencyCode,
                     merchantName = displayName,
                     amount = java.math.BigDecimal.valueOf(amountMinor(current.amount), 2)
-                        .setScale(2).toPlainString()
+                        .setScale(2).toPlainString(),
+                    // This uses the exact integration selected by the payment
+                    // route; it never falls back to a different Poynt merchant.
+                    applePayEnabled = translate { sql().applePayEnabled(row.integrationConfigurationId) }
                 )
             } else null
         } catch (_: Exception) {

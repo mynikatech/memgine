@@ -54,6 +54,8 @@ export type PoyntCollectBootstrap = {
     currency: string;
     merchantName: string;
     amount: string; // Decimal string produced on the backend, never recomputed in frontend.
+    /** The selected payment-route Poynt integration completed Platform Admin Apple Pay onboarding. */
+    applePayEnabled?: boolean;
   } | null;
 };
 export type CustomerHomeBootstrap = {

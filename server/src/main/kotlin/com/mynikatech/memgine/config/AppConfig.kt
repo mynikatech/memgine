@@ -342,7 +342,39 @@ data class AppConfig(
                         "memgine.poynt.diagnosticsEnabled",
                         "POYNT_DIAGNOSTICS_ENABLED",
                         false
-                    )
+                    ),
+
+                    applePayRegistrationEnabled = booleanValue(
+                        "memgine.poynt.applePayRegistrationEnabled",
+                        "POYNT_APPLE_PAY_REGISTRATION_ENABLED",
+                        false
+                    ),
+
+                    applePayAssociationInstallPath = optionalValue(
+                        "memgine.poynt.applePayAssociationInstallPath",
+                        "MEMGINE_APPLE_PAY_ASSOCIATION_INSTALL_PATH"
+                    ).orEmpty(),
+
+                    applePayAssociationEnabled = booleanValue(
+                        "memgine.poynt.applePayAssociationEnabled",
+                        "MEMGINE_APPLE_PAY_ASSOCIATION_ENABLED",
+                        false
+                    ),
+
+                    applePayAssociationBucket = optionalValue(
+                        "memgine.poynt.applePayAssociationBucket",
+                        "MEMGINE_APPLE_PAY_ASSOCIATION_S3_BUCKET"
+                    ).orEmpty(),
+
+                    applePayAssociationPrefix = optionalValue(
+                        "memgine.poynt.applePayAssociationPrefix",
+                        "MEMGINE_APPLE_PAY_ASSOCIATION_S3_PREFIX"
+                    ).orEmpty(),
+
+                    applePayAssociationKey = optionalValue(
+                        "memgine.poynt.applePayAssociationKey",
+                        "MEMGINE_APPLE_PAY_ASSOCIATION_S3_KEY"
+                    ).orEmpty()
                 ),
 
                 assets = AssetStorageConfig(
@@ -420,7 +452,13 @@ data class PoyntCommerceConfig(
     val paymentBridgeCallbackHeaderValue: String,
     val paymentBridgeTtlSeconds: Long,
     val refundDispatchEnabled: Boolean,
-    val diagnosticsEnabled: Boolean
+    val diagnosticsEnabled: Boolean,
+    val applePayRegistrationEnabled: Boolean = false,
+    val applePayAssociationInstallPath: String = "",
+    val applePayAssociationEnabled: Boolean = false,
+    val applePayAssociationBucket: String = "",
+    val applePayAssociationPrefix: String = "",
+    val applePayAssociationKey: String = ""
 )
 
 data class PaymentConfig(

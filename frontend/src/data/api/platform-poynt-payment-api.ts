@@ -37,6 +37,38 @@ export type PoyntCredentialProfile = {
   credentialProfileId: string;
   displayName: string;
 };
+export type PoyntApplePayArtifact = {
+  artifactId: string;
+  sha256: string;
+  status: "CANDIDATE" | "APPROVED" | "RETIRED" | string;
+  retrievedAt?: string | null;
+  lastCheckedAt?: string | null;
+};
+export type PoyntApplePayReadiness = {
+  integrationConfigurationId: string;
+  checkoutDomain: string;
+  status: string;
+  registrationHttpStatus?: number | null;
+  configuredDomainRegistered?: boolean | null;
+  associationStatus: string;
+  providerAssociationSha256?: string | null;
+  installedAssociationSha256?: string | null;
+  publicAssociationSha256?: string | null;
+};
+export type PoyntApplePayConfiguration = {
+  integrationConfigurationId: string;
+  organizationName: string;
+  businessId: string;
+  providerEnvironment: string;
+  checkoutHostname: string;
+  artifact?: PoyntApplePayArtifact | null;
+  readiness: PoyntApplePayReadiness;
+  capabilityEnabled: boolean;
+  effectiveAvailability: string;
+  artifactStorageConfigured: boolean;
+  registrationActionEnabled: boolean;
+  registrationLastVerifiedAt?: string | null;
+};
 export type PlatformPoyntIntegrationWrite = {
   id: string;
   integrationName: string;
@@ -187,6 +219,20 @@ export const platformPaymentConfigurationApi = {
       `/api/v1/platform/payment-configurations/poynt/${encodeURIComponent(id)}/test-connection`,
       {},
     ),
+  applePay: (id: string): Promise<ApiResult<PoyntApplePayConfiguration>> =>
+    httpClient.get(`/api/v1/platform/payment-configurations/poynt/${encodeURIComponent(id)}/apple-pay`),
+  retrieveApplePayAssociation: (id: string): Promise<ApiResult<PoyntApplePayArtifact>> =>
+    httpClient.post(`/api/v1/platform/payment-configurations/poynt/${encodeURIComponent(id)}/apple-pay/retrieve`, {}),
+  refreshApplePayAssociation: (id: string): Promise<ApiResult<PoyntApplePayArtifact>> =>
+    httpClient.post(`/api/v1/platform/payment-configurations/poynt/${encodeURIComponent(id)}/apple-pay/refresh`, {}),
+  approveApplePayAssociation: (id: string, artifactId: string): Promise<ApiResult<PoyntApplePayArtifact>> =>
+    httpClient.post(`/api/v1/platform/payment-configurations/poynt/${encodeURIComponent(id)}/apple-pay/approve`, { artifactId }),
+  publishApplePayAssociation: (id: string, artifactId: string): Promise<ApiResult<PoyntApplePayReadiness>> =>
+    httpClient.post(`/api/v1/platform/payment-configurations/poynt/${encodeURIComponent(id)}/apple-pay/publish-and-verify`, { artifactId }),
+  registerApplePay: (id: string): Promise<ApiResult<{ status: string; readiness: PoyntApplePayReadiness }>> =>
+    httpClient.post(`/api/v1/platform/payment-configurations/poynt/${encodeURIComponent(id)}/apple-pay-registration`, { confirmed: true }),
+  setApplePayCapability: (id: string, enabled: boolean): Promise<ApiResult<PoyntApplePayConfiguration>> =>
+    httpClient.put(`/api/v1/platform/payment-configurations/poynt/${encodeURIComponent(id)}/apple-pay/capability`, { enabled }),
   terminals: (id: string): Promise<ApiResult<PlatformPoyntTerminalBinding[]>> =>
     httpClient.get(
       `/api/v1/platform/payment-configurations/poynt/${encodeURIComponent(id)}/terminals`,

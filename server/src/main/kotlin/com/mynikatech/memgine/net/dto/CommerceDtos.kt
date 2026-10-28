@@ -236,6 +236,62 @@ data class PoyntApplePayRegistrationDiagnosticDto(
     val memgineDevDomainRegistered: Boolean? = null
 )
 
+/** Trusted-configuration Apple Pay readiness for one authorized Poynt integration. */
+@Serializable
+data class PoyntApplePayReadinessDto(
+    val integrationConfigurationId: String,
+    val checkoutDomain: String,
+    val status: String,
+    val registrationHttpStatus: Int? = null,
+    val configuredDomainRegistered: Boolean? = null,
+    val associationStatus: String,
+    val providerAssociationSha256: String? = null,
+    val installedAssociationSha256: String? = null,
+    val publicAssociationSha256: String? = null
+)
+
+/** Explicit acknowledgement required before a Platform Admin can register a domain. */
+@Serializable
+data class PoyntApplePayRegistrationRequestDto(val confirmed: Boolean)
+
+@Serializable
+data class PoyntApplePayRegistrationResultDto(
+    val status: String,
+    val readiness: PoyntApplePayReadinessDto
+)
+
+@Serializable
+data class PoyntApplePayArtifactDto(
+    val artifactId: String,
+    val sha256: String,
+    val status: String,
+    val retrievedAt: String? = null,
+    val lastCheckedAt: String? = null
+)
+
+/** Platform-admin configuration view. S3 keys and credential references are deliberately absent. */
+@Serializable
+data class PoyntApplePayConfigurationDto(
+    val integrationConfigurationId: String,
+    val organizationName: String,
+    val businessId: String,
+    val providerEnvironment: String,
+    val checkoutHostname: String,
+    val artifact: PoyntApplePayArtifactDto? = null,
+    val readiness: PoyntApplePayReadinessDto,
+    val capabilityEnabled: Boolean = false,
+    val effectiveAvailability: String,
+    val artifactStorageConfigured: Boolean = false,
+    val registrationActionEnabled: Boolean = false,
+    val registrationLastVerifiedAt: String? = null
+)
+
+@Serializable
+data class PoyntApplePayArtifactRequestDto(val artifactId: String? = null)
+
+@Serializable
+data class PoyntApplePayCapabilityRequestDto(val enabled: Boolean)
+
 @Serializable
 data class PoyntDeviceDiagnosticDto(
     val deviceId: String,

@@ -14,9 +14,12 @@ object ActivityEventType {
     const val REDEMPTION_QR_GENERATED = "REDEMPTION_QR_GENERATED"
     const val PURCHASE_COMPLETED = "PURCHASE_COMPLETED"
     const val REDEMPTION_COMPLETED = "REDEMPTION_COMPLETED"
+    const val POYNT_APPLE_PAY_REGISTRATION_REQUESTED = "POYNT_APPLE_PAY_REGISTRATION_REQUESTED"
+    const val POYNT_APPLE_PAY_REGISTRATION_RESULT = "POYNT_APPLE_PAY_REGISTRATION_RESULT"
 
     val all = setOf(LOGIN_SUCCESS, BUY_MEMBERSHIP_CLICKED, COUNTER_SELL_MEMBERSHIP_CLICKED,
-        COUNTER_REDEEM_CLICKED, REDEMPTION_QR_GENERATED, PURCHASE_COMPLETED, REDEMPTION_COMPLETED)
+        COUNTER_REDEEM_CLICKED, REDEMPTION_QR_GENERATED, PURCHASE_COMPLETED, REDEMPTION_COMPLETED,
+        POYNT_APPLE_PAY_REGISTRATION_REQUESTED, POYNT_APPLE_PAY_REGISTRATION_RESULT)
     val frontend = setOf(BUY_MEMBERSHIP_CLICKED, COUNTER_SELL_MEMBERSHIP_CLICKED, COUNTER_REDEEM_CLICKED)
 }
 
@@ -33,6 +36,7 @@ data class ActivityAuditEvent(
     val transactionId: String? = null,
     val platform: String = "UNKNOWN",
     val source: String,
+    val metadata: String = "{}",
     val deduplicationKey: String? = null
 )
 
@@ -45,7 +49,7 @@ class ActivityAuditService(private val sql: ActivityAuditSql) {
             sql.insert(UUID.randomUUID().toString(), event.eventType, event.actorUserId,
                 event.actorRole, event.organizationId, event.storeId, event.staffId,
                 event.customerUserId, event.membershipProductId, event.subscriptionId,
-                event.transactionId, event.platform, event.source, "{}", event.deduplicationKey)
+                event.transactionId, event.platform, event.source, event.metadata, event.deduplicationKey)
         } catch (error: Exception) {
             logger.warn("Activity audit recording failed for eventType={}", event.eventType)
         }

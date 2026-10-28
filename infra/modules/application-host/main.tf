@@ -18,7 +18,7 @@ locals {
     },
     var.tags,
   )
-  deployment_prefixes  = ["releases/", "scripts/", "templates/", "config/"]
+  deployment_prefixes  = ["releases/", "scripts/", "templates/", "config/", "provider-artifacts/poynt/apple-pay/"]
   application_prefixes = ["branding/", "uploads/", "generated/", "assets/"]
 }
 
@@ -316,6 +316,14 @@ data "aws_iam_policy_document" "ec2" {
       "s3:GetObjectVersion",
     ]
     resources = [for prefix in local.deployment_prefixes : "${aws_s3_bucket.deploy.arn}/${prefix}*"]
+  }
+
+  # Platform Admin may stage immutable Poynt Apple Pay association artifacts
+  # and the single approved deployment object. It cannot alter releases.
+  statement {
+    sid       = "WritePoyntApplePayArtifacts"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.deploy.arn}/provider-artifacts/poynt/apple-pay/*"]
   }
 
   statement {

@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 239-poynt-apple-pay-artifact-management
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/239-poynt-apple-pay-artifact-management.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

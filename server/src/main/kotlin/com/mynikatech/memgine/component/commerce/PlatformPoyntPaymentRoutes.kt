@@ -7,11 +7,16 @@ import com.mynikatech.memgine.net.dto.PlatformPoyntPaymentWriteDto
 import com.mynikatech.memgine.net.dto.PlatformPoyntTerminalBindingWriteDto
 import com.mynikatech.memgine.net.dto.OrganizationPoyntTerminalBindingWriteDto
 import com.mynikatech.memgine.net.dto.PoyntStoreTerminalAssignmentWriteDto
+import com.mynikatech.memgine.net.dto.PoyntApplePayRegistrationRequestDto
+import com.mynikatech.memgine.net.dto.PoyntApplePayArtifactRequestDto
+import com.mynikatech.memgine.net.dto.PoyntApplePayCapabilityRequestDto
 import com.mynikatech.memgine.security.authenticatedPrincipal
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.ContentType
 import io.ktor.server.plugins.callid.callId
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
@@ -79,6 +84,86 @@ fun Route.platformPoyntPaymentRoutes(
                         call.authenticatedPrincipal().userId
                     ),
                     call.callId
+                ))
+            }
+            get("/{integrationId}/apple-pay-domain-association-file") {
+                call.respondText(
+                    service.applePayDomainAssociationFile(
+                        requiredPoyntId(call.parameters["integrationId"]),
+                        call.authenticatedPrincipal().userId
+                    ),
+                    ContentType.Text.Plain
+                )
+            }
+            get("/{integrationId}/apple-pay-readiness") {
+                call.respond(ApiResponse.success(
+                    service.applePayReadiness(
+                        requiredPoyntId(call.parameters["integrationId"]),
+                        call.authenticatedPrincipal().userId
+                    ),
+                    call.callId
+                ))
+            }
+            get("/{integrationId}/apple-pay") {
+                call.respond(ApiResponse.success(
+                    service.applePayConfiguration(
+                        requiredPoyntId(call.parameters["integrationId"]),
+                        call.authenticatedPrincipal().userId
+                    ),
+                    call.callId
+                ))
+            }
+            post("/{integrationId}/apple-pay/retrieve") {
+                call.respond(ApiResponse.success(
+                    service.retrieveOrReuseApplePayAssociation(
+                        requiredPoyntId(call.parameters["integrationId"]), call.authenticatedPrincipal().userId
+                    ), call.callId
+                ))
+            }
+            post("/{integrationId}/apple-pay/refresh") {
+                call.respond(ApiResponse.success(
+                    service.refreshApplePayAssociation(
+                        requiredPoyntId(call.parameters["integrationId"]), call.authenticatedPrincipal().userId
+                    ), call.callId
+                ))
+            }
+            post("/{integrationId}/apple-pay/approve") {
+                val request = call.receive<PoyntApplePayArtifactRequestDto>()
+                val artifactId = request.artifactId?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: throw BadRequestException("Apple Pay artifact id is required")
+                call.respond(ApiResponse.success(
+                    service.approveApplePayAssociation(
+                        requiredPoyntId(call.parameters["integrationId"]), artifactId, call.authenticatedPrincipal().userId
+                    ), call.callId
+                ))
+            }
+            post("/{integrationId}/apple-pay/publish-and-verify") {
+                val request = call.receive<PoyntApplePayArtifactRequestDto>()
+                val artifactId = request.artifactId?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: throw BadRequestException("Apple Pay artifact id is required")
+                call.respond(ApiResponse.success(
+                    service.publishAndVerifyApplePayAssociation(
+                        requiredPoyntId(call.parameters["integrationId"]), artifactId, call.authenticatedPrincipal().userId
+                    ), call.callId
+                ))
+            }
+            post("/{integrationId}/apple-pay-registration") {
+                val request = call.receive<PoyntApplePayRegistrationRequestDto>()
+                call.respond(ApiResponse.success(
+                    service.registerApplePayDomain(
+                        requiredPoyntId(call.parameters["integrationId"]),
+                        request.confirmed,
+                        call.authenticatedPrincipal().userId
+                    ),
+                    call.callId
+                ))
+            }
+            put("/{integrationId}/apple-pay/capability") {
+                val request = call.receive<PoyntApplePayCapabilityRequestDto>()
+                call.respond(ApiResponse.success(
+                    service.setApplePayCapability(
+                        requiredPoyntId(call.parameters["integrationId"]), request.enabled, call.authenticatedPrincipal().userId
+                    ), call.callId
                 ))
             }
             get("/{integrationId}/terminals") {

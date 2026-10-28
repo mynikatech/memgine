@@ -14,6 +14,7 @@ server {
     index index.html;
     location = /.well-known/assetlinks.json { try_files $uri =404; default_type application/json; }
     location = /.well-known/apple-app-site-association { try_files $uri =404; default_type application/json; }
+${APPLE_PAY_ASSOCIATION_LOCATION}
     location / { try_files $uri $uri/ /index.html; }
 }
 

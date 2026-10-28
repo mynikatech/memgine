@@ -95,7 +95,8 @@ data class PoyntCollectWalletDto(
     val country: String,
     val currency: String,
     val merchantName: String,
-    val amount: String
+    val amount: String,
+    val applePayEnabled: Boolean = false
 )
 
 /** Public organization colors used only to render the secure hosted checkout. */

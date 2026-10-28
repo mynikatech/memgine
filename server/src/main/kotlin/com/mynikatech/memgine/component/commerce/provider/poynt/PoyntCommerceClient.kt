@@ -14,6 +14,15 @@ import org.slf4j.LoggerFactory
 
 interface PoyntHttpTransport {
     fun get(uri: URI, authorization: String, modifiedSince: String? = null): PoyntHttpResponse
+    /**
+     * Binary GET is used only where provider bytes themselves are security
+     * evidence, such as an Apple Pay domain-association file. Existing test
+     * transports remain compatible through the UTF-8 fallback.
+     */
+    fun getBytes(uri: URI, authorization: String): PoyntHttpBinaryResponse {
+        val response = get(uri, authorization)
+        return PoyntHttpBinaryResponse(response.statusCode, response.body.toByteArray(StandardCharsets.UTF_8))
+    }
     fun post(uri: URI, authorization: String, requestId: String, body: String): PoyntHttpResponse
     fun productUri(businessId: String, productId: String): URI
     fun productsUri(businessId: String, offset: Int): URI
@@ -31,6 +40,9 @@ interface PoyntHttpTransport {
     /** Read-only Apple Pay registration diagnostic; provider configuration supplies the business ID. */
     fun applePayRegistrationUri(businessId: String): URI =
         throw UnsupportedOperationException("Poynt Apple Pay registration URI is unavailable")
+    /** Read-only Apple Pay domain-association-file diagnostic. */
+    fun applePayDomainAssociationFileUri(businessId: String): URI =
+        throw UnsupportedOperationException("Poynt Apple Pay domain association URI is unavailable")
     fun transactionByIdUri(businessId: String, transactionId: String): URI =
     throw UnsupportedOperationException("Poynt transaction lookup unavailable")
     fun storeUri(
@@ -66,6 +78,21 @@ class PoyntCloudHttpTransport(private val baseUrl: String, private val apiVersio
         throw BadRequestException("Poynt catalog request failed")
     }
 
+    override fun getBytes(uri: URI, authorization: String): PoyntHttpBinaryResponse {
+        val request = HttpRequest.newBuilder(uri)
+            .timeout(Duration.ofSeconds(20))
+            .header("Authorization", authorization)
+            .header("Api-Version", apiVersion)
+            .GET()
+            .build()
+        return try {
+            val response = client.send(request, HttpResponse.BodyHandlers.ofByteArray())
+            PoyntHttpBinaryResponse(response.statusCode(), response.body())
+        } catch (_: Exception) {
+            throw BadRequestException("Poynt binary request failed")
+        }
+    }
+
     override fun post(uri: URI, authorization: String, requestId: String, body: String): PoyntHttpResponse {
         val request = buildPostRequest(uri, authorization, requestId, body)
         return try {
@@ -74,10 +101,9 @@ class PoyntCloudHttpTransport(private val baseUrl: String, private val apiVersio
         } catch (error: Exception) {
             org.slf4j.LoggerFactory.getLogger(PoyntCloudHttpTransport::class.java)
                 .error(
-                    "Poynt HTTP POST failed endpoint={} exceptionType={} message={}",
+                    "Poynt HTTP POST failed endpoint={} exceptionType={}",
                     uri.path,
-                    error.javaClass.simpleName,
-                    error.message
+                    error.javaClass.simpleName
                 )
             throw BadRequestException("Poynt order request failed")
         }
@@ -103,6 +129,8 @@ class PoyntCloudHttpTransport(private val baseUrl: String, private val apiVersio
     override fun storesUri(businessId: String) = URI.create("$baseUrl/businesses/$businessId/stores")
     override fun applePayRegistrationUri(businessId: String) =
         URI.create("$baseUrl/businesses/$businessId/apple-pay/registration")
+    override fun applePayDomainAssociationFileUri(businessId: String) =
+        URI.create("$baseUrl/businesses/$businessId/apple-pay/domain-association-file")
     override fun storeUri(
         businessId: String,
         storeId: String
@@ -117,6 +145,8 @@ class PoyntCloudHttpTransport(private val baseUrl: String, private val apiVersio
             URLEncoder.encode(transactionId, StandardCharsets.UTF_8)
     )
 }
+
+data class PoyntHttpBinaryResponse(val statusCode: Int, val body: ByteArray)
 
 /** Adds a cached Poynt bearer token to each safe catalog GET and retries exactly once after 401. */
 class PoyntAuthenticatedCatalogClient(

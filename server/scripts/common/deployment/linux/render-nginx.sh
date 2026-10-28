@@ -10,6 +10,9 @@ env_file="$environment_dir/memgine.env"
 [[ -f "$env_file" ]] || { echo "Environment file not found: $env_file" >&2; exit 1; }
 load_memgine_environment_file "$env_file"
 
+deployment_file="$environment_dir/deployment.properties"
+[[ -f "$deployment_file" ]] && load_memgine_environment_file "$deployment_file"
+
 frontend_host="${MEMGINE_WEB_BASE_URL#*://}"
 frontend_host="${frontend_host%%/*}"
 api_host="${MEMGINE_API_BASE_URL#*://}"
@@ -19,6 +22,35 @@ target="$environment_dir/conf.d/memgine.conf"
 export FRONTEND_HOST="$frontend_host"
 export API_HOST="$api_host"
 export WEB_ROOT="$web_root"
+
+apple_pay_association_location() {
+  local enabled="${MEMGINE_APPLE_PAY_ASSOCIATION_ENABLED:-false}"
+  local install_path
+
+  case "$enabled" in
+    false)
+      printf '%s\n' '    location = /.well-known/apple-developer-merchantid-domain-association { return 404; }'
+      return 0
+      ;;
+    true)
+      install_path="${MEMGINE_APPLE_PAY_ASSOCIATION_INSTALL_PATH:-}"
+      [[ -n "$install_path" && "$install_path" == /* &&
+         "$install_path" =~ ^[A-Za-z0-9._/@+=:-]+$ ]] || {
+        echo "MEMGINE_APPLE_PAY_ASSOCIATION_INSTALL_PATH is invalid." >&2
+        return 1
+      }
+      printf '%s\n' "    location = /.well-known/apple-developer-merchantid-domain-association { alias ${install_path}; default_type text/plain; add_header X-Content-Type-Options nosniff always; }"
+      return 0
+      ;;
+    *)
+      echo "MEMGINE_APPLE_PAY_ASSOCIATION_ENABLED must be true or false." >&2
+      return 1
+      ;;
+  esac
+}
+
+APPLE_PAY_ASSOCIATION_LOCATION="$(apple_pay_association_location)"
+export APPLE_PAY_ASSOCIATION_LOCATION
 
 case "$mode" in
   http)
@@ -32,6 +64,7 @@ server {
     location /.well-known/acme-challenge/ { root ${web_root}; }
     location = /.well-known/assetlinks.json { try_files \$uri =404; default_type application/json; }
     location = /.well-known/apple-app-site-association { try_files \$uri =404; default_type application/json; }
+${APPLE_PAY_ASSOCIATION_LOCATION}
     location / { try_files \$uri \$uri/ /index.html; }
 }
 
@@ -51,7 +84,7 @@ server {
 EOF
     ;;
   https)
-    envsubst '${FRONTEND_HOST} ${API_HOST} ${WEB_ROOT}' \
+    envsubst '${FRONTEND_HOST} ${API_HOST} ${WEB_ROOT} ${APPLE_PAY_ASSOCIATION_LOCATION}' \
       < "$script_dir/nginx-https.conf.template" \
       > "$target"
     ;;

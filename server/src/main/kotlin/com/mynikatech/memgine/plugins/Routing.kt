@@ -1,6 +1,7 @@
 package com.mynikatech.memgine.plugins
 
 import com.mynikatech.memgine.component.asset.BrandingAssetService
+import com.mynikatech.memgine.component.commerce.S3PoyntApplePayArtifactStorage
 import com.mynikatech.memgine.component.activityaudit.ActivityAuditService
 import com.mynikatech.memgine.component.activityaudit.ActivityAuditSql
 import com.mynikatech.memgine.component.activityaudit.activityAuditRoutes
@@ -297,7 +298,24 @@ fun Application.configureRouting(
         poyntTokens,
         poyntHttpTransport,
         config.server.environment,
-        config.poynt.diagnosticsEnabled
+        config.poynt.diagnosticsEnabled,
+        config.poynt.applePayRegistrationEnabled,
+        config.payment.webBaseUrl,
+        config.poynt.applePayAssociationInstallPath,
+        activityAuditService,
+        applePayStorage = if (
+            config.poynt.applePayAssociationBucket.isNotBlank() &&
+            config.poynt.applePayAssociationPrefix.isNotBlank() &&
+            config.assets.awsRegion.isNotBlank()
+        ) {
+            S3PoyntApplePayArtifactStorage(
+                config.poynt.applePayAssociationBucket,
+                config.assets.awsRegion
+            )
+        } else null,
+        providerEnvironment = config.poynt.cloudBaseUrl,
+        applePayArtifactPrefix = config.poynt.applePayAssociationPrefix,
+        applePayApprovedKey = config.poynt.applePayAssociationKey
     )
     val platformPoyntTerminalBindingService = PlatformPoyntTerminalBindingService(
         database.jdbi.onDemand(PlatformPoyntTerminalBindingSql::class.java)

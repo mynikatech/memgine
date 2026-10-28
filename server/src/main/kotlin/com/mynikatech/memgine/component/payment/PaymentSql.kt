@@ -40,6 +40,9 @@ interface PaymentSql {
         @Bind("actorUserId") actorUserId: String
     ): PoyntCollectConfigurationRow?
 
+    @SqlQuery("SELECT poynt_apple_pay_capability_enabled(:integrationId)")
+    fun applePayEnabled(@Bind("integrationId") integrationId: String): Boolean
+
     @SqlQuery("SELECT payment_claim_poynt_collect_charge(:organizationId, :intentId, :actorUserId)")
     fun claimCollectCharge(
         @Bind("organizationId") organizationId: String,

@@ -7,6 +7,7 @@ import com.mynikatech.memgine.component.commerce.provider.poynt.PoyntHttpTranspo
 import com.mynikatech.memgine.component.commerce.provider.poynt.PoyntTokenResponse
 import com.mynikatech.memgine.component.commerce.provider.poynt.PoyntTokenService
 import com.mynikatech.memgine.component.commerce.provider.poynt.PoyntTokenTransport
+import com.mynikatech.memgine.exception.BadRequestException
 import java.lang.reflect.Proxy
 import java.net.URI
 import java.security.KeyPairGenerator
@@ -15,6 +16,7 @@ import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertFailsWith
 
 class PlatformPoyntApplePayRegistrationDiagnosticTest {
     private val privateKeyPem = KeyPairGenerator.getInstance("RSA").apply {
@@ -114,11 +116,66 @@ class PlatformPoyntApplePayRegistrationDiagnosticTest {
         assertNull(result.memgineDevDomainRegistered)
     }
 
+    @Test
+    fun `domain association file returns the exact successful provider body`() {
+        val transport = FakeTransport(PoyntHttpResponse(200, "association-file-content\n"))
+
+        val result = service(transport).applePayDomainAssociationFile("integration-1", "platform-user")
+
+        assertEquals("association-file-content\n", result)
+        assertEquals(
+            "https://configured-poynt.example/businesses/business-1/apple-pay/domain-association-file",
+            transport.uri.toString()
+        )
+        assertEquals(0, transport.posts)
+    }
+
+    @Test
+    fun `domain association file retries once after 401`() {
+        val transport = FakeTransport(PoyntHttpResponse(401, "ignored"), PoyntHttpResponse(200, "file"))
+        val tokenTransport = FakeTokenTransport()
+
+        assertEquals("file", service(transport, tokenTransport).applePayDomainAssociationFile("integration-1", "platform-user"))
+        assertEquals(2, transport.gets)
+        assertEquals(2, tokenTransport.calls)
+    }
+
+    @Test
+    fun `domain association file provider errors are sanitized`() {
+        listOf(403, 404, 500).forEach { status ->
+            val error = assertFailsWith<BadRequestException> {
+                service(FakeTransport(PoyntHttpResponse(status, "provider-sensitive-body")))
+                    .applePayDomainAssociationFile("integration-1", "platform-user")
+            }
+            assertEquals("Poynt Apple Pay domain association request failed (HTTP $status)", error.message)
+        }
+    }
+
+    @Test
+    fun `domain association diagnostic is disabled unless explicitly enabled`() {
+        assertFailsWith<BadRequestException> {
+            service(FakeTransport(PoyntHttpResponse(200, "file")), diagnosticsEnabled = false)
+                .applePayDomainAssociationFile("integration-1", "platform-user")
+        }
+    }
+
+    @Test
+    fun `unauthorized integration cannot reach the provider`() {
+        val transport = FakeTransport(PoyntHttpResponse(200, "file"))
+        assertFailsWith<BadRequestException> {
+            service(transport, authorized = false)
+                .applePayDomainAssociationFile("integration-1", "non-platform-user")
+        }
+        assertEquals(0, transport.gets)
+    }
+
     private fun service(
         transport: FakeTransport,
-        tokenTransport: FakeTokenTransport = FakeTokenTransport()
+        tokenTransport: FakeTokenTransport = FakeTokenTransport(),
+        diagnosticsEnabled: Boolean = true,
+        authorized: Boolean = true
     ): PlatformPoyntPaymentService = PlatformPoyntPaymentService(
-        sql = sql(),
+        sql = sql(authorized),
         credentials = PoyntCredentialResolver { PoyntCredential(privateKeyPem) },
         tokens = PoyntTokenService(
             PoyntCredentialResolver { PoyntCredential(privateKeyPem) },
@@ -128,22 +185,23 @@ class PlatformPoyntApplePayRegistrationDiagnosticTest {
         ),
         transport = transport,
         environment = "dev",
-        diagnosticsEnabled = true
+        diagnosticsEnabled = diagnosticsEnabled,
+        checkoutUrl = "https://memgine-dev.mynikatech.in"
     )
 
     @Suppress("UNCHECKED_CAST")
-    private fun sql(): PlatformPoyntPaymentSql = Proxy.newProxyInstance(
+    private fun sql(authorized: Boolean): PlatformPoyntPaymentSql = Proxy.newProxyInstance(
         javaClass.classLoader,
         arrayOf(PlatformPoyntPaymentSql::class.java)
     ) { _, method, _ ->
         when (method.name) {
-            "get" -> PlatformPoyntPaymentRow(
+            "get" -> if (authorized) PlatformPoyntPaymentRow(
                 organizationId = "organization-1",
                 integrationConfigurationId = "integration-1",
                 applicationId = "application-1",
                 providerBusinessId = "business-1",
                 merchantCurrencyCode = "CAD"
-            )
+            ) else null
             "credentialReference" -> "credential-reference"
             else -> error("Unexpected SQL call: ${method.name}")
         }
@@ -179,5 +237,7 @@ class PlatformPoyntApplePayRegistrationDiagnosticTest {
         override fun ordersUri(businessId: String): URI = error("Unexpected orders URI")
         override fun applePayRegistrationUri(businessId: String): URI =
             URI.create("https://configured-poynt.example/businesses/$businessId/apple-pay/registration")
+        override fun applePayDomainAssociationFileUri(businessId: String): URI =
+            URI.create("https://configured-poynt.example/businesses/$businessId/apple-pay/domain-association-file")
     }
 }
