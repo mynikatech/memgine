@@ -296,6 +296,7 @@ frontend/dist-web/_expo/static/js/web/*.js
 frontend/eas-android-inspect-v2
 frontend/eas-android-inspect-v2
 frontend/eas-android-
+.gradle-local
 **/build/
 *.jar
 ~WRL3643.tmp
@@ -317,4 +318,6 @@ hs_err_pid43100.log
 frontend/eas-android-inspect-v3
 docs/~WRL3874.tmp
 frontend/eas-android-inspect-v3
+frontend/eas-android-inspect-v3
+.gradle-local/caches/8.13/kotlin-dsl/accessors/6067a28a2c74788e83c28e9f6041ca9f/sources/org/gradle/kotlin/dsl/Accessors9ofjxssccbksmuzem03z8pl6.kt
 frontend/eas-android-inspect-v3

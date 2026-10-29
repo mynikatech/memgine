@@ -135,6 +135,17 @@ export interface OrganizationBranding {
   primaryColor?: string;
   secondaryColor?: string;
   accentColor?: string;
+  backgroundColor?: string;
+  textColor?: string;
+  backgroundImageUrl?: string | null;
+  announcementEnabled?: boolean;
+  announcementMessage?: string | null;
+  announcementStyle?: "STATIC" | "FADE" | "SLIDE" | "TICKER";
+  announcementBackgroundColor?: string | null;
+  announcementTextColor?: string | null;
+  announcementLinkUrl?: string | null;
+  announcementStartsAt?: ISODateString | null;
+  announcementEndsAt?: ISODateString | null;
 
   brandingStatusId: ID;
 

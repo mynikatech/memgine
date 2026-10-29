@@ -24,6 +24,8 @@ export interface CustomerExperienceDefinition {
     secondaryColor?: string;
     accentColor?: string;
     backgroundColor?: string;
+    textColor?: string;
+    backgroundImageUrl?: string | null;
   };
 
   membership: {

@@ -6,7 +6,8 @@ export type BrandingAssetType =
   | "favicon"
   | "splashScreen"
   | "heroImage"
-  | "offerPromotion";
+  | "offerPromotion"
+  | "platformThemeBackground";
 
 export type PickBrandingAssetOptions = {
   assetType: BrandingAssetType;

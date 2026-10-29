@@ -17,6 +17,7 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import com.mynikatech.memgine.security.authenticatedPrincipal
 import io.ktor.utils.io.readRemaining
 import kotlinx.io.readByteArray
 import kotlinx.serialization.Serializable
@@ -120,6 +121,27 @@ fun Route.brandingAssetRoutes(
                     call.callId
                 )
             )
+        }
+    }
+
+    route("/platform/branding-themes/{themeCode}/background-image") {
+        post {
+            call.authenticatedPrincipal().require("PLATFORM_ADMIN_ACCESS")
+            val themeCode = call.parameters["themeCode"] ?: throw BadRequestException("Theme code is required")
+            var fileName: String? = null
+            var contentType: String? = null
+            var bytes: ByteArray? = null
+            call.receiveMultipart().forEachPart { part ->
+                try {
+                    if (part is PartData.FileItem && part.name == "file") {
+                        fileName = part.originalFileName ?: "background-image"
+                        contentType = part.contentType?.toString()
+                        bytes = part.provider().readRemaining().readByteArray()
+                    }
+                } finally { part.dispose() }
+            }
+            val stored = service.uploadPlatformThemeBackground(themeCode, fileName ?: throw BadRequestException("Image file is required"), contentType, bytes ?: throw BadRequestException("Image file is required"))
+            call.respond(HttpStatusCode.Created, ApiResponse.success(BrandingAssetUploadResponseDto(stored.path), call.callId))
         }
     }
 

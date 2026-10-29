@@ -85,6 +85,8 @@ export const APP_ROUTES = {
 
     templates: "/platform-admin/templates",
 
+    themeBuilder: "/platform-admin/theme-builder",
+
     regionalSettings: "/platform-admin/regional-settings",
 
     paymentConfiguration: "/platform-admin/payment-configuration",
@@ -520,6 +522,11 @@ export const PLATFORM_ADMIN_ROUTES: AdminRoute[] = [
     href: APP_ROUTES.platformAdmin.templates,
 
     icon: "duplicate-outline",
+  },
+  {
+    title: "Theme Builder",
+    href: APP_ROUTES.platformAdmin.themeBuilder,
+    icon: "color-palette-outline",
   },
 
   {

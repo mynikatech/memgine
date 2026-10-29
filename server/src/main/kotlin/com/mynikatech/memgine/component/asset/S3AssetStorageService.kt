@@ -97,19 +97,27 @@ internal object AssetPathMapper {
 
     fun s3Key(relativeDirectory: String, fileName: String): String {
         val parts = sanitizeDirectory(relativeDirectory).split('/')
-        require(parts.size == 4 && parts[0] == "organizations" && parts[2] == "branding") {
-            "Invalid branding asset directory"
-        }
         require(fileName.matches(Regex("[A-Za-z0-9._-]+"))) { "Invalid asset file name" }
-        return "branding/organizations/${parts[1]}/${parts[3]}/$fileName"
+        return when {
+            parts.size == 4 && parts[0] == "organizations" && parts[2] == "branding" ->
+                "branding/organizations/${parts[1]}/${parts[3]}/$fileName"
+            parts.size == 4 && parts[0] == "branding" && parts[1] == "platform-themes" ->
+                "${parts.joinToString("/")}/$fileName"
+            else -> throw IllegalArgumentException("Invalid branding asset directory")
+        }
     }
 
     fun s3KeyFromPublicPath(publicBasePath: String, publicPath: String): String? {
         if (!publicPath.startsWith("$publicBasePath/")) return null
         val parts = publicPath.removePrefix(publicBasePath).trimStart('/').split('/')
-        if (parts.size != 5 || parts[0] != "organizations" || parts[2] != "branding") return null
         return try {
-            s3Key(parts.take(4).joinToString("/"), parts[4])
+            when {
+                parts.size == 5 && parts[0] == "organizations" && parts[2] == "branding" ->
+                    s3Key(parts.take(4).joinToString("/"), parts[4])
+                parts.size == 5 && parts[0] == "branding" && parts[1] == "platform-themes" ->
+                    s3Key(parts.take(4).joinToString("/"), parts[4])
+                else -> null
+            }
         } catch (_: IllegalArgumentException) {
             null
         }

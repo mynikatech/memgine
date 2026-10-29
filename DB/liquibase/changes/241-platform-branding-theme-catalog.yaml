@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 241-platform-branding-theme-catalog
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/241-platform-branding-theme-catalog.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

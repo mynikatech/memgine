@@ -81,6 +81,9 @@ import com.mynikatech.memgine.component.commerce.platformPoyntPaymentRoutes
 import com.mynikatech.memgine.component.commerce.organizationPoyntPaymentSummaryRoutes
 import com.mynikatech.memgine.component.commerce.provider.poynt.*
 import com.mynikatech.memgine.component.asset.brandingAssetRoutes
+import com.mynikatech.memgine.component.branding.PlatformBrandingThemeService
+import com.mynikatech.memgine.component.branding.PlatformBrandingThemeSql
+import com.mynikatech.memgine.component.branding.platformBrandingThemeRoutes
 import com.mynikatech.memgine.component.customerexperience.customerExperienceReleaseRoutes
 import com.mynikatech.memgine.component.customerexperience.CustomerExperienceReleaseService
 import com.mynikatech.memgine.component.customerexperience.CustomerExperienceReleaseSql
@@ -332,6 +335,9 @@ fun Application.configureRouting(
     val customerExperienceReleaseService =
     CustomerExperienceReleaseService(database.jdbi.onDemand(CustomerExperienceReleaseSql::class.java)
     )
+    val platformBrandingThemeService = PlatformBrandingThemeService(
+        database.jdbi.onDemand(PlatformBrandingThemeSql::class.java)
+    )
 
     routing {
         get("/health") {
@@ -359,6 +365,7 @@ fun Application.configureRouting(
             // Batch 2A
             storeRoutes(storeService)
             brandingAssetRoutes(brandingAssetService)
+            platformBrandingThemeRoutes(platformBrandingThemeService)
 
             // Batch 2B
             staffRoutes(staffService)

@@ -47,3 +47,4 @@ export * from "./services/organization-maintenance-service";
 export * from "./errors";
 export * from "./logging";
 export * from "./configuration/draft";
+export * from "./branding-theme.types";
