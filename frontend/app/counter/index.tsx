@@ -103,7 +103,8 @@ const quoteMatchesCheckoutReview = (
           reviewLine.allocations.some(
             (reviewAllocation) =>
               reviewAllocation.adjustmentId === quoteAllocation.adjustmentId &&
-              reviewAllocation.adjustmentType === quoteAllocation.adjustmentType &&
+              reviewAllocation.adjustmentType ===
+                quoteAllocation.adjustmentType &&
               reviewAllocation.itemType === quoteAllocation.itemType &&
               reviewAllocation.benefitId === quoteAllocation.benefitId &&
               reviewAllocation.offerId === quoteAllocation.offerId &&
@@ -301,6 +302,26 @@ export default function StaffCounter() {
    */
   const [tokenText, setTokenText] = useState("");
   const [scannerActive, setScannerActive] = useState(false);
+  const [qrDiagnosticsVisible, setQrDiagnosticsVisible] = useState(false);
+  const [qrDiagnostics, setQrDiagnostics] = useState({
+    stage: "Idle",
+    cameraReady: false,
+    detectedCount: 0,
+    lastDetectedAt: "—",
+    payloadLength: 0,
+  });
+
+  const qrDiagnosticsRef = useRef(0);
+
+  const recordQrDiagnostic = (stage: string) => {
+    const timestamp = new Date().toISOString();
+    console.log("[MEMGINE_QR]", { timestamp, stage });
+
+    setQrDiagnostics((previous) => ({
+      ...previous,
+      stage,
+    }));
+  };
   const [dynamicRedemptionStage, setDynamicRedemptionStage] =
     useState<DynamicRedemptionStage>("scan");
   const [resolvedTransaction, setResolvedTransaction] =
@@ -1156,13 +1177,6 @@ export default function StaffCounter() {
   const startMembershipOfferCameraScan = async () => {
     setError("");
 
-    if (Platform.OS === "web") {
-      setError(
-        "Camera scanning is available in the Memgine mobile app. Enter the Membership Offer QR reference instead.",
-      );
-      return;
-    }
-
     const permission = cameraPermission?.granted
       ? cameraPermission
       : await requestCameraPermission();
@@ -1244,16 +1258,24 @@ export default function StaffCounter() {
     setBusy(true);
     setResult(null);
     setError("");
+    setRedemptionReview(null);
     setScannerActive(false);
+    recordQrDiagnostic("Resolving scanned redemption QR");
     try {
       const context = counterContext();
       const transaction = await services.counter.resolveRedemptionTransactionQr(
         context,
         qrReference,
       );
+      recordQrDiagnostic("QR reference resolved successfully");
       const validation = await services.counter.validateRedemptionTransaction(
         context,
         transaction.transactionId,
+      );
+      recordQrDiagnostic(
+        validation.every((item) => item.eligible)
+          ? "QR validation passed"
+          : "QR resolved — eligibility validation failed",
       );
       setTokenText("");
       setResolvedTransaction(transaction);
@@ -1262,9 +1284,16 @@ export default function StaffCounter() {
       // QR already authorizes a pending transaction. Show the full read-only
       // financial summary immediately; do not prepare an order or take payment.
       if (validation.length > 0 && validation.every((item) => item.eligible)) {
+        recordQrDiagnostic("Loading financial review");
         await loadRedemptionReview(transaction, validation);
+        recordQrDiagnostic("Financial review loaded");
+      } else {
+        recordQrDiagnostic("Financial review blocked by eligibility");
       }
     } catch (failure) {
+      recordQrDiagnostic(
+        `QR flow failed: ${failure instanceof Error ? failure.name : "Unknown error"}`,
+      );
       setError(redemptionQrError(failure));
       qrScanInFlight.current = false;
     } finally {
@@ -1274,12 +1303,7 @@ export default function StaffCounter() {
 
   const startCameraScan = async () => {
     setError("");
-    if (Platform.OS === "web") {
-      setError(
-        "Camera scanning is available in the Memgine mobile app. Enter the QR reference instead.",
-      );
-      return;
-    }
+
     const permission = cameraPermission?.granted
       ? cameraPermission
       : await requestCameraPermission();
@@ -1551,6 +1575,9 @@ export default function StaffCounter() {
       setResolvedTransaction(transaction);
       setTransactionValidation(validation);
       setRedemptionReview(review);
+      // A successfully loaded financial review must always be visible before
+      // any checkout preparation, including after a previous checkout failed.
+      setRedemptionCheckoutStage("idle");
     } finally {
       redemptionCheckoutInFlight.current = false;
       setBusy(false);
@@ -1817,8 +1844,11 @@ export default function StaffCounter() {
     setError("");
 
     try {
+      recordQrDiagnostic("Retrying financial review");
       await loadRedemptionReview(resolvedTransaction, transactionValidation);
+      recordQrDiagnostic("Financial review loaded");
     } catch (failure) {
+      recordQrDiagnostic("Financial review unavailable");
       setError(redemptionQrError(failure));
     } finally {
       qrExecutionInFlight.current = false;
@@ -1986,7 +2016,9 @@ export default function StaffCounter() {
         selectedSubId,
         benefitIds,
         offerIds,
-        Object.fromEntries(keys.map((key) => [key, productSelection.selections[key]])),
+        Object.fromEntries(
+          keys.map((key) => [key, productSelection.selections[key]]),
+        ),
       );
       setPreOtpReview(review);
     } catch (failure) {
@@ -2007,7 +2039,9 @@ export default function StaffCounter() {
 
     try {
       if (!preOtpReview) {
-        throw new Error("Load the financial redemption review before sending an OTP.");
+        throw new Error(
+          "Load the financial redemption review before sending an OTP.",
+        );
       }
       const benefitIds = Array.from(selectedBenefitIds);
       const offerIds = Array.from(selectedOfferIds);
@@ -2572,7 +2606,7 @@ export default function StaffCounter() {
             </>
           ) : (
             <>
-              {membershipOfferScannerActive && Platform.OS !== "web" ? (
+              {membershipOfferScannerActive ? (
                 <View style={styles.cameraFrame}>
                   <CameraView
                     style={styles.camera}
@@ -3038,8 +3072,9 @@ export default function StaffCounter() {
                 {transactionValidation.length === 1 ? "" : "s"}
               </Text>
               <Text style={styles.muted}>
-                Transaction {resolvedTransaction.transactionNumber}. All items
-                must be eligible before redemption can be confirmed.
+                Transaction {resolvedTransaction.transactionNumber}. The
+                financial summary must be loaded and reviewed before redemption
+                can be confirmed.
               </Text>
               {(["BENEFIT", "OFFER"] as const).map((itemType) => {
                 const items = transactionValidation.filter(
@@ -3101,7 +3136,9 @@ export default function StaffCounter() {
                 ]}
               >
                 <Text style={styles.primaryBtnText}>
-                  {busy ? "Preparing..." : "Continue to POS"}
+                  {busy
+                    ? "Loading financial summary..."
+                    : "Retry Financial Summary"}
                 </Text>
               </Pressable>
               <Pressable
@@ -3120,16 +3157,49 @@ export default function StaffCounter() {
                 Scan the customer&apos;s secure redemption QR. Its contents are
                 verified by Memgine before any redemption is shown.
               </Text>
-              {scannerActive && Platform.OS !== "web" ? (
+              {scannerActive ? (
                 <View style={styles.cameraFrame}>
                   <CameraView
                     style={styles.camera}
                     facing="back"
                     barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-                    onBarcodeScanned={({ data }) =>
-                      void resolveRedemptionQr(data)
-                    }
-                    onMountError={() => {
+                    onCameraReady={() => {
+                      recordQrDiagnostic("Camera ready");
+                      setQrDiagnostics((previous) => ({
+                        ...previous,
+                        cameraReady: true,
+                      }));
+                    }}
+                    onBarcodeScanned={({ data }) => {
+                      qrDiagnosticsRef.current += 1;
+
+                      const detectedAt = new Date().toLocaleTimeString();
+
+                      console.log("[MEMGINE_QR]", {
+                        event: "QR_DETECTED",
+                        detectedAt,
+                        count: qrDiagnosticsRef.current,
+                        payloadLength: data.length,
+                        platform: Platform.OS,
+                      });
+
+                      setQrDiagnostics((previous) => ({
+                        ...previous,
+                        stage: "QR detected — resolving",
+                        detectedCount: qrDiagnosticsRef.current,
+                        lastDetectedAt: detectedAt,
+                        payloadLength: data.length,
+                      }));
+
+                      void resolveRedemptionQr(data);
+                    }}
+                    onMountError={(event) => {
+                      recordQrDiagnostic("Camera initialization failed");
+
+                      console.error("[MEMGINE_QR] Camera mount error", {
+                        message: event.message,
+                      });
+
                       setScannerActive(false);
                       setError(
                         "The camera is unavailable on this device. Enter the QR reference instead.",
@@ -3144,6 +3214,60 @@ export default function StaffCounter() {
                   </Pressable>
                 </View>
               ) : null}
+              <Pressable
+                testID="counter-qr-diagnostics-open"
+                accessibilityRole="button"
+                accessibilityLabel="Open QR scanner diagnostics"
+                onPress={() => setQrDiagnosticsVisible(true)}
+                style={{
+                  alignSelf: "flex-start",
+                  paddingVertical: 6,
+                  paddingHorizontal: 4,
+                }}
+              >
+                <Text style={{ color: COLORS.text, fontWeight: "600" }}>
+                  + QR Diagnostics
+                </Text>
+              </Pressable>
+              <Modal
+                visible={qrDiagnosticsVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setQrDiagnosticsVisible(false)}
+              >
+                <Pressable
+                  style={styles.modalBackdrop}
+                  onPress={() => setQrDiagnosticsVisible(false)}
+                >
+                  <Pressable style={styles.modalCard} onPress={() => undefined}>
+                    <Text style={styles.cardTitle}>QR Scanner Diagnostics</Text>
+                    <Text style={styles.muted}>Platform: {Platform.OS}</Text>
+                    <Text style={styles.muted}>
+                      Stage: {qrDiagnostics.stage}
+                    </Text>
+                    <Text style={styles.muted}>
+                      Camera ready: {qrDiagnostics.cameraReady ? "Yes" : "No"}
+                    </Text>
+                    <Text style={styles.muted}>
+                      QR detected: {qrDiagnostics.detectedCount} times
+                    </Text>
+                    <Text style={styles.muted}>
+                      Last detection: {qrDiagnostics.lastDetectedAt}
+                    </Text>
+                    <Text style={styles.muted}>
+                      Payload length: {qrDiagnostics.payloadLength}
+                    </Text>
+                    <Pressable
+                      testID="counter-qr-diagnostics-close"
+                      accessibilityRole="button"
+                      onPress={() => setQrDiagnosticsVisible(false)}
+                      style={styles.secondaryBtn}
+                    >
+                      <Text style={styles.secondaryBtnText}>Close</Text>
+                    </Pressable>
+                  </Pressable>
+                </Pressable>
+              </Modal>
               <Pressable
                 testID="counter-scan-redemption-qr"
                 disabled={busy}
@@ -3397,7 +3521,7 @@ export default function StaffCounter() {
             style={[styles.primaryBtn, busy && styles.btnDisabled]}
           >
             <Text style={styles.primaryBtnText}>
-              {busy ? "Retrying..." : "Retry POS Checkout"}
+              {busy ? "Loading..." : "Retry Financial Summary"}
             </Text>
           </Pressable>
         </View>
@@ -3425,24 +3549,56 @@ export default function StaffCounter() {
               <View style={styles.redemptionItemContent}>
                 <Text style={styles.benefitTitle}>{item.productName}</Text>
                 <Text style={styles.muted}>
-                  {item.itemType === "BENEFIT" ? "Benefit" : "Offer"} · Quantity {item.quantity} · {preOtpReview.currencyCode} {(item.unitPriceMinor / 100).toFixed(2)} each
+                  {item.itemType === "BENEFIT" ? "Benefit" : "Offer"} · Quantity{" "}
+                  {item.quantity} · {preOtpReview.currencyCode}{" "}
+                  {(item.unitPriceMinor / 100).toFixed(2)} each
                 </Text>
                 {item.allocations.map((allocation) => (
                   <Text key={allocation.adjustmentId} style={styles.muted}>
-                    {allocation.itemType === "BENEFIT" ? "Benefit" : "Offer"} discount: -{preOtpReview.currencyCode} {(allocation.appliedAmountMinor / 100).toFixed(2)}
+                    {allocation.itemType === "BENEFIT" ? "Benefit" : "Offer"}{" "}
+                    discount: -{preOtpReview.currencyCode}{" "}
+                    {(allocation.appliedAmountMinor / 100).toFixed(2)}
                   </Text>
                 ))}
               </View>
               <Text style={styles.ctxValue}>
-                {preOtpReview.currencyCode} {(item.subtotalMinor / 100).toFixed(2)}
+                {preOtpReview.currencyCode}{" "}
+                {(item.subtotalMinor / 100).toFixed(2)}
               </Text>
             </View>
           ))}
-          <View style={styles.ctxRow}><Text style={styles.ctxLabel}>Subtotal</Text><Text style={styles.ctxValue}>{preOtpReview.currencyCode} {(preOtpReview.subtotalMinor / 100).toFixed(2)}</Text></View>
-          <View style={styles.ctxRow}><Text style={styles.ctxLabel}>Benefits / Offers</Text><Text style={styles.ctxValue}>-{preOtpReview.currencyCode} {(preOtpReview.adjustmentTotalMinor / 100).toFixed(2)}</Text></View>
-          <View style={styles.ctxRow}><Text style={styles.ctxLabel}>Estimated tax</Text><Text style={styles.ctxValue}>{preOtpReview.currencyCode} {(preOtpReview.taxTotalMinor / 100).toFixed(2)}</Text></View>
-          <View style={styles.ctxRow}><Text style={styles.ctxLabel}>Estimated total payable</Text><Text style={styles.ctxValue}>{preOtpReview.currencyCode} {(preOtpReview.totalMinor / 100).toFixed(2)}</Text></View>
-          <Text style={styles.muted}>Estimated from current POS prices. The server will revalidate eligibility and pricing after OTP.</Text>
+          <View style={styles.ctxRow}>
+            <Text style={styles.ctxLabel}>Subtotal</Text>
+            <Text style={styles.ctxValue}>
+              {preOtpReview.currencyCode}{" "}
+              {(preOtpReview.subtotalMinor / 100).toFixed(2)}
+            </Text>
+          </View>
+          <View style={styles.ctxRow}>
+            <Text style={styles.ctxLabel}>Benefits / Offers</Text>
+            <Text style={styles.ctxValue}>
+              -{preOtpReview.currencyCode}{" "}
+              {(preOtpReview.adjustmentTotalMinor / 100).toFixed(2)}
+            </Text>
+          </View>
+          <View style={styles.ctxRow}>
+            <Text style={styles.ctxLabel}>Estimated tax</Text>
+            <Text style={styles.ctxValue}>
+              {preOtpReview.currencyCode}{" "}
+              {(preOtpReview.taxTotalMinor / 100).toFixed(2)}
+            </Text>
+          </View>
+          <View style={styles.ctxRow}>
+            <Text style={styles.ctxLabel}>Estimated total payable</Text>
+            <Text style={styles.ctxValue}>
+              {preOtpReview.currencyCode}{" "}
+              {(preOtpReview.totalMinor / 100).toFixed(2)}
+            </Text>
+          </View>
+          <Text style={styles.muted}>
+            Estimated from current POS prices. The server will revalidate
+            eligibility and pricing after OTP.
+          </Text>
           {!otpSent ? (
             <View style={styles.rowWrap}>
               <Pressable

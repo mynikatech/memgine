@@ -1,6 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
-import { Image, Pressable, ScrollView, View } from "react-native";
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  View,
+  Platform,
+  useWindowDimensions,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   RedemptionProductPicker,
@@ -297,7 +304,8 @@ export function BusinessExperience({
     configuration: contextConfiguration,
     template: contextTemplate,
   } = useBusiness();
-
+  const { width } = useWindowDimensions();
+  const isMobileLayout = Platform.OS !== "web" || width < 600;
   const configuration = configurationOverride ?? contextConfiguration;
   const template = templateOverride ?? contextTemplate;
 
@@ -1743,9 +1751,13 @@ export function BusinessExperience({
               {!isPreviewMode ? (
                 <View
                   style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
+                    flexDirection: isMobileLayout ? "column" : "row",
+                    alignItems: isMobileLayout ? "stretch" : "center",
+                    justifyContent: isMobileLayout
+                      ? "flex-start"
+                      : "space-between",
+                    width: "100%",
+                    gap: isMobileLayout ? theme.spacing.md : theme.spacing.sm,
                     marginTop: theme.spacing.sm,
                   }}
                 >

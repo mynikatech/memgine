@@ -17,14 +17,22 @@ type QrPlaceholderProps = {
   testID?: string;
 };
 
-export function QrPlaceholder({ size = 150, caption, value, testID }: QrPlaceholderProps) {
+export function QrPlaceholder({
+  size = 180,
+  caption,
+  value,
+  testID,
+}: QrPlaceholderProps) {
   const theme = useTheme();
   const matrix = value ? toQR(value) : null;
   const dimension = matrix ? Math.sqrt(matrix.length) : 0;
   const quietZone = matrix ? 4 : 0;
   const moduleSize = matrix ? size / (dimension + quietZone * 2) : 0;
   return (
-    <View testID={testID} style={{ alignItems: "center", gap: theme.spacing.sm }}>
+    <View
+      testID={testID}
+      style={{ alignItems: "center", gap: theme.spacing.sm }}
+    >
       <View
         style={{
           width: size,
@@ -60,7 +68,11 @@ export function QrPlaceholder({ size = 150, caption, value, testID }: QrPlacehol
             ))}
           </View>
         ) : (
-          <Ionicons name="qr-code-outline" size={size * 0.62} color={theme.colors.text} />
+          <Ionicons
+            name="qr-code-outline"
+            size={size * 0.62}
+            color={theme.colors.text}
+          />
         )}
       </View>
       {caption ? (
