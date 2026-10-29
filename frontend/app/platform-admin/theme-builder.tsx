@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, ScrollView, View } from "react-native";
+import { ScrollView, View, useWindowDimensions } from "react-native";
 
 import type { BrandingThemeV2, PlatformBrandingThemeV2 } from "@/src/core";
 import {
@@ -7,15 +7,9 @@ import {
   type PickedBrandingAsset,
 } from "@/src/core/brandingAssetPicker";
 import { platformBrandingThemeApi } from "@/src/data/api/platform-branding-theme-api";
-import {
-  BrandColourSelect,
-  Button,
-  Card,
-  Image,
-  Input,
-  Modal,
-  Text,
-} from "@/src/ui";
+import { CustomerThemePreview } from "@/src/ui/domain/CustomerThemePreview";
+import { API_BASE_URL } from "@/src/data/api/http-client";
+import { BrandColourSelect, Button, Image, Input, Modal, Text } from "@/src/ui";
 
 const emptyTheme: BrandingThemeV2 = {
   primaryColor: "#0F766E",
@@ -37,14 +31,33 @@ const colourFields: Array<{
   { key: "textColor", label: "Text color" },
 ];
 
+const MAX_THEME_IMAGE_BYTES = 10 * 1024 * 1024;
+
+const previewImageUrl = (path: string | null | undefined) => {
+  if (!path) return undefined;
+  if (
+    /^https?:\/\//i.test(path) ||
+    path.startsWith("blob:") ||
+    path.startsWith("data:")
+  )
+    return path;
+  if (path.startsWith("/api/"))
+    return `${API_BASE_URL.replace(/\/$/, "")}${path}`;
+  if (path.startsWith("api/"))
+    return `${API_BASE_URL.replace(/\/$/, "")}/${path}`;
+  return undefined;
+};
+
 const isHexColour = (value: string) => /^#[0-9A-F]{6}$/i.test(value.trim());
 
 function normalizeTheme(theme?: BrandingThemeV2 | null): BrandingThemeV2 {
   return {
-    primaryColor: typeof theme?.primaryColor === "string" ? theme.primaryColor : "",
+    primaryColor:
+      typeof theme?.primaryColor === "string" ? theme.primaryColor : "",
     secondaryColor:
       typeof theme?.secondaryColor === "string" ? theme.secondaryColor : "",
-    accentColor: typeof theme?.accentColor === "string" ? theme.accentColor : "",
+    accentColor:
+      typeof theme?.accentColor === "string" ? theme.accentColor : "",
     backgroundColor:
       typeof theme?.backgroundColor === "string" ? theme.backgroundColor : "",
     textColor: typeof theme?.textColor === "string" ? theme.textColor : "",
@@ -68,7 +81,6 @@ function editorTheme(theme?: PlatformBrandingThemeV2): PlatformBrandingThemeV2 {
       versionNo: 0,
     };
   }
-
   return {
     ...theme,
     code: theme.code ?? "",
@@ -79,30 +91,37 @@ function editorTheme(theme?: PlatformBrandingThemeV2): PlatformBrandingThemeV2 {
 }
 
 export default function PlatformThemeBuilder() {
+  const { width } = useWindowDimensions();
+  const columns = width >= 1350 ? 3 : width >= 850 ? 2 : 1;
+  const cardWidth = columns === 1 ? "100%" : columns === 2 ? "48%" : "31.8%";
   const [themes, setThemes] = useState<PlatformBrandingThemeV2[]>([]);
   const [draft, setDraft] = useState<PlatformBrandingThemeV2 | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<PickedBrandingAsset | null>(
-    null,
-  );
+  const [selectedImage, setSelectedImage] =
+    useState<PickedBrandingAsset | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [imageNotice, setImageNotice] = useState<string | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<{
+    kind: "success" | "error";
+    message: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     const result = await platformBrandingThemeApi.listAll();
-    if (!result.success) {
-      throw new Error(result.error.message);
-    }
+    if (!result.success) throw new Error(result.error.message);
     setThemes(result.data);
   }, []);
 
   useEffect(() => {
     void load().catch((error) =>
-      Alert.alert(
-        "Unable to load themes",
-        error instanceof Error ? error.message : "Unable to load themes",
-      ),
+      setActionFeedback({
+        kind: "error",
+        message:
+          error instanceof Error ? error.message : "Unable to load themes.",
+      }),
     );
   }, [load]);
 
@@ -112,13 +131,17 @@ export default function PlatformThemeBuilder() {
   );
   const canSave = Boolean(
     draft?.displayName.trim() &&
-      colourFields.every((field) => isHexColour(values[field.key])),
+    colourFields.every((field) => isHexColour(values[field.key])),
   );
   const canUpload = Boolean(draft?.id && draft.code.trim() && selectedImage);
 
   const edit = (theme?: PlatformBrandingThemeV2) => {
     setDraft(editorTheme(theme));
     setSelectedImage(null);
+    setImageError(null);
+    setImageNotice(null);
+    setActionFeedback(null);
+    setPreview(false);
     setOpen(true);
   };
 
@@ -137,28 +160,42 @@ export default function PlatformThemeBuilder() {
   };
 
   const selectImage = async () => {
+    setImageError(null);
+    setImageNotice(null);
     try {
-      const asset = await pickBrandingAsset({ assetType: "platformThemeBackground" });
-      if (asset) {
-        setSelectedImage(asset);
+      const asset = await pickBrandingAsset({
+        assetType: "platformThemeBackground",
+      });
+      if (!asset) return;
+      // The picker does not expose a reliable size on every platform.
+      // On web, the blob URL can be measured before accepting the image.
+      if (typeof window !== "undefined") {
+        const file = await fetch(asset.uri).then((response) => response.blob());
+        if (file.size > MAX_THEME_IMAGE_BYTES) {
+          setSelectedImage(null);
+          setImageError(
+            `Image is ${(file.size / 1048576).toFixed(1)} MB. Select an image smaller than 10 MB.`,
+          );
+          return;
+        }
       }
+      setSelectedImage(asset);
     } catch (error) {
-      Alert.alert(
-        "Unable to select image",
-        error instanceof Error ? error.message : "Unable to select image",
+      setImageError(
+        error instanceof Error ? error.message : "Unable to select image.",
       );
     }
   };
 
   const uploadImage = async () => {
+    setImageError(null);
+    setImageNotice(null);
     if (!draft?.id || !draft.code.trim() || !selectedImage) {
-      Alert.alert(
-        "Save Draft first",
-        "Save the theme draft before uploading its background image.",
+      setImageError(
+        "Save Draft first, then select a background image to upload.",
       );
       return;
     }
-
     setUploadingImage(true);
     try {
       const path = await platformBrandingThemeApi.uploadBackgroundImage(
@@ -167,10 +204,14 @@ export default function PlatformThemeBuilder() {
       );
       updateTheme("backgroundImageUrl", path);
       setSelectedImage(null);
+      setImageNotice(
+        "Image uploaded. Click Save Draft to retain it in this theme.",
+      );
     } catch (error) {
-      Alert.alert(
-        "Unable to upload image",
-        error instanceof Error ? error.message : "Unable to upload image",
+      setImageError(
+        error instanceof Error
+          ? error.message
+          : "Unable to upload image. Please retry.",
       );
     } finally {
       setUploadingImage(false);
@@ -179,13 +220,14 @@ export default function PlatformThemeBuilder() {
 
   const save = async () => {
     if (!draft || !canSave) {
-      Alert.alert(
-        "Complete the theme",
-        "Enter a name and valid six-digit HEX values for every color.",
-      );
+      setActionFeedback({
+        kind: "error",
+        message:
+          "Enter a name and valid six-digit HEX values for every colour.",
+      });
       return;
     }
-
+    setActionFeedback(null);
     setBusy(true);
     try {
       const body = {
@@ -197,280 +239,501 @@ export default function PlatformThemeBuilder() {
       const result = draft.id
         ? await platformBrandingThemeApi.saveDraft(draft.id, body)
         : await platformBrandingThemeApi.create(body);
-      if (!result.success) {
-        throw new Error(result.error.message);
-      }
-
+      if (!result.success) throw new Error(result.error.message);
       setDraft(editorTheme(result.data));
       await load();
-      Alert.alert(
-        "Draft saved",
-        "This theme is visible only to Platform Admin until published.",
-      );
+      setImageNotice(null);
+      setActionFeedback({
+        kind: "success",
+        message: `Draft saved successfully for ${result.data.displayName}. Only Platform Admin can see these changes until you publish.`,
+      });
     } catch (error) {
-      Alert.alert(
-        "Unable to save draft",
-        error instanceof Error ? error.message : "Unable to save draft",
-      );
+      setActionFeedback({
+        kind: "error",
+        message: `Unable to save draft: ${error instanceof Error ? error.message : "Please retry."}`,
+      });
     } finally {
       setBusy(false);
     }
   };
 
   const publish = async () => {
-    if (!draft?.id) {
-      return;
-    }
-
+    if (!draft?.id) return;
+    setActionFeedback(null);
     setBusy(true);
     try {
       const result = await platformBrandingThemeApi.publish(
         draft.id,
         draft.versionNo,
       );
-      if (!result.success) {
-        throw new Error(result.error.message);
-      }
+      if (!result.success) throw new Error(result.error.message);
       setDraft(editorTheme(result.data));
       await load();
-      Alert.alert(
-        "Theme published",
-        "The published theme is now available for future organization selections.",
-      );
+      setActionFeedback({
+        kind: "success",
+        message: `${result.data.displayName} published successfully. It is now available for future organization selections; existing organization settings are unchanged.`,
+      });
     } catch (error) {
-      Alert.alert(
-        "Unable to publish",
-        error instanceof Error ? error.message : "Unable to publish",
-      );
+      setActionFeedback({
+        kind: "error",
+        message: `Unable to publish theme: ${error instanceof Error ? error.message : "Please retry."}`,
+      });
     } finally {
       setBusy(false);
     }
   };
 
   const toggle = async (theme: PlatformBrandingThemeV2) => {
-    const result = await platformBrandingThemeApi.setActive(
-      theme.id,
-      theme.versionNo,
-      !theme.isActive,
-    );
-    if (!result.success) {
-      Alert.alert("Unable to update theme", result.error.message);
-      return;
+    setActionFeedback(null);
+    try {
+      const result = await platformBrandingThemeApi.setActive(
+        theme.id,
+        theme.versionNo,
+        !theme.isActive,
+      );
+      if (!result.success) throw new Error(result.error.message);
+      await load();
+      setActionFeedback({
+        kind: "success",
+        message: `${theme.displayName} ${theme.isActive ? "deactivated" : "activated"} successfully.`,
+      });
+    } catch (error) {
+      setActionFeedback({
+        kind: "error",
+        message: `Unable to update ${theme.displayName}: ${error instanceof Error ? error.message : "Please retry."}`,
+      });
     }
-    await load();
   };
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 24, gap: 16 }}>
-      <View>
-        <Text variant="title">Theme Builder</Text>
-        <Text variant="body" color="textMuted">
-          Create global reusable themes. Draft edits do not affect organizations
-          until published.
-        </Text>
+    <ScrollView
+      contentContainerStyle={{
+        padding: width < 700 ? 14 : 24,
+        paddingBottom: 50,
+        gap: 20,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <View style={{ gap: 4, flex: 1, minWidth: 220 }}>
+          <Text variant="title">Theme Studio</Text>
+          <Text variant="bodySmall" color="textMuted">
+            Create global reusable themes. Draft edits do not affect
+            organizations until published.
+          </Text>
+        </View>
+        <Button label="Create New Theme" onPress={() => edit()} />
       </View>
 
-      <Button label="Create New Theme" onPress={() => edit()} />
+      {actionFeedback ? (
+        <View
+          accessibilityLiveRegion="polite"
+          style={{
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            borderRadius: 9,
+            borderWidth: 1,
+            backgroundColor:
+              actionFeedback.kind === "success" ? "#ECFDF5" : "#FEF2F2",
+            borderColor:
+              actionFeedback.kind === "success" ? "#A7F3D0" : "#FECACA",
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text
+              variant="bodySmall"
+              style={{
+                color:
+                  actionFeedback.kind === "success" ? "#065F46" : "#B91C1C",
+              }}
+            >
+              {actionFeedback.message}
+            </Text>
+          </View>
+          <Button
+            label="Dismiss"
+            variant="secondary"
+            onPress={() => setActionFeedback(null)}
+          />
+        </View>
+      ) : null}
 
-      {themes.map((theme) => {
-        const cardTheme = normalizeTheme(theme.draftTheme ?? theme.publishedTheme);
-        const hasUnpublishedChanges =
-          theme.draftTheme &&
-          theme.publishedTheme &&
-          JSON.stringify(theme.draftTheme) !== JSON.stringify(theme.publishedTheme);
-
-        return (
-          <Card key={theme.id} style={{ gap: 10 }}>
+      {open && draft ? (
+        <View
+          style={{
+            padding: width < 700 ? 14 : 22,
+            gap: 18,
+            backgroundColor: "#FFFFFF",
+            borderWidth: 1,
+            borderColor: "#DDE3EA",
+            borderRadius: 16,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              flexWrap: "wrap",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <View style={{ gap: 4 }}>
+              <Text variant="h3">
+                {draft.id
+                  ? `Editing ${draft.displayName || "theme"}`
+                  : "Create a new theme"}
+              </Text>
+              <Text variant="bodySmall" color="textMuted">
+                Save draft changes before publishing.
+              </Text>
+            </View>
+            <Button
+              label="Close Editor"
+              variant="secondary"
+              onPress={() => {
+                setOpen(false);
+                setSelectedImage(null);
+              }}
+            />
+          </View>
+          <View
+            style={{
+              flexDirection: width >= 1000 ? "row" : "column",
+              alignItems: "flex-start",
+              gap: 26,
+            }}
+          >
             <View
               style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
+                flex: width >= 1000 ? 1 : undefined,
+                width: width >= 1000 ? undefined : "100%",
                 gap: 12,
               }}
             >
-              <View style={{ flex: 1 }}>
-                <Text variant="h3">{theme.displayName}</Text>
-                <Text variant="bodySmall" color="textMuted">
-                  {theme.code} · {theme.isActive
-                    ? hasUnpublishedChanges
-                      ? "Published with unpublished changes"
-                      : theme.publicationStatus
-                    : "Inactive"}
-                </Text>
-              </View>
+              <Text variant="h3">Theme settings</Text>
+              <Input
+                label="Theme name"
+                value={draft.displayName ?? ""}
+                onChangeText={(displayName) =>
+                  setDraft((current) =>
+                    current ? { ...current, displayName } : current,
+                  )
+                }
+              />
+              <Input
+                label="Theme code"
+                value={draft.code ?? ""}
+                onChangeText={() => undefined}
+                editable={false}
+                placeholder="Generated after first Save Draft"
+              />
+              <Input
+                label="Description"
+                value={draft.description ?? ""}
+                onChangeText={(description) =>
+                  setDraft((current) =>
+                    current ? { ...current, description } : current,
+                  )
+                }
+              />
+              <Text variant="label">Five-colour palette</Text>
+              {colourFields.map((field) => (
+                <BrandColourSelect
+                  key={field.key}
+                  label={field.label}
+                  value={values[field.key]}
+                  onChange={(value) => updateTheme(field.key, value)}
+                />
+              ))}
               <View
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  backgroundColor: cardTheme.primaryColor || "transparent",
+                  borderTopWidth: 1,
+                  borderTopColor: "#E2E8F0",
+                  paddingTop: 15,
+                  gap: 9,
                 }}
-              />
+              >
+                <Text variant="h3">Background image</Text>
+                <Text variant="bodySmall" color="textMuted">
+                  Accepted image size: less than 10 MB. Save Draft first to
+                  generate a theme code, upload the image, then Save Draft again
+                  to retain it. The server must also allow multipart requests up
+                  to 12 MB.
+                </Text>
+                {previewImageUrl(values.backgroundImageUrl) ? (
+                  <Image
+                    source={{
+                      uri: previewImageUrl(values.backgroundImageUrl)!,
+                    }}
+                    style={{ width: "100%", height: 150, borderRadius: 8 }}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Text variant="bodySmall" color="textMuted">
+                    No background image linked.
+                  </Text>
+                )}
+                <View
+                  style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
+                >
+                  <Button
+                    label={
+                      values.backgroundImageUrl
+                        ? "Replace Image"
+                        : "Select Image"
+                    }
+                    variant="secondary"
+                    onPress={() => void selectImage()}
+                  />
+                  <Button
+                    label={uploadingImage ? "Uploading…" : "Upload Image"}
+                    disabled={!canUpload || uploadingImage}
+                    onPress={() => void uploadImage()}
+                  />
+                  <Button
+                    label="Remove Image"
+                    variant="secondary"
+                    disabled={!values.backgroundImageUrl}
+                    onPress={() => updateTheme("backgroundImageUrl", null)}
+                  />
+                </View>
+                {selectedImage ? (
+                  <Text variant="bodySmall">
+                    Selected: {selectedImage.fileName}
+                    {!draft.id ? " — save the draft before uploading." : ""}
+                  </Text>
+                ) : null}
+                {imageError ? (
+                  <View
+                    style={{
+                      backgroundColor: "#FEF2F2",
+                      borderColor: "#FECACA",
+                      borderWidth: 1,
+                      borderRadius: 8,
+                      padding: 10,
+                    }}
+                  >
+                    <Text variant="bodySmall" style={{ color: "#B91C1C" }}>
+                      {imageError}
+                    </Text>
+                  </View>
+                ) : null}
+                {imageNotice ? (
+                  <View
+                    style={{
+                      backgroundColor: "#ECFDF5",
+                      borderColor: "#A7F3D0",
+                      borderWidth: 1,
+                      borderRadius: 8,
+                      padding: 10,
+                    }}
+                  >
+                    <Text variant="bodySmall" style={{ color: "#047857" }}>
+                      {imageNotice}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
             </View>
-            <Text variant="bodySmall">{theme.description || "No description"}</Text>
-            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-              <Button label="Edit" variant="secondary" onPress={() => edit(theme)} />
-              <Button
-                label={theme.isActive ? "Deactivate" : "Activate"}
-                variant="secondary"
-                onPress={() => void toggle(theme)}
-              />
-            </View>
-          </Card>
-        );
-      })}
-
-      <Modal
-        visible={open}
-        title={draft?.id ? "Edit Theme" : "Create Theme"}
-        onClose={() => setOpen(false)}
-      >
-        <ScrollView contentContainerStyle={{ gap: 12 }}>
-          <Input
-            label="Theme name"
-            value={draft?.displayName ?? ""}
-            onChangeText={(displayName) =>
-              setDraft((current) =>
-                current ? { ...current, displayName } : current,
-              )
-            }
-          />
-          <Input
-            label="Theme code"
-            value={draft?.code ?? ""}
-            onChangeText={() => undefined}
-            editable={false}
-            placeholder="Generated after the first Save Draft"
-          />
-          <Input
-            label="Description"
-            value={draft?.description ?? ""}
-            onChangeText={(description) =>
-              setDraft((current) =>
-                current ? { ...current, description } : current,
-              )
-            }
-          />
-
-          {colourFields.map((field) => (
-            <BrandColourSelect
-              key={field.key}
-              label={field.label}
-              value={values[field.key]}
-              onChange={(value) => updateTheme(field.key, value)}
-            />
-          ))}
-
-          <View style={{ gap: 8 }}>
-            <Text variant="label">Background image</Text>
-            {values.backgroundImageUrl ? (
-              <Image
-                source={{ uri: values.backgroundImageUrl }}
-                style={{ width: "100%", height: 140, borderRadius: 8 }}
-                resizeMode="cover"
-              />
-            ) : (
-              <Text variant="bodySmall" color="textMuted">
-                No background image selected.
-              </Text>
-            )}
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-              <Button
-                label={values.backgroundImageUrl ? "Replace Image" : "Select Image"}
-                variant="secondary"
-                onPress={() => void selectImage()}
-              />
-              <Button
-                label={uploadingImage ? "Uploading…" : "Upload Image"}
-                disabled={!canUpload || uploadingImage}
-                onPress={() => void uploadImage()}
-              />
-              <Button
-                label="Remove Image"
-                variant="secondary"
-                disabled={!values.backgroundImageUrl}
-                onPress={() => updateTheme("backgroundImageUrl", null)}
-              />
-            </View>
-            {selectedImage ? (
-              <Text variant="bodySmall">
-                Selected: {selectedImage.fileName}
-                {!draft?.id ? " — save the draft before uploading." : ""}
-              </Text>
-            ) : null}
-          </View>
-
-          <View
-            style={{
-              padding: 18,
-              borderRadius: 8,
-              backgroundColor: values.backgroundColor || "#FFFFFF",
-              gap: 8,
-            }}
-          >
-            <Text variant="h3" style={{ color: values.textColor || "#1F2937" }}>
-              Sample business
-            </Text>
-            {values.backgroundImageUrl ? (
-              <Image
-                source={{ uri: values.backgroundImageUrl }}
-                style={{ width: "100%", height: 92, borderRadius: 6 }}
-                resizeMode="cover"
-              />
-            ) : null}
-            <Text variant="body" style={{ color: values.textColor || "#1F2937" }}>
-              Membership · Benefit · Offer
-            </Text>
             <View
               style={{
-                backgroundColor: values.primaryColor || "#0F766E",
-                padding: 10,
-                borderRadius: 6,
+                flex: width >= 1000 ? 1.2 : undefined,
+                width: width >= 1000 ? undefined : "100%",
+                gap: 10,
               }}
             >
-              <Text variant="body" style={{ color: "#FFFFFF" }}>
-                Join now
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: 10,
+                }}
+              >
+                <Text variant="h3">Live customer preview</Text>
+                <Button
+                  label="Expand Preview"
+                  variant="secondary"
+                  onPress={() => setPreview(true)}
+                />
+              </View>
+              <Text variant="bodySmall" color="textMuted">
+                Sample content; colours and background image update as you edit.
               </Text>
+              <CustomerThemePreview theme={values} />
             </View>
           </View>
-
-          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-            <Button label="Save Draft" disabled={busy} onPress={() => void save()} />
-            <Button label="Preview" variant="secondary" onPress={() => setPreview(true)} />
+          {actionFeedback ? (
+            <View
+              accessibilityLiveRegion="polite"
+              style={{
+                padding: 12,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor:
+                  actionFeedback.kind === "success" ? "#A7F3D0" : "#FECACA",
+                backgroundColor:
+                  actionFeedback.kind === "success" ? "#ECFDF5" : "#FEF2F2",
+              }}
+            >
+              <Text
+                variant="bodySmall"
+                style={{
+                  color:
+                    actionFeedback.kind === "success" ? "#065F46" : "#B91C1C",
+                }}
+              >
+                {actionFeedback.message}
+              </Text>
+            </View>
+          ) : null}
+          <View
+            style={{
+              borderTopWidth: 1,
+              borderTopColor: "#E2E8F0",
+              paddingTop: 15,
+              flexDirection: "row",
+              justifyContent: "flex-end",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
+            <Button
+              label="Save Draft"
+              disabled={busy || uploadingImage || !canSave}
+              onPress={() => void save()}
+            />
+            <Button
+              label="Preview"
+              variant="secondary"
+              onPress={() => setPreview(true)}
+            />
             <Button
               label="Publish"
-              disabled={!draft?.id || busy}
+              disabled={!draft.id || busy || uploadingImage || !canSave}
               onPress={() => void publish()}
             />
           </View>
-        </ScrollView>
-      </Modal>
-
-      <Modal visible={preview} title="Theme Preview" onClose={() => setPreview(false)}>
-        <View
-          style={{
-            minHeight: 260,
-            padding: 24,
-            borderRadius: 8,
-            backgroundColor: values.backgroundColor || "#FFFFFF",
-            gap: 14,
-          }}
-        >
-          <Text variant="title" style={{ color: values.textColor || "#1F2937" }}>
-            Memgine Bakery
-          </Text>
-          <Card style={{ backgroundColor: values.secondaryColor || "#115E59" }}>
-            <Text variant="h3" style={{ color: "#FFFFFF" }}>
-              Sample Membership
-            </Text>
-          </Card>
-          <Card style={{ borderColor: values.accentColor || "#F59E0B" }}>
-            <Text variant="body" style={{ color: values.textColor || "#1F2937" }}>
-              A member benefit and seasonal offer.
-            </Text>
-          </Card>
-          <Button label="Primary action" onPress={() => undefined} />
         </View>
+      ) : null}
+
+      <View style={{ gap: 12 }}>
+        <Text variant="h3">Theme gallery · {themes.length} themes</Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 16 }}>
+          {themes.map((theme) => {
+            const cardTheme = normalizeTheme(
+              theme.draftTheme ?? theme.publishedTheme,
+            );
+            const hasUnpublishedChanges = Boolean(
+              theme.draftTheme &&
+              theme.publishedTheme &&
+              JSON.stringify(theme.draftTheme) !==
+                JSON.stringify(theme.publishedTheme),
+            );
+            return (
+              <View
+                key={theme.id}
+                style={{
+                  width: cardWidth as any,
+                  borderRadius: 14,
+                  overflow: "hidden",
+                  borderWidth: 1,
+                  borderColor: "#DEE4EA",
+                  backgroundColor: "#FFFFFF",
+                }}
+              >
+                <View style={{ padding: 12, backgroundColor: "#F8FAFC" }}>
+                  <CustomerThemePreview
+                    theme={cardTheme}
+                    compact
+                    businessName="Sample business"
+                  />
+                </View>
+                <View style={{ padding: 14, gap: 10 }}>
+                  <View style={{ gap: 3 }}>
+                    <Text variant="h3">{theme.displayName}</Text>
+                    <Text variant="bodySmall" color="textMuted">
+                      {theme.code} ·{" "}
+                      {theme.isActive
+                        ? hasUnpublishedChanges
+                          ? "Published · Draft changes"
+                          : theme.publicationStatus
+                        : "Inactive"}
+                    </Text>
+                  </View>
+                  <Text variant="bodySmall">
+                    {theme.description || "No description"}
+                  </Text>
+                  <View style={{ flexDirection: "row", gap: 5 }}>
+                    {colourFields.map((field) => (
+                      <View
+                        key={field.key}
+                        style={{
+                          flex: 1,
+                          height: 11,
+                          borderRadius: 4,
+                          backgroundColor: isHexColour(cardTheme[field.key])
+                            ? cardTheme[field.key]
+                            : "#E5E7EB",
+                          borderWidth: 1,
+                          borderColor: "#E5E7EB",
+                        }}
+                      />
+                    ))}
+                  </View>
+                  <View
+                    style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
+                  >
+                    <Button
+                      label="Edit"
+                      variant="secondary"
+                      onPress={() => edit(theme)}
+                    />
+                    <Button
+                      label="Preview"
+                      variant="secondary"
+                      onPress={() => {
+                        setDraft(editorTheme(theme));
+                        setPreview(true);
+                      }}
+                    />
+                    <Button
+                      label={theme.isActive ? "Deactivate" : "Activate"}
+                      variant="secondary"
+                      onPress={() => void toggle(theme)}
+                    />
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
+      <Modal
+        visible={preview}
+        title="Customer theme preview"
+        onClose={() => setPreview(false)}
+      >
+        <ScrollView contentContainerStyle={{ gap: 12 }}>
+          <Text variant="bodySmall" color="textMuted">
+            Illustrative sample content. Org Admin can reuse this preview with
+            its own organization data.
+          </Text>
+          <CustomerThemePreview theme={values} />
+        </ScrollView>
       </Modal>
     </ScrollView>
   );

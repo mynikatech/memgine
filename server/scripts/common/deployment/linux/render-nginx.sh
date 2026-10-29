@@ -22,6 +22,16 @@ target="$environment_dir/conf.d/memgine.conf"
 export FRONTEND_HOST="$frontend_host"
 export API_HOST="$api_host"
 export WEB_ROOT="$web_root"
+# Allow larger branding image uploads on DEV only.
+# Preserve the existing Nginx 1 MB request limit on PROD.
+case "${MEMGINE_ENVIRONMENT:-}" in
+  dev)
+    export NGINX_API_MAX_BODY_SIZE="12m"
+    ;;
+  *)
+    export NGINX_API_MAX_BODY_SIZE="1m"
+    ;;
+esac
 
 apple_pay_association_location() {
   local enabled="${MEMGINE_APPLE_PAY_ASSOCIATION_ENABLED:-false}"
@@ -84,7 +94,7 @@ server {
 EOF
     ;;
   https)
-    envsubst '${FRONTEND_HOST} ${API_HOST} ${WEB_ROOT} ${APPLE_PAY_ASSOCIATION_LOCATION}' \
+    envsubst '${FRONTEND_HOST} ${API_HOST} ${WEB_ROOT} ${APPLE_PAY_ASSOCIATION_LOCATION} ${NGINX_API_MAX_BODY_SIZE}' \
       < "$script_dir/nginx-https.conf.template" \
       > "$target"
     ;;

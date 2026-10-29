@@ -21,6 +21,7 @@ ${APPLE_PAY_ASSOCIATION_LOCATION}
 server {
     listen 443 ssl;
     server_name ${API_HOST};
+    client_max_body_size ${NGINX_API_MAX_BODY_SIZE};
     ssl_certificate /etc/letsencrypt/live/${API_HOST}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${API_HOST}/privkey.pem;
     location / {
