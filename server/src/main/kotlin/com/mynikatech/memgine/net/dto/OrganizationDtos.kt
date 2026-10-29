@@ -58,8 +58,45 @@ data class OrganizationBrandingDto(
     val primaryColor: String? = null,
     val secondaryColor: String? = null,
     val accentColor: String? = null,
+    val backgroundColor: String? = null,
+    val textColor: String? = null,
+    val backgroundImageUrl: String? = null,
+    val platformThemeCode: String? = null,
+    val announcementEnabled: Boolean? = null,
+    val announcementMessage: String? = null,
+    val announcementStyle: String? = null,
+    val announcementBackgroundColor: String? = null,
+    val announcementTextColor: String? = null,
+    val announcementLinkUrl: String? = null,
+    val announcementStartsAt: String? = null,
+    val announcementEndsAt: String? = null,
+    val draftSavedAt: String? = null,
     val tagline: String? = null,
     val heroImageUrl: String? = null
+)
+
+@Serializable
+data class SaveBrandingDraftRequestDto(
+    val id: String,
+    val organizationId: String,
+    val versionNo: Int,
+
+    val primaryColor: String? = null,
+    val secondaryColor: String? = null,
+    val accentColor: String? = null,
+    val backgroundColor: String? = null,
+    val textColor: String? = null,
+    val backgroundImageUrl: String? = null,
+    val platformThemeCode: String? = null,
+
+    val announcementEnabled: Boolean = false,
+    val announcementMessage: String? = null,
+    val announcementStyle: String = "STATIC",
+    val announcementBackgroundColor: String? = null,
+    val announcementTextColor: String? = null,
+    val announcementLinkUrl: String? = null,
+    val announcementStartsAt: String? = null,
+    val announcementEndsAt: String? = null
 )
 
 @Serializable

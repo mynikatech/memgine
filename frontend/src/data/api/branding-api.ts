@@ -10,6 +10,28 @@ type UpdateOrganizationServerResponse = {
   organizationId: string;
 };
 
+type SaveBrandingDraftRequest = Pick<
+  OrganizationBranding,
+  | "id"
+  | "organizationId"
+  | "versionNo"
+  | "primaryColor"
+  | "secondaryColor"
+  | "accentColor"
+  | "backgroundColor"
+  | "textColor"
+  | "backgroundImageUrl"
+  | "platformThemeCode"
+  | "announcementEnabled"
+  | "announcementMessage"
+  | "announcementStyle"
+  | "announcementBackgroundColor"
+  | "announcementTextColor"
+  | "announcementLinkUrl"
+  | "announcementStartsAt"
+  | "announcementEndsAt"
+>;
+
 export class BrandingApi {
   async get(
     organizationId: ID,
@@ -54,5 +76,38 @@ export class BrandingApi {
       success: true,
       data: refreshed.data,
     };
+  }
+
+  async saveBrandingDraft(
+    organizationId: ID,
+    branding: OrganizationBranding,
+  ): Promise<ApiResult<OrganizationBranding>> {
+    const request: SaveBrandingDraftRequest = {
+      id: branding.id,
+      organizationId: branding.organizationId,
+      versionNo: branding.versionNo,
+
+      primaryColor: branding.primaryColor,
+      secondaryColor: branding.secondaryColor,
+      accentColor: branding.accentColor,
+      backgroundColor: branding.backgroundColor,
+      textColor: branding.textColor,
+      backgroundImageUrl: branding.backgroundImageUrl,
+      platformThemeCode: branding.platformThemeCode,
+
+      announcementEnabled: branding.announcementEnabled,
+      announcementMessage: branding.announcementMessage,
+      announcementStyle: branding.announcementStyle,
+      announcementBackgroundColor: branding.announcementBackgroundColor,
+      announcementTextColor: branding.announcementTextColor,
+      announcementLinkUrl: branding.announcementLinkUrl,
+      announcementStartsAt: branding.announcementStartsAt,
+      announcementEndsAt: branding.announcementEndsAt,
+    };
+
+    return httpClient.put<SaveBrandingDraftRequest, OrganizationBranding>(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/branding-v2`,
+      request,
+    );
   }
 }

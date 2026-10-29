@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 243-organization-branding-v2-draft-save
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/243-organization-branding-v2-draft-save.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

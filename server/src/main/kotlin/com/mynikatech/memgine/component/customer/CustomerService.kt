@@ -34,6 +34,7 @@ import com.mynikatech.memgine.component.otp.BusinessOtpService
 import com.mynikatech.memgine.component.otp.OtpPurpose
 import com.mynikatech.memgine.component.otp.OtpRequestResult
 import com.mynikatech.memgine.component.payment.PaymentService
+import com.mynikatech.memgine.component.customerexperience.CustomerExperienceReleaseSql
 import com.mynikatech.memgine.net.dto.CustomerPurchaseOtpCompleteDto
 import com.mynikatech.memgine.net.dto.CustomerPurchaseOtpRequestDto
 import com.mynikatech.memgine.net.dto.AuthenticatedMembershipPaymentStartDto
@@ -42,6 +43,8 @@ import com.mynikatech.memgine.net.dto.PaymentStartRequestDto
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonObject
 import org.postgresql.util.PSQLException
 import com.mynikatech.memgine.net.dto.CustomerMembershipPurchaseOfferQrDto
 import java.security.MessageDigest
@@ -54,6 +57,7 @@ class CustomerService(
     private val benefits: BenefitService,
     private val stores: StoreService,
     private val organizations: OrganizationService,
+    private val releases: CustomerExperienceReleaseSql,
     private val devIdentityEnabled: Boolean,
     private val businessOtp: BusinessOtpService,
     private val payments: PaymentService
@@ -116,10 +120,25 @@ class CustomerService(
             subscriptions = subscriptions,
             membershipProducts = membershipProducts,
             benefits = benefits(organizationId, userId).filter { it.id in benefitIds },
-            branding = json.decodeFromString<OrganizationBrandingDto>(
-                organizations.getBranding(organizationId)
-            ),
+            branding = publishedBranding(organizationId),
         )
+    }
+
+    private fun publishedBranding(organizationId: String): OrganizationBrandingDto? {
+        val releasedBranding = releases.getPublished(organizationId)
+            ?.let { release ->
+                json.parseToJsonElement(release.snapshotJson)
+                    .jsonObject["organizationBranding"]
+                    ?.let { json.decodeFromJsonElement<OrganizationBrandingDto>(it) }
+            }
+        if (releasedBranding != null) return releasedBranding
+        val legacyBranding = json.decodeFromString<OrganizationBrandingDto>(
+            organizations.getBranding(organizationId)
+        )
+        // Existing organizations without a release retain their legacy branding.
+        // Once an administrator saves an explicit draft, customers see no mutable
+        // draft branding until the normal Customer Experience release is published.
+        return legacyBranding.takeIf { it.draftSavedAt == null }
     }
 
     fun subscriptions(organizationId: String, userId: String): List<CounterSubscriptionDto> {

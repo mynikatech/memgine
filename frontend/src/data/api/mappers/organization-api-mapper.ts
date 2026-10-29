@@ -57,6 +57,18 @@ export type OrganizationBrandingApiDto = {
   primaryColor?: string | null;
   secondaryColor?: string | null;
   accentColor?: string | null;
+  backgroundColor?: string | null;
+  textColor?: string | null;
+  backgroundImageUrl?: string | null;
+  platformThemeCode?: string | null;
+  announcementEnabled?: boolean | null;
+  announcementMessage?: string | null;
+  announcementStyle?: "STATIC" | "FADE" | "SLIDE" | "TICKER" | null;
+  announcementBackgroundColor?: string | null;
+  announcementTextColor?: string | null;
+  announcementLinkUrl?: string | null;
+  announcementStartsAt?: string | null;
+  announcementEndsAt?: string | null;
   tagline?: string | null;
   heroImageUrl?: string | null;
 };
@@ -145,6 +157,18 @@ function toOrganizationBrandingDto(
     primaryColor: branding.primaryColor ?? null,
     secondaryColor: branding.secondaryColor ?? null,
     accentColor: branding.accentColor ?? null,
+    backgroundColor: branding.backgroundColor ?? null,
+    textColor: branding.textColor ?? null,
+    backgroundImageUrl: branding.backgroundImageUrl ?? null,
+    platformThemeCode: branding.platformThemeCode ?? null,
+    announcementEnabled: branding.announcementEnabled ?? false,
+    announcementMessage: branding.announcementMessage ?? null,
+    announcementStyle: branding.announcementStyle ?? "STATIC",
+    announcementBackgroundColor: branding.announcementBackgroundColor ?? null,
+    announcementTextColor: branding.announcementTextColor ?? null,
+    announcementLinkUrl: branding.announcementLinkUrl ?? null,
+    announcementStartsAt: branding.announcementStartsAt ?? null,
+    announcementEndsAt: branding.announcementEndsAt ?? null,
     tagline: branding.tagline ?? null,
     heroImageUrl: branding.heroImageUrl ?? null,
   };

@@ -52,6 +52,13 @@ interface OrganizationSql {
         @Bind("brandingJson") brandingJson: String?,
         @Bind("actorUserId") actorUserId: String
     ): Boolean
+
+    @SqlQuery("SELECT save_organization_branding_draft(:organizationId, CAST(:brandingJson AS jsonb), :actorUserId)")
+    fun saveBrandingDraft(
+        @Bind("organizationId") organizationId: String,
+        @Bind("brandingJson") brandingJson: String,
+        @Bind("actorUserId") actorUserId: String
+    ): Boolean
     
     @SqlQuery(
         """

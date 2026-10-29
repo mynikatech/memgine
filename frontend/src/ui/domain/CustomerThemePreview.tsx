@@ -1,6 +1,6 @@
 import { View } from "react-native";
 
-import type { BrandingThemeV2 } from "@/src/core";
+import type { BrandingAnnouncementV2, BrandingThemeV2 } from "@/src/core";
 import { Image, Text } from "@/src/ui";
 import { API_BASE_URL } from "@/src/data/api/http-client";
 
@@ -20,6 +20,7 @@ export type CustomerThemePreviewProps = {
   offerTitle?: string;
   offerDescription?: string;
   compact?: boolean;
+  announcement?: BrandingAnnouncementV2 | null;
 };
 
 /** Resolve backend asset endpoints against the configured API origin, not the web origin. */
@@ -53,6 +54,7 @@ export function CustomerThemePreview({
   offerTitle,
   offerDescription = "Discover exclusive offers and rewards.",
   compact = false,
+  announcement,
 }: CustomerThemePreviewProps) {
   const primary = validColor(theme.primaryColor, "#0F766E");
   const secondary = validColor(theme.secondaryColor, "#115E59");
@@ -61,6 +63,7 @@ export function CustomerThemePreview({
   const foreground = validColor(theme.textColor, "#1F2937");
   const space = compact ? 10 : 16;
   const backgroundImage = imageUrl(theme.backgroundImageUrl);
+  const showAnnouncement = Boolean(announcement?.enabled && announcement.message?.trim());
 
   return (
     <View
@@ -72,6 +75,14 @@ export function CustomerThemePreview({
         backgroundColor: background,
       }}
     >
+      {showAnnouncement ? (
+        <View style={{ backgroundColor: validColor(announcement?.backgroundColor, accent), paddingHorizontal: space, paddingVertical: compact ? 6 : 9, flexDirection: "row", gap: 8 }}>
+          <Text variant={compact ? "caption" : "bodySmall"} style={{ color: validColor(announcement?.textColor, "#17212B"), flex: 1 }}>
+            {announcement?.message?.trim()}
+          </Text>
+          {announcement?.linkUrl?.trim() ? <Text variant="caption" style={{ color: validColor(announcement?.textColor, "#17212B") }}>Learn more ↗</Text> : null}
+        </View>
+      ) : null}
       <View
         style={{
           backgroundColor: primary,

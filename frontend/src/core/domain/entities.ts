@@ -138,6 +138,7 @@ export interface OrganizationBranding {
   backgroundColor?: string;
   textColor?: string;
   backgroundImageUrl?: string | null;
+  platformThemeCode?: string | null;
   announcementEnabled?: boolean;
   announcementMessage?: string | null;
   announcementStyle?: "STATIC" | "FADE" | "SLIDE" | "TICKER";

@@ -11,6 +11,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import com.mynikatech.memgine.security.PhoneNormalizer
 import org.jdbi.v3.core.statement.UnableToExecuteStatementException
+import com.mynikatech.memgine.net.dto.SaveBrandingDraftRequestDto
 import org.postgresql.util.PSQLException
 
 class OrganizationService(
@@ -80,6 +81,32 @@ class OrganizationService(
         validateOrganizationId(organizationId)
         return sql.getOrganizationBranding(organizationId)
             ?: throw BadRequestException("Organization branding not found")
+    }
+
+    fun saveBrandingDraft(
+        organizationId: String,
+        branding: SaveBrandingDraftRequestDto,
+        actorUserId: String
+    ): String {
+        validateOrganizationId(organizationId)
+
+        if (branding.organizationId != organizationId) {
+            throw BadRequestException(
+                "Organization branding organizationId does not match path organization id"
+            )
+        }
+
+        if (branding.versionNo < 1) {
+            throw BadRequestException("Branding version is required")
+        }
+
+        sql.saveBrandingDraft(
+            organizationId,
+            json.encodeToString(branding),
+            actorUserId
+        )
+
+        return getBranding(organizationId)
     }
 
     fun getAggregate(organizationId: String): String {

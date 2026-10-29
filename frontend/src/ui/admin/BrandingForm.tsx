@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 
 import {
   Pressable,
@@ -23,6 +24,7 @@ import {
 import { brandingAssetApi } from "@/src/data/api/branding-asset-api";
 
 import { resolveAssetUrl } from "@/src/data/api/asset-url";
+
 import { buildTheme } from "@/src/theme/theme";
 
 import { useTheme } from "@/src/providers";
@@ -54,51 +56,81 @@ type BrandingAssetType =
 
 type BrandingFormProps = {
   organization: Organization;
+
   branding: OrganizationBranding | null;
+
   templates: TemplateCatalogueItem[];
-  onSave: (branding: OrganizationBranding) => Promise<void>;
+
+  onSave: (
+    branding: OrganizationBranding,
+    identityChanged: boolean,
+  ) => Promise<OrganizationBranding>;
+  themeDirty?: boolean;
+  onDiscardTheme?: () => void;
+  themeSection?: (editing: boolean) => ReactNode;
+  previewOverride?: OrganizationBranding | null;
 };
 
 function createEmptyBranding(
   organizationId: ID,
+
   createdBy: ID,
+
   defaultTemplateId: ID,
 ): OrganizationBranding {
   const now = new Date().toISOString();
 
   return {
     id: `branding-${organizationId}`,
+
     organizationId,
 
     brandingName: "",
+
     themeTemplateId: defaultTemplateId,
 
     logoUrl: undefined,
+
     darkThemeLogoUrl: undefined,
+
     faviconUrl: undefined,
+
     splashScreenImageUrl: undefined,
+
     tagline: undefined,
+
     heroImageUrl: undefined,
 
     primaryColor: undefined,
+
     secondaryColor: undefined,
+
     accentColor: undefined,
 
     /*
+
      * Branding Status is intentionally not exposed in the
+
      * Organization Admin UI at this stage.
+
      *
+
      * The field remains part of the domain model.
+
      */
+
     brandingStatusId: "branding-status-active",
 
     createdAt: now,
+
     createdBy,
 
     updatedAt: now,
+
     updatedBy: createdBy,
 
     isDeleted: false,
+
     versionNo: 1,
   };
 }
@@ -152,23 +184,37 @@ function getAssetType(field: BrandingAssetField): BrandingAssetType {
 
 type AssetPreviewProps = {
   label: string;
+
   description: string;
+
   value?: string;
+
   compact?: boolean;
+
   editable: boolean;
+
   saving: boolean;
+
   onPick: () => void;
+
   onRemove: () => void;
 };
 
 function AssetPreview({
   label,
+
   description,
+
   value,
+
   compact = false,
+
   editable,
+
   saving,
+
   onPick,
+
   onRemove,
 }: AssetPreviewProps) {
   const theme = useTheme();
@@ -179,9 +225,12 @@ function AssetPreview({
     <View
       style={[
         styles.assetPreview,
+
         compact && styles.assetPreviewCompact,
+
         {
           borderColor: theme.colors.border,
+
           backgroundColor: theme.colors.surfaceAlt,
         },
       ]}
@@ -200,6 +249,7 @@ function AssetPreview({
         <View
           style={[
             styles.assetStatus,
+
             {
               backgroundColor: configured
                 ? theme.colors.primarySoft
@@ -214,17 +264,26 @@ function AssetPreview({
       </View>
 
       {/*
+
        * Deliberately compact square preview.
+
        *
+
        * The image itself occupies the complete preview area,
+
        * while contain keeps the complete uploaded asset visible.
+
        */}
+
       <View
         style={[
           styles.assetImage,
+
           compact && styles.assetImageCompact,
+
           {
             backgroundColor: theme.colors.background,
+
             borderColor: theme.colors.border,
           },
         ]}
@@ -260,8 +319,11 @@ function AssetPreview({
               onPress={onRemove}
               style={({ pressed }) => ({
                 minHeight: 44,
+
                 justifyContent: "center",
+
                 paddingHorizontal: theme.spacing.sm,
+
                 opacity: saving
                   ? theme.states.disabledOpacity
                   : pressed
@@ -282,15 +344,23 @@ function AssetPreview({
 
 export function BrandingForm({
   organization,
+
   branding,
+
   templates,
+
   onSave,
+  themeSection,
+  themeDirty = false,
+  onDiscardTheme,
+  previewOverride,
 }: BrandingFormProps) {
   const theme = useTheme();
 
   const { width } = useWindowDimensions();
 
   const compact = width < 760;
+
   const narrow = width < 520;
 
   const compatibleTemplates = useMemo(
@@ -298,6 +368,7 @@ export function BrandingForm({
       templates.filter(
         (item) => item.organizationTypeId === organization.organizationTypeId,
       ),
+
     [templates, organization.organizationTypeId],
   );
 
@@ -309,7 +380,9 @@ export function BrandingForm({
     branding ??
       createEmptyBranding(
         organization.id,
+
         organization.updatedBy,
+
         defaultTemplateId,
       ),
   );
@@ -323,6 +396,7 @@ export function BrandingForm({
   const [error, setError] = useState<string | null>(null);
 
   const [dirty, setDirty] = useState(false);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   const [isEditing, setIsEditing] = useState(false);
 
@@ -331,25 +405,35 @@ export function BrandingForm({
       branding ??
         createEmptyBranding(
           organization.id,
+
           organization.updatedBy,
+
           defaultTemplateId,
         ),
     );
 
     setPendingAssets({});
+
     setDirty(false);
+
     setError(null);
+
     setIsEditing(false);
   }, [
     branding,
+
     organization.id,
+
     organization.updatedBy,
+
     organization.organizationTypeId,
+
     defaultTemplateId,
   ]);
 
   const update = <K extends keyof OrganizationBranding>(
     field: K,
+
     value: OrganizationBranding[K],
   ) => {
     if (!isEditing) {
@@ -358,10 +442,12 @@ export function BrandingForm({
 
     setForm((current) => ({
       ...current,
+
       [field]: value,
     }));
 
     setDirty(true);
+
     setError(null);
   };
 
@@ -369,11 +455,16 @@ export function BrandingForm({
     () =>
       compatibleTemplates.map((item) => ({
         id: item.id,
+
         code: item.id,
+
         name: item.template.displayName,
+
         displayOrder: 0,
+
         active: true,
       })),
+
     [compatibleTemplates],
   );
 
@@ -402,11 +493,14 @@ export function BrandingForm({
 
     if (validationError) {
       setError(validationError);
+
       return;
     }
 
     setSaving(true);
+
     setError(null);
+    setSaveNotice(null);
 
     try {
       const uploadedAssetPaths: Partial<Record<BrandingAssetField, string>> =
@@ -425,7 +519,9 @@ export function BrandingForm({
 
         const uploaded = await brandingAssetApi.upload(
           organization.id,
+
           getAssetType(field),
+
           asset,
         );
 
@@ -433,11 +529,16 @@ export function BrandingForm({
       }
 
       /*
+
        * Replace temporary device-local preview URIs with the permanent
+
        * server asset paths before OrganizationBranding is persisted.
+
        */
+
       const persistedForm: OrganizationBranding = {
         ...form,
+
         ...uploadedAssetPaths,
       };
 
@@ -472,11 +573,17 @@ export function BrandingForm({
         versionNo: persistedForm.versionNo + 1,
       };
 
-      await onSave(updated);
+      const saved = await onSave(updated, dirty);
 
       setPendingAssets({});
-      setForm(updated);
+
+      setForm(saved);
+      setSaveNotice(
+        "Branding draft saved successfully. Customer Experience release is separate.",
+      );
+
       setDirty(false);
+
       setIsEditing(false);
     } catch (saveError) {
       setError(
@@ -494,18 +601,27 @@ export function BrandingForm({
       branding ??
         createEmptyBranding(
           organization.id,
+
           organization.updatedBy,
+
           defaultTemplateId,
         ),
     );
+
     setPendingAssets({});
+
     setDirty(false);
+
     setError(null);
+
     setIsEditing(false);
+    onDiscardTheme?.();
   };
 
   const enterEditMode = () => {
     setError(null);
+    setSaveNotice(null);
+
     setIsEditing(true);
   };
 
@@ -527,17 +643,25 @@ export function BrandingForm({
 
       setPendingAssets((current) => ({
         ...current,
+
         [field]: selectedAsset,
       }));
 
       /*
+
        * Keep the local URI in the form temporarily so that the selected
+
        * image can be previewed before Save Changes is pressed.
+
        *
+
        * This URI is replaced with the server path before persistence.
+
        */
+
       setForm((current) => ({
         ...current,
+
         [field]: selectedAsset.uri,
       }));
 
@@ -568,23 +692,34 @@ export function BrandingForm({
 
     setForm((current) => ({
       ...current,
+
       [field]: undefined,
     }));
 
     setDirty(true);
+
     setError(null);
   };
 
   const controlsDisabled = !isEditing || saving;
 
+  const effectivePreview = previewOverride ?? form;
+
   const previewTheme = useMemo(
     () =>
       buildTheme({
-        primaryColor: form.primaryColor?.trim(),
-        secondaryColor: form.secondaryColor?.trim(),
-        accentColor: form.accentColor?.trim(),
+        primaryColor: effectivePreview.primaryColor?.trim(),
+
+        secondaryColor: effectivePreview.secondaryColor?.trim(),
+
+        accentColor: effectivePreview.accentColor?.trim(),
       }),
-    [form.accentColor, form.primaryColor, form.secondaryColor],
+
+    [
+      effectivePreview.accentColor,
+      effectivePreview.primaryColor,
+      effectivePreview.secondaryColor,
+    ],
   );
 
   const previewName =
@@ -596,17 +731,19 @@ export function BrandingForm({
     <ScrollView
       style={[
         styles.screen,
+
         {
           backgroundColor: theme.colors.background,
         },
       ]}
       contentContainerStyle={[
         styles.content,
+
         {
           padding: narrow ? theme.spacing.md : theme.spacing.xl,
         },
       ]}
-      showsVerticalScrollIndicator={false}
+      showsVerticalScrollIndicator={true}
     >
       {/* Header */}
 
@@ -623,10 +760,11 @@ export function BrandingForm({
         </View>
 
         <View style={styles.headerActions}>
-          {isEditing && dirty ? (
+          {isEditing && (dirty || themeDirty) ? (
             <View
               style={[
                 styles.unsavedBadge,
+
                 {
                   backgroundColor: theme.colors.primarySoft,
                 },
@@ -635,6 +773,7 @@ export function BrandingForm({
               <View
                 style={[
                   styles.unsavedDot,
+
                   {
                     backgroundColor: theme.colors.primary,
                   },
@@ -665,6 +804,7 @@ export function BrandingForm({
           elevation="sm"
           style={[
             styles.errorCard,
+
             {
               borderColor: theme.colors.danger,
             },
@@ -680,6 +820,12 @@ export function BrandingForm({
             </Text>
           </View>
         </Card>
+      ) : null}
+
+      {saveNotice ? (
+        <Text variant="bodySmall" color="primary">
+          {saveNotice}
+        </Text>
       ) : null}
 
       {/* Brand Identity */}
@@ -801,46 +947,35 @@ export function BrandingForm({
         </Section>
       </Card>
 
-      {/* Brand Colors */}
-
-      <Card padding={narrow ? "md" : "lg"} elevation="sm">
-        <Section
-          title="Brand Colors"
-          description="Configure the colors used throughout the customer-facing experience."
-        >
-          <View style={styles.grid}>
-            <View style={compact ? styles.fullWidth : styles.halfWidth}>
-              <View pointerEvents={controlsDisabled ? "none" : "auto"}>
-                <BrandColourSelect
-                  label="Primary Brand Color"
-                  value={form.primaryColor}
-                  onChange={(value) => update("primaryColor", value)}
-                />
-              </View>
+      {/* Theme selection and customization live INSIDE the original scroll area. */}
+      {themeSection?.(isEditing) ?? (
+        <Card padding={narrow ? "md" : "lg"} elevation="sm">
+          <Section
+            title="Brand Colors"
+            description="Configure your organization's brand colours."
+          >
+            <View style={styles.grid}>
+              {(["primaryColor", "secondaryColor", "accentColor"] as const).map(
+                (field) => (
+                  <View
+                    key={field}
+                    style={compact ? styles.fullWidth : styles.halfWidth}
+                    pointerEvents={controlsDisabled ? "none" : "auto"}
+                  >
+                    <BrandColourSelect
+                      label={field
+                        .replace(/([A-Z])/g, " $1")
+                        .replace(/^./, (value) => value.toUpperCase())}
+                      value={form[field]}
+                      onChange={(value) => update(field, value)}
+                    />
+                  </View>
+                ),
+              )}
             </View>
-
-            <View style={compact ? styles.fullWidth : styles.halfWidth}>
-              <View pointerEvents={controlsDisabled ? "none" : "auto"}>
-                <BrandColourSelect
-                  label="Secondary Brand Color"
-                  value={form.secondaryColor}
-                  onChange={(value) => update("secondaryColor", value)}
-                />
-              </View>
-            </View>
-
-            <View style={compact ? styles.fullWidth : styles.halfWidth}>
-              <View pointerEvents={controlsDisabled ? "none" : "auto"}>
-                <BrandColourSelect
-                  label="Accent Color"
-                  value={form.accentColor}
-                  onChange={(value) => update("accentColor", value)}
-                />
-              </View>
-            </View>
-          </View>
-        </Section>
-      </Card>
+          </Section>
+        </Card>
+      )}
 
       {/* Brand Preview */}
 
@@ -852,8 +987,10 @@ export function BrandingForm({
           <View
             style={[
               styles.brandPreview,
+
               {
                 backgroundColor: previewTheme.colors.surface,
+
                 borderColor: previewTheme.colors.border,
               },
             ]}
@@ -862,8 +999,10 @@ export function BrandingForm({
               <View
                 style={[
                   styles.logoContainer,
+
                   {
                     backgroundColor: previewTheme.colors.card,
+
                     borderColor: previewTheme.colors.secondary,
                   },
                 ]}
@@ -880,6 +1019,7 @@ export function BrandingForm({
                   <View
                     style={[
                       styles.monogram,
+
                       {
                         backgroundColor: previewTheme.colors.primary,
                       },
@@ -889,6 +1029,7 @@ export function BrandingForm({
                       variant="h2"
                       style={{
                         color: previewTheme.colors.onPrimary,
+
                         fontWeight: "700",
                       }}
                     >
@@ -920,9 +1061,12 @@ export function BrandingForm({
             <View
               style={[
                 styles.previewMembership,
+
                 {
                   backgroundColor: previewTheme.colors.card,
+
                   borderColor: previewTheme.colors.secondary,
+
                   borderWidth: 1,
                 },
               ]}
@@ -948,6 +1092,7 @@ export function BrandingForm({
               <View
                 style={[
                   styles.previewAction,
+
                   {
                     backgroundColor: previewTheme.colors.primary,
                   },
@@ -957,6 +1102,7 @@ export function BrandingForm({
                   variant="bodySmall"
                   style={{
                     color: previewTheme.colors.onPrimary,
+
                     fontWeight: "600",
                   }}
                 >
@@ -968,9 +1114,13 @@ export function BrandingForm({
             <View
               style={{
                 alignSelf: "flex-start",
+
                 borderRadius: previewTheme.radius.pill,
+
                 paddingHorizontal: previewTheme.spacing.md,
+
                 paddingVertical: previewTheme.spacing.xs,
+
                 backgroundColor: previewTheme.colors.accentSoft,
               }}
             >
@@ -987,6 +1137,7 @@ export function BrandingForm({
                 <View
                   style={[
                     styles.colorCircle,
+
                     {
                       backgroundColor: previewTheme.colors.primary,
                     },
@@ -1002,6 +1153,7 @@ export function BrandingForm({
                 <View
                   style={[
                     styles.colorCircle,
+
                     {
                       backgroundColor: previewTheme.colors.secondary,
                     },
@@ -1017,6 +1169,7 @@ export function BrandingForm({
                 <View
                   style={[
                     styles.colorCircle,
+
                     {
                       backgroundColor: previewTheme.colors.accent,
                     },
@@ -1041,8 +1194,11 @@ export function BrandingForm({
             onPress={resetChanges}
             style={({ pressed }) => ({
               minHeight: 48,
+
               justifyContent: "center",
+
               paddingHorizontal: theme.spacing.md,
+
               opacity: saving
                 ? theme.states.disabledOpacity
                 : pressed
@@ -1051,7 +1207,7 @@ export function BrandingForm({
             })}
           >
             <Text variant="body" color="textSecondary">
-              {dirty ? "Discard Changes" : "Cancel"}
+              {dirty || themeDirty ? "Discard Changes" : "Cancel"}
             </Text>
           </Pressable>
 
@@ -1060,7 +1216,11 @@ export function BrandingForm({
             onPress={() => {
               void save();
             }}
-            disabled={saving || !dirty || compatibleTemplates.length === 0}
+            disabled={
+              saving ||
+              (!dirty && !themeDirty) ||
+              compatibleTemplates.length === 0
+            }
           />
         </View>
       ) : null}
@@ -1079,33 +1239,45 @@ const styles = StyleSheet.create({
 
   pageHeader: {
     gap: 12,
+
     flexDirection: "row",
+
     alignItems: "flex-start",
+
     justifyContent: "space-between",
   },
 
   headerText: {
     flex: 1,
+
     gap: 6,
   },
 
   headerActions: {
     alignItems: "flex-end",
+
     gap: 8,
   },
 
   unsavedBadge: {
     flexDirection: "row",
+
     alignItems: "center",
+
     gap: 6,
+
     borderRadius: 999,
+
     paddingHorizontal: 10,
+
     paddingVertical: 7,
   },
 
   unsavedDot: {
     width: 7,
+
     height: 7,
+
     borderRadius: 4,
   },
 
@@ -1119,7 +1291,9 @@ const styles = StyleSheet.create({
 
   grid: {
     flexDirection: "row",
+
     flexWrap: "wrap",
+
     gap: 16,
   },
 
@@ -1132,11 +1306,16 @@ const styles = StyleSheet.create({
   },
 
   /*
+
    * Four asset cards are intentionally compact.
+
    */
+
   assetGrid: {
     flexDirection: "row",
+
     flexWrap: "wrap",
+
     gap: 14,
   },
 
@@ -1146,172 +1325,247 @@ const styles = StyleSheet.create({
 
   assetPreview: {
     width: "48%",
+
     borderWidth: 1,
+
     borderRadius: 14,
+
     padding: 12,
+
     gap: 10,
   },
 
   assetPreviewCompact: {
     /*
+
      * Keeps the cards compact even on wide screens.
+
      */
+
     width: "48%",
   },
 
   assetPreviewHeader: {
     flexDirection: "row",
+
     alignItems: "flex-start",
+
     justifyContent: "space-between",
+
     gap: 8,
   },
 
   assetPreviewTitle: {
     flex: 1,
+
     gap: 2,
   },
 
   assetStatus: {
     borderRadius: 999,
+
     paddingHorizontal: 8,
+
     paddingVertical: 5,
   },
 
   /*
+
    * Small square preview.
+
    *
+
    * The square is intentionally fixed rather than consuming
+
    * the entire width of the asset card.
+
    */
+
   assetImage: {
     width: 150,
+
     height: 150,
+
     alignSelf: "center",
+
     borderWidth: 1,
+
     borderRadius: 10,
+
     overflow: "hidden",
+
     alignItems: "center",
+
     justifyContent: "center",
   },
 
   assetImageCompact: {
     width: 120,
+
     height: 120,
   },
 
   image: {
     width: "100%",
+
     height: "100%",
   },
 
   placeholderAsset: {
     flex: 1,
+
     width: "100%",
+
     alignItems: "center",
+
     justifyContent: "center",
+
     padding: 12,
   },
 
   assetActions: {
     flexDirection: "row",
+
     alignItems: "center",
+
     justifyContent: "center",
+
     flexWrap: "wrap",
+
     gap: 8,
   },
 
   brandPreview: {
     borderWidth: 1,
+
     borderRadius: 16,
+
     padding: 18,
+
     gap: 16,
   },
 
   previewTop: {
     flexDirection: "row",
+
     alignItems: "center",
+
     gap: 14,
   },
 
   logoContainer: {
     width: 72,
+
     height: 72,
+
     borderWidth: 1,
+
     borderRadius: 12,
+
     overflow: "hidden",
+
     alignItems: "center",
+
     justifyContent: "center",
   },
 
   logo: {
     width: "100%",
+
     height: "100%",
   },
 
   monogram: {
     width: "100%",
+
     height: "100%",
+
     alignItems: "center",
+
     justifyContent: "center",
   },
 
   previewIdentity: {
     flex: 1,
+
     gap: 4,
   },
 
   previewMembership: {
     borderRadius: 14,
+
     padding: 16,
+
     flexDirection: "row",
+
     alignItems: "center",
+
     justifyContent: "space-between",
+
     gap: 16,
   },
 
   previewMembershipText: {
     flex: 1,
+
     gap: 4,
   },
 
   previewAction: {
     minWidth: 72,
+
     minHeight: 40,
+
     borderRadius: 10,
+
     alignItems: "center",
+
     justifyContent: "center",
+
     paddingHorizontal: 14,
   },
 
   colorSummary: {
     flexDirection: "row",
+
     alignItems: "center",
+
     gap: 20,
+
     flexWrap: "wrap",
   },
 
   colorSummaryItem: {
     flexDirection: "row",
+
     alignItems: "center",
+
     gap: 7,
   },
 
   colorCircle: {
     width: 18,
+
     height: 18,
+
     borderRadius: 9,
   },
 
   actions: {
     flexDirection: "row",
+
     alignItems: "center",
+
     justifyContent: "flex-end",
+
     gap: 10,
+
     paddingBottom: 24,
   },
 
   actionsStacked: {
     flexDirection: "column-reverse",
+
     alignItems: "stretch",
   },
 });

@@ -160,6 +160,7 @@ class BrandingAssetService(
                 "favicon",
                 "splashScreen",
                 "heroImage",
+                "themeBackground",
                 "offerPromotion"
             )
 

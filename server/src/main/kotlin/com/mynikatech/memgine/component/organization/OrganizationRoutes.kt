@@ -16,6 +16,7 @@ import io.ktor.server.routing.put
 import io.ktor.server.routing.route
 import kotlinx.serialization.json.Json
 import com.mynikatech.memgine.security.authenticatedPrincipal
+import com.mynikatech.memgine.net.dto.SaveBrandingDraftRequestDto
 
 fun Route.organizationRoutes(service: OrganizationService) {
 
@@ -45,6 +46,26 @@ fun Route.organizationRoutes(service: OrganizationService) {
             call.respond(
                 HttpStatusCode.OK,
                 ApiResponse.success(result, call.callId)
+            )
+        }
+
+        put("/{organizationId}/branding-v2") {
+            val organizationId = call.parameters["organizationId"]
+                ?: throw BadRequestException("Organization id is required")
+
+            val request = call.receive<SaveBrandingDraftRequestDto>()
+
+            val data = Json.parseToJsonElement(
+                service.saveBrandingDraft(
+                    organizationId,
+                    request,
+                    call.authenticatedPrincipal().userId
+                )
+            )
+
+            call.respond(
+                HttpStatusCode.OK,
+                ApiResponse.success(data, call.callId)
             )
         }
 

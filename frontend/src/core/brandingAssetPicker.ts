@@ -6,6 +6,7 @@ export type BrandingAssetType =
   | "favicon"
   | "splashScreen"
   | "heroImage"
+  | "themeBackground"
   | "offerPromotion"
   | "platformThemeBackground";
 

@@ -11,10 +11,38 @@ import org.jdbi.v3.sqlobject.statement.SqlQuery
 
 @RegisterBeanMapper(PlatformBrandingThemeRow::class)
 interface PlatformBrandingThemeSql {
-    @SqlQuery("SELECT * FROM platform_branding_theme_list_published()")
+    @SqlQuery(
+        """
+        SELECT
+            "id",
+            "code",
+            "displayName",
+            description,
+            theme::text AS "publishedTheme",
+            'PUBLISHED'::varchar AS "publicationStatus",
+            true AS "isActive",
+            NULL::timestamptz AS "publishedAt",
+            "versionNo"
+        FROM platform_branding_theme_list_published()
+        """
+    )
     fun listPublished(): List<PlatformBrandingThemeRow>
 
-    @SqlQuery("SELECT * FROM platform_branding_theme_get_published(:idOrCode)")
+    @SqlQuery(
+        """
+        SELECT
+            "id",
+            "code",
+            "displayName",
+            description,
+            theme::text AS "publishedTheme",
+            'PUBLISHED'::varchar AS "publicationStatus",
+            true AS "isActive",
+            NULL::timestamptz AS "publishedAt",
+            "versionNo"
+        FROM platform_branding_theme_get_published(:idOrCode)
+        """
+    )
     fun getPublished(@Bind("idOrCode") idOrCode: String): PlatformBrandingThemeRow?
 
     @SqlQuery("SELECT * FROM platform_branding_theme_list_all(:actorUserId)")
