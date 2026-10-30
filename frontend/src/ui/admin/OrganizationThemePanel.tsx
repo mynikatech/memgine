@@ -150,7 +150,7 @@ export function OrganizationThemePanel({
                       <View key={i} style={{ flex: 1, backgroundColor: c }} />
                     ))}
                   </View>
-                  <CustomerThemePreview theme={p} compact />
+                  <CustomerThemePreview theme={p} themeCode={t.code} compact />
                   <Button
                     label={isSelected ? "Selected" : "Select Theme"}
                     variant="secondary"
