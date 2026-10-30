@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { Dimensions, View, type ViewStyle } from "react-native";
-import { ChristmasRibbonOrnament, FestiveMotif, FestiveSparkle, festivePalette } from "./FestiveArtwork";
+import { View, type ViewStyle } from "react-native";
+import { ChristmasRibbonOrnament, FestiveMotif, festivePalette } from "./FestiveArtwork";
 
 /** Fixed artwork identities keyed by the six seeded published theme codes. */
 export type FestiveThemeId = "CLASSIC" | "CHRISTMAS" | "DIWALI" | "NEW_YEAR" | "VALENTINES" | "THANKSGIVING";
@@ -24,33 +24,22 @@ export function FestiveSurface({ theme, children, accent, kind = "card", style }
   kind?: "page" | "header" | "hero" | "membership" | "benefit" | "offer" | "card" | "nav" | "ribbon";
   style?: ViewStyle;
 }) {
-  if (theme === "CLASSIC") return <View style={style}>{children}</View>;
-  const p = festivePalette[theme];
-  const large = kind === "page";
-  const quiet = kind === "header" || kind === "nav" || kind === "benefit" || kind === "offer";
-  const size = large ? Math.min(170, Math.max(96, Dimensions.get("window").width * 0.17)) : kind === "hero" || kind === "membership" ? 64 : quiet ? 35 : 46;
-  const opacity = large ? 0.5 : quiet ? 0.4 : 0.56;
-  const artwork = <View pointerEvents="none" style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0, overflow: "hidden", borderRadius: large ? 0 : 14 }}>
-      {large ? <View style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0, backgroundColor: theme === "NEW_YEAR" ? "rgba(17,34,55,0.035)" : "rgba(201,160,91,0.055)" }} /> : null}
-      {kind !== "header" && kind !== "nav" && kind !== "benefit" && kind !== "offer" ? <View style={{ position: "absolute", top: 0, left: 0, transform: [{ rotate: "-8deg" }] }}><FestiveMotif theme={theme} size={size} opacity={opacity} /></View> : null}
-      {kind !== "nav" && kind !== "benefit" && kind !== "offer" ? <View style={{ position: "absolute", top: 0, right: 0, transform: [{ scaleX: -1 }, { rotate: "-8deg" }] }}><FestiveMotif theme={theme} size={size} opacity={opacity} /></View> : null}
-      {large ? <>
-        <View style={{ position: "absolute", top: "18%", right: "12%", opacity: 0.55 }}><FestiveSparkle theme={theme} size={26} /></View>
-        <View style={{ position: "absolute", top: "46%", left: "5%", opacity: 0.45 }}><FestiveSparkle theme={theme} size={18} /></View>
-        <View style={{ position: "absolute", bottom: "20%", right: "5%", opacity: 0.45 }}><FestiveSparkle theme={theme} size={20} /></View>
-        <View style={{ position: "absolute", top: "33%", left: 0, opacity: 0.35 }}><FestiveMotif theme={theme} size={size * 0.7} /></View>
-        <View style={{ position: "absolute", top: "63%", right: 0, opacity: 0.35, transform: [{ scaleX: -1 }] }}><FestiveMotif theme={theme} size={size * 0.7} /></View>
-        <View style={{ position: "absolute", bottom: 0, left: 0, transform: [{ scaleY: -1 }] }}><FestiveMotif theme={theme} size={size} opacity={opacity * 0.8} /></View>
-        <View style={{ position: "absolute", bottom: 0, right: 0, transform: [{ scaleX: -1 }, { scaleY: -1 }] }}><FestiveMotif theme={theme} size={size} opacity={opacity * 0.8} /></View>
-      </> : <>
-        {kind !== "header" && kind !== "nav" && kind !== "benefit" && kind !== "offer" ? <View style={{ position: "absolute", bottom: 0, right: 0, transform: [{ scaleX: -1 }, { scaleY: -1 }] }}><FestiveMotif theme={theme} size={size * 0.75} opacity={opacity * 0.7} /></View> : null}
-        <View style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0, borderWidth: kind === "membership" ? 2 : 1, borderColor: p.gold, opacity: quiet ? 0.65 : 0.9, borderRadius: 14 }} />
-      </>}
-    </View>;
-  return <View pointerEvents={large ? "none" : "auto"} style={[{ position: "relative" }, style]}>
-    {large ? artwork : null}
+  // Festive decoration is intentionally limited to the hero image.
+  // All other surfaces, including page, header, benefit, navigation and
+  // membership wrappers, preserve their original layouts and backgrounds.
+  if (theme === "CLASSIC" || kind !== "hero") {
+    return <View style={style}>{children}</View>;
+  }
+  return <View style={[{ position: "relative" }, style]}>
     {children}
-    {large ? null : artwork}
+    <View pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, top: 0, height: 42, overflow: "hidden" }}>
+      <View style={{ position: "absolute", top: -10, left: -8 }}>
+        <FestiveMotif theme={theme} size={52} opacity={0.78} />
+      </View>
+      <View style={{ position: "absolute", top: -10, right: -8, transform: [{ scaleX: -1 }] }}>
+        <FestiveMotif theme={theme} size={52} opacity={0.78} />
+      </View>
+    </View>
   </View>;
 }
 
