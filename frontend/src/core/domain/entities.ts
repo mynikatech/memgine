@@ -1,4 +1,5 @@
 import { Capability, StaffRole } from "../permissions/permissions";
+import type { AnnouncementConfiguration } from "@/src/experience/announcements/announcement-model";
 
 import {
   Address,
@@ -139,9 +140,17 @@ export interface OrganizationBranding {
   textColor?: string;
   backgroundImageUrl?: string | null;
   platformThemeCode?: string | null;
+  announcementConfiguration?: AnnouncementConfiguration | null;
   announcementEnabled?: boolean;
   announcementMessage?: string | null;
-  announcementStyle?: "STATIC" | "FADE" | "SLIDE" | "TICKER";
+  announcementStyle?:
+    | "STATIC"
+    | "FADE"
+    | "SLIDE"
+    | "TICKER"
+    | "TYPEWRITER"
+    | "REVEAL"
+    | "PULSE";
   announcementBackgroundColor?: string | null;
   announcementTextColor?: string | null;
   announcementLinkUrl?: string | null;

@@ -33,7 +33,6 @@ import { OfferApi } from "./offer-api";
 import { StoreApi } from "./store-api";
 const base = (organizationId: ID) =>
   `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}`;
-
 export type RedemptionProductChoice = {
   productId: ID;
   productName: string;
@@ -92,7 +91,6 @@ export type PoyntCollectFinancialException = {
   amountMinor: number;
   currencyCode: string;
 };
-
 export type PoyntCollectCheckoutSession = { checkoutUrl: string };
 export type PoyntCollectBrowserCheckout = {
   csrfToken: string;
@@ -191,6 +189,15 @@ export type CustomerDiscoveryDetail = {
       | "accentColor"
       | "backgroundColor"
       | "textColor"
+      | "announcementEnabled"
+      | "announcementMessage"
+      | "announcementStyle"
+      | "announcementBackgroundColor"
+      | "announcementTextColor"
+      | "announcementLinkUrl"
+      | "announcementStartsAt"
+      | "announcementEndsAt"
+      | "announcementConfiguration"
     > | null;
     organizationDetails?: Pick<
       OrganizationDetails,
@@ -278,7 +285,6 @@ export class CustomerDataApi {
       `subscriptionId=${encodeURIComponent(subscriptionId)}` +
       `&itemType=${itemType}` +
       `&itemId=${encodeURIComponent(itemId)}`;
-
     return httpClient.get(
       `${base(organizationId)}/redemption-product-choices?${query}`,
     );
@@ -461,7 +467,6 @@ export class CustomerDataApi {
       `${collectPaymentPath(organizationId, paymentIntentId)}/financial-exception`,
     );
   }
-
   paymentStatus(
     organizationId: ID,
     paymentIntentId: ID,

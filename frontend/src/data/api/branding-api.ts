@@ -7,7 +7,7 @@ type UpdateOrganizationServerResponse = { organizationId: string };
 type SaveBrandingDraftRequest = Pick<OrganizationBranding,
   | "id" | "organizationId" | "versionNo" | "primaryColor" | "secondaryColor"
   | "accentColor" | "backgroundColor" | "textColor" | "backgroundImageUrl"
-  | "platformThemeCode" | "decoration" | "announcementEnabled"
+  | "platformThemeCode" | "decoration" | "announcementConfiguration" | "announcementEnabled"
   | "announcementMessage" | "announcementStyle" | "announcementBackgroundColor"
   | "announcementTextColor" | "announcementLinkUrl" | "announcementStartsAt"
   | "announcementEndsAt"
@@ -34,6 +34,7 @@ export class BrandingApi {
      accentColor: branding.accentColor, backgroundColor: branding.backgroundColor,
      textColor: branding.textColor, backgroundImageUrl: branding.backgroundImageUrl,
      platformThemeCode: branding.platformThemeCode, decoration: branding.decoration,
+     announcementConfiguration: branding.announcementConfiguration,
      announcementEnabled: branding.announcementEnabled, announcementMessage: branding.announcementMessage,
      announcementStyle: branding.announcementStyle, announcementBackgroundColor: branding.announcementBackgroundColor,
      announcementTextColor: branding.announcementTextColor, announcementLinkUrl: branding.announcementLinkUrl,
