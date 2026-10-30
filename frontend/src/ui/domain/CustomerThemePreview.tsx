@@ -1,5 +1,5 @@
 import { View } from "react-native";
-import { DecorativeThemeSurface } from "./DecorativeThemeSurface";
+import { FestiveSurface, festiveThemeId } from "./FestiveThemeSurface";
 
 import type { BrandingThemeV2 } from "@/src/core";
 import { Image, Text } from "@/src/ui";
@@ -21,6 +21,7 @@ export type CustomerThemePreviewProps = {
   offerTitle?: string;
   offerDescription?: string;
   compact?: boolean;
+  themeCode?: string | null;
 };
 
 /** Resolve backend asset endpoints against the configured API origin, not the web origin. */
@@ -54,6 +55,7 @@ export function CustomerThemePreview({
   offerTitle,
   offerDescription = "Discover exclusive offers and rewards.",
   compact = false,
+  themeCode,
 }: CustomerThemePreviewProps) {
   const primary = validColor(theme.primaryColor, "#0F766E");
   const secondary = validColor(theme.secondaryColor, "#115E59");
@@ -61,7 +63,8 @@ export function CustomerThemePreview({
   const background = validColor(theme.backgroundColor, "#FFFFFF");
   const foreground = validColor(theme.textColor, "#1F2937");
   const space = compact ? 10 : 16;
-  const backgroundImage = imageUrl(theme.backgroundImageUrl);
+  const themeId = festiveThemeId(themeCode);
+  const backgroundImage = themeId === "CLASSIC" ? imageUrl(theme.backgroundImageUrl) : undefined;
 
   return (
     <View
@@ -138,12 +141,10 @@ export function CustomerThemePreview({
             </View>
           </View>
         </View>
-        <DecorativeThemeSurface decoration={theme.decoration} backgroundImageUrl={theme.decoration?.cardBackgroundImageUrl}
-          primaryColor={primary} accentColor={accent} backgroundColor={background}
-          kind="benefit">
+        <FestiveSurface theme={themeId} accent={accent} kind="card">
         <View
           style={{
-            backgroundColor: theme.decoration?.cardBackgroundImageUrl && theme.decoration?.cardTreatment === "IMAGE_OVERLAY" ? "rgba(255,255,255,0.30)" : "#FFFFFF",
+            backgroundColor: "#FFFFFF",
             padding: space,
             borderRadius: 9,
             gap: 4,
@@ -163,10 +164,8 @@ export function CustomerThemePreview({
             View Membership
           </Text>
         </View>
-        </DecorativeThemeSurface>
-        <DecorativeThemeSurface decoration={theme.decoration} backgroundImageUrl={theme.decoration?.cardBackgroundImageUrl}
-          primaryColor={primary} accentColor={accent} backgroundColor={background}
-          kind="offer">
+        </FestiveSurface>
+        <FestiveSurface theme={themeId} accent={accent} kind="card">
         <View
           style={{
             backgroundColor: theme.decoration?.cardBackgroundImageUrl && theme.decoration?.cardTreatment === "IMAGE_OVERLAY" ? "rgba(255,255,255,0.30)" : "#FFFFFF",
