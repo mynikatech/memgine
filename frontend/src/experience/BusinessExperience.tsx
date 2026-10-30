@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Animated,
+  AccessibilityInfo,
+  AppState,
   Easing,
   Image,
   Pressable,
@@ -20,6 +22,10 @@ import {
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
 import { resolveCustomerBranding } from "@/src/core/customer/resolve-customer-branding";
 import { DecorativeThemeFrame } from "@/src/ui/domain/DecorativeThemeFrame";
+import {
+  DecorativeContentThemeScope,
+  overlayContentTheme,
+} from "@/src/ui/domain/DecorativeContentTheme";
 import type {
   CardStyle,
   TemplateDefinition,
@@ -53,7 +59,11 @@ import {
   useTranslation,
 } from "@/src/providers";
 import { buildTheme } from "@/src/theme/theme";
-import { readableForeground, tint } from "@/src/theme/color-utils";
+import {
+  readableForeground,
+  readableForegroundOnSurface,
+  tint,
+} from "@/src/theme/color-utils";
 import { Badge, BrandLogo, Button, Card, Modal, Section, Text } from "@/src/ui";
 
 import {
@@ -86,45 +96,96 @@ function BrandingAnnouncement({
   paddingVertical: number;
 }) {
   const progress = useRef(new Animated.Value(0)).current;
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [appIsActive, setAppIsActive] = useState(
+    AppState.currentState === "active",
+  );
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [messageWidth, setMessageWidth] = useState(0);
+
   useEffect(() => {
-    progress.setValue(0);
-    if (style === "STATIC") return;
-    const duration = style === "TICKER" ? 9000 : 2500;
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(progress, {
-          toValue: 1,
-          duration,
-          easing:
-            style === "TICKER" ? Easing.linear : Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(progress, {
-          toValue: 0,
-          duration: style === "TICKER" ? 0 : 500,
-          useNativeDriver: true,
-        }),
-      ]),
+    void AccessibilityInfo.isReduceMotionEnabled().then(setReducedMotion);
+    const subscription = AccessibilityInfo.addEventListener?.(
+      "reduceMotionChanged",
+      setReducedMotion,
     );
+    return () => subscription?.remove();
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      setAppIsActive(nextState === "active");
+    });
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    const shouldAnimate = style !== "STATIC" && !reducedMotion && appIsActive;
+    if (!shouldAnimate) {
+      // FADE and SLIDE animate toward one. When animation is intentionally
+      // skipped, pin them at that final readable state instead of leaving the
+      // message transparent or offset.
+      progress.setValue(style === "FADE" || style === "SLIDE" ? 1 : 0);
+      return;
+    }
+
+    progress.setValue(0);
+    const animation =
+      style === "TICKER"
+        ? messageWidth > containerWidth && containerWidth > 0
+          ? Animated.loop(
+              Animated.sequence([
+                Animated.delay(450),
+                Animated.timing(progress, {
+                  toValue: 1,
+                  duration: Math.max(5000, messageWidth * 18),
+                  easing: Easing.linear,
+                  useNativeDriver: true,
+                }),
+                Animated.delay(150),
+                Animated.timing(progress, {
+                  toValue: 0,
+                  duration: 0,
+                  useNativeDriver: true,
+                }),
+              ]),
+            )
+          : null
+        : Animated.timing(progress, {
+            toValue: 1,
+            duration: style === "FADE" ? 360 : 420,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          });
+    if (!animation) return;
     animation.start();
     return () => animation.stop();
-  }, [progress, style]);
+  }, [
+    appIsActive,
+    containerWidth,
+    link,
+    message,
+    messageWidth,
+    progress,
+    reducedMotion,
+    style,
+  ]);
 
   const animationStyle =
     style === "FADE"
       ? {
           opacity: progress.interpolate({
-            inputRange: [0, 0.5, 1],
-            outputRange: [1, 0.45, 1],
+            inputRange: [0, 1],
+            outputRange: [0, 1],
           }),
         }
       : style === "SLIDE"
         ? {
             transform: [
               {
-                translateY: progress.interpolate({
-                  inputRange: [0, 0.5, 1],
-                  outputRange: [0, -5, 0],
+                translateX: progress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-24, 0],
                 }),
               },
             ],
@@ -135,7 +196,7 @@ function BrandingAnnouncement({
                 {
                   translateX: progress.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [0, -120],
+                    outputRange: [0, -(messageWidth + 24)],
                   }),
                 },
               ],
@@ -152,12 +213,47 @@ function BrandingAnnouncement({
       style={{
         backgroundColor: background,
         paddingHorizontal,
-        paddingVertical,
+        paddingVertical: Math.max(paddingVertical, 14),
         overflow: "hidden",
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: foreground,
       }}
+      onLayout={(event) => setContainerWidth(event.nativeEvent.layout.width)}
     >
-      <Animated.View style={animationStyle}>
-        <Text variant="bodySmall" style={{ color: foreground }}>
+      {style === "TICKER" ? (
+        <View
+          pointerEvents="none"
+          style={{ position: "absolute", left: -10000, top: -10000 }}
+        >
+          <Text
+            variant="bodySmall"
+            numberOfLines={1}
+            onLayout={(event) =>
+              setMessageWidth(event.nativeEvent.layout.width)
+            }
+          >
+            {message}
+            {link ? "  ·  Learn more ↗" : ""}
+          </Text>
+        </View>
+      ) : null}
+      <Animated.View
+        style={[
+          animationStyle,
+          style === "TICKER" ? { alignSelf: "flex-start" } : undefined,
+        ]}
+      >
+        <Text
+          variant="bodySmall"
+          numberOfLines={style === "TICKER" ? 1 : undefined}
+          style={{ color: foreground, flexShrink: 0 }}
+          onLayout={
+            style === "TICKER"
+              ? undefined
+              : (event) => setMessageWidth(event.nativeEvent.layout.width)
+          }
+        >
           {message}
           {link ? "  ·  Learn more ↗" : ""}
         </Text>
@@ -451,6 +547,10 @@ export function BusinessExperience({
    * configuration, but it must not replace persisted organization brand
    * colours when OrganizationBranding is available.
    */
+  // Restoration phase: original three-colour presentation is the default.
+  // Enhanced mode will be opt-in after separate visual validation.
+  const enhancedVisualsEnabled = false;
+
   const resolvedBranding = useMemo(
     () => ({
       ...definitionResolvedBranding,
@@ -478,19 +578,42 @@ export function BusinessExperience({
 
       accentColor:
         brandingOverride?.accentColor ?? definitionResolvedBranding.accentColor,
-      backgroundColor: brandingOverride?.backgroundColor,
-      textColor: brandingOverride?.textColor,
-      backgroundImageUrl: brandingOverride?.backgroundImageUrl,
-      decoration: brandingOverride?.decoration,
-      announcementEnabled: brandingOverride?.announcementEnabled,
-      announcementMessage: brandingOverride?.announcementMessage,
-      announcementStyle: brandingOverride?.announcementStyle,
-      announcementBackgroundColor:
-        brandingOverride?.announcementBackgroundColor,
-      announcementTextColor: brandingOverride?.announcementTextColor,
-      announcementLinkUrl: brandingOverride?.announcementLinkUrl,
-      announcementStartsAt: brandingOverride?.announcementStartsAt,
-      announcementEndsAt: brandingOverride?.announcementEndsAt,
+      backgroundColor: enhancedVisualsEnabled
+        ? brandingOverride?.backgroundColor
+        : undefined,
+      textColor: enhancedVisualsEnabled
+        ? brandingOverride?.textColor
+        : undefined,
+      backgroundImageUrl: enhancedVisualsEnabled
+        ? brandingOverride?.backgroundImageUrl
+        : undefined,
+      decoration: enhancedVisualsEnabled
+        ? brandingOverride?.decoration
+        : undefined,
+      announcementEnabled: enhancedVisualsEnabled
+        ? brandingOverride?.announcementEnabled
+        : undefined,
+      announcementMessage: enhancedVisualsEnabled
+        ? brandingOverride?.announcementMessage
+        : undefined,
+      announcementStyle: enhancedVisualsEnabled
+        ? brandingOverride?.announcementStyle
+        : undefined,
+      announcementBackgroundColor: enhancedVisualsEnabled
+        ? brandingOverride?.announcementBackgroundColor
+        : undefined,
+      announcementTextColor: enhancedVisualsEnabled
+        ? brandingOverride?.announcementTextColor
+        : undefined,
+      announcementLinkUrl: enhancedVisualsEnabled
+        ? brandingOverride?.announcementLinkUrl
+        : undefined,
+      announcementStartsAt: enhancedVisualsEnabled
+        ? brandingOverride?.announcementStartsAt
+        : undefined,
+      announcementEndsAt: enhancedVisualsEnabled
+        ? brandingOverride?.announcementEndsAt
+        : undefined,
     }),
     [definitionResolvedBranding, brandingOverride],
   );
@@ -592,17 +715,36 @@ export function BusinessExperience({
   const customerText = validHex(resolvedBranding.textColor)
     ? resolvedBranding.textColor
     : theme.colors.text;
+  const hasConfiguredSurface =
+    validHex(resolvedBranding.backgroundColor) ||
+    validHex(resolvedBranding.textColor);
+  const readableCustomerText = readableForegroundOnSurface(
+    customerBackground,
+    customerText,
+  );
   const customerTheme = useMemo(
     () => ({
       ...theme,
       colors: {
         ...theme.colors,
         background: customerBackground,
-        text: customerText,
-        // Neutral surfaces remain stable for readability of existing widgets.
+        // A V2 background is the actual card surface, not merely a page
+        // backdrop. This applies the selected palette consistently to every
+        // shared customer card while preserving the legacy neutral appearance
+        // when no V2 surface has been configured.
+        ...(hasConfiguredSurface
+          ? {
+              surface: customerBackground,
+              card: customerBackground,
+              text: readableCustomerText,
+              textSecondary: readableCustomerText,
+              textMuted: readableCustomerText,
+              border: tint(customerBackground, 0.72),
+            }
+          : {}),
       },
     }),
-    [theme, customerBackground, customerText],
+    [theme, customerBackground, hasConfiguredSurface, readableCustomerText],
   );
   const announcement = useMemo(() => {
     if (
@@ -645,6 +787,43 @@ export function BusinessExperience({
   const showHeaderImage = Boolean(
     customerBackgroundImage &&
     (!headerTreatment || headerTreatment === "IMAGE"),
+  );
+  const hasDecorativeImageOverlay = Boolean(
+    resolvedBranding.decoration?.cardBackgroundImageUrl &&
+    resolvedBranding.decoration?.cardTreatment === "IMAGE_OVERLAY",
+  );
+  const overlayCardTheme = hasDecorativeImageOverlay
+    ? overlayContentTheme(customerTheme)
+    : customerTheme;
+
+  const ProfileThemeCard = ({
+    children,
+    testID,
+  }: {
+    children: ReactNode;
+    testID?: string;
+  }) => (
+    <DecorativeThemeFrame
+      imageUrl={resolvedBranding.decoration?.cardBackgroundImageUrl ?? null}
+      primaryColor={theme.colors.primary}
+      accentColor={theme.colors.accent}
+      backgroundColor={customerBackground}
+      decoration={resolvedBranding.decoration}
+    >
+      <DecorativeContentThemeScope enabled={hasDecorativeImageOverlay}>
+        <Card
+          padding="lg"
+          testID={testID}
+          style={
+            hasDecorativeImageOverlay
+              ? { backgroundColor: "rgba(255,255,255,0.92)" }
+              : undefined
+          }
+        >
+          {children}
+        </Card>
+      </DecorativeContentThemeScope>
+    </DecorativeThemeFrame>
   );
 
   const resolvedContent = previewDefinition?.content ?? content;
@@ -1556,12 +1735,12 @@ export function BusinessExperience({
   const renderPromotionCard = (
     promo: NonNullable<typeof exp.heroPromotion>,
   ) => (
-    <Card padding="none" style={{ overflow: "hidden" }}>
+    <Card padding="none" style={{ overflow: "hidden", borderRadius: 22 }}>
       <HeroImage uri={promo.imageUrl} />
 
       <View
         style={{
-          padding: theme.spacing.lg,
+          padding: theme.spacing.xl,
           gap: theme.spacing.sm,
         }}
       >
@@ -1628,31 +1807,31 @@ export function BusinessExperience({
     <View style={{ gap: theme.spacing.lg }} testID="experience-tab-card">
       {renderTabPreviewLink("card")}
 
-      {heroImageUrl ? (
+      {enhancedVisualsEnabled && heroImageUrl ? (
         <Card
           padding="none"
           style={{
             overflow: "hidden",
-            borderRadius: theme.radius.lg,
+            borderRadius: 22,
           }}
         >
-          <HeroImage uri={heroImageUrl} height={190} />
+          <HeroImage uri={heroImageUrl} height={isMobileLayout ? 190 : 250} />
 
           <View
             style={{
-              paddingHorizontal: theme.spacing.lg,
-              paddingTop: theme.spacing.md,
-              paddingBottom: theme.spacing.lg,
+              paddingHorizontal: theme.spacing.xl,
+              paddingTop: theme.spacing.lg,
+              paddingBottom: theme.spacing.xl,
               gap: theme.spacing.sm,
             }}
           >
             <Badge label="MEMBER PERKS" tone="brand" />
 
-            <Text variant="h2" color="text">
+            <Text variant="h1" color="text">
               Something special is waiting
             </Text>
 
-            <Text variant="bodySmall" color="textSecondary">
+            <Text variant="body" color="textSecondary">
               {tagline?.trim() ||
                 "Enjoy your member benefits and discover what is new for you."}
             </Text>
@@ -1783,52 +1962,34 @@ export function BusinessExperience({
       (previewSection === "benefits" || exp.membership) &&
       exp.benefits.length ? (
         <Section title={t("experience.yourBenefits")}>
-          <DecorativeThemeFrame
-            imageUrl={
-              resolvedBranding.decoration?.cardBackgroundImageUrl ?? null
-            }
-            primaryColor={theme.colors.primary}
-            accentColor={theme.colors.accent}
-            decoration={resolvedBranding.decoration}
-          >
-            <Card
-              padding="lg"
-              style={{
-                backgroundColor:
-                  resolvedBranding.decoration?.cardBackgroundImageUrl &&
-                  resolvedBranding.decoration?.cardTreatment === "IMAGE_OVERLAY"
-                    ? "rgba(255,255,255,0.10)"
-                    : theme.colors.card,
-              }}
-            >
-              <View style={{ gap: 18 }}>
-                {exp.benefits.map((b) => (
-                  <BenefitItem
-                    key={b.id}
-                    testID={`experience-benefit-${b.id}`}
-                    title={b.displayName ?? b.benefitName}
-                    subtitle={b.description}
-                    disclaimerText={b.disclaimerText}
-                    eligibleProducts={b.products?.map(
-                      (product) => product.productName || product.productCode,
-                    )}
-                    productStoreAvailability={b.products?.map((eligible) => ({
-                      productId: eligible.productId,
-                      productName: eligible.productName || eligible.productCode,
-                      availability: benefitProductAvailability(
-                        b.id,
-                        eligible.productId,
-                      ),
-                    }))}
-                    icon={benefitIconForType(b.benefitTypeId)}
-                    usageRules={benefitUsageRules?.filter(
-                      (rule) => rule.benefitId === b.id,
-                    )}
-                  />
-                ))}
-              </View>
-            </Card>
-          </DecorativeThemeFrame>
+          <Card padding="lg">
+            <View style={{ gap: 18 }}>
+              {exp.benefits.map((b) => (
+                <BenefitItem
+                  key={b.id}
+                  testID={`experience-benefit-${b.id}`}
+                  title={b.displayName ?? b.benefitName}
+                  subtitle={b.description}
+                  disclaimerText={b.disclaimerText}
+                  eligibleProducts={b.products?.map(
+                    (product) => product.productName || product.productCode,
+                  )}
+                  productStoreAvailability={b.products?.map((eligible) => ({
+                    productId: eligible.productId,
+                    productName: eligible.productName || eligible.productCode,
+                    availability: benefitProductAvailability(
+                      b.id,
+                      eligible.productId,
+                    ),
+                  }))}
+                  icon={benefitIconForType(b.benefitTypeId)}
+                  usageRules={benefitUsageRules?.filter(
+                    (rule) => rule.benefitId === b.id,
+                  )}
+                />
+              ))}
+            </View>
+          </Card>
         </Section>
       ) : null}
 
@@ -2543,80 +2704,99 @@ export function BusinessExperience({
           ) : null}
         </View>
 
-        <Card
-          padding="lg"
-          testID="experience-history-summary"
-          style={{
-            overflow: "hidden",
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            backgroundColor: theme.colors.surface,
-          }}
+        <DecorativeThemeFrame
+          imageUrl={resolvedBranding.decoration?.cardBackgroundImageUrl ?? null}
+          primaryColor={theme.colors.primary}
+          accentColor={theme.colors.accent}
+          backgroundColor={customerBackground}
+          decoration={resolvedBranding.decoration}
         >
-          <View
-            style={{
-              alignItems: "center",
-              paddingVertical: theme.spacing.md,
-              gap: theme.spacing.xs,
-            }}
+          <DecorativeContentThemeScope
+            enabled={Boolean(
+              resolvedBranding.decoration?.cardBackgroundImageUrl &&
+              resolvedBranding.decoration?.cardTreatment === "IMAGE_OVERLAY",
+            )}
           >
-            <View
+            <Card
+              padding="lg"
+              testID="experience-history-summary"
               style={{
-                width: 72,
-                height: 72,
-                borderRadius: 36,
-                backgroundColor: theme.colors.primarySoft,
-                alignItems: "center",
-                justifyContent: "center",
-                marginBottom: theme.spacing.xs,
+                overflow: "hidden",
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                backgroundColor:
+                  resolvedBranding.decoration?.cardBackgroundImageUrl &&
+                  resolvedBranding.decoration?.cardTreatment === "IMAGE_OVERLAY"
+                    ? "rgba(255,255,255,0.92)"
+                    : theme.colors.surface,
               }}
             >
-              <Ionicons
-                name="gift-outline"
-                size={34}
-                color={theme.colors.primary}
-              />
-            </View>
+              <View
+                style={{
+                  alignItems: "center",
+                  paddingVertical: theme.spacing.md,
+                  gap: theme.spacing.xs,
+                }}
+              >
+                <View
+                  style={{
+                    width: 72,
+                    height: 72,
+                    borderRadius: 36,
+                    backgroundColor: theme.colors.primarySoft,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: theme.spacing.xs,
+                  }}
+                >
+                  <Ionicons
+                    name="gift-outline"
+                    size={34}
+                    color={theme.colors.primary}
+                  />
+                </View>
 
-            <Text variant="title" color="text">
-              Redeemed
-            </Text>
+                <Text variant="title" color="text">
+                  Redeemed
+                </Text>
 
-            <Text
-              variant="display"
-              color="primary"
-              style={{
-                fontSize: 44,
-                lineHeight: 50,
-                fontWeight: "600",
-              }}
-            >
-              {redemptionsThisYear}
-            </Text>
+                <Text
+                  variant="display"
+                  color="primary"
+                  style={{
+                    fontSize: 44,
+                    lineHeight: 50,
+                    fontWeight: "600",
+                  }}
+                >
+                  {redemptionsThisYear}
+                </Text>
 
-            <Text
-              variant="caption"
-              color="textMuted"
-              style={{
-                letterSpacing: 1.5,
-                fontWeight: "600",
-              }}
-            >
-              REWARDS THIS YEAR
-            </Text>
+                <Text
+                  variant="caption"
+                  color="textMuted"
+                  style={{
+                    letterSpacing: 1.5,
+                    fontWeight: "600",
+                  }}
+                >
+                  REWARDS THIS YEAR
+                </Text>
 
-            <Text
-              variant="bodySmall"
-              color="textSecondary"
-              style={{
-                textAlign: "center",
-                marginTop: theme.spacing.sm,
-              }}
-            >
-              Your membership activity at {exp.displayName}
-            </Text>
-          </View>
-        </Card>
+                <Text
+                  variant="bodySmall"
+                  color="textSecondary"
+                  style={{
+                    textAlign: "center",
+                    marginTop: theme.spacing.sm,
+                  }}
+                >
+                  Your membership activity at {exp.displayName}
+                </Text>
+              </View>
+            </Card>
+          </DecorativeContentThemeScope>
+        </DecorativeThemeFrame>
 
         {visibleActivity.length ? (
           <Section title="Recent Activity">
@@ -2635,103 +2815,128 @@ export function BusinessExperience({
                   : "gift-outline";
 
                 return (
-                  <Card
+                  <DecorativeThemeFrame
                     key={activity.id}
-                    padding="md"
-                    testID={`experience-activity-${activity.id}`}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: theme.colors.border,
-                      backgroundColor: theme.colors.surface,
-                    }}
+                    imageUrl={
+                      resolvedBranding.decoration?.cardBackgroundImageUrl ??
+                      null
+                    }
+                    primaryColor={theme.colors.primary}
+                    accentColor={theme.colors.accent}
+                    backgroundColor={customerBackground}
+                    decoration={resolvedBranding.decoration}
                   >
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: theme.spacing.md,
-                      }}
+                    <DecorativeContentThemeScope
+                      enabled={Boolean(
+                        resolvedBranding.decoration?.cardBackgroundImageUrl &&
+                        resolvedBranding.decoration?.cardTreatment ===
+                          "IMAGE_OVERLAY",
+                      )}
                     >
-                      <View
+                      <Card
+                        padding="md"
+                        testID={`experience-activity-${activity.id}`}
                         style={{
-                          width: 54,
-                          height: 54,
-                          borderRadius: theme.radius.md,
-                          backgroundColor: theme.colors.primarySoft,
-                          alignItems: "center",
-                          justifyContent: "center",
+                          borderWidth: 1,
+                          borderColor: theme.colors.border,
+                          backgroundColor:
+                            resolvedBranding.decoration
+                              ?.cardBackgroundImageUrl &&
+                            resolvedBranding.decoration?.cardTreatment ===
+                              "IMAGE_OVERLAY"
+                              ? "rgba(255,255,255,0.92)"
+                              : theme.colors.surface,
                         }}
                       >
-                        <Ionicons
-                          name={iconName as keyof typeof Ionicons.glyphMap}
-                          size={27}
-                          color={theme.colors.primary}
-                        />
-                      </View>
-
-                      <View
-                        style={{
-                          flex: 1,
-                          gap: 2,
-                        }}
-                      >
-                        <Text
-                          variant="bodyStrong"
-                          color="text"
-                          numberOfLines={2}
-                        >
-                          {activity.title}
-                        </Text>
-
-                        <Text
-                          variant="bodySmall"
-                          color="textSecondary"
-                          numberOfLines={1}
-                        >
-                          {activity.location}
-                        </Text>
-
-                        <Text variant="caption" color="textMuted">
-                          {activity.timeLabel}
-                        </Text>
-                      </View>
-
-                      <View
-                        style={{
-                          alignItems: "center",
-                          gap: 4,
-                        }}
-                      >
-                        <Text
-                          variant="caption"
-                          color="primary"
-                          style={{
-                            fontWeight: "600",
-                            letterSpacing: 0.5,
-                          }}
-                        >
-                          {t("experience.redeemed").toUpperCase()}
-                        </Text>
-
                         <View
                           style={{
-                            width: 24,
-                            height: 24,
-                            borderRadius: 12,
-                            backgroundColor: theme.colors.primary,
+                            flexDirection: "row",
                             alignItems: "center",
-                            justifyContent: "center",
+                            gap: theme.spacing.md,
                           }}
                         >
-                          <Ionicons
-                            name="checkmark"
-                            size={15}
-                            color={theme.colors.onPrimary}
-                          />
+                          <View
+                            style={{
+                              width: 54,
+                              height: 54,
+                              borderRadius: theme.radius.md,
+                              backgroundColor: theme.colors.primarySoft,
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <Ionicons
+                              name={iconName as keyof typeof Ionicons.glyphMap}
+                              size={27}
+                              color={theme.colors.primary}
+                            />
+                          </View>
+
+                          <View
+                            style={{
+                              flex: 1,
+                              gap: 2,
+                            }}
+                          >
+                            <Text
+                              variant="bodyStrong"
+                              color="text"
+                              numberOfLines={2}
+                            >
+                              {activity.title}
+                            </Text>
+
+                            <Text
+                              variant="bodySmall"
+                              color="textSecondary"
+                              numberOfLines={1}
+                            >
+                              {activity.location}
+                            </Text>
+
+                            <Text variant="caption" color="textMuted">
+                              {activity.timeLabel}
+                            </Text>
+                          </View>
+
+                          <View
+                            style={{
+                              alignItems: "center",
+                              gap: 4,
+                            }}
+                          >
+                            <Text
+                              variant="caption"
+                              color="primary"
+                              style={{
+                                fontWeight: "600",
+                                letterSpacing: 0.5,
+                              }}
+                            >
+                              {t("experience.redeemed").toUpperCase()}
+                            </Text>
+
+                            <View
+                              style={{
+                                width: 24,
+                                height: 24,
+                                borderRadius: 12,
+                                backgroundColor: theme.colors.primary,
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              <Ionicons
+                                name="checkmark"
+                                size={15}
+                                color={theme.colors.onPrimary}
+                              />
+                            </View>
+                          </View>
                         </View>
-                      </View>
-                    </View>
-                  </Card>
+                      </Card>
+                    </DecorativeContentThemeScope>
+                  </DecorativeThemeFrame>
                 );
               })}
             </View>
@@ -3035,7 +3240,7 @@ export function BusinessExperience({
     businessSupportPhone ||
     businessWebsite ? (
       <Section title={t("experience.about")}>
-        <Card padding="lg">
+        <ProfileThemeCard testID="experience-profile-business-information">
           <View style={{ gap: theme.spacing.md }}>
             {businessAbout ? (
               <Text variant="body" color="textSecondary">
@@ -3048,7 +3253,7 @@ export function BusinessExperience({
                 icon="mail-outline"
                 label={t("experience.email")}
                 value={businessSupportEmail}
-                theme={theme}
+                theme={overlayCardTheme}
               />
             ) : null}
 
@@ -3057,7 +3262,7 @@ export function BusinessExperience({
                 icon="call-outline"
                 label={t("experience.phone")}
                 value={businessSupportPhone}
-                theme={theme}
+                theme={overlayCardTheme}
               />
             ) : null}
 
@@ -3066,17 +3271,17 @@ export function BusinessExperience({
                 icon="globe-outline"
                 label={t("experience.website")}
                 value={businessWebsite}
-                theme={theme}
+                theme={overlayCardTheme}
               />
             ) : null}
           </View>
-        </Card>
+        </ProfileThemeCard>
       </Section>
     ) : null;
 
   const BusinessInformationSection = exp.businessInformation ? (
     <Section title={t("experience.about")}>
-      <Card padding="lg">
+      <ProfileThemeCard testID="experience-business-information">
         <View style={{ gap: theme.spacing.md }}>
           {exp.businessInformation.about ? (
             <Text variant="body" color="textSecondary">
@@ -3089,7 +3294,7 @@ export function BusinessExperience({
               icon="mail-outline"
               label={t("experience.email")}
               value={exp.businessInformation.supportEmail}
-              theme={theme}
+              theme={overlayCardTheme}
             />
           ) : null}
 
@@ -3098,7 +3303,7 @@ export function BusinessExperience({
               icon="call-outline"
               label={t("experience.phone")}
               value={exp.businessInformation.supportPhone}
-              theme={theme}
+              theme={overlayCardTheme}
             />
           ) : null}
 
@@ -3107,11 +3312,11 @@ export function BusinessExperience({
               icon="globe-outline"
               label={t("experience.website")}
               value={exp.businessInformation.website}
-              theme={theme}
+              theme={overlayCardTheme}
             />
           ) : null}
         </View>
-      </Card>
+      </ProfileThemeCard>
     </Section>
   ) : null;
 
@@ -3125,16 +3330,7 @@ export function BusinessExperience({
 
       {exp.showStores && exp.stores.length ? (
         <Section title={t("experience.locations")}>
-          <Card
-            padding="lg"
-            style={{
-              backgroundColor:
-                resolvedBranding.decoration?.cardBackgroundImageUrl &&
-                resolvedBranding.decoration?.cardTreatment === "IMAGE_OVERLAY"
-                  ? "rgba(255,255,255,0.10)"
-                  : theme.colors.card,
-            }}
-          >
+          <ProfileThemeCard testID="experience-profile-stores">
             <View style={{ gap: 18 }}>
               {exp.stores.map((s) => (
                 <View
@@ -3164,21 +3360,21 @@ export function BusinessExperience({
                 </View>
               ))}
             </View>
-          </Card>
+          </ProfileThemeCard>
         </Section>
       ) : null}
 
       {ProfileBusinessInformationSection}
 
       <Section title={t("experience.preferences")}>
-        <Card padding="lg">
+        <ProfileThemeCard testID="experience-profile-preferences">
           <View style={{ gap: theme.spacing.md }}>
             {/*
             <PrefRow
               label={t("experience.notifications")}
               on={notificationsEnabled}
               t={t}
-              theme={theme}
+              theme={overlayCardTheme}
               onPress={() => void handlePreferenceToggle("NOTIFICATIONS")}
               disabled={savingPreference === "NOTIFICATIONS"}
             />
@@ -3193,11 +3389,11 @@ export function BusinessExperience({
               disabled={savingPreference === "MARKETING_EMAILS"}
             />
           </View>
-        </Card>
+        </ProfileThemeCard>
       </Section>
 
       {referralProgram ? (
-        <Card padding="lg">
+        <ProfileThemeCard testID="experience-profile-referral">
           <View style={{ gap: theme.spacing.sm }}>
             <Text variant="title" color="text">
               {referralProgram.referralProgramName}
@@ -3221,7 +3417,7 @@ export function BusinessExperience({
               disabled={referralLoading || !profileUserId}
             />
           </View>
-        </Card>
+        </ProfileThemeCard>
       ) : null}
     </View>
   );
@@ -3289,48 +3485,56 @@ export function BusinessExperience({
                   accentColor={theme.colors.accent}
                   decoration={resolvedBranding.decoration}
                 >
-                  <Card
-                    padding="lg"
-                    style={{
-                      backgroundColor:
-                        resolvedBranding.decoration?.cardBackgroundImageUrl &&
-                        resolvedBranding.decoration?.cardTreatment ===
-                          "IMAGE_OVERLAY"
-                          ? "rgba(255,255,255,0.10)"
-                          : theme.colors.card,
-                    }}
+                  <DecorativeContentThemeScope
+                    enabled={Boolean(
+                      resolvedBranding.decoration?.cardBackgroundImageUrl &&
+                      resolvedBranding.decoration?.cardTreatment ===
+                        "IMAGE_OVERLAY",
+                    )}
                   >
-                    <View style={{ gap: 18 }}>
-                      {exp.benefits.map((b) => (
-                        <BenefitItem
-                          key={b.id}
-                          testID={`experience-preview-benefit-${b.id}`}
-                          title={b.displayName ?? b.benefitName}
-                          subtitle={b.description}
-                          disclaimerText={b.disclaimerText}
-                          eligibleProducts={b.products?.map(
-                            (product) =>
-                              product.productName || product.productCode,
-                          )}
-                          productStoreAvailability={b.products?.map(
-                            (eligible) => ({
-                              productId: eligible.productId,
-                              productName:
-                                eligible.productName || eligible.productCode,
-                              availability: benefitProductAvailability(
-                                b.id,
-                                eligible.productId,
-                              ),
-                            }),
-                          )}
-                          icon={benefitIconForType(b.benefitTypeId)}
-                          usageRules={benefitUsageRules?.filter(
-                            (rule) => rule.benefitId === b.id,
-                          )}
-                        />
-                      ))}
-                    </View>
-                  </Card>
+                    <Card
+                      padding="lg"
+                      style={{
+                        backgroundColor:
+                          resolvedBranding.decoration?.cardBackgroundImageUrl &&
+                          resolvedBranding.decoration?.cardTreatment ===
+                            "IMAGE_OVERLAY"
+                            ? "rgba(255,255,255,0.92)"
+                            : theme.colors.card,
+                      }}
+                    >
+                      <View style={{ gap: 18 }}>
+                        {exp.benefits.map((b) => (
+                          <BenefitItem
+                            key={b.id}
+                            testID={`experience-preview-benefit-${b.id}`}
+                            title={b.displayName ?? b.benefitName}
+                            subtitle={b.description}
+                            disclaimerText={b.disclaimerText}
+                            eligibleProducts={b.products?.map(
+                              (product) =>
+                                product.productName || product.productCode,
+                            )}
+                            productStoreAvailability={b.products?.map(
+                              (eligible) => ({
+                                productId: eligible.productId,
+                                productName:
+                                  eligible.productName || eligible.productCode,
+                                availability: benefitProductAvailability(
+                                  b.id,
+                                  eligible.productId,
+                                ),
+                              }),
+                            )}
+                            icon={benefitIconForType(b.benefitTypeId)}
+                            usageRules={benefitUsageRules?.filter(
+                              (rule) => rule.benefitId === b.id,
+                            )}
+                          />
+                        ))}
+                      </View>
+                    </Card>
+                  </DecorativeContentThemeScope>
                 </DecorativeThemeFrame>
               ) : (
                 <Card padding="lg">
@@ -3357,17 +3561,7 @@ export function BusinessExperience({
           >
             <Section title={t("experience.locations")}>
               {exp.stores.length ? (
-                <Card
-                  padding="lg"
-                  style={{
-                    backgroundColor:
-                      resolvedBranding.decoration?.cardBackgroundImageUrl &&
-                      resolvedBranding.decoration?.cardTreatment ===
-                        "IMAGE_OVERLAY"
-                        ? "rgba(255,255,255,0.10)"
-                        : theme.colors.card,
-                  }}
-                >
+                <ProfileThemeCard testID="experience-preview-stores">
                   <View style={{ gap: 18 }}>
                     {exp.stores.map((s) => (
                       <View
@@ -3397,7 +3591,7 @@ export function BusinessExperience({
                       </View>
                     ))}
                   </View>
-                </Card>
+                </ProfileThemeCard>
               ) : (
                 <Card padding="lg">
                   <Text variant="bodySmall" color="textMuted">
@@ -3520,28 +3714,6 @@ export function BusinessExperience({
           paddingTop: insets.top,
         }}
       >
-        {/* Theme artwork is a visible decorative masthead for every tab.
-            Unlike the business hero image, this is shared across all sections.
-            It never sits behind interactive content or replaces business media. */}
-        {showHeaderImage ? (
-          <View
-            pointerEvents="none"
-            style={{
-              height: isMobileLayout ? 76 : 112,
-              backgroundColor: customerBackground,
-              overflow: "hidden",
-              borderBottomWidth: 3,
-              borderBottomColor: theme.colors.accent,
-            }}
-          >
-            <Image
-              source={{ uri: customerBackgroundImage ?? undefined }}
-              resizeMode="cover"
-              accessibilityIgnoresInvertColors
-              style={{ width: "100%", height: "100%" }}
-            />
-          </View>
-        ) : null}
         <View
           style={{
             paddingHorizontal: theme.spacing.lg,
@@ -3565,13 +3737,11 @@ export function BusinessExperience({
               size={18}
               color={theme.colors.primary}
             />
-
             <Text variant="label" color="primary">
               {t("experience.back")}
             </Text>
           </Pressable>
         </View>
-
         <View
           style={{
             flexDirection: "row",
@@ -3590,29 +3760,16 @@ export function BusinessExperience({
             fit="cover"
             testID="experience-brand-logo"
           />
-
           <View style={{ flex: 1 }}>
             <Text variant="h2" color="text">
               {exp.displayName}
             </Text>
-
             <Text variant="caption" color="textMuted">
               {tagline?.trim() || exp.tagline}
             </Text>
           </View>
         </View>
 
-        {announcement ? (
-          <BrandingAnnouncement
-            message={announcement.message}
-            style={announcement.style}
-            background={announcement.background}
-            foreground={announcement.foreground}
-            link={announcement.link}
-            paddingHorizontal={theme.spacing.lg}
-            paddingVertical={theme.spacing.sm}
-          />
-        ) : null}
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{
@@ -3705,7 +3862,7 @@ export function BusinessExperience({
               flexDirection: "row",
               borderTopWidth: 1,
               borderTopColor: theme.colors.border,
-              backgroundColor: customerBackground,
+              backgroundColor: theme.colors.surface,
               paddingBottom: insets.bottom,
             }}
           >
