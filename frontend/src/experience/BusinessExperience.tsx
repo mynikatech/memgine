@@ -490,7 +490,7 @@ export function BusinessExperience({
   // The theme supplied to cards remains Classic. In particular, do not map
   // backgroundColor to colors.card/surface or textColor to colors.text.
   const customerTheme = theme;
-  const festiveTheme = festiveThemeId(resolvedBranding.platformThemeCode);
+  const festiveTheme = festiveThemeId(brandingOverride?.platformThemeCode);
   const hasDecorativeImageOverlay = false;
   const overlayCardTheme = customerTheme;
   // Both proposed preview and customer views use the same released configuration contract.
@@ -1815,7 +1815,6 @@ export function BusinessExperience({
                     <DecorativeThemeFrame festiveTheme={festiveTheme}
                       key={offer.id}
                       imageUrl={
-                        undefined ??
                         null
                       }
                       primaryColor={theme.colors.primary}
@@ -1825,9 +1824,7 @@ export function BusinessExperience({
                     >
                       <OfferCard
                         decorative={Boolean(
-                          undefined &&
-                          resolvedBranding.decoration?.cardTreatment ===
-                            "IMAGE_OVERLAY",
+                          false,
                         )}
                         offerId={offer.id}
                         testID={`experience-redeem-offer-${offer.id}`}
@@ -2077,7 +2074,6 @@ export function BusinessExperience({
                   <DecorativeThemeFrame festiveTheme={festiveTheme}
                     key={offer.id}
                     imageUrl={
-                      undefined ??
                       null
                     }
                     primaryColor={theme.colors.primary}
@@ -2087,9 +2083,7 @@ export function BusinessExperience({
                   >
                     <OfferCard
                       decorative={Boolean(
-                        undefined &&
-                        resolvedBranding.decoration?.cardTreatment ===
-                          "IMAGE_OVERLAY",
+                        false,
                       )}
                       offerId={offer.id}
                       testID={`experience-offer-${offer.id}`}
@@ -2430,8 +2424,7 @@ export function BusinessExperience({
         >
           <DecorativeContentThemeScope
             enabled={Boolean(
-              undefined &&
-              resolvedBranding.decoration?.cardTreatment === "IMAGE_OVERLAY",
+              false,
             )}
           >
             <Card
@@ -2442,8 +2435,7 @@ export function BusinessExperience({
                 borderWidth: 1,
                 borderColor: theme.colors.border,
                 backgroundColor:
-                  undefined &&
-                  resolvedBranding.decoration?.cardTreatment === "IMAGE_OVERLAY"
+                  false
                     ? "rgba(255,255,255,0.92)"
                     : theme.colors.surface,
               }}
@@ -2535,7 +2527,6 @@ export function BusinessExperience({
                   <DecorativeThemeFrame festiveTheme={festiveTheme}
                     key={activity.id}
                     imageUrl={
-                      undefined ??
                       null
                     }
                     primaryColor={theme.colors.primary}
@@ -2545,9 +2536,7 @@ export function BusinessExperience({
                   >
                     <DecorativeContentThemeScope
                       enabled={Boolean(
-                        undefined &&
-                        resolvedBranding.decoration?.cardTreatment ===
-                          "IMAGE_OVERLAY",
+                        false,
                       )}
                     >
                       <Card
@@ -3204,7 +3193,7 @@ export function BusinessExperience({
               {exp.benefits.length ? (
                 <DecorativeThemeFrame festiveTheme={festiveTheme}
                   imageUrl={
-                    undefined ?? null
+                    null
                   }
                   primaryColor={theme.colors.primary}
                   accentColor={theme.colors.accent}
@@ -3212,18 +3201,14 @@ export function BusinessExperience({
                 >
                   <DecorativeContentThemeScope
                     enabled={Boolean(
-                      undefined &&
-                      resolvedBranding.decoration?.cardTreatment ===
-                        "IMAGE_OVERLAY",
+                      false,
                     )}
                   >
                     <Card
                       padding="lg"
                       style={{
                         backgroundColor:
-                          undefined &&
-                          resolvedBranding.decoration?.cardTreatment ===
-                            "IMAGE_OVERLAY"
+                          false
                             ? "rgba(255,255,255,0.92)"
                             : theme.colors.card,
                       }}
