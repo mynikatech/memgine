@@ -125,7 +125,7 @@ export function AnnouncementEditor({ value, onChange, disabled }: Props) {
           <View style={{ width: 235, maxWidth: "100%" }} pointerEvents={disabled ? "none" : "auto"}><BrandColourSelect label="Text colour" value={selectedItem.textColor ?? ""} onChange={textColor => update(selectedItem.id, { textColor: textColor || null })} /></View>
         </View>
         <Input label="Optional HTTPS link" value={selectedItem.linkUrl ?? ""} editable={!disabled} onChangeText={linkUrl => update(selectedItem.id, { linkUrl: linkUrl || null })} />
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>{dateField(selectedItem, "startsAt", "Start date and time")}{dateField(item, "endsAt", "End date and time")}</View>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>{dateField(selectedItem, "startsAt", "Start date and time")}{dateField(selectedItem, "endsAt", "End date and time")}</View>
         <Text variant="caption" color="textSecondary">Times use your device’s local timezone. Leave empty for no schedule limit.</Text>
       </View>
     </Card> : null}
