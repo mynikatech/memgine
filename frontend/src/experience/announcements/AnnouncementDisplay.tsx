@@ -3,7 +3,7 @@ import { AccessibilityInfo, AppState, Platform, Pressable, View } from "react-na
 import type { AnnouncementConfiguration } from "./announcement-model";
 import { announcementDwellMs, getActiveAnnouncements } from "./announcement-model";
 import { AnnouncementItem } from "./AnnouncementItem";
-import { FestiveRibbonFrame, type FestiveThemeId } from "@/src/ui/domain/FestiveThemeSurface";
+import { FestiveRibbonFrame, festiveRibbonPalette, type FestiveThemeId } from "@/src/ui/domain/FestiveThemeSurface";
 import { readableForeground } from "@/src/theme/color-utils";
 
 interface Props {
@@ -62,10 +62,11 @@ export function AnnouncementDisplay({ configuration, fallbackBackground, padding
     return () => clearTimeout(timer);
   }, [carousel, appActive, reducedMotion, configuration.rotationIntervalSeconds, activeIdsKey, selected?.id, selected?.style, selected?.message, index]);
   if (!selected) return null;
-  const background = /^#[0-9a-f]{6}$/i.test(selected.backgroundColor ?? "")
-    ? selected.backgroundColor! : fallbackBackground;
-  const foreground = /^#[0-9a-f]{6}$/i.test(selected.textColor ?? "")
-    ? selected.textColor! : readableForeground(background);
+  const ribbonPalette = festiveRibbonPalette(festiveTheme);
+  const background = ribbonPalette?.background ?? (/^#[0-9a-f]{6}$/i.test(selected.backgroundColor ?? "")
+    ? selected.backgroundColor! : fallbackBackground);
+  const foreground = ribbonPalette?.foreground ?? (/^#[0-9a-f]{6}$/i.test(selected.textColor ?? "")
+    ? selected.textColor! : readableForeground(background));
   const link = selected.linkUrl?.trim();
   return (
     <View>
@@ -75,7 +76,7 @@ export function AnnouncementDisplay({ configuration, fallbackBackground, padding
         background={background}
         foreground={foreground}
         link={link && /^https:\/\//i.test(link) ? link : null}
-        paddingHorizontal={paddingHorizontal}
+        paddingHorizontal={ribbonPalette ? Math.max(paddingHorizontal, 62) : paddingHorizontal}
         paddingVertical={paddingVertical}
       /></View></FestiveRibbonFrame>
       {carousel ? (

@@ -1,9 +1,10 @@
 import { View } from "react-native";
-import { FestiveSurface, festiveThemeId } from "./FestiveThemeSurface";
+import { FestiveRibbonFrame, FestiveSurface, festiveRibbonPalette, festiveThemeId } from "./FestiveThemeSurface";
 
 import type { BrandingThemeV2 } from "@/src/core";
 import { Image, Text } from "@/src/ui";
 import { API_BASE_URL } from "@/src/data/api/http-client";
+import { readableForeground, readableForegroundOnSurface } from "@/src/theme/color-utils";
 
 /**
  * Read-only preview of theme styling with injectable customer content.
@@ -64,10 +65,14 @@ export function CustomerThemePreview({
   const foreground = validColor(theme.textColor, "#1F2937");
   const space = compact ? 10 : 16;
   const themeId = festiveThemeId(themeCode);
+  const ribbon = festiveRibbonPalette(themeId);
+  const cardForeground = readableForegroundOnSurface("#FFFFFF", foreground);
+  const heroForeground = readableForeground(secondary);
+  const headerForeground = readableForeground(primary);
   const backgroundImage = themeId === "CLASSIC" ? imageUrl(theme.backgroundImageUrl) : undefined;
 
   return (
-    <View
+    <FestiveSurface theme={themeId} accent={accent} kind="page"
       style={{
         borderWidth: 1,
         borderColor: "#E2E8F0",
@@ -76,7 +81,7 @@ export function CustomerThemePreview({
         backgroundColor: background,
       }}
     >
-      <View
+      <FestiveSurface theme={themeId} accent={accent} kind="header"
         style={{
           backgroundColor: primary,
           paddingHorizontal: space,
@@ -89,18 +94,24 @@ export function CustomerThemePreview({
       >
         <Text
           variant={compact ? "bodySmall" : "h3"}
-          style={{ color: "#FFFFFF", flexShrink: 1 }}
+          style={{ color: headerForeground, flexShrink: 1 }}
         >
           {businessName}
         </Text>
         {!compact ? (
-          <Text variant="bodySmall" style={{ color: "#FFFFFF" }}>
-            Memberships ┬╖ Offers
+          <Text variant="bodySmall" style={{ color: headerForeground }}>
+            Memberships · Offers
           </Text>
         ) : null}
-      </View>
+      </FestiveSurface>
       <View style={{ padding: space, gap: compact ? 8 : 12 }}>
-        <View
+        {ribbon ? <FestiveRibbonFrame theme={themeId} accent={accent}>
+          <View style={{ backgroundColor: ribbon.background, paddingHorizontal: compact ? 58 : 70, paddingVertical: compact ? 11 : 18, minHeight: compact ? 48 : 70, justifyContent: "center" }}>
+            <Text variant={compact ? "bodySmall" : "body"} style={{ color: ribbon.foreground, fontWeight: "700" }}>A special treat for our members</Text>
+            {!compact ? <Text variant="bodySmall" style={{ color: ribbon.foreground }}>Explore your latest rewards</Text> : null}
+          </View>
+        </FestiveRibbonFrame> : null}
+        <FestiveSurface theme={themeId} accent={accent} kind="hero"
           style={{
             borderRadius: 10,
             backgroundColor: secondary,
@@ -117,12 +128,12 @@ export function CustomerThemePreview({
           <View style={{ padding: space, gap: 8 }}>
             <Text
               variant={compact ? "body" : "h3"}
-              style={{ color: "#FFFFFF" }}
+              style={{ color: heroForeground }}
             >
               {headline}
             </Text>
             {!compact ? (
-              <Text variant="bodySmall" style={{ color: "#FFFFFF" }}>
+              <Text variant="bodySmall" style={{ color: heroForeground }}>
                 {subtitle}
               </Text>
             ) : null}
@@ -135,13 +146,13 @@ export function CustomerThemePreview({
                 borderRadius: 6,
               }}
             >
-              <Text variant="bodySmall" style={{ color: "#17212B" }}>
+              <Text variant="bodySmall" style={{ color: readableForeground(accent) }}>
                 Explore Memberships
               </Text>
             </View>
           </View>
-        </View>
-        <FestiveSurface theme={themeId} accent={accent} kind="card">
+        </FestiveSurface>
+        <FestiveSurface theme={themeId} accent={accent} kind="membership">
         <View
           style={{
             backgroundColor: "#FFFFFF",
@@ -152,11 +163,11 @@ export function CustomerThemePreview({
             borderColor: "#E5E7EB",
           }}
         >
-          <Text variant="body" style={{ color: foreground }}>
+          <Text variant="body" style={{ color: cardForeground }}>
             {membershipName}
           </Text>
           {!compact ? (
-            <Text variant="bodySmall" style={{ color: foreground }}>
+            <Text variant="bodySmall" style={{ color: cardForeground }}>
               {membershipDescription}
             </Text>
           ) : null}
@@ -165,7 +176,13 @@ export function CustomerThemePreview({
           </Text>
         </View>
         </FestiveSurface>
-        <FestiveSurface theme={themeId} accent={accent} kind="card">
+        <FestiveSurface theme={themeId} accent={accent} kind="benefit">
+          <View style={{ backgroundColor: "#FFFFFF", padding: space, borderRadius: 9, borderWidth: 1, borderColor: "#E5E7EB", gap: 4 }}>
+            <Text variant="body" style={{ color: cardForeground }}>Member benefit</Text>
+            {!compact ? <Text variant="bodySmall" style={{ color: cardForeground }}>A reward available with your membership</Text> : null}
+          </View>
+        </FestiveSurface>
+        <FestiveSurface theme={themeId} accent={accent} kind="offer">
         <View
           style={{
             backgroundColor: "#FFFFFF",
@@ -176,11 +193,11 @@ export function CustomerThemePreview({
             borderColor: "#E5E7EB",
           }}
         >
-          <Text variant="body" style={{ color: foreground }}>
+          <Text variant="body" style={{ color: cardForeground }}>
             {offerTitle ?? offerName ?? "Seasonal offers"}
           </Text>
           {!compact ? (
-            <Text variant="bodySmall" style={{ color: foreground }}>
+            <Text variant="bodySmall" style={{ color: cardForeground }}>
               {offerDescription}
             </Text>
           ) : null}
@@ -190,6 +207,6 @@ export function CustomerThemePreview({
         </View>
         </FestiveSurface>
       </View>
-    </View>
+    </FestiveSurface>
   );
 }

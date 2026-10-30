@@ -15,7 +15,7 @@ type Props = {
 
 /** Decorations are fixed by the theme code; old uploaded images and decoration controls are ignored. */
 export function DecorativeThemeFrame({
-  children, accentColor, festiveTheme = "CLASSIC",
+  children, accentColor, festiveTheme = "CLASSIC", variant,
 }: Props) {
-  return <FestiveSurface theme={festiveTheme} accent={accentColor} kind="card">{children}</FestiveSurface>;
+  return <FestiveSurface theme={festiveTheme} accent={accentColor} kind={variant === "content" ? "offer" : "card"}>{children}</FestiveSurface>;
 }

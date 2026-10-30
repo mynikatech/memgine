@@ -10,6 +10,7 @@ import {
   Text,
 } from "@/src/ui";
 import { CustomerThemePreview } from "@/src/ui/domain/CustomerThemePreview";
+import { festiveThemeId } from "@/src/ui/domain/FestiveThemeSurface";
 import { AnnouncementEditor } from "@/src/experience/announcements/AnnouncementEditor";
 import { AnnouncementDisplay } from "@/src/experience/announcements/AnnouncementDisplay";
 import { resolveAnnouncementConfiguration } from "@/src/experience/announcements/announcement-model";
@@ -98,8 +99,6 @@ export function OrganizationThemePanel({
       accentColor: t.publishedTheme.accentColor,
       backgroundColor: t.publishedTheme.backgroundColor,
       textColor: t.publishedTheme.textColor,
-      backgroundImageUrl: null,
-      decoration: null,
     });
     setNotice(`Selected ${t.displayName}. Save Changes to retain changes.`);
   };
@@ -204,6 +203,10 @@ export function OrganizationThemePanel({
               }
             }}
           />
+          <View style={{ maxWidth: 620, gap: 8 }}>
+            <Text variant="bodyStrong">Theme preview</Text>
+            <CustomerThemePreview theme={previewTheme(draft)} themeCode={draft.platformThemeCode} compact businessName={organizationName} />
+          </View>
           <Section title="Announcements" description="Messages remain draft until Customer Experience is published.">
             <AnnouncementEditor
               key={resetKey}
@@ -215,6 +218,7 @@ export function OrganizationThemePanel({
               <Text variant="bodyStrong">Announcement preview</Text>
               <AnnouncementDisplay
                 configuration={resolveAnnouncementConfiguration(draft)}
+                festiveTheme={draft.platformThemeCode ? festiveThemeId(draft.platformThemeCode) : "CLASSIC"}
                 fallbackBackground={/^#[0-9a-f]{6}$/i.test(draft.accentColor ?? "") ? draft.accentColor! : "#F59E0B"}
                 paddingHorizontal={16}
                 paddingVertical={10}

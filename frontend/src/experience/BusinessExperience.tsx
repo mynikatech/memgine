@@ -505,7 +505,7 @@ export function BusinessExperience({
     children: ReactNode;
     testID?: string;
   }) => (
-    <FestiveSurface theme={festiveTheme} accent={theme.colors.accent}><DecorativeThemeFrame festiveTheme={festiveTheme}
+    <DecorativeThemeFrame festiveTheme={festiveTheme}
       imageUrl={null}
       primaryColor={theme.colors.primary}
       accentColor={theme.colors.accent}
@@ -525,7 +525,7 @@ export function BusinessExperience({
           {children}
         </Card>
       </DecorativeContentThemeScope>
-    </DecorativeThemeFrame></FestiveSurface>
+    </DecorativeThemeFrame>
   );
 
   const resolvedContent = previewDefinition?.content ?? content;
@@ -1437,6 +1437,7 @@ export function BusinessExperience({
   const renderPromotionCard = (
     promo: NonNullable<typeof exp.heroPromotion>,
   ) => (
+    <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="hero">
     <Card padding="none" style={{ overflow: "hidden", borderRadius: 22 }}>
       <HeroImage uri={promo.imageUrl} />
 
@@ -1472,6 +1473,7 @@ export function BusinessExperience({
         </Text>
       </View>
     </Card>
+    </FestiveSurface>
   );
 
   const renderTabPreviewLink = (tabKey: ExperienceTabKey) => {
@@ -1510,6 +1512,7 @@ export function BusinessExperience({
       {renderTabPreviewLink("card")}
 
       {enhancedVisualsEnabled && heroImageUrl ? (
+        <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="hero">
         <Card
           padding="none"
           style={{
@@ -1559,6 +1562,7 @@ export function BusinessExperience({
             ) : null}
           </View>
         </Card>
+        </FestiveSurface>
       ) : exp.heroPromotion ? (
         renderPromotionCard(exp.heroPromotion)
       ) : null}
@@ -1621,7 +1625,7 @@ export function BusinessExperience({
           titleColor={pageTextColor}
           title={t("experience.yourMemberships")}
         >
-          <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="card">
+          <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="membership">
 <MembershipCard
             decoration={null}
             decorationImageUrl={null}
@@ -1643,7 +1647,7 @@ export function BusinessExperience({
           titleColor={pageTextColor}
           title={t("experience.yourMemberships")}
         >
-          <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="card">
+          <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="membership">
 <MembershipCard
             decoration={null}
             decorationImageUrl={null}
@@ -1676,8 +1680,8 @@ export function BusinessExperience({
           <Card padding="lg">
             <View style={{ gap: 18 }}>
               {exp.benefits.map((b) => (
+                <FestiveSurface key={b.id} theme={festiveTheme} accent={theme.colors.accent} kind="benefit">
                 <BenefitItem
-                  key={b.id}
                   testID={`experience-benefit-${b.id}`}
                   title={b.displayName ?? b.benefitName}
                   subtitle={b.description}
@@ -1698,6 +1702,7 @@ export function BusinessExperience({
                     (rule) => rule.benefitId === b.id,
                   )}
                 />
+                </FestiveSurface>
               ))}
             </View>
           </Card>
@@ -3153,7 +3158,7 @@ export function BusinessExperience({
               titleColor={pageTextColor}
               title={t("experience.yourMemberships")}
             >
-              <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="card">
+              <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="membership">
 <MembershipCard
                 decoration={null}
                 decorationImageUrl={
@@ -3215,8 +3220,8 @@ export function BusinessExperience({
                     >
                       <View style={{ gap: 18 }}>
                         {exp.benefits.map((b) => (
+                          <FestiveSurface key={b.id} theme={festiveTheme} accent={theme.colors.accent} kind="benefit">
                           <BenefitItem
-                            key={b.id}
                             testID={`experience-preview-benefit-${b.id}`}
                             title={b.displayName ?? b.benefitName}
                             subtitle={b.description}
@@ -3241,6 +3246,7 @@ export function BusinessExperience({
                               (rule) => rule.benefitId === b.id,
                             )}
                           />
+                          </FestiveSurface>
                         ))}
                       </View>
                     </Card>
@@ -3443,6 +3449,7 @@ export function BusinessExperience({
             <View />
           </FestiveSurface>
         ) : null}
+        <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="header">
         <View
           style={{
             paddingHorizontal: theme.spacing.lg,
@@ -3502,6 +3509,7 @@ export function BusinessExperience({
             </Text>
           </View>
         </View>
+        </FestiveSurface>
 
         <ScrollView
           style={{ flex: 1 }}
@@ -3599,6 +3607,7 @@ export function BusinessExperience({
         </ScrollView>
 
         {!hideTabBar ? (
+          <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="nav">
           <View
             style={{
               flexDirection: "row",
@@ -3646,6 +3655,7 @@ export function BusinessExperience({
               );
             })}
           </View>
+          </FestiveSurface>
         ) : null}
 
         {!isPreviewMode ? (
