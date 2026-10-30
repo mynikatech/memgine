@@ -1,10 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Animated,
+  Easing,
   Image,
   Pressable,
   ScrollView,
   View,
+  Linking,
   Platform,
   useWindowDimensions,
 } from "react-native";
@@ -16,6 +19,7 @@ import {
 } from "@/src/ui/domain/RedemptionProductPicker";
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
 import { resolveCustomerBranding } from "@/src/core/customer/resolve-customer-branding";
+import { DecorativeThemeFrame } from "@/src/ui/domain/DecorativeThemeFrame";
 import type {
   CardStyle,
   TemplateDefinition,
@@ -49,6 +53,7 @@ import {
   useTranslation,
 } from "@/src/providers";
 import { buildTheme } from "@/src/theme/theme";
+import { readableForeground, tint } from "@/src/theme/color-utils";
 import { Badge, BrandLogo, Button, Card, Modal, Section, Text } from "@/src/ui";
 
 import {
@@ -61,6 +66,105 @@ import {
 } from "@/src/ui/domain";
 
 import { ExperienceTabKey, resolveExperience } from "./resolve-experience";
+
+/** Shared, configuration-driven announcement used by both Preview and Customer. */
+function BrandingAnnouncement({
+  message,
+  style,
+  background,
+  foreground,
+  link,
+  paddingHorizontal,
+  paddingVertical,
+}: {
+  message: string;
+  style: "STATIC" | "FADE" | "SLIDE" | "TICKER";
+  background: string;
+  foreground: string;
+  link: string | null;
+  paddingHorizontal: number;
+  paddingVertical: number;
+}) {
+  const progress = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    progress.setValue(0);
+    if (style === "STATIC") return;
+    const duration = style === "TICKER" ? 9000 : 2500;
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(progress, {
+          toValue: 1,
+          duration,
+          easing:
+            style === "TICKER" ? Easing.linear : Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(progress, {
+          toValue: 0,
+          duration: style === "TICKER" ? 0 : 500,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [progress, style]);
+
+  const animationStyle =
+    style === "FADE"
+      ? {
+          opacity: progress.interpolate({
+            inputRange: [0, 0.5, 1],
+            outputRange: [1, 0.45, 1],
+          }),
+        }
+      : style === "SLIDE"
+        ? {
+            transform: [
+              {
+                translateY: progress.interpolate({
+                  inputRange: [0, 0.5, 1],
+                  outputRange: [0, -5, 0],
+                }),
+              },
+            ],
+          }
+        : style === "TICKER"
+          ? {
+              transform: [
+                {
+                  translateX: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -120],
+                  }),
+                },
+              ],
+            }
+          : undefined;
+  return (
+    <Pressable
+      disabled={!link}
+      accessibilityRole={link ? "link" : "text"}
+      accessibilityLabel={message}
+      onPress={() => {
+        if (link) void Linking.openURL(link);
+      }}
+      style={{
+        backgroundColor: background,
+        paddingHorizontal,
+        paddingVertical,
+        overflow: "hidden",
+      }}
+    >
+      <Animated.View style={animationStyle}>
+        <Text variant="bodySmall" style={{ color: foreground }}>
+          {message}
+          {link ? "  ·  Learn more ↗" : ""}
+        </Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
 
 function formatPhoneNumber(
   phone?: OrganizationDetails["supportPhone"],
@@ -374,6 +478,19 @@ export function BusinessExperience({
 
       accentColor:
         brandingOverride?.accentColor ?? definitionResolvedBranding.accentColor,
+      backgroundColor: brandingOverride?.backgroundColor,
+      textColor: brandingOverride?.textColor,
+      backgroundImageUrl: brandingOverride?.backgroundImageUrl,
+      decoration: brandingOverride?.decoration,
+      announcementEnabled: brandingOverride?.announcementEnabled,
+      announcementMessage: brandingOverride?.announcementMessage,
+      announcementStyle: brandingOverride?.announcementStyle,
+      announcementBackgroundColor:
+        brandingOverride?.announcementBackgroundColor,
+      announcementTextColor: brandingOverride?.announcementTextColor,
+      announcementLinkUrl: brandingOverride?.announcementLinkUrl,
+      announcementStartsAt: brandingOverride?.announcementStartsAt,
+      announcementEndsAt: brandingOverride?.announcementEndsAt,
     }),
     [definitionResolvedBranding, brandingOverride],
   );
@@ -437,9 +554,97 @@ export function BusinessExperience({
    * MembershipCard / BenefitItem / OfferCard still consumed the outer provider
    * theme. That allowed stale/default teal branding to leak into Preview.
    */
-  const theme = useMemo(
-    () => buildTheme(resolvedConfiguration.branding),
-    [resolvedConfiguration.branding],
+  const theme = useMemo(() => {
+    const base = buildTheme(resolvedConfiguration.branding);
+    // A generic business-wide seasonal palette. No festival-specific rules.
+    const valid = (value: string | null | undefined): value is string =>
+      typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
+    const background = valid(resolvedBranding.backgroundColor)
+      ? resolvedBranding.backgroundColor
+      : base.colors.background;
+    const textColor = valid(resolvedBranding.textColor)
+      ? resolvedBranding.textColor
+      : base.colors.text;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        background,
+        text: textColor,
+        // Use a low-intensity wash on secondary surfaces, leaving cards
+        // opaque and legible over the optional decorative artwork.
+        surfaceAlt: tint(base.colors.secondary, 0.96),
+      },
+    };
+  }, [
+    resolvedConfiguration.branding,
+    resolvedBranding.backgroundColor,
+    resolvedBranding.textColor,
+  ]);
+
+  // V2 values are only taken from the supplied release-state branding override;
+  // never load or substitute an editable organization draft here.
+  const validHex = (value: string | null | undefined): value is string =>
+    typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
+  const customerBackground = validHex(resolvedBranding.backgroundColor)
+    ? resolvedBranding.backgroundColor
+    : theme.colors.background;
+  const customerText = validHex(resolvedBranding.textColor)
+    ? resolvedBranding.textColor
+    : theme.colors.text;
+  const customerTheme = useMemo(
+    () => ({
+      ...theme,
+      colors: {
+        ...theme.colors,
+        background: customerBackground,
+        text: customerText,
+        // Neutral surfaces remain stable for readability of existing widgets.
+      },
+    }),
+    [theme, customerBackground, customerText],
+  );
+  const announcement = useMemo(() => {
+    if (
+      !resolvedBranding.announcementEnabled ||
+      !resolvedBranding.announcementMessage?.trim()
+    )
+      return null;
+    const current = Date.now();
+    const starts = resolvedBranding.announcementStartsAt
+      ? Date.parse(resolvedBranding.announcementStartsAt)
+      : null;
+    const ends = resolvedBranding.announcementEndsAt
+      ? Date.parse(resolvedBranding.announcementEndsAt)
+      : null;
+    if (
+      (starts !== null && (!Number.isFinite(starts) || current < starts)) ||
+      (ends !== null && (!Number.isFinite(ends) || current > ends))
+    )
+      return null;
+    const background = validHex(resolvedBranding.announcementBackgroundColor)
+      ? resolvedBranding.announcementBackgroundColor
+      : theme.colors.accent;
+    const foreground = validHex(resolvedBranding.announcementTextColor)
+      ? resolvedBranding.announcementTextColor
+      : readableForeground(background);
+    const link = resolvedBranding.announcementLinkUrl?.trim();
+    return {
+      message: resolvedBranding.announcementMessage.trim(),
+      style: resolvedBranding.announcementStyle ?? "STATIC",
+      background,
+      foreground,
+      link: link && /^https:\/\//i.test(link) ? link : null,
+    };
+  }, [resolvedBranding, theme.colors.accent]);
+  const customerBackgroundImage = resolvedBranding.backgroundImageUrl
+    ? resolveAssetUrl(resolvedBranding.backgroundImageUrl)
+    : null;
+  // The theme code is only an identifier. Visuals depend on generic configuration.
+  const headerTreatment = resolvedBranding.decoration?.headerTreatment;
+  const showHeaderImage = Boolean(
+    customerBackgroundImage &&
+    (!headerTreatment || headerTreatment === "IMAGE"),
   );
 
   const resolvedContent = previewDefinition?.content ?? content;
@@ -1533,6 +1738,11 @@ export function BusinessExperience({
       ) : exp.membership ? (
         <Section title={t("experience.yourMemberships")}>
           <MembershipCard
+            decoration={resolvedBranding.decoration}
+            decorationImageUrl={
+              resolvedBranding.decoration?.cardBackgroundImageUrl
+            }
+            decorationBackgroundColor={customerBackground}
             testID="experience-membership-card"
             organizationName={exp.displayName}
             tier={exp.membership.tier}
@@ -1547,6 +1757,11 @@ export function BusinessExperience({
       ) : isPreviewMode ? (
         <Section title={t("experience.yourMemberships")}>
           <MembershipCard
+            decoration={resolvedBranding.decoration}
+            decorationImageUrl={
+              resolvedBranding.decoration?.cardBackgroundImageUrl
+            }
+            decorationBackgroundColor={customerBackground}
             testID="experience-preview-membership-card"
             organizationName={exp.displayName}
             tier={
@@ -1568,34 +1783,52 @@ export function BusinessExperience({
       (previewSection === "benefits" || exp.membership) &&
       exp.benefits.length ? (
         <Section title={t("experience.yourBenefits")}>
-          <Card padding="lg">
-            <View style={{ gap: 18 }}>
-              {exp.benefits.map((b) => (
-                <BenefitItem
-                  key={b.id}
-                  testID={`experience-benefit-${b.id}`}
-                  title={b.displayName ?? b.benefitName}
-                  subtitle={b.description}
-                  disclaimerText={b.disclaimerText}
-                  eligibleProducts={b.products?.map(
-                    (product) => product.productName || product.productCode,
-                  )}
-                  productStoreAvailability={b.products?.map((eligible) => ({
-                    productId: eligible.productId,
-                    productName: eligible.productName || eligible.productCode,
-                    availability: benefitProductAvailability(
-                      b.id,
-                      eligible.productId,
-                    ),
-                  }))}
-                  icon={benefitIconForType(b.benefitTypeId)}
-                  usageRules={benefitUsageRules?.filter(
-                    (rule) => rule.benefitId === b.id,
-                  )}
-                />
-              ))}
-            </View>
-          </Card>
+          <DecorativeThemeFrame
+            imageUrl={
+              resolvedBranding.decoration?.cardBackgroundImageUrl ?? null
+            }
+            primaryColor={theme.colors.primary}
+            accentColor={theme.colors.accent}
+            decoration={resolvedBranding.decoration}
+          >
+            <Card
+              padding="lg"
+              style={{
+                backgroundColor:
+                  resolvedBranding.decoration?.cardBackgroundImageUrl &&
+                  resolvedBranding.decoration?.cardTreatment === "IMAGE_OVERLAY"
+                    ? "rgba(255,255,255,0.10)"
+                    : theme.colors.card,
+              }}
+            >
+              <View style={{ gap: 18 }}>
+                {exp.benefits.map((b) => (
+                  <BenefitItem
+                    key={b.id}
+                    testID={`experience-benefit-${b.id}`}
+                    title={b.displayName ?? b.benefitName}
+                    subtitle={b.description}
+                    disclaimerText={b.disclaimerText}
+                    eligibleProducts={b.products?.map(
+                      (product) => product.productName || product.productCode,
+                    )}
+                    productStoreAvailability={b.products?.map((eligible) => ({
+                      productId: eligible.productId,
+                      productName: eligible.productName || eligible.productCode,
+                      availability: benefitProductAvailability(
+                        b.id,
+                        eligible.productId,
+                      ),
+                    }))}
+                    icon={benefitIconForType(b.benefitTypeId)}
+                    usageRules={benefitUsageRules?.filter(
+                      (rule) => rule.benefitId === b.id,
+                    )}
+                  />
+                ))}
+              </View>
+            </Card>
+          </DecorativeThemeFrame>
         </Section>
       ) : null}
 
@@ -1704,40 +1937,57 @@ export function BusinessExperience({
                     Special Offers
                   </Text>
                   {redeemSectionOffers.map(({ offer, itemStatus }) => (
-                    <OfferCard
+                    <DecorativeThemeFrame
                       key={offer.id}
-                      offerId={offer.id}
-                      testID={`experience-redeem-offer-${offer.id}`}
-                      title={offer.offerName}
-                      description={offer.description}
-                      imageUrl={offer.promotionImageUrl}
-                      badge={offer.badgeText}
-                      availabilityText={offerAvailabilityText(offer)}
-                      disclaimerText={offer.disclaimerText}
-                      applicableProducts={offer.products?.map(
-                        (product) => product.productName || product.productCode,
-                      )}
-                      discountPercentage={offer.discountPercentage}
-                      ctaLabel={
-                        isPreviewMode
-                          ? offer.ctaLabel
-                          : itemStatus.status === "AVAILABLE"
-                            ? selectedOfferIds.has(offer.id)
-                              ? "Remove from redemption"
-                              : "Add to redemption"
-                            : (itemStatus.displayReason ?? "Unavailable")
+                      imageUrl={
+                        resolvedBranding.decoration?.cardBackgroundImageUrl ??
+                        null
                       }
-                      usageRules={offerUsageRules?.filter(
-                        (rule) => rule.offerId === offer.id,
-                      )}
-                      onPress={
-                        isPreviewMode ||
-                        isHistoricalSubscription ||
-                        itemStatus.status !== "AVAILABLE"
-                          ? undefined
-                          : () => toggleOffer(offer.id)
-                      }
-                    />
+                      primaryColor={theme.colors.primary}
+                      accentColor={theme.colors.accent}
+                      variant="content"
+                      decoration={resolvedBranding.decoration}
+                    >
+                      <OfferCard
+                        decorative={Boolean(
+                          resolvedBranding.decoration?.cardBackgroundImageUrl &&
+                          resolvedBranding.decoration?.cardTreatment ===
+                            "IMAGE_OVERLAY",
+                        )}
+                        offerId={offer.id}
+                        testID={`experience-redeem-offer-${offer.id}`}
+                        title={offer.offerName}
+                        description={offer.description}
+                        imageUrl={offer.promotionImageUrl}
+                        badge={offer.badgeText}
+                        availabilityText={offerAvailabilityText(offer)}
+                        disclaimerText={offer.disclaimerText}
+                        applicableProducts={offer.products?.map(
+                          (product) =>
+                            product.productName || product.productCode,
+                        )}
+                        discountPercentage={offer.discountPercentage}
+                        ctaLabel={
+                          isPreviewMode
+                            ? offer.ctaLabel
+                            : itemStatus.status === "AVAILABLE"
+                              ? selectedOfferIds.has(offer.id)
+                                ? "Remove from redemption"
+                                : "Add to redemption"
+                              : (itemStatus.displayReason ?? "Unavailable")
+                        }
+                        usageRules={offerUsageRules?.filter(
+                          (rule) => rule.offerId === offer.id,
+                        )}
+                        onPress={
+                          isPreviewMode ||
+                          isHistoricalSubscription ||
+                          itemStatus.status !== "AVAILABLE"
+                            ? undefined
+                            : () => toggleOffer(offer.id)
+                        }
+                      />
+                    </DecorativeThemeFrame>
                   ))}
                 </View>
               ) : null}
@@ -1946,39 +2196,55 @@ export function BusinessExperience({
                   OTHER OFFERS
                 </Text>
                 {offersTabItems.map(({ offer, itemStatus }) => (
-                  <OfferCard
+                  <DecorativeThemeFrame
                     key={offer.id}
-                    offerId={offer.id}
-                    testID={`experience-offer-${offer.id}`}
-                    title={offer.offerName}
-                    description={offer.description}
-                    imageUrl={offer.promotionImageUrl}
-                    badge={offer.badgeText}
-                    availabilityText={offerAvailabilityText(offer)}
-                    disclaimerText={offer.disclaimerText}
-                    applicableProducts={offer.products?.map(
-                      (product) => product.productName || product.productCode,
-                    )}
-                    discountPercentage={offer.discountPercentage}
-                    ctaLabel={
-                      isPreviewMode
-                        ? offer.ctaLabel
-                        : !isHistoricalSubscription &&
-                            itemStatus.status === "AVAILABLE"
-                          ? selectedOfferIds.has(offer.id)
-                            ? "Remove from redemption"
-                            : "Add to redemption"
-                          : (itemStatus.displayReason ?? "Unavailable")
+                    imageUrl={
+                      resolvedBranding.decoration?.cardBackgroundImageUrl ??
+                      null
                     }
-                    usageRules={offerUsageRules?.filter(
-                      (rule) => rule.offerId === offer.id,
-                    )}
-                    onPress={
-                      isPreviewMode || itemStatus.status !== "AVAILABLE"
-                        ? undefined
-                        : () => toggleOffer(offer.id)
-                    }
-                  />
+                    primaryColor={theme.colors.primary}
+                    accentColor={theme.colors.accent}
+                    variant="content"
+                    decoration={resolvedBranding.decoration}
+                  >
+                    <OfferCard
+                      decorative={Boolean(
+                        resolvedBranding.decoration?.cardBackgroundImageUrl &&
+                        resolvedBranding.decoration?.cardTreatment ===
+                          "IMAGE_OVERLAY",
+                      )}
+                      offerId={offer.id}
+                      testID={`experience-offer-${offer.id}`}
+                      title={offer.offerName}
+                      description={offer.description}
+                      imageUrl={offer.promotionImageUrl}
+                      badge={offer.badgeText}
+                      availabilityText={offerAvailabilityText(offer)}
+                      disclaimerText={offer.disclaimerText}
+                      applicableProducts={offer.products?.map(
+                        (product) => product.productName || product.productCode,
+                      )}
+                      discountPercentage={offer.discountPercentage}
+                      ctaLabel={
+                        isPreviewMode
+                          ? offer.ctaLabel
+                          : !isHistoricalSubscription &&
+                              itemStatus.status === "AVAILABLE"
+                            ? selectedOfferIds.has(offer.id)
+                              ? "Remove from redemption"
+                              : "Add to redemption"
+                            : (itemStatus.displayReason ?? "Unavailable")
+                      }
+                      usageRules={offerUsageRules?.filter(
+                        (rule) => rule.offerId === offer.id,
+                      )}
+                      onPress={
+                        isPreviewMode || itemStatus.status !== "AVAILABLE"
+                          ? undefined
+                          : () => toggleOffer(offer.id)
+                      }
+                    />
+                  </DecorativeThemeFrame>
                 ))}
               </View>
             ) : null}
@@ -2859,7 +3125,16 @@ export function BusinessExperience({
 
       {exp.showStores && exp.stores.length ? (
         <Section title={t("experience.locations")}>
-          <Card padding="lg">
+          <Card
+            padding="lg"
+            style={{
+              backgroundColor:
+                resolvedBranding.decoration?.cardBackgroundImageUrl &&
+                resolvedBranding.decoration?.cardTreatment === "IMAGE_OVERLAY"
+                  ? "rgba(255,255,255,0.10)"
+                  : theme.colors.card,
+            }}
+          >
             <View style={{ gap: 18 }}>
               {exp.stores.map((s) => (
                 <View
@@ -2974,6 +3249,11 @@ export function BusinessExperience({
           >
             <Section title={t("experience.yourMemberships")}>
               <MembershipCard
+                decoration={resolvedBranding.decoration}
+                decorationImageUrl={
+                  resolvedBranding.decoration?.cardBackgroundImageUrl
+                }
+                decorationBackgroundColor={customerBackground}
                 testID="experience-preview-membership-card"
                 organizationName={exp.displayName}
                 tier={
@@ -3001,38 +3281,57 @@ export function BusinessExperience({
           >
             <Section title={t("experience.yourBenefits")}>
               {exp.benefits.length ? (
-                <Card padding="lg">
-                  <View style={{ gap: 18 }}>
-                    {exp.benefits.map((b) => (
-                      <BenefitItem
-                        key={b.id}
-                        testID={`experience-preview-benefit-${b.id}`}
-                        title={b.displayName ?? b.benefitName}
-                        subtitle={b.description}
-                        disclaimerText={b.disclaimerText}
-                        eligibleProducts={b.products?.map(
-                          (product) =>
-                            product.productName || product.productCode,
-                        )}
-                        productStoreAvailability={b.products?.map(
-                          (eligible) => ({
-                            productId: eligible.productId,
-                            productName:
-                              eligible.productName || eligible.productCode,
-                            availability: benefitProductAvailability(
-                              b.id,
-                              eligible.productId,
-                            ),
-                          }),
-                        )}
-                        icon={benefitIconForType(b.benefitTypeId)}
-                        usageRules={benefitUsageRules?.filter(
-                          (rule) => rule.benefitId === b.id,
-                        )}
-                      />
-                    ))}
-                  </View>
-                </Card>
+                <DecorativeThemeFrame
+                  imageUrl={
+                    resolvedBranding.decoration?.cardBackgroundImageUrl ?? null
+                  }
+                  primaryColor={theme.colors.primary}
+                  accentColor={theme.colors.accent}
+                  decoration={resolvedBranding.decoration}
+                >
+                  <Card
+                    padding="lg"
+                    style={{
+                      backgroundColor:
+                        resolvedBranding.decoration?.cardBackgroundImageUrl &&
+                        resolvedBranding.decoration?.cardTreatment ===
+                          "IMAGE_OVERLAY"
+                          ? "rgba(255,255,255,0.10)"
+                          : theme.colors.card,
+                    }}
+                  >
+                    <View style={{ gap: 18 }}>
+                      {exp.benefits.map((b) => (
+                        <BenefitItem
+                          key={b.id}
+                          testID={`experience-preview-benefit-${b.id}`}
+                          title={b.displayName ?? b.benefitName}
+                          subtitle={b.description}
+                          disclaimerText={b.disclaimerText}
+                          eligibleProducts={b.products?.map(
+                            (product) =>
+                              product.productName || product.productCode,
+                          )}
+                          productStoreAvailability={b.products?.map(
+                            (eligible) => ({
+                              productId: eligible.productId,
+                              productName:
+                                eligible.productName || eligible.productCode,
+                              availability: benefitProductAvailability(
+                                b.id,
+                                eligible.productId,
+                              ),
+                            }),
+                          )}
+                          icon={benefitIconForType(b.benefitTypeId)}
+                          usageRules={benefitUsageRules?.filter(
+                            (rule) => rule.benefitId === b.id,
+                          )}
+                        />
+                      ))}
+                    </View>
+                  </Card>
+                </DecorativeThemeFrame>
               ) : (
                 <Card padding="lg">
                   <Text variant="bodySmall" color="textMuted">
@@ -3058,7 +3357,17 @@ export function BusinessExperience({
           >
             <Section title={t("experience.locations")}>
               {exp.stores.length ? (
-                <Card padding="lg">
+                <Card
+                  padding="lg"
+                  style={{
+                    backgroundColor:
+                      resolvedBranding.decoration?.cardBackgroundImageUrl &&
+                      resolvedBranding.decoration?.cardTreatment ===
+                        "IMAGE_OVERLAY"
+                        ? "rgba(255,255,255,0.10)"
+                        : theme.colors.card,
+                  }}
+                >
                   <View style={{ gap: 18 }}>
                     {exp.stores.map((s) => (
                       <View
@@ -3203,14 +3512,36 @@ export function BusinessExperience({
     : tabContent;
 
   return (
-    <BusinessThemeScope theme={theme}>
+    <BusinessThemeScope theme={customerTheme}>
       <View
         style={{
           flex: 1,
-          backgroundColor: theme.colors.background,
+          backgroundColor: customerBackground,
           paddingTop: insets.top,
         }}
       >
+        {/* Theme artwork is a visible decorative masthead for every tab.
+            Unlike the business hero image, this is shared across all sections.
+            It never sits behind interactive content or replaces business media. */}
+        {showHeaderImage ? (
+          <View
+            pointerEvents="none"
+            style={{
+              height: isMobileLayout ? 76 : 112,
+              backgroundColor: customerBackground,
+              overflow: "hidden",
+              borderBottomWidth: 3,
+              borderBottomColor: theme.colors.accent,
+            }}
+          >
+            <Image
+              source={{ uri: customerBackgroundImage ?? undefined }}
+              resizeMode="cover"
+              accessibilityIgnoresInvertColors
+              style={{ width: "100%", height: "100%" }}
+            />
+          </View>
+        ) : null}
         <View
           style={{
             paddingHorizontal: theme.spacing.lg,
@@ -3271,6 +3602,17 @@ export function BusinessExperience({
           </View>
         </View>
 
+        {announcement ? (
+          <BrandingAnnouncement
+            message={announcement.message}
+            style={announcement.style}
+            background={announcement.background}
+            foreground={announcement.foreground}
+            link={announcement.link}
+            paddingHorizontal={theme.spacing.lg}
+            paddingVertical={theme.spacing.sm}
+          />
+        ) : null}
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{
@@ -3363,7 +3705,7 @@ export function BusinessExperience({
               flexDirection: "row",
               borderTopWidth: 1,
               borderTopColor: theme.colors.border,
-              backgroundColor: theme.colors.background,
+              backgroundColor: customerBackground,
               paddingBottom: insets.bottom,
             }}
           >

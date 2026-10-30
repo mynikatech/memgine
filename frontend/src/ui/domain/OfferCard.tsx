@@ -1,38 +1,64 @@
 import { Image, Pressable, View } from "react-native";
+
 import { resolveAssetUrl } from "@/src/data/api/asset-url";
+
 import { useEffect, useState } from "react";
 
 import { OfferFrequencyType, type OfferUsageRule } from "@/src/core";
+
 import { services } from "@/src/core";
+
 import { useTheme } from "@/src/providers";
 
 import { Button } from "../Button";
+
 import { Card } from "../Card";
+
 import { Text } from "../Text";
 
 type OfferCardProps = {
   offerId?: string;
+  /** Optional: allow a shared decorative image behind the parent frame. */
+  decorative?: boolean;
+
   title: string;
+
   description?: string;
+
   imageUrl?: string;
+
   badge?: string;
+
   availabilityText?: string;
+
   disclaimerText?: string;
+
   applicableProducts?: string[];
+
   discountPercentage?: number;
+
   ctaLabel?: string;
+
   onPress?: () => void;
+
   usageRules?: OfferUsageRule[];
+
   testID?: string;
 };
 
 const DAY_LABELS: Record<string, string> = {
   MON: "Mon",
+
   TUE: "Tue",
+
   WED: "Wed",
+
   THU: "Thu",
+
   FRI: "Fri",
+
   SAT: "Sat",
+
   SUN: "Sun",
 };
 
@@ -40,7 +66,9 @@ function formatDays(days?: string[]): string | undefined {
   if (!days?.length) return undefined;
 
   const normalized = days
+
     .map((day) => day.trim().toUpperCase().slice(0, 3))
+
     .filter((day) => DAY_LABELS[day]);
 
   if (!normalized.length) return undefined;
@@ -50,8 +78,11 @@ function formatDays(days?: string[]): string | undefined {
   if (unique.length === 7) return "Every day";
 
   const ordered = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+
   const selectedIndexes = ordered
+
     .map((day, index) => (unique.includes(day) ? index : -1))
+
     .filter((index) => index >= 0);
 
   const isContiguous = selectedIndexes.every(
@@ -68,13 +99,17 @@ function formatTime(value?: string): string | undefined {
   if (!value) return undefined;
 
   const match = value.match(/^(\d{1,2}):(\d{2})$/);
+
   if (!match) return value;
 
   const hour = Number(match[1]);
+
   const minute = match[2];
+
   if (hour < 0 || hour > 23) return value;
 
   const suffix = hour >= 12 ? "PM" : "AM";
+
   const displayHour = hour % 12 || 12;
 
   return minute === "00"
@@ -84,6 +119,7 @@ function formatTime(value?: string): string | undefined {
 
 function formatFrequency(
   frequencyType: OfferFrequencyType,
+
   interval: number,
 ): string | undefined {
   const safeInterval = Math.max(1, interval || 1);
@@ -91,14 +127,19 @@ function formatFrequency(
   switch (frequencyType) {
     case OfferFrequencyType.DAILY:
       return safeInterval === 1 ? "day" : `${safeInterval} days`;
+
     case OfferFrequencyType.WEEKLY:
       return safeInterval === 1 ? "week" : `${safeInterval} weeks`;
+
     case OfferFrequencyType.MONTHLY:
       return safeInterval === 1 ? "month" : `${safeInterval} months`;
+
     case OfferFrequencyType.YEARLY:
       return safeInterval === 1 ? "year" : `${safeInterval} years`;
+
     case OfferFrequencyType.ONE_TIME:
       return undefined;
+
     default:
       return undefined;
   }
@@ -106,7 +147,9 @@ function formatFrequency(
 
 function formatUsageRule(rule: OfferUsageRule): string[] {
   const limit = Math.max(1, rule.usageLimit || 1);
+
   const frequency = formatFrequency(rule.frequencyType, rule.frequencyInterval);
+
   const lines: string[] = [];
 
   if (frequency) {
@@ -120,6 +163,7 @@ function formatUsageRule(rule: OfferUsageRule): string[] {
   }
 
   const days = formatDays(rule.applicableDays);
+
   const hasTimeWindow = Boolean(rule.windowStartTime && rule.windowEndTime);
 
   if (days && hasTimeWindow) {
@@ -139,21 +183,37 @@ function formatUsageRule(rule: OfferUsageRule): string[] {
 
 export function OfferCard({
   offerId,
+
+  decorative = false,
+
   title,
+
   description,
+
   imageUrl,
+
   badge,
+
   availabilityText,
+
   disclaimerText,
+
   applicableProducts,
+
   discountPercentage,
+
   ctaLabel,
+
   onPress,
+
   usageRules: usageRulesOverride,
+
   testID,
 }: OfferCardProps) {
   const resolvedImageUrl = resolveAssetUrl(imageUrl);
+
   const theme = useTheme();
+
   const [usageRules, setUsageRules] = useState<OfferUsageRule[]>([]);
 
   useEffect(() => {
@@ -161,6 +221,7 @@ export function OfferCard({
 
     if (usageRulesOverride !== undefined) {
       setUsageRules(usageRulesOverride.filter((rule) => !rule.isDeleted));
+
       return () => {
         cancelled = true;
       };
@@ -169,6 +230,7 @@ export function OfferCard({
     const loadUsageRules = async () => {
       if (!offerId) {
         setUsageRules([]);
+
         return;
       }
 
@@ -198,9 +260,13 @@ export function OfferCard({
     <View
       style={{
         alignSelf: "flex-start",
+
         backgroundColor: theme.colors.accentSoft,
+
         paddingHorizontal: theme.spacing.md,
+
         paddingVertical: 4,
+
         borderRadius: theme.radius.pill,
       }}
     >
@@ -216,14 +282,20 @@ export function OfferCard({
       padding="lg"
       style={{
         overflow: "hidden",
+        // When no theme is selected, Card keeps its original opaque surface.
+        ...(decorative ? { backgroundColor: "rgba(255,255,255,0.12)" } : {}),
+
         width: "100%",
+
         alignSelf: "stretch",
       }}
     >
       <View
         style={{
           flexDirection: "row",
+
           alignItems: "flex-start",
+
           gap: theme.spacing.md,
         }}
       >
@@ -231,12 +303,19 @@ export function OfferCard({
           <View
             style={{
               width: 88,
+
               height: 72,
+
               borderRadius: theme.radius.md,
+
               overflow: "hidden",
+
               alignItems: "center",
+
               justifyContent: "center",
+
               backgroundColor: theme.colors.surfaceAlt,
+
               flexShrink: 0,
             }}
           >
@@ -245,6 +324,7 @@ export function OfferCard({
               resizeMode="cover"
               style={{
                 width: "100%",
+
                 height: "100%",
               }}
               accessibilityLabel={`${title} offer`}
@@ -256,8 +336,11 @@ export function OfferCard({
           <View
             style={{
               flexDirection: "row",
+
               alignItems: "flex-start",
+
               justifyContent: "space-between",
+
               gap: theme.spacing.sm,
             }}
           >
@@ -303,9 +386,13 @@ export function OfferCard({
               testID={testID ? `${testID}-usage-rules` : undefined}
               style={{
                 marginTop: theme.spacing.xs,
+
                 paddingTop: theme.spacing.sm,
+
                 borderTopWidth: 1,
+
                 borderTopColor: theme.colors.border,
+
                 gap: 2,
               }}
             >
@@ -333,9 +420,13 @@ export function OfferCard({
               <View
                 style={{
                   alignSelf: "flex-start",
+
                   paddingHorizontal: theme.spacing.md,
+
                   paddingVertical: theme.spacing.sm,
+
                   borderRadius: theme.radius.pill,
+
                   backgroundColor: theme.colors.primarySoft,
                 }}
               >

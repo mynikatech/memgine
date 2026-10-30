@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 245-shared-card-artwork
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/245-shared-card-artwork.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

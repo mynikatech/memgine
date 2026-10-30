@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 244-organization-branding-decoration
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/244-organization-branding-decoration.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8
