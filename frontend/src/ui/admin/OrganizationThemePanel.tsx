@@ -90,7 +90,17 @@ export function OrganizationThemePanel({
   };
   const choose = (t: PlatformBrandingThemeV2) => {
     if (locked || !t.publishedTheme) return;
-    change({ ...t.publishedTheme, platformThemeCode: t.code });
+    // Selecting a platform theme must not replace organization-specific announcements.
+    change({
+      platformThemeCode: t.code,
+      primaryColor: t.publishedTheme.primaryColor,
+      secondaryColor: t.publishedTheme.secondaryColor,
+      accentColor: t.publishedTheme.accentColor,
+      backgroundColor: t.publishedTheme.backgroundColor,
+      textColor: t.publishedTheme.textColor,
+      backgroundImageUrl: null,
+      decoration: null,
+    });
     setNotice(`Selected ${t.displayName}. Save Changes to retain changes.`);
   };
   return (
