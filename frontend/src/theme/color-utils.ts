@@ -16,10 +16,41 @@ function linearize(channel: number): number {
     : Math.pow((normalized + 0.055) / 1.055, 2.4);
 }
 
-function contrastRatio(luminanceA: number, luminanceB: number): number {
+export function contrastRatio(luminanceA: number, luminanceB: number): number {
   const lighter = Math.max(luminanceA, luminanceB);
   const darker = Math.min(luminanceA, luminanceB);
   return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * Uses a configured foreground only when it remains readable on the actual
+ * surface. This keeps branding colours expressive without allowing a light
+ * text colour to disappear on a light card (or vice versa).
+ */
+export function readableForegroundOnSurface(
+  surface: string,
+  preferred?: string | null,
+): string {
+  if (
+    preferred &&
+    /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(surface) &&
+    /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(preferred)
+  ) {
+    const preferredRgb = parseHex(preferred);
+    const surfaceRgb = parseHex(surface);
+    const preferredLuminance =
+      0.2126 * linearize(preferredRgb.r) +
+      0.7152 * linearize(preferredRgb.g) +
+      0.0722 * linearize(preferredRgb.b);
+    const surfaceLuminance =
+      0.2126 * linearize(surfaceRgb.r) +
+      0.7152 * linearize(surfaceRgb.g) +
+      0.0722 * linearize(surfaceRgb.b);
+    if (contrastRatio(preferredLuminance, surfaceLuminance) >= 4.5) {
+      return preferred;
+    }
+  }
+  return readableForeground(surface);
 }
 
 /** Chooses the more readable neutral foreground for a solid brand colour. */

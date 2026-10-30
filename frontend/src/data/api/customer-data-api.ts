@@ -189,6 +189,8 @@ export type CustomerDiscoveryDetail = {
       | "primaryColor"
       | "secondaryColor"
       | "accentColor"
+      | "backgroundColor"
+      | "textColor"
     > | null;
     organizationDetails?: Pick<
       OrganizationDetails,

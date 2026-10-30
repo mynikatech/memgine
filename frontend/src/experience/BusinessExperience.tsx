@@ -62,7 +62,6 @@ import { buildTheme } from "@/src/theme/theme";
 import {
   readableForeground,
   readableForegroundOnSurface,
-  tint,
 } from "@/src/theme/color-utils";
 import { Badge, BrandLogo, Button, Card, Modal, Section, Text } from "@/src/ui";
 
@@ -578,12 +577,8 @@ export function BusinessExperience({
 
       accentColor:
         brandingOverride?.accentColor ?? definitionResolvedBranding.accentColor,
-      backgroundColor: enhancedVisualsEnabled
-        ? brandingOverride?.backgroundColor
-        : undefined,
-      textColor: enhancedVisualsEnabled
-        ? brandingOverride?.textColor
-        : undefined,
+      backgroundColor: brandingOverride?.backgroundColor,
+      textColor: brandingOverride?.textColor,
       backgroundImageUrl: enhancedVisualsEnabled
         ? brandingOverride?.backgroundImageUrl
         : undefined,
@@ -677,75 +672,29 @@ export function BusinessExperience({
    * MembershipCard / BenefitItem / OfferCard still consumed the outer provider
    * theme. That allowed stale/default teal branding to leak into Preview.
    */
-  const theme = useMemo(() => {
-    const base = buildTheme(resolvedConfiguration.branding);
-    // A generic business-wide seasonal palette. No festival-specific rules.
-    const valid = (value: string | null | undefined): value is string =>
-      typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
-    const background = valid(resolvedBranding.backgroundColor)
-      ? resolvedBranding.backgroundColor
-      : base.colors.background;
-    const textColor = valid(resolvedBranding.textColor)
-      ? resolvedBranding.textColor
-      : base.colors.text;
-    return {
-      ...base,
-      colors: {
-        ...base.colors,
-        background,
-        text: textColor,
-        // Use a low-intensity wash on secondary surfaces, leaving cards
-        // opaque and legible over the optional decorative artwork.
-        surfaceAlt: tint(base.colors.secondary, 0.96),
-      },
-    };
-  }, [
-    resolvedConfiguration.branding,
-    resolvedBranding.backgroundColor,
-    resolvedBranding.textColor,
-  ]);
-
-  // V2 values are only taken from the supplied release-state branding override;
-  // never load or substitute an editable organization draft here.
+  // Stage 1: keep all Classic card and semantic tokens unchanged.
+  // Only the page canvas and text sitting directly on it may use V2 colours.
+  const theme = useMemo(
+    () => buildTheme(resolvedConfiguration.branding),
+    [resolvedConfiguration.branding],
+  );
   const validHex = (value: string | null | undefined): value is string =>
     typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
   const customerBackground = validHex(resolvedBranding.backgroundColor)
     ? resolvedBranding.backgroundColor
     : theme.colors.background;
-  const customerText = validHex(resolvedBranding.textColor)
+  const requestedPageText = validHex(resolvedBranding.textColor)
     ? resolvedBranding.textColor
     : theme.colors.text;
-  const hasConfiguredSurface =
-    validHex(resolvedBranding.backgroundColor) ||
-    validHex(resolvedBranding.textColor);
-  const readableCustomerText = readableForegroundOnSurface(
+  const pageTextColor = readableForegroundOnSurface(
     customerBackground,
-    customerText,
+    requestedPageText,
   );
-  const customerTheme = useMemo(
-    () => ({
-      ...theme,
-      colors: {
-        ...theme.colors,
-        background: customerBackground,
-        // A V2 background is the actual card surface, not merely a page
-        // backdrop. This applies the selected palette consistently to every
-        // shared customer card while preserving the legacy neutral appearance
-        // when no V2 surface has been configured.
-        ...(hasConfiguredSurface
-          ? {
-              surface: customerBackground,
-              card: customerBackground,
-              text: readableCustomerText,
-              textSecondary: readableCustomerText,
-              textMuted: readableCustomerText,
-              border: tint(customerBackground, 0.72),
-            }
-          : {}),
-      },
-    }),
-    [theme, customerBackground, hasConfiguredSurface, readableCustomerText],
-  );
+  // The theme supplied to cards remains Classic. In particular, do not map
+  // backgroundColor to colors.card/surface or textColor to colors.text.
+  const customerTheme = theme;
+  const hasDecorativeImageOverlay = false;
+  const overlayCardTheme = customerTheme;
   const announcement = useMemo(() => {
     if (
       !resolvedBranding.announcementEnabled ||
@@ -779,23 +728,6 @@ export function BusinessExperience({
       link: link && /^https:\/\//i.test(link) ? link : null,
     };
   }, [resolvedBranding, theme.colors.accent]);
-  const customerBackgroundImage = resolvedBranding.backgroundImageUrl
-    ? resolveAssetUrl(resolvedBranding.backgroundImageUrl)
-    : null;
-  // The theme code is only an identifier. Visuals depend on generic configuration.
-  const headerTreatment = resolvedBranding.decoration?.headerTreatment;
-  const showHeaderImage = Boolean(
-    customerBackgroundImage &&
-    (!headerTreatment || headerTreatment === "IMAGE"),
-  );
-  const hasDecorativeImageOverlay = Boolean(
-    resolvedBranding.decoration?.cardBackgroundImageUrl &&
-    resolvedBranding.decoration?.cardTreatment === "IMAGE_OVERLAY",
-  );
-  const overlayCardTheme = hasDecorativeImageOverlay
-    ? overlayContentTheme(customerTheme)
-    : customerTheme;
-
   const ProfileThemeCard = ({
     children,
     testID,
@@ -1862,7 +1794,7 @@ export function BusinessExperience({
       ) : null}
 
       {isHistoricalSubscription && subscription ? (
-        <Section title="Previous Membership">
+        <Section titleColor={pageTextColor} title="Previous Membership">
           <Card padding="lg" testID="experience-previous-membership">
             <View style={{ gap: theme.spacing.md }}>
               <View
@@ -1915,7 +1847,7 @@ export function BusinessExperience({
           </Card>
         </Section>
       ) : exp.membership ? (
-        <Section title={t("experience.yourMemberships")}>
+        <Section titleColor={pageTextColor} title={t("experience.yourMemberships")}>
           <MembershipCard
             decoration={resolvedBranding.decoration}
             decorationImageUrl={
@@ -1934,7 +1866,7 @@ export function BusinessExperience({
           />
         </Section>
       ) : isPreviewMode ? (
-        <Section title={t("experience.yourMemberships")}>
+        <Section titleColor={pageTextColor} title={t("experience.yourMemberships")}>
           <MembershipCard
             decoration={resolvedBranding.decoration}
             decorationImageUrl={
@@ -1961,7 +1893,7 @@ export function BusinessExperience({
       {!isHistoricalSubscription &&
       (previewSection === "benefits" || exp.membership) &&
       exp.benefits.length ? (
-        <Section title={t("experience.yourBenefits")}>
+        <Section titleColor={pageTextColor} title={t("experience.yourBenefits")}>
           <Card padding="lg">
             <View style={{ gap: 18 }}>
               {exp.benefits.map((b) => (
@@ -1996,7 +1928,7 @@ export function BusinessExperience({
       {!isHistoricalSubscription &&
       exp.membership?.active &&
       (redeemSectionBenefits.length || redeemSectionOffers.length) ? (
-        <Section title={t("experience.redeemBenefits")}>
+        <Section titleColor={pageTextColor} title={t("experience.redeemBenefits")}>
           <Card padding="lg" testID="experience-redeem-benefits">
             <View style={{ gap: 14 }}>
               {redeemSectionBenefits.length ? (
@@ -2211,7 +2143,7 @@ export function BusinessExperience({
       ) : null}
 
       {!isPreviewMode && availableMemberships.length ? (
-        <Section title={t("experience.availableMemberships")}>
+        <Section titleColor={pageTextColor} title={t("experience.availableMemberships")}>
           <View style={{ gap: theme.spacing.md }}>
             {availableMemberships.map((p) => {
               const membershipOffer = membershipOfferForProduct(p.id);
@@ -2349,7 +2281,7 @@ export function BusinessExperience({
       <View style={{ gap: theme.spacing.lg }} testID="experience-tab-offers">
         {renderTabPreviewLink("offers")}
 
-        <Section title={t("experience.todaysPerks")}>
+        <Section titleColor={pageTextColor} title={t("experience.todaysPerks")}>
           <View style={{ gap: theme.spacing.md }}>
             {offersTabItems.length ? (
               <View style={{ gap: theme.spacing.sm }}>
@@ -2654,7 +2586,7 @@ export function BusinessExperience({
         {renderTabPreviewLink("history")}
 
         {subscription && !isPreviewMode ? (
-          <Section title="Membership Details">
+          <Section titleColor={pageTextColor} title="Membership Details">
             <Card padding="lg">
               <View style={{ gap: theme.spacing.sm }}>
                 <Text variant="bodyStrong" color="text">
@@ -2799,7 +2731,7 @@ export function BusinessExperience({
         </DecorativeThemeFrame>
 
         {visibleActivity.length ? (
-          <Section title="Recent Activity">
+          <Section titleColor={pageTextColor} title="Recent Activity">
             <View style={{ gap: theme.spacing.md }}>
               {visibleActivity.map((activity) => {
                 const redemption = redemptions.find(
@@ -3239,7 +3171,7 @@ export function BusinessExperience({
     businessSupportEmail ||
     businessSupportPhone ||
     businessWebsite ? (
-      <Section title={t("experience.about")}>
+      <Section titleColor={pageTextColor} title={t("experience.about")}>
         <ProfileThemeCard testID="experience-profile-business-information">
           <View style={{ gap: theme.spacing.md }}>
             {businessAbout ? (
@@ -3280,7 +3212,7 @@ export function BusinessExperience({
     ) : null;
 
   const BusinessInformationSection = exp.businessInformation ? (
-    <Section title={t("experience.about")}>
+    <Section titleColor={pageTextColor} title={t("experience.about")}>
       <ProfileThemeCard testID="experience-business-information">
         <View style={{ gap: theme.spacing.md }}>
           {exp.businessInformation.about ? (
@@ -3329,7 +3261,7 @@ export function BusinessExperience({
       {renderTabPreviewLink("profile")}
 
       {exp.showStores && exp.stores.length ? (
-        <Section title={t("experience.locations")}>
+        <Section titleColor={pageTextColor} title={t("experience.locations")}>
           <ProfileThemeCard testID="experience-profile-stores">
             <View style={{ gap: 18 }}>
               {exp.stores.map((s) => (
@@ -3366,7 +3298,7 @@ export function BusinessExperience({
 
       {ProfileBusinessInformationSection}
 
-      <Section title={t("experience.preferences")}>
+      <Section titleColor={pageTextColor} title={t("experience.preferences")}>
         <ProfileThemeCard testID="experience-profile-preferences">
           <View style={{ gap: theme.spacing.md }}>
             {/*
@@ -3443,7 +3375,7 @@ export function BusinessExperience({
             style={{ gap: theme.spacing.lg }}
             testID="experience-preview-section-membership"
           >
-            <Section title={t("experience.yourMemberships")}>
+            <Section titleColor={pageTextColor} title={t("experience.yourMemberships")}>
               <MembershipCard
                 decoration={resolvedBranding.decoration}
                 decorationImageUrl={
@@ -3475,7 +3407,7 @@ export function BusinessExperience({
             style={{ gap: theme.spacing.lg }}
             testID="experience-preview-section-benefits"
           >
-            <Section title={t("experience.yourBenefits")}>
+            <Section titleColor={pageTextColor} title={t("experience.yourBenefits")}>
               {exp.benefits.length ? (
                 <DecorativeThemeFrame
                   imageUrl={
@@ -3559,7 +3491,7 @@ export function BusinessExperience({
             style={{ gap: theme.spacing.lg }}
             testID="experience-preview-section-stores"
           >
-            <Section title={t("experience.locations")}>
+            <Section titleColor={pageTextColor} title={t("experience.locations")}>
               {exp.stores.length ? (
                 <ProfileThemeCard testID="experience-preview-stores">
                   <View style={{ gap: 18 }}>
@@ -3625,7 +3557,7 @@ export function BusinessExperience({
             style={{ gap: theme.spacing.lg }}
             testID="experience-preview-section-business-preferences"
           >
-            <Section title={t("experience.preferences")}>
+            <Section titleColor={pageTextColor} title={t("experience.preferences")}>
               {exp.businessPreferences ? (
                 <Card padding="lg">
                   <View style={{ gap: theme.spacing.md }}>
@@ -3661,7 +3593,7 @@ export function BusinessExperience({
             style={{ gap: theme.spacing.lg }}
             testID="experience-preview-section-referral"
           >
-            <Section title={t("experience.referral")}>
+            <Section titleColor={pageTextColor} title={t("experience.referral")}>
               {exp.referral ? (
                 <Card padding="lg">
                   <View style={{ gap: theme.spacing.sm }}>
@@ -3761,10 +3693,10 @@ export function BusinessExperience({
             testID="experience-brand-logo"
           />
           <View style={{ flex: 1 }}>
-            <Text variant="h2" color="text">
+            <Text variant="h2" color="text" style={{ color: pageTextColor }}>
               {exp.displayName}
             </Text>
-            <Text variant="caption" color="textMuted">
+            <Text variant="caption" color="textMuted" style={{ color: pageTextColor }}>
               {tagline?.trim() || exp.tagline}
             </Text>
           </View>
