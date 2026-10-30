@@ -17,6 +17,7 @@ import {
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
 import { resolveCustomerBranding } from "@/src/core/customer/resolve-customer-branding";
 import { DecorativeThemeFrame } from "@/src/ui/domain/DecorativeThemeFrame";
+import { FestiveSurface, festiveThemeId } from "@/src/ui/domain/FestiveThemeSurface";
 import {
   DecorativeContentThemeScope,
   overlayContentTheme,
@@ -489,6 +490,7 @@ export function BusinessExperience({
   // The theme supplied to cards remains Classic. In particular, do not map
   // backgroundColor to colors.card/surface or textColor to colors.text.
   const customerTheme = theme;
+  const festiveTheme = festiveThemeId(resolvedBranding.platformThemeCode);
   const hasDecorativeImageOverlay = false;
   const overlayCardTheme = customerTheme;
   // Both proposed preview and customer views use the same released configuration contract.
@@ -503,7 +505,7 @@ export function BusinessExperience({
     children: ReactNode;
     testID?: string;
   }) => (
-    <DecorativeThemeFrame
+    <FestiveSurface theme={festiveTheme} accent={theme.colors.accent}><DecorativeThemeFrame
       imageUrl={resolvedBranding.decoration?.cardBackgroundImageUrl ?? null}
       primaryColor={theme.colors.primary}
       accentColor={theme.colors.accent}
@@ -523,7 +525,7 @@ export function BusinessExperience({
           {children}
         </Card>
       </DecorativeContentThemeScope>
-    </DecorativeThemeFrame>
+    </DecorativeThemeFrame></FestiveSurface>
   );
 
   const resolvedContent = previewDefinition?.content ?? content;
@@ -3517,6 +3519,7 @@ export function BusinessExperience({
           {!previewSection ? (
             <AnnouncementDisplay
               configuration={announcementConfiguration}
+              festiveTheme={festiveTheme}
               fallbackBackground={theme.colors.accent}
               paddingHorizontal={theme.spacing.md}
               paddingVertical={theme.spacing.sm}
