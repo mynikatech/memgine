@@ -510,7 +510,7 @@ export function BusinessExperience({
       primaryColor={theme.colors.primary}
       accentColor={theme.colors.accent}
       backgroundColor={customerBackground}
-      decoration={festiveTheme === "CLASSIC" ? null : null}
+      decoration={null}
     >
       <DecorativeContentThemeScope enabled={hasDecorativeImageOverlay}>
         <Card
@@ -1623,7 +1623,7 @@ export function BusinessExperience({
         >
           <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="card">
 <MembershipCard
-            decoration={festiveTheme === "CLASSIC" ? null : null}
+            decoration={null}
             decorationImageUrl={null}
             decorationBackgroundColor={customerBackground}
             testID="experience-membership-card"
@@ -1645,7 +1645,7 @@ export function BusinessExperience({
         >
           <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="card">
 <MembershipCard
-            decoration={festiveTheme === "CLASSIC" ? null : null}
+            decoration={null}
             decorationImageUrl={null}
             decorationBackgroundColor={customerBackground}
             testID="experience-preview-membership-card"
@@ -1821,7 +1821,7 @@ export function BusinessExperience({
                       primaryColor={theme.colors.primary}
                       accentColor={theme.colors.accent}
                       variant="content"
-                      decoration={festiveTheme === "CLASSIC" ? null : null}
+                      decoration={null}
                     >
                       <OfferCard
                         decorative={Boolean(
@@ -2083,7 +2083,7 @@ export function BusinessExperience({
                     primaryColor={theme.colors.primary}
                     accentColor={theme.colors.accent}
                     variant="content"
-                    decoration={festiveTheme === "CLASSIC" ? null : null}
+                    decoration={null}
                   >
                     <OfferCard
                       decorative={Boolean(
@@ -2426,7 +2426,7 @@ export function BusinessExperience({
           primaryColor={theme.colors.primary}
           accentColor={theme.colors.accent}
           backgroundColor={customerBackground}
-          decoration={festiveTheme === "CLASSIC" ? null : null}
+          decoration={null}
         >
           <DecorativeContentThemeScope
             enabled={Boolean(
@@ -2541,7 +2541,7 @@ export function BusinessExperience({
                     primaryColor={theme.colors.primary}
                     accentColor={theme.colors.accent}
                     backgroundColor={customerBackground}
-                    decoration={festiveTheme === "CLASSIC" ? null : null}
+                    decoration={null}
                   >
                     <DecorativeContentThemeScope
                       enabled={Boolean(
@@ -3166,7 +3166,7 @@ export function BusinessExperience({
             >
               <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="card">
 <MembershipCard
-                decoration={festiveTheme === "CLASSIC" ? null : null}
+                decoration={null}
                 decorationImageUrl={
                   undefined
                 }
@@ -3208,7 +3208,7 @@ export function BusinessExperience({
                   }
                   primaryColor={theme.colors.primary}
                   accentColor={theme.colors.accent}
-                  decoration={festiveTheme === "CLASSIC" ? null : null}
+                  decoration={null}
                 >
                   <DecorativeContentThemeScope
                     enabled={Boolean(
