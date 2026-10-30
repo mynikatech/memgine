@@ -68,14 +68,36 @@ export function AnnouncementEditor({ value, onChange, disabled }: Props) {
       setDateErrors(previous => ({ ...previous, [key]: "" }));
       update(item.id, { [field]: parsed.toISOString() });
     };
-    return <View style={{ minWidth: 210, flexGrow: 1 }} key={field}>
+    return <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 260, minWidth: 0, maxWidth: "100%" }} key={field}>
       {Platform.OS === "web" ? <>
         <Text variant="bodyStrong">{label}</Text>
-        {createElement("input", { type: "datetime-local", value: localDateTime(item[field]), disabled, onChange: (event: any) => onValue(event.target.value), style: { width: "100%", height: 42, border: "1px solid #D9E0E6", borderRadius: 10, padding: "0 10px" } } as any)}
+        {createElement("input", { type: "datetime-local", value: localDateTime(item[field]), disabled, onChange: (event: any) => onValue(event.target.value), style: { boxSizing: "border-box", minWidth: 0, maxWidth: "100%", width: "100%", height: 42, border: "1px solid #D9E0E6", borderRadius: 10, padding: "0 10px" } } as any)}
       </> : <Input label={`${label} (local YYYY-MM-DDTHH:MM)`} value={localDateTime(item[field])} editable={!disabled} onChangeText={onValue} />}
       {dateErrors[key] ? <Text variant="caption" color="danger">{dateErrors[key]}</Text> : null}
     </View>;
   };
+  const action = (label: string, onPress: () => void, isDisabled = false, emphasized = false, danger = false) => (
+    <Pressable
+      key={label}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: isDisabled }}
+      disabled={isDisabled}
+      onPress={onPress}
+      style={{
+        minHeight: 34,
+        justifyContent: "center",
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: isDisabled ? "#E5E7EB" : emphasized ? "#166534" : danger ? "#F1CCCC" : "#D9E0E6",
+        backgroundColor: isDisabled ? "#F5F6F7" : emphasized ? "#166534" : danger ? "#FFF5F5" : "#FFFFFF",
+        opacity: isDisabled ? 0.55 : 1,
+      }}
+    >
+      <Text variant="bodySmall" color={emphasized && !isDisabled ? "onPrimary" : danger && !isDisabled ? "danger" : "textPrimary"}>{label}</Text>
+    </Pressable>
+  );
   const errors = validateAnnouncementConfiguration(value);
   return <View style={{ gap: 14, maxWidth: 860 }}>
     <Text variant="bodyStrong">Display mode</Text>
@@ -96,9 +118,9 @@ export function AnnouncementEditor({ value, onChange, disabled }: Props) {
             accessibilityLabel={`Announcement ${index + 1}: ${title}`}
             accessibilityState={{ selected }}
             onPress={() => setSelectedId(item.id)}
-            style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: selected ? "#8BAF9C" : "#D9E0E6", backgroundColor: selected ? "#E7F1EB" : "#FFFFFF", minWidth: 110, maxWidth: 235 }}
+            style={{ width: 218, height: 70, justifyContent: "center", gap: 3, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: selected ? "#8BAF9C" : "#D9E0E6", backgroundColor: selected ? "#E7F1EB" : "#FFFFFF" }}
           >
-            <Text variant="bodyStrong">{index + 1}. {title}</Text>
+            <Text variant="bodyStrong" numberOfLines={1} ellipsizeMode="tail">{index + 1}. {title}</Text>
             <Text variant="caption" color="textSecondary">{item.enabled ? "Enabled" : "Disabled"} · {item.style}</Text>
           </Pressable>;
         })}
@@ -110,10 +132,10 @@ export function AnnouncementEditor({ value, onChange, disabled }: Props) {
       <View style={{ gap: 12 }}>
         <Text variant="bodyStrong">Announcement {selectedIndex + 1}</Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-          <Button label={selectedItem.enabled ? "Enabled" : "Disabled"} variant={selectedItem.enabled ? "primary" : "secondary"} disabled={disabled} onPress={() => update(selectedItem.id, { enabled: !selectedItem.enabled })} />
-          <Button label="Move up" variant="secondary" disabled={disabled || selectedIndex === 0} onPress={() => reorder(selectedItem.id, -1)} />
-          <Button label="Move down" variant="secondary" disabled={disabled || selectedIndex === items.length - 1} onPress={() => reorder(selectedItem.id, 1)} />
-          <Button label="Delete" variant="secondary" disabled={disabled} onPress={() => remove(selectedItem.id)} />
+          {action(selectedItem.enabled ? "Enabled" : "Disabled", () => update(selectedItem.id, { enabled: !selectedItem.enabled }), disabled, selectedItem.enabled)}
+          {action("↑ Move up", () => reorder(selectedItem.id, -1), disabled || selectedIndex === 0)}
+          {action("↓ Move down", () => reorder(selectedItem.id, 1), disabled || selectedIndex === items.length - 1)}
+          {action("Delete", () => remove(selectedItem.id), disabled, false, true)}
         </View>
         <Input label="Message" value={selectedItem.message ?? ""} editable={!disabled} onChangeText={message => update(selectedItem.id, { message })} />
         <Text variant="bodyStrong">Animation style</Text>
@@ -125,7 +147,7 @@ export function AnnouncementEditor({ value, onChange, disabled }: Props) {
           <View style={{ width: 235, maxWidth: "100%" }} pointerEvents={disabled ? "none" : "auto"}><BrandColourSelect label="Text colour" value={selectedItem.textColor ?? ""} onChange={textColor => update(selectedItem.id, { textColor: textColor || null })} /></View>
         </View>
         <Input label="Optional HTTPS link" value={selectedItem.linkUrl ?? ""} editable={!disabled} onChangeText={linkUrl => update(selectedItem.id, { linkUrl: linkUrl || null })} />
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>{dateField(selectedItem, "startsAt", "Start date and time")}{dateField(selectedItem, "endsAt", "End date and time")}</View>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12, width: "100%", maxWidth: "100%" }}>{dateField(selectedItem, "startsAt", "Start date and time")}{dateField(selectedItem, "endsAt", "End date and time")}</View>
         <Text variant="caption" color="textSecondary">Times use your device’s local timezone. Leave empty for no schedule limit.</Text>
       </View>
     </Card> : null}
