@@ -3,10 +3,12 @@ import { AccessibilityInfo, AppState, Platform, Pressable, View } from "react-na
 import type { AnnouncementConfiguration } from "./announcement-model";
 import { announcementDwellMs, getActiveAnnouncements } from "./announcement-model";
 import { AnnouncementItem } from "./AnnouncementItem";
+import { FestiveRibbonFrame, type FestiveThemeId } from "@/src/ui/domain/FestiveThemeSurface";
 import { readableForeground } from "@/src/theme/color-utils";
 
 interface Props {
   configuration: AnnouncementConfiguration;
+  festiveTheme?: FestiveThemeId;
   fallbackBackground: string;
   paddingHorizontal: number;
   paddingVertical: number;
@@ -15,7 +17,7 @@ interface Props {
 }
 
 /** A controller: SINGLE renders the first eligible item, CAROUSEL rotates eligible items. */
-export function AnnouncementDisplay({ configuration, fallbackBackground, paddingHorizontal, paddingVertical, now }: Props) {
+export function AnnouncementDisplay({ configuration, fallbackBackground, paddingHorizontal, paddingVertical, now, festiveTheme = "CLASSIC" }: Props) {
   const [clock, setClock] = useState(() => Date.now());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [appActive, setAppActive] = useState(() => Platform.OS === "web" || AppState.currentState === "active");
@@ -67,7 +69,7 @@ export function AnnouncementDisplay({ configuration, fallbackBackground, padding
   const link = selected.linkUrl?.trim();
   return (
     <View>
-      <View key={selected.id}><AnnouncementItem
+      <FestiveRibbonFrame theme={festiveTheme} accent={foreground}><View key={selected.id}><AnnouncementItem
         message={selected.message.trim()}
         style={selected.style}
         background={background}
@@ -75,7 +77,7 @@ export function AnnouncementDisplay({ configuration, fallbackBackground, padding
         link={link && /^https:\/\//i.test(link) ? link : null}
         paddingHorizontal={paddingHorizontal}
         paddingVertical={paddingVertical}
-      /></View>
+      /></View></FestiveRibbonFrame>
       {carousel ? (
         <View accessibilityRole="tablist" style={{ flexDirection: "row", justifyContent: "center", gap: 9, paddingTop: 8 }}>
           {active.map((item, i) => (
