@@ -111,20 +111,20 @@ export function AnnouncementEditor({ value, onChange, disabled }: Props) {
         {items.map((item, index) => {
           const selected = selectedItem?.id === item.id;
           const label = item.message.trim();
-          const title = label ? (label.length > 25 ? `${label.slice(0, 25)}…` : label) : `Announcement ${index + 1}`;
+          const title = label || `Announcement ${index + 1}`;
           return <Pressable
             key={item.id}
             accessibilityRole="tab"
             accessibilityLabel={`Announcement ${index + 1}: ${title}`}
             accessibilityState={{ selected }}
             onPress={() => setSelectedId(item.id)}
-            style={{ width: 218, height: 70, justifyContent: "center", gap: 3, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: selected ? "#8BAF9C" : "#D9E0E6", backgroundColor: selected ? "#E7F1EB" : "#FFFFFF" }}
+            style={{ width: 154, height: 54, justifyContent: "center", gap: 2, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: selected ? "#8BAF9C" : "#D9E0E6", backgroundColor: selected ? "#E7F1EB" : "#FFFFFF" }}
           >
-            <Text variant="bodyStrong" numberOfLines={1} ellipsizeMode="tail">{index + 1}. {title}</Text>
-            <Text variant="caption" color="textSecondary">{item.enabled ? "Enabled" : "Disabled"} · {item.style}</Text>
+            <Text variant="caption" numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, fontWeight: selected ? "700" : "600" }}>{index + 1}. {title}</Text>
+            <Text variant="caption" color="textSecondary" numberOfLines={1} style={{ fontSize: 10 }}>{item.enabled ? "Enabled" : "Disabled"} · {item.style}</Text>
           </Pressable>;
         })}
-        <Button label="+ Add announcement" variant="secondary" disabled={disabled || items.length >= 20} onPress={add} />
+        {action("+ Add", add, disabled || items.length >= 20)}
       </ScrollView>
     </View>
     {!items.length ? <Text variant="bodySmall" color="textSecondary">No announcements configured. Add one to begin.</Text> : null}
@@ -140,7 +140,7 @@ export function AnnouncementEditor({ value, onChange, disabled }: Props) {
         <Input label="Message" value={selectedItem.message ?? ""} editable={!disabled} onChangeText={message => update(selectedItem.id, { message })} />
         <Text variant="bodyStrong">Animation style</Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-          {ANNOUNCEMENT_STYLES.map(style => <Button key={style} label={style} variant={selectedItem.style === style ? "primary" : "secondary"} disabled={disabled} onPress={() => update(selectedItem.id, { style })} />)}
+          {ANNOUNCEMENT_STYLES.map(style => action(style, () => update(selectedItem.id, { style }), disabled, selectedItem.style === style))}
         </View>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
           <View style={{ width: 235, maxWidth: "100%" }} pointerEvents={disabled ? "none" : "auto"}><BrandColourSelect label="Background colour" value={selectedItem.backgroundColor ?? ""} onChange={backgroundColor => update(selectedItem.id, { backgroundColor: backgroundColor || null })} /></View>
