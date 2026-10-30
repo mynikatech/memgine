@@ -1621,7 +1621,8 @@ export function BusinessExperience({
           titleColor={pageTextColor}
           title={t("experience.yourMemberships")}
         >
-          <MembershipCard
+          <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="card">
+<MembershipCard
             decoration={resolvedBranding.decoration}
             decorationImageUrl={
               resolvedBranding.decoration?.cardBackgroundImageUrl
@@ -1637,13 +1638,15 @@ export function BusinessExperience({
               membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl
             }
           />
+</FestiveSurface>
         </Section>
       ) : isPreviewMode ? (
         <Section
           titleColor={pageTextColor}
           title={t("experience.yourMemberships")}
         >
-          <MembershipCard
+          <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="card">
+<MembershipCard
             decoration={resolvedBranding.decoration}
             decorationImageUrl={
               resolvedBranding.decoration?.cardBackgroundImageUrl
@@ -1663,6 +1666,7 @@ export function BusinessExperience({
               membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl
             }
           />
+</FestiveSurface>
         </Section>
       ) : null}
 
@@ -3164,7 +3168,8 @@ export function BusinessExperience({
               titleColor={pageTextColor}
               title={t("experience.yourMemberships")}
             >
-              <MembershipCard
+              <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="card">
+<MembershipCard
                 decoration={resolvedBranding.decoration}
                 decorationImageUrl={
                   resolvedBranding.decoration?.cardBackgroundImageUrl
@@ -3185,6 +3190,7 @@ export function BusinessExperience({
                   membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl
                 }
               />
+</FestiveSurface>
             </Section>
           </View>
         );
