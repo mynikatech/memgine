@@ -95,7 +95,7 @@ export function AnnouncementEditor({ value, onChange, disabled }: Props) {
         opacity: isDisabled ? 0.55 : 1,
       }}
     >
-      <Text variant="bodySmall" color={emphasized && !isDisabled ? "onPrimary" : danger && !isDisabled ? "danger" : "textPrimary"}>{label}</Text>
+      <Text variant="bodySmall" color={emphasized && !isDisabled ? "onPrimary" : danger && !isDisabled ? "danger" : "text"}>{label}</Text>
     </Pressable>
   );
   const errors = validateAnnouncementConfiguration(value);
