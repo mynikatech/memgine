@@ -3446,6 +3446,16 @@ export function BusinessExperience({
           paddingTop: insets.top,
         }}
       >
+        {festiveTheme !== "CLASSIC" ? (
+          <FestiveSurface
+            theme={festiveTheme}
+            accent={theme.colors.accent}
+            kind="page"
+            style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0 }}
+          >
+            <View />
+          </FestiveSurface>
+        ) : null}
         <View
           style={{
             paddingHorizontal: theme.spacing.lg,
