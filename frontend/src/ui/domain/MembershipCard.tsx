@@ -59,7 +59,8 @@ export function MembershipCard({
         : theme.colors.card;
   const showAccentBar = cardStyle !== CardStyle.MINIMAL;
   const festive = festiveTheme !== "CLASSIC";
-  const festiveBackground = festiveTheme === "CHRISTMAS" ? "#A91422" : festive ? festivePalette[festiveTheme].ribbon : surface;
+  const festivePaletteEntry = festiveTheme === "CLASSIC" ? null : festivePalette[festiveTheme];
+  const festiveBackground = festiveTheme === "CHRISTMAS" ? "#A91422" : festivePaletteEntry?.ribbon ?? surface;
   const festiveForeground = "#FFF8EC";
 
   const card = (
@@ -83,12 +84,12 @@ export function MembershipCard({
             : theme.shadows.md,
       ]}
     >
-      {festive ? <View pointerEvents="none" style={{ position: "absolute", top: 0, left: 0, right: 0, height: 38, overflow: "hidden" }}>
+      {festiveTheme !== "CLASSIC" ? <View pointerEvents="none" style={{ position: "absolute", top: 0, left: 0, right: 0, height: 38, overflow: "hidden" }}>
         <View style={{ position: "absolute", left: -8, top: -13 }}><FestiveMotif theme={festiveTheme} size={46} opacity={0.5} /></View>
         <View style={{ position: "absolute", right: -8, top: -13, transform: [{ scaleX: -1 }] }}><FestiveMotif theme={festiveTheme} size={46} opacity={0.5} /></View>
       </View> : null}
       {showAccentBar ? (
-        <View style={{ height: 6, backgroundColor: festive ? festivePalette[festiveTheme].gold : theme.colors.primary }} />
+        <View style={{ height: 6, backgroundColor: festivePaletteEntry?.gold ?? theme.colors.primary }} />
       ) : null}
       <View
         style={{
