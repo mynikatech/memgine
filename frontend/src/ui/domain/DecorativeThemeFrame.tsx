@@ -1,15 +1,21 @@
 import type { ReactNode } from "react";
 import type { BrandingDecorationConfig } from "@/src/core/branding-decoration.types";
-import { DecorativeThemeSurface } from "./DecorativeThemeSurface";
+import { FestiveSurface, type FestiveThemeId } from "./FestiveThemeSurface";
 
-type Props = { children: ReactNode; imageUrl?: string | null; primaryColor: string;
- accentColor: string; backgroundColor?: string; decoration?: BrandingDecorationConfig | null;
- variant?: "membership" | "content"; };
-export function DecorativeThemeFrame({ children, imageUrl, primaryColor, accentColor,
- backgroundColor = "#FFFFFF", decoration, variant = "content" }: Props) {
- return <DecorativeThemeSurface kind={variant === "membership" ? "membership" : "benefit"}
-  decoration={decoration} backgroundImageUrl={imageUrl}
-  primaryColor={primaryColor} accentColor={accentColor} backgroundColor={backgroundColor}>
-   {children}
- </DecorativeThemeSurface>;
+type Props = {
+  children: ReactNode;
+  imageUrl?: string | null;
+  primaryColor: string;
+  accentColor: string;
+  backgroundColor?: string;
+  decoration?: BrandingDecorationConfig | null;
+  variant?: "membership" | "content";
+  festiveTheme?: FestiveThemeId;
+};
+
+/** Decorations are fixed by the theme code; old uploaded images and decoration controls are ignored. */
+export function DecorativeThemeFrame({
+  children, accentColor, festiveTheme = "CLASSIC",
+}: Props) {
+  return <FestiveSurface theme={festiveTheme} accent={accentColor} kind="card">{children}</FestiveSurface>;
 }
