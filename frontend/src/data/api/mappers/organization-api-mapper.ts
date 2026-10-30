@@ -63,7 +63,7 @@ export type OrganizationBrandingApiDto = {
   platformThemeCode?: string | null;
   announcementEnabled?: boolean | null;
   announcementMessage?: string | null;
-  announcementStyle?: "STATIC" | "FADE" | "SLIDE" | "TICKER" | null;
+  announcementStyle?: "STATIC" | "FADE" | "SLIDE" | "TICKER" | "TYPEWRITER" | "REVEAL" | "PULSE" | null;
   announcementBackgroundColor?: string | null;
   announcementTextColor?: string | null;
   announcementLinkUrl?: string | null;

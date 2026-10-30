@@ -7,6 +7,7 @@ import { useBusiness } from "@/src/providers";
 import { StateView } from "@/src/ui";
 import { BrandingForm } from "@/src/ui/admin/BrandingForm";
 import { OrganizationThemePanel } from "@/src/ui/admin/OrganizationThemePanel";
+import { resolveAnnouncementConfiguration, validateAnnouncementConfiguration } from "@/src/experience/announcements/announcement-model";
 
 export default function OrgAdminBranding() {
   const { organization } = useBusiness();
@@ -46,7 +47,7 @@ export default function OrgAdminBranding() {
     "backgroundColor", "textColor", "backgroundImageUrl", "decoration", "announcementEnabled",
     "announcementMessage", "announcementStyle", "announcementBackgroundColor",
     "announcementTextColor", "announcementLinkUrl", "announcementStartsAt",
-    "announcementEndsAt",
+    "announcementEndsAt", "announcementConfiguration",
   ] as const;
 
   const handleThemeChange = (draft: OrganizationBranding) => {
@@ -63,6 +64,11 @@ export default function OrgAdminBranding() {
   };
 
   const saveChanges = async (updated: OrganizationBranding, identityChanged: boolean): Promise<OrganizationBranding> => {
+    const draft = themeDraftRef.current;
+    if (themeDirty && draft) {
+      const announcementErrors = validateAnnouncementConfiguration(resolveAnnouncementConfiguration(draft));
+      if (announcementErrors.length) throw new Error(announcementErrors.join(" "));
+    }
     // A legacy identity write also increments the persisted version. Use the
     // refreshed row as the base for the optimistic-locking theme draft save.
     let persisted = branding ?? updated;
@@ -70,7 +76,6 @@ export default function OrgAdminBranding() {
       persisted = await services.organization.updateOrganizationBranding(organization.id, updated);
     }
 
-    const draft = themeDraftRef.current;
     let saved = persisted;
     if (themeDirty && draft) {
       const combined: OrganizationBranding = {

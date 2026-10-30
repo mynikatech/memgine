@@ -1,15 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  Animated,
-  AccessibilityInfo,
-  AppState,
-  Easing,
   Image,
   Pressable,
   ScrollView,
   View,
-  Linking,
   Platform,
   useWindowDimensions,
 } from "react-native";
@@ -59,10 +54,7 @@ import {
   useTranslation,
 } from "@/src/providers";
 import { buildTheme } from "@/src/theme/theme";
-import {
-  readableForeground,
-  readableForegroundOnSurface,
-} from "@/src/theme/color-utils";
+import { readableForegroundOnSurface } from "@/src/theme/color-utils";
 import { Badge, BrandLogo, Button, Card, Modal, Section, Text } from "@/src/ui";
 
 import {
@@ -76,190 +68,8 @@ import {
 
 import { ExperienceTabKey, resolveExperience } from "./resolve-experience";
 
-/** Shared, configuration-driven announcement used by both Preview and Customer. */
-function BrandingAnnouncement({
-  message,
-  style,
-  background,
-  foreground,
-  link,
-  paddingHorizontal,
-  paddingVertical,
-}: {
-  message: string;
-  style: "STATIC" | "FADE" | "SLIDE" | "TICKER";
-  background: string;
-  foreground: string;
-  link: string | null;
-  paddingHorizontal: number;
-  paddingVertical: number;
-}) {
-  const progress = useRef(new Animated.Value(0)).current;
-  const [reducedMotion, setReducedMotion] = useState(false);
-  const [appIsActive, setAppIsActive] = useState(
-    AppState.currentState === "active",
-  );
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [messageWidth, setMessageWidth] = useState(0);
-
-  useEffect(() => {
-    void AccessibilityInfo.isReduceMotionEnabled().then(setReducedMotion);
-    const subscription = AccessibilityInfo.addEventListener?.(
-      "reduceMotionChanged",
-      setReducedMotion,
-    );
-    return () => subscription?.remove();
-  }, []);
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener("change", (nextState) => {
-      setAppIsActive(nextState === "active");
-    });
-    return () => subscription.remove();
-  }, []);
-
-  useEffect(() => {
-    const shouldAnimate = style !== "STATIC" && !reducedMotion && appIsActive;
-    if (!shouldAnimate) {
-      // FADE and SLIDE animate toward one. When animation is intentionally
-      // skipped, pin them at that final readable state instead of leaving the
-      // message transparent or offset.
-      progress.setValue(style === "FADE" || style === "SLIDE" ? 1 : 0);
-      return;
-    }
-
-    progress.setValue(0);
-    const animation =
-      style === "TICKER"
-        ? messageWidth > containerWidth && containerWidth > 0
-          ? Animated.loop(
-              Animated.sequence([
-                Animated.delay(450),
-                Animated.timing(progress, {
-                  toValue: 1,
-                  duration: Math.max(5000, messageWidth * 18),
-                  easing: Easing.linear,
-                  useNativeDriver: true,
-                }),
-                Animated.delay(150),
-                Animated.timing(progress, {
-                  toValue: 0,
-                  duration: 0,
-                  useNativeDriver: true,
-                }),
-              ]),
-            )
-          : null
-        : Animated.timing(progress, {
-            toValue: 1,
-            duration: style === "FADE" ? 360 : 420,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          });
-    if (!animation) return;
-    animation.start();
-    return () => animation.stop();
-  }, [
-    appIsActive,
-    containerWidth,
-    link,
-    message,
-    messageWidth,
-    progress,
-    reducedMotion,
-    style,
-  ]);
-
-  const animationStyle =
-    style === "FADE"
-      ? {
-          opacity: progress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0, 1],
-          }),
-        }
-      : style === "SLIDE"
-        ? {
-            transform: [
-              {
-                translateX: progress.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [-24, 0],
-                }),
-              },
-            ],
-          }
-        : style === "TICKER"
-          ? {
-              transform: [
-                {
-                  translateX: progress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -(messageWidth + 24)],
-                  }),
-                },
-              ],
-            }
-          : undefined;
-  return (
-    <Pressable
-      disabled={!link}
-      accessibilityRole={link ? "link" : "text"}
-      accessibilityLabel={message}
-      onPress={() => {
-        if (link) void Linking.openURL(link);
-      }}
-      style={{
-        backgroundColor: background,
-        paddingHorizontal,
-        paddingVertical: Math.max(paddingVertical, 14),
-        overflow: "hidden",
-        borderRadius: 18,
-        borderWidth: 1,
-        borderColor: foreground,
-      }}
-      onLayout={(event) => setContainerWidth(event.nativeEvent.layout.width)}
-    >
-      {style === "TICKER" ? (
-        <View
-          pointerEvents="none"
-          style={{ position: "absolute", left: -10000, top: -10000 }}
-        >
-          <Text
-            variant="bodySmall"
-            numberOfLines={1}
-            onLayout={(event) =>
-              setMessageWidth(event.nativeEvent.layout.width)
-            }
-          >
-            {message}
-            {link ? "  ·  Learn more ↗" : ""}
-          </Text>
-        </View>
-      ) : null}
-      <Animated.View
-        style={[
-          animationStyle,
-          style === "TICKER" ? { alignSelf: "flex-start" } : undefined,
-        ]}
-      >
-        <Text
-          variant="bodySmall"
-          numberOfLines={style === "TICKER" ? 1 : undefined}
-          style={{ color: foreground, flexShrink: 0 }}
-          onLayout={
-            style === "TICKER"
-              ? undefined
-              : (event) => setMessageWidth(event.nativeEvent.layout.width)
-          }
-        >
-          {message}
-          {link ? "  ·  Learn more ↗" : ""}
-        </Text>
-      </Animated.View>
-    </Pressable>
-  );
-}
+import { AnnouncementDisplay } from "./announcements/AnnouncementDisplay";
+import { resolveAnnouncementConfiguration } from "./announcements/announcement-model";
 
 function formatPhoneNumber(
   phone?: OrganizationDetails["supportPhone"],
@@ -585,30 +395,16 @@ export function BusinessExperience({
       decoration: enhancedVisualsEnabled
         ? brandingOverride?.decoration
         : undefined,
-      announcementEnabled: enhancedVisualsEnabled
-        ? brandingOverride?.announcementEnabled
-        : undefined,
-      announcementMessage: enhancedVisualsEnabled
-        ? brandingOverride?.announcementMessage
-        : undefined,
-      announcementStyle: enhancedVisualsEnabled
-        ? brandingOverride?.announcementStyle
-        : undefined,
-      announcementBackgroundColor: enhancedVisualsEnabled
-        ? brandingOverride?.announcementBackgroundColor
-        : undefined,
-      announcementTextColor: enhancedVisualsEnabled
-        ? brandingOverride?.announcementTextColor
-        : undefined,
-      announcementLinkUrl: enhancedVisualsEnabled
-        ? brandingOverride?.announcementLinkUrl
-        : undefined,
-      announcementStartsAt: enhancedVisualsEnabled
-        ? brandingOverride?.announcementStartsAt
-        : undefined,
-      announcementEndsAt: enhancedVisualsEnabled
-        ? brandingOverride?.announcementEndsAt
-        : undefined,
+      announcementEnabled: brandingOverride?.announcementEnabled,
+      announcementMessage: brandingOverride?.announcementMessage,
+      announcementStyle: brandingOverride?.announcementStyle,
+      announcementBackgroundColor:
+        brandingOverride?.announcementBackgroundColor,
+      announcementTextColor: brandingOverride?.announcementTextColor,
+      announcementLinkUrl: brandingOverride?.announcementLinkUrl,
+      announcementStartsAt: brandingOverride?.announcementStartsAt,
+      announcementEndsAt: brandingOverride?.announcementEndsAt,
+      announcementConfiguration: brandingOverride?.announcementConfiguration,
     }),
     [definitionResolvedBranding, brandingOverride],
   );
@@ -695,39 +491,11 @@ export function BusinessExperience({
   const customerTheme = theme;
   const hasDecorativeImageOverlay = false;
   const overlayCardTheme = customerTheme;
-  const announcement = useMemo(() => {
-    if (
-      !resolvedBranding.announcementEnabled ||
-      !resolvedBranding.announcementMessage?.trim()
-    )
-      return null;
-    const current = Date.now();
-    const starts = resolvedBranding.announcementStartsAt
-      ? Date.parse(resolvedBranding.announcementStartsAt)
-      : null;
-    const ends = resolvedBranding.announcementEndsAt
-      ? Date.parse(resolvedBranding.announcementEndsAt)
-      : null;
-    if (
-      (starts !== null && (!Number.isFinite(starts) || current < starts)) ||
-      (ends !== null && (!Number.isFinite(ends) || current > ends))
-    )
-      return null;
-    const background = validHex(resolvedBranding.announcementBackgroundColor)
-      ? resolvedBranding.announcementBackgroundColor
-      : theme.colors.accent;
-    const foreground = validHex(resolvedBranding.announcementTextColor)
-      ? resolvedBranding.announcementTextColor
-      : readableForeground(background);
-    const link = resolvedBranding.announcementLinkUrl?.trim();
-    return {
-      message: resolvedBranding.announcementMessage.trim(),
-      style: resolvedBranding.announcementStyle ?? "STATIC",
-      background,
-      foreground,
-      link: link && /^https:\/\//i.test(link) ? link : null,
-    };
-  }, [resolvedBranding, theme.colors.accent]);
+  // Both proposed preview and customer views use the same released configuration contract.
+  const announcementConfiguration = useMemo(
+    () => resolveAnnouncementConfiguration(resolvedBranding),
+    [resolvedBranding],
+  );
   const ProfileThemeCard = ({
     children,
     testID,
@@ -1847,7 +1615,10 @@ export function BusinessExperience({
           </Card>
         </Section>
       ) : exp.membership ? (
-        <Section titleColor={pageTextColor} title={t("experience.yourMemberships")}>
+        <Section
+          titleColor={pageTextColor}
+          title={t("experience.yourMemberships")}
+        >
           <MembershipCard
             decoration={resolvedBranding.decoration}
             decorationImageUrl={
@@ -1866,7 +1637,10 @@ export function BusinessExperience({
           />
         </Section>
       ) : isPreviewMode ? (
-        <Section titleColor={pageTextColor} title={t("experience.yourMemberships")}>
+        <Section
+          titleColor={pageTextColor}
+          title={t("experience.yourMemberships")}
+        >
           <MembershipCard
             decoration={resolvedBranding.decoration}
             decorationImageUrl={
@@ -1893,7 +1667,10 @@ export function BusinessExperience({
       {!isHistoricalSubscription &&
       (previewSection === "benefits" || exp.membership) &&
       exp.benefits.length ? (
-        <Section titleColor={pageTextColor} title={t("experience.yourBenefits")}>
+        <Section
+          titleColor={pageTextColor}
+          title={t("experience.yourBenefits")}
+        >
           <Card padding="lg">
             <View style={{ gap: 18 }}>
               {exp.benefits.map((b) => (
@@ -1928,7 +1705,10 @@ export function BusinessExperience({
       {!isHistoricalSubscription &&
       exp.membership?.active &&
       (redeemSectionBenefits.length || redeemSectionOffers.length) ? (
-        <Section titleColor={pageTextColor} title={t("experience.redeemBenefits")}>
+        <Section
+          titleColor={pageTextColor}
+          title={t("experience.redeemBenefits")}
+        >
           <Card padding="lg" testID="experience-redeem-benefits">
             <View style={{ gap: 14 }}>
               {redeemSectionBenefits.length ? (
@@ -2143,7 +1923,10 @@ export function BusinessExperience({
       ) : null}
 
       {!isPreviewMode && availableMemberships.length ? (
-        <Section titleColor={pageTextColor} title={t("experience.availableMemberships")}>
+        <Section
+          titleColor={pageTextColor}
+          title={t("experience.availableMemberships")}
+        >
           <View style={{ gap: theme.spacing.md }}>
             {availableMemberships.map((p) => {
               const membershipOffer = membershipOfferForProduct(p.id);
@@ -3375,7 +3158,10 @@ export function BusinessExperience({
             style={{ gap: theme.spacing.lg }}
             testID="experience-preview-section-membership"
           >
-            <Section titleColor={pageTextColor} title={t("experience.yourMemberships")}>
+            <Section
+              titleColor={pageTextColor}
+              title={t("experience.yourMemberships")}
+            >
               <MembershipCard
                 decoration={resolvedBranding.decoration}
                 decorationImageUrl={
@@ -3407,7 +3193,10 @@ export function BusinessExperience({
             style={{ gap: theme.spacing.lg }}
             testID="experience-preview-section-benefits"
           >
-            <Section titleColor={pageTextColor} title={t("experience.yourBenefits")}>
+            <Section
+              titleColor={pageTextColor}
+              title={t("experience.yourBenefits")}
+            >
               {exp.benefits.length ? (
                 <DecorativeThemeFrame
                   imageUrl={
@@ -3491,7 +3280,10 @@ export function BusinessExperience({
             style={{ gap: theme.spacing.lg }}
             testID="experience-preview-section-stores"
           >
-            <Section titleColor={pageTextColor} title={t("experience.locations")}>
+            <Section
+              titleColor={pageTextColor}
+              title={t("experience.locations")}
+            >
               {exp.stores.length ? (
                 <ProfileThemeCard testID="experience-preview-stores">
                   <View style={{ gap: 18 }}>
@@ -3557,7 +3349,10 @@ export function BusinessExperience({
             style={{ gap: theme.spacing.lg }}
             testID="experience-preview-section-business-preferences"
           >
-            <Section titleColor={pageTextColor} title={t("experience.preferences")}>
+            <Section
+              titleColor={pageTextColor}
+              title={t("experience.preferences")}
+            >
               {exp.businessPreferences ? (
                 <Card padding="lg">
                   <View style={{ gap: theme.spacing.md }}>
@@ -3593,7 +3388,10 @@ export function BusinessExperience({
             style={{ gap: theme.spacing.lg }}
             testID="experience-preview-section-referral"
           >
-            <Section titleColor={pageTextColor} title={t("experience.referral")}>
+            <Section
+              titleColor={pageTextColor}
+              title={t("experience.referral")}
+            >
               {exp.referral ? (
                 <Card padding="lg">
                   <View style={{ gap: theme.spacing.sm }}>
@@ -3696,7 +3494,11 @@ export function BusinessExperience({
             <Text variant="h2" color="text" style={{ color: pageTextColor }}>
               {exp.displayName}
             </Text>
-            <Text variant="caption" color="textMuted" style={{ color: pageTextColor }}>
+            <Text
+              variant="caption"
+              color="textMuted"
+              style={{ color: pageTextColor }}
+            >
               {tagline?.trim() || exp.tagline}
             </Text>
           </View>
@@ -3712,6 +3514,14 @@ export function BusinessExperience({
           }}
           showsVerticalScrollIndicator={false}
         >
+          {!previewSection ? (
+            <AnnouncementDisplay
+              configuration={announcementConfiguration}
+              fallbackBackground={theme.colors.accent}
+              paddingHorizontal={theme.spacing.md}
+              paddingVertical={theme.spacing.sm}
+            />
+          ) : null}
           {customerActionError ? (
             <Card padding="md">
               <Text variant="bodySmall" color="textMuted">
