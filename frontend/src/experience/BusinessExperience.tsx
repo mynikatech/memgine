@@ -1626,7 +1626,7 @@ export function BusinessExperience({
           title={t("experience.yourMemberships")}
         >
           <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="membership">
-<MembershipCard
+<MembershipCard festiveTheme={festiveTheme}
             decoration={null}
             decorationImageUrl={null}
             decorationBackgroundColor={customerBackground}
@@ -1648,7 +1648,7 @@ export function BusinessExperience({
           title={t("experience.yourMemberships")}
         >
           <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="membership">
-<MembershipCard
+<MembershipCard festiveTheme={festiveTheme}
             decoration={null}
             decorationImageUrl={null}
             decorationBackgroundColor={customerBackground}
@@ -3159,7 +3159,7 @@ export function BusinessExperience({
               title={t("experience.yourMemberships")}
             >
               <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="membership">
-<MembershipCard
+<MembershipCard festiveTheme={festiveTheme}
                 decoration={null}
                 decorationImageUrl={
                   undefined
