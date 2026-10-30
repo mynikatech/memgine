@@ -168,7 +168,7 @@ export function CustomerThemePreview({
         <FestiveSurface theme={themeId} accent={accent} kind="card">
         <View
           style={{
-            backgroundColor: theme.decoration?.cardBackgroundImageUrl && theme.decoration?.cardTreatment === "IMAGE_OVERLAY" ? "rgba(255,255,255,0.30)" : "#FFFFFF",
+            backgroundColor: "#FFFFFF",
             padding: space,
             borderRadius: 9,
             gap: 4,
@@ -188,7 +188,7 @@ export function CustomerThemePreview({
             Explore Offers
           </Text>
         </View>
-        </DecorativeThemeSurface>
+        </FestiveSurface>
       </View>
     </View>
   );
