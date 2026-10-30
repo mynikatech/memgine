@@ -505,12 +505,12 @@ export function BusinessExperience({
     children: ReactNode;
     testID?: string;
   }) => (
-    <FestiveSurface theme={festiveTheme} accent={theme.colors.accent}><DecorativeThemeFrame
-      imageUrl={resolvedBranding.decoration?.cardBackgroundImageUrl ?? null}
+    <FestiveSurface theme={festiveTheme} accent={theme.colors.accent}><DecorativeThemeFrame festiveTheme={festiveTheme}
+      imageUrl={null}
       primaryColor={theme.colors.primary}
       accentColor={theme.colors.accent}
       backgroundColor={customerBackground}
-      decoration={resolvedBranding.decoration}
+      decoration={festiveTheme === "CLASSIC" ? null : null}
     >
       <DecorativeContentThemeScope enabled={hasDecorativeImageOverlay}>
         <Card
@@ -1623,10 +1623,8 @@ export function BusinessExperience({
         >
           <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="card">
 <MembershipCard
-            decoration={resolvedBranding.decoration}
-            decorationImageUrl={
-              resolvedBranding.decoration?.cardBackgroundImageUrl
-            }
+            decoration={festiveTheme === "CLASSIC" ? null : null}
+            decorationImageUrl={null}
             decorationBackgroundColor={customerBackground}
             testID="experience-membership-card"
             organizationName={exp.displayName}
@@ -1647,10 +1645,8 @@ export function BusinessExperience({
         >
           <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="card">
 <MembershipCard
-            decoration={resolvedBranding.decoration}
-            decorationImageUrl={
-              resolvedBranding.decoration?.cardBackgroundImageUrl
-            }
+            decoration={festiveTheme === "CLASSIC" ? null : null}
+            decorationImageUrl={null}
             decorationBackgroundColor={customerBackground}
             testID="experience-preview-membership-card"
             organizationName={exp.displayName}
@@ -1816,20 +1812,20 @@ export function BusinessExperience({
                     Special Offers
                   </Text>
                   {redeemSectionOffers.map(({ offer, itemStatus }) => (
-                    <DecorativeThemeFrame
+                    <DecorativeThemeFrame festiveTheme={festiveTheme}
                       key={offer.id}
                       imageUrl={
-                        resolvedBranding.decoration?.cardBackgroundImageUrl ??
+                        undefined ??
                         null
                       }
                       primaryColor={theme.colors.primary}
                       accentColor={theme.colors.accent}
                       variant="content"
-                      decoration={resolvedBranding.decoration}
+                      decoration={festiveTheme === "CLASSIC" ? null : null}
                     >
                       <OfferCard
                         decorative={Boolean(
-                          resolvedBranding.decoration?.cardBackgroundImageUrl &&
+                          undefined &&
                           resolvedBranding.decoration?.cardTreatment ===
                             "IMAGE_OVERLAY",
                         )}
@@ -2078,20 +2074,20 @@ export function BusinessExperience({
                   OTHER OFFERS
                 </Text>
                 {offersTabItems.map(({ offer, itemStatus }) => (
-                  <DecorativeThemeFrame
+                  <DecorativeThemeFrame festiveTheme={festiveTheme}
                     key={offer.id}
                     imageUrl={
-                      resolvedBranding.decoration?.cardBackgroundImageUrl ??
+                      undefined ??
                       null
                     }
                     primaryColor={theme.colors.primary}
                     accentColor={theme.colors.accent}
                     variant="content"
-                    decoration={resolvedBranding.decoration}
+                    decoration={festiveTheme === "CLASSIC" ? null : null}
                   >
                     <OfferCard
                       decorative={Boolean(
-                        resolvedBranding.decoration?.cardBackgroundImageUrl &&
+                        undefined &&
                         resolvedBranding.decoration?.cardTreatment ===
                           "IMAGE_OVERLAY",
                       )}
@@ -2425,16 +2421,16 @@ export function BusinessExperience({
           ) : null}
         </View>
 
-        <DecorativeThemeFrame
-          imageUrl={resolvedBranding.decoration?.cardBackgroundImageUrl ?? null}
+        <DecorativeThemeFrame festiveTheme={festiveTheme}
+          imageUrl={null}
           primaryColor={theme.colors.primary}
           accentColor={theme.colors.accent}
           backgroundColor={customerBackground}
-          decoration={resolvedBranding.decoration}
+          decoration={festiveTheme === "CLASSIC" ? null : null}
         >
           <DecorativeContentThemeScope
             enabled={Boolean(
-              resolvedBranding.decoration?.cardBackgroundImageUrl &&
+              undefined &&
               resolvedBranding.decoration?.cardTreatment === "IMAGE_OVERLAY",
             )}
           >
@@ -2446,7 +2442,7 @@ export function BusinessExperience({
                 borderWidth: 1,
                 borderColor: theme.colors.border,
                 backgroundColor:
-                  resolvedBranding.decoration?.cardBackgroundImageUrl &&
+                  undefined &&
                   resolvedBranding.decoration?.cardTreatment === "IMAGE_OVERLAY"
                     ? "rgba(255,255,255,0.92)"
                     : theme.colors.surface,
@@ -2536,20 +2532,20 @@ export function BusinessExperience({
                   : "gift-outline";
 
                 return (
-                  <DecorativeThemeFrame
+                  <DecorativeThemeFrame festiveTheme={festiveTheme}
                     key={activity.id}
                     imageUrl={
-                      resolvedBranding.decoration?.cardBackgroundImageUrl ??
+                      undefined ??
                       null
                     }
                     primaryColor={theme.colors.primary}
                     accentColor={theme.colors.accent}
                     backgroundColor={customerBackground}
-                    decoration={resolvedBranding.decoration}
+                    decoration={festiveTheme === "CLASSIC" ? null : null}
                   >
                     <DecorativeContentThemeScope
                       enabled={Boolean(
-                        resolvedBranding.decoration?.cardBackgroundImageUrl &&
+                        undefined &&
                         resolvedBranding.decoration?.cardTreatment ===
                           "IMAGE_OVERLAY",
                       )}
@@ -3170,9 +3166,9 @@ export function BusinessExperience({
             >
               <FestiveSurface theme={festiveTheme} accent={theme.colors.accent} kind="card">
 <MembershipCard
-                decoration={resolvedBranding.decoration}
+                decoration={festiveTheme === "CLASSIC" ? null : null}
                 decorationImageUrl={
-                  resolvedBranding.decoration?.cardBackgroundImageUrl
+                  undefined
                 }
                 decorationBackgroundColor={customerBackground}
                 testID="experience-preview-membership-card"
@@ -3206,17 +3202,17 @@ export function BusinessExperience({
               title={t("experience.yourBenefits")}
             >
               {exp.benefits.length ? (
-                <DecorativeThemeFrame
+                <DecorativeThemeFrame festiveTheme={festiveTheme}
                   imageUrl={
-                    resolvedBranding.decoration?.cardBackgroundImageUrl ?? null
+                    undefined ?? null
                   }
                   primaryColor={theme.colors.primary}
                   accentColor={theme.colors.accent}
-                  decoration={resolvedBranding.decoration}
+                  decoration={festiveTheme === "CLASSIC" ? null : null}
                 >
                   <DecorativeContentThemeScope
                     enabled={Boolean(
-                      resolvedBranding.decoration?.cardBackgroundImageUrl &&
+                      undefined &&
                       resolvedBranding.decoration?.cardTreatment ===
                         "IMAGE_OVERLAY",
                     )}
@@ -3225,7 +3221,7 @@ export function BusinessExperience({
                       padding="lg"
                       style={{
                         backgroundColor:
-                          resolvedBranding.decoration?.cardBackgroundImageUrl &&
+                          undefined &&
                           resolvedBranding.decoration?.cardTreatment ===
                             "IMAGE_OVERLAY"
                             ? "rgba(255,255,255,0.92)"
