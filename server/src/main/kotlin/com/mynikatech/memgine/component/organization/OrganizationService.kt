@@ -12,6 +12,7 @@ import kotlinx.serialization.json.Json
 import com.mynikatech.memgine.security.PhoneNormalizer
 import org.jdbi.v3.core.statement.UnableToExecuteStatementException
 import com.mynikatech.memgine.net.dto.SaveBrandingDraftRequestDto
+import com.mynikatech.memgine.net.dto.MembershipTermsResponseDto
 import org.postgresql.util.PSQLException
 
 class OrganizationService(
@@ -114,6 +115,19 @@ class OrganizationService(
         return sql.getOrganizationAggregate(organizationId)
             ?: throw BadRequestException("Organization not found")
     }
+    
+    fun getMembershipTerms(organizationId: String): MembershipTermsResponseDto {
+        validateOrganizationId(organizationId)
+        return MembershipTermsResponseDto(organizationId, sql.getMembershipTerms(organizationId))
+    }
+
+    fun saveMembershipTerms(organizationId: String, terms: String, actorUserId: String): MembershipTermsResponseDto {
+        validateOrganizationId(organizationId)
+        if (terms.length > 30000) throw BadRequestException("Membership terms exceed 30000 characters")
+        sql.saveMembershipTerms(organizationId, terms, actorUserId)
+        return getMembershipTerms(organizationId)
+    }
+
 
     private fun validateCreate(request: CreateOrganizationRequestDto) {
         validateOrganization(request.organization)

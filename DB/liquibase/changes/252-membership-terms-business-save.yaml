@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 252-membership-terms-business-save
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/252-membership-terms-business-save.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

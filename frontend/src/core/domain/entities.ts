@@ -104,6 +104,7 @@ export interface OrganizationDetails {
 
   aboutOrganization?: string;
   address: Address;
+  membershipTermsAndConditions?: string | null;
 
   createdAt: ISODateString;
   createdBy: ID;

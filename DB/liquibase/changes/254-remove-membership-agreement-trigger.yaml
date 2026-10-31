@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 254-remove-membership-agreement-trigger
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/254-remove-membership-agreement-trigger.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

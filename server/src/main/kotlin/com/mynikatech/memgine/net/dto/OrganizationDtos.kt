@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class OrganizationDetailsDto(
  val id: String, val organizationId: String, val registrationNumber: String = "",
  val gstNumber: String = "", val supportEmail: String = "", val supportPhone: PhoneDto,
+ val membershipTermsAndConditions: String? = null,
  val aboutOrganization: String = "", val address: AddressDto
 )
 @Serializable data class OrganizationBrandingDto(

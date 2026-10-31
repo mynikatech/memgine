@@ -34,6 +34,7 @@ export type OrganizationDetailsApiDto = {
     number: string;
   };
   aboutOrganization: string;
+  membershipTermsAndConditions?: string | null;
   address: {
     line1: string;
     line2: string;
@@ -63,7 +64,15 @@ export type OrganizationBrandingApiDto = {
   platformThemeCode?: string | null;
   announcementEnabled?: boolean | null;
   announcementMessage?: string | null;
-  announcementStyle?: "STATIC" | "FADE" | "SLIDE" | "TICKER" | "TYPEWRITER" | "REVEAL" | "PULSE" | null;
+  announcementStyle?:
+    | "STATIC"
+    | "FADE"
+    | "SLIDE"
+    | "TICKER"
+    | "TYPEWRITER"
+    | "REVEAL"
+    | "PULSE"
+    | null;
   announcementBackgroundColor?: string | null;
   announcementTextColor?: string | null;
   announcementLinkUrl?: string | null;
@@ -130,6 +139,7 @@ function toOrganizationDetailsDto(
       number: details.supportPhone?.number ?? "",
     },
     aboutOrganization: details.aboutOrganization ?? "",
+    membershipTermsAndConditions: details.membershipTermsAndConditions ?? null,
     address: {
       line1: details.address.line1,
       line2: details.address.line2 ?? "",

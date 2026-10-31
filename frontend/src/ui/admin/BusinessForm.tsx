@@ -857,6 +857,25 @@ export function BusinessForm({
               editable={isEditing}
             />
           </View>
+          <View style={styles.subSection}>
+            <Text variant="h2" color="text">
+              Membership Terms & Conditions
+            </Text>
+            <Text variant="bodySmall" color="textSecondary">
+              General terms shown alongside membership-specific details during
+              purchase.
+            </Text>
+            <TextArea
+              label="Membership Terms & Conditions"
+              value={detailForm.membershipTermsAndConditions ?? ""}
+              onChangeText={(value) =>
+                updateDetails("membershipTermsAndConditions", value)
+              }
+              placeholder="Enter the general terms for membership purchases"
+              maxLength={30000}
+              editable={isEditing}
+            />
+          </View>
         </Section>
       </Card>
 

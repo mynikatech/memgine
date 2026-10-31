@@ -75,6 +75,17 @@ interface OrganizationSql {
         @Bind("actorUserId") actorUserId: String
     ): String
     
+
+    @SqlQuery("SELECT get_membership_terms(:organizationId)")
+    fun getMembershipTerms(@Bind("organizationId") organizationId: String): String?
+
+    @SqlQuery("SELECT save_membership_terms(:organizationId, :terms, :actorUserId)")
+    fun saveMembershipTerms(
+        @Bind("organizationId") organizationId: String,
+        @Bind("terms") terms: String,
+        @Bind("actorUserId") actorUserId: String
+    ): Boolean
+    
     @SqlQuery("SELECT get_organization(:organizationId)::text")
         fun getOrganization(
             @Bind("organizationId") organizationId: String

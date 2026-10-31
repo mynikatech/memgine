@@ -4,6 +4,7 @@ import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.model.common.ApiResponse
 import com.mynikatech.memgine.net.dto.CreateOrganizationRequestDto
 import com.mynikatech.memgine.net.dto.UpdateOrganizationRequestDto
+import com.mynikatech.memgine.net.dto.SaveMembershipTermsRequestDto
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.plugins.callid.callId
@@ -48,6 +49,19 @@ fun Route.organizationRoutes(service: OrganizationService) {
                 ApiResponse.success(result, call.callId)
             )
         }
+        
+        get("/{organizationId}/membership-terms") {
+            val id = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            call.respond(HttpStatusCode.OK, ApiResponse.success(service.getMembershipTerms(id), call.callId))
+        }
+        put("/{organizationId}/membership-terms") {
+            val id = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+            val request = call.receive<SaveMembershipTermsRequestDto>()
+            call.respond(HttpStatusCode.OK, ApiResponse.success(
+                service.saveMembershipTerms(id, request.terms, call.authenticatedPrincipal().userId), call.callId
+            ))
+        }
+
 
         put("/{organizationId}/branding-v2") {
             val organizationId = call.parameters["organizationId"]
