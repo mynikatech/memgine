@@ -169,4 +169,48 @@ interface CustomerSql {
                        @Bind("primaryEmail") primaryEmail: String?,
                        @Bind("primaryPhone") primaryPhone: String,
                        @Bind("actorUserId") actorUserId: String): String
+                       
+                       @SqlQuery("SELECT customer_can_start_membership_purchase(:organizationId, :userId)")
+    fun customerCanStartMembershipPurchase(
+        @Bind("organizationId") organizationId: String,
+        @Bind("userId") userId: String,
+    ): Boolean
+
+    @SqlQuery("SELECT record_membership_agreement_acceptance(:acceptanceId, :organizationId, :userId, :membershipProductId, :purchaseReference, :acceptanceChannel, :agreementText, :agreementSha256, CAST(:snapshotJson AS jsonb))::text")
+    fun recordMembershipAgreementAcceptance(
+        @Bind("acceptanceId") acceptanceId: String,
+        @Bind("organizationId") organizationId: String,
+        @Bind("userId") userId: String,
+        @Bind("membershipProductId") membershipProductId: String,
+        @Bind("purchaseReference") purchaseReference: String,
+        @Bind("acceptanceChannel") acceptanceChannel: String,
+        @Bind("agreementText") agreementText: String,
+        @Bind("agreementSha256") agreementSha256: String,
+        @Bind("snapshotJson") snapshotJson: String,
+    ): String?
+
+    @SqlQuery("SELECT customer_has_membership_agreement(:organizationId, :userId, :planId, :purchaseReference, :offerId, :agreementSha256)")
+    fun customerHasMembershipAgreement(
+        @Bind("organizationId") organizationId: String,
+        @Bind("userId") userId: String,
+        @Bind("planId") planId: String,
+        @Bind("purchaseReference") purchaseReference: String,
+        @Bind("offerId") offerId: String?,
+        @Bind("agreementSha256") agreementSha256: String,
+    ): Boolean
+
+    @SqlQuery("SELECT customer_existing_membership_payment(:organizationId, :userId, :planId, :purchaseReference)")
+    fun customerExistingMembershipPayment(
+        @Bind("organizationId") organizationId: String,
+        @Bind("userId") userId: String,
+        @Bind("planId") planId: String,
+        @Bind("purchaseReference") purchaseReference: String,
+    ): Boolean
+
+    @SqlQuery("SELECT get_customer_membership_agreements(:organizationId, :userId)::text")
+    fun customerMembershipAgreements(
+        @Bind("organizationId") organizationId: String,
+        @Bind("userId") userId: String,
+    ): String
+
 }

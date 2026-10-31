@@ -1,7 +1,6 @@
 import { httpClient } from "./http-client";
 import type { ApiResult } from "./result";
 
-/** Immutable acceptance record. Never reconstruct the accepted text from live terms. */
 export type MembershipAgreementAcceptance = {
   acceptanceId: string;
   organizationId: string;
@@ -12,6 +11,7 @@ export type MembershipAgreementAcceptance = {
   agreementText: string;
   agreementSha256: string;
   acceptedAt: string;
+  subscriptionId?: string | null;
 };
 
 export type MembershipAgreementPreview = {
@@ -20,20 +20,48 @@ export type MembershipAgreementPreview = {
   planId: string;
   agreementText: string;
   agreementSha256: string;
-  /** Opaque, short-lived server-created purchase/quote context. */
-  contextToken: string;
 };
 
-/**
- * Proposed contract for the new backend endpoints. These endpoints are NOT
- * implemented by this file; do not call until routes and payment guards land.
- */
+export type MembershipAgreementAcceptRequest = {
+  planId: string;
+  idempotencyKey: string;
+  agreementSha256: string;
+  explicitOfferId?: string;
+  acceptanceChannel: "CUSTOMER_WEB" | "CUSTOMER_MOBILE";
+};
+
+const path = (organizationId: string) =>
+  `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}`;
+
 export class MembershipAgreementApi {
-  preview(organizationId: string, planId: string): Promise<ApiResult<MembershipAgreementPreview>> {
-    return httpClient.get(`/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/membership-agreement/preview?planId=${encodeURIComponent(planId)}`);
+  preview(
+    organizationId: string,
+    planId: string,
+    explicitOfferId?: string,
+  ): Promise<ApiResult<MembershipAgreementPreview>> {
+    const query =
+      `planId=${encodeURIComponent(planId)}` +
+      (explicitOfferId
+        ? `&explicitOfferId=${encodeURIComponent(explicitOfferId)}`
+        : "");
+    return httpClient.get(
+      `${path(organizationId)}/membership-agreement/preview?${query}`,
+    );
   }
 
-  history(organizationId: string): Promise<ApiResult<MembershipAgreementAcceptance[]>> {
-    return httpClient.get(`/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/membership-agreements`);
+  accept(
+    organizationId: string,
+    request: MembershipAgreementAcceptRequest,
+  ): Promise<ApiResult<MembershipAgreementAcceptance>> {
+    return httpClient.post(
+      `${path(organizationId)}/membership-agreement/accept`,
+      request,
+    );
+  }
+
+  history(
+    organizationId: string,
+  ): Promise<ApiResult<MembershipAgreementAcceptance[]>> {
+    return httpClient.get(`${path(organizationId)}/membership-agreements`);
   }
 }

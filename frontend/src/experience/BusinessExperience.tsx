@@ -18,6 +18,11 @@ import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers
 import { resolveCustomerBranding } from "@/src/core/customer/resolve-customer-branding";
 import { DecorativeThemeFrame } from "@/src/ui/domain/DecorativeThemeFrame";
 import {
+  MembershipAgreementApi,
+  type MembershipAgreementAcceptance,
+} from "@/src/data/api/membership-agreement-api";
+import { MembershipAgreementHistoryLink } from "@/src/ui/domain/MembershipAgreementHistoryLink";
+import {
   DecorativeContentThemeScope,
   overlayContentTheme,
 } from "@/src/ui/domain/DecorativeContentTheme";
@@ -326,6 +331,29 @@ export function BusinessExperience({
    * while leaving the rest of the application context untouched.
    */
   const organization = organizationOverride ?? contextOrganization;
+
+  const [acceptedAgreements, setAcceptedAgreements] = useState<
+    MembershipAgreementAcceptance[]
+  >([]);
+  useEffect(() => {
+    if (isPreviewMode || !customerUserId) {
+      setAcceptedAgreements([]);
+      return;
+    }
+    let active = true;
+    setAcceptedAgreements([]);
+    new MembershipAgreementApi()
+      .history(organization.id)
+      .then((result) => {
+        if (active && result.success) setAcceptedAgreements(result.data);
+      })
+      .catch(() => {
+        if (active) setAcceptedAgreements([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [customerUserId, organization.id, isPreviewMode]);
 
   /**
    * BusinessExperience's customer-facing business information is ultimately
@@ -2391,6 +2419,13 @@ export function BusinessExperience({
                 <Text variant="bodySmall" color="textMuted">
                   Original end: {formatDate(subscription.endDate)}
                 </Text>
+                <MembershipAgreementHistoryLink
+                  agreementText={
+                    acceptedAgreements.find(
+                      (a) => a.subscriptionId === subscription.id,
+                    )?.agreementText
+                  }
+                />
               </View>
             </Card>
           </Section>

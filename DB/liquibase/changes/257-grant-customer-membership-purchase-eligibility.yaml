@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 257-grant-customer-membership-purchase-eligibility
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/257-grant-customer-membership-purchase-eligibility.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

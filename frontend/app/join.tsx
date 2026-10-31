@@ -64,6 +64,11 @@ import {
 
 import { counterCheckout } from "@/src/core/services/counter-checkout";
 import { storage } from "@/src/utils/storage";
+import {
+  MembershipAgreementApi,
+  type MembershipAgreementPreview,
+} from "@/src/data/api/membership-agreement-api";
+import { MembershipAgreementCheck } from "@/src/ui/domain/MembershipAgreementCheck";
 
 /**
 
@@ -318,6 +323,8 @@ export default function JoinRoute() {
   );
 }
 
+const agreementApi = new MembershipAgreementApi();
+
 function JoinFlow() {
   const router = useRouter();
 
@@ -466,6 +473,12 @@ function JoinFlow() {
 
     currencyCode: string;
   } | null>(null);
+
+  const [agreementPreview, setAgreementPreview] =
+    useState<MembershipAgreementPreview | null>(null);
+  const [agreementAccepted, setAgreementAccepted] = useState(false);
+  const [agreementLoading, setAgreementLoading] = useState(false);
+  const [agreementError, setAgreementError] = useState<string | null>(null);
 
   const [purchaseQuote, setPurchaseQuote] =
     useState<MembershipPurchaseQuote | null>(null);
@@ -1019,6 +1032,36 @@ function JoinFlow() {
     keyOnlyCustomerPaymentRecoveryVersion.current += 1;
     setKeyOnlyCustomerPaymentRecovering(false);
   }, [explicitOfferId, orgId, plan?.id, product?.id, session?.userId]);
+
+  useEffect(() => {
+    setAgreementAccepted(false);
+    setAgreementPreview(null);
+    setAgreementError(null);
+    if (isStaffSale || !session?.userId || !plan?.id) return;
+    let mounted = true;
+    setAgreementLoading(true);
+    agreementApi
+      .preview(orgId, plan.id, explicitOfferId || undefined)
+      .then((result) => {
+        if (!mounted) return;
+        if (!result.success) throw new Error(result.error.message);
+        setAgreementPreview(result.data);
+      })
+      .catch((error) => {
+        if (mounted)
+          setAgreementError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load membership agreement",
+          );
+      })
+      .finally(() => {
+        if (mounted) setAgreementLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [isStaffSale, orgId, plan?.id, explicitOfferId, session?.userId]);
 
   const intervalLabel = plan ? getSubscriptionPeriodLabel(plan) : "";
 
@@ -3317,6 +3360,27 @@ function JoinFlow() {
             return;
           }
         }
+        if (
+          !agreementAccepted ||
+          !agreementPreview ||
+          agreementPreview.planId !== plan.id ||
+          agreementPreview.membershipProductId !== product.id
+        ) {
+          throw new Error(
+            "Read and accept the Membership Agreement before payment.",
+          );
+        }
+        const consentResult = await agreementApi.accept(orgId, {
+          planId: plan.id,
+          idempotencyKey: attempt.key,
+          agreementSha256: agreementPreview.agreementSha256,
+          explicitOfferId: explicitOfferId || undefined,
+          acceptanceChannel:
+            Platform.OS === "web" ? "CUSTOMER_WEB" : "CUSTOMER_MOBILE",
+        });
+        if (!consentResult.success)
+          throw new Error(consentResult.error.message);
+
         const intent = await services.customerData.startAuthenticatedPayment(
           orgId,
           plan.id,
@@ -3611,6 +3675,8 @@ function JoinFlow() {
 
     session?.userId,
     customerPaymentStartStorageKey,
+    agreementAccepted,
+    agreementPreview,
   ]);
 
   const requestCashPayment = useCallback(async () => {
@@ -4376,7 +4442,26 @@ function JoinFlow() {
                 : plan.price.amountMinor
             }
           />
-          {/* ADD THIS BLOCK HERE */}
+          {!isStaffSale ? (
+            <Card padding="md">
+              {agreementLoading ? (
+                <Text variant="bodySmall" color="textMuted">
+                  Loading Membership Agreement...
+                </Text>
+              ) : agreementError ? (
+                <Text variant="bodySmall" color="textMuted">
+                  {agreementError}
+                </Text>
+              ) : (
+                <MembershipAgreementCheck
+                  agreementText={agreementPreview?.agreementText ?? ""}
+                  accepted={agreementAccepted}
+                  onAcceptedChange={setAgreementAccepted}
+                />
+              )}
+            </Card>
+          ) : null}
+
           {explicitOfferId ? (
             <Card padding="md">
               <View style={{ gap: theme.spacing.sm }}>
@@ -4444,6 +4529,11 @@ function JoinFlow() {
             }
             fullWidth
             disabled={
+              (!isStaffSale &&
+                (!agreementAccepted ||
+                  !agreementPreview ||
+                  agreementLoading ||
+                  !!agreementError)) ||
               (!isStaffSale && !session?.userId) ||
               (!isStaffSale &&
                 (restoringCustomerCollectPayment ||

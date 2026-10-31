@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 256-membership-agreement-acceptance-api
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/256-membership-agreement-acceptance-api.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

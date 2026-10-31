@@ -10,6 +10,7 @@ import com.mynikatech.memgine.net.dto.CustomerCreateRedemptionTransactionRequest
 import com.mynikatech.memgine.component.redemption.RedemptionService
 import com.mynikatech.memgine.security.AuthenticatedPrincipalKey
 import com.mynikatech.memgine.security.authenticatedPrincipal
+import com.mynikatech.memgine.net.dto.AcceptMembershipAgreementDto
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.application.ApplicationCall
@@ -48,6 +49,32 @@ fun Route.customerSelfServiceRoutes(service: CustomerService, redemptionService:
             call.respond(ApiResponse.success(service.relationships(call.userId()), call.callId))
         }
         route("/organizations/{organizationId}") {
+            
+            get("/membership-agreement/preview") {
+                val planId = call.request.queryParameters["planId"]
+                    ?: throw BadRequestException("Membership plan id is required")
+                call.respond(ApiResponse.success(
+                    service.membershipAgreementPreview(
+                        call.organizationId(), call.userId(), planId,
+                        call.request.queryParameters["explicitOfferId"]
+                    ), call.callId
+                ))
+            }
+            post("/membership-agreement/accept") {
+                call.respond(ApiResponse.success(
+                    service.acceptMembershipAgreement(
+                        call.organizationId(), call.userId(),
+                        call.receive<AcceptMembershipAgreementDto>()
+                    ), call.callId
+                ))
+            }
+            get("/membership-agreements") {
+                call.respond(ApiResponse.success(
+                    service.customerMembershipAgreements(call.organizationId(), call.userId()),
+                    call.callId
+                ))
+            }
+
             get("/membership-summary") {
                 call.respond(ApiResponse.success(
                     service.membershipSummary(call.organizationId(), call.userId()), call.callId

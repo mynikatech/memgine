@@ -49,6 +49,8 @@ import org.postgresql.util.PSQLException
 import com.mynikatech.memgine.net.dto.CustomerMembershipPurchaseOfferQrDto
 import java.security.MessageDigest
 import java.security.SecureRandom
+import com.mynikatech.memgine.component.membershipagreement.MembershipAgreementOperations
+import com.mynikatech.memgine.net.dto.AcceptMembershipAgreementDto
 import java.util.Base64
 
 class CustomerService(
@@ -64,6 +66,9 @@ class CustomerService(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val membershipOfferQrRandom = SecureRandom()
+    private val agreementOperations = MembershipAgreementOperations(
+        sql, memberships, benefits, stores, organizations, payments
+    )
 
     // Existing Org Admin components use this development actor until request auth is wired.
     fun list(organizationId: String, actorUserId: String): List<OrgAdminCustomerDto> {
@@ -86,6 +91,15 @@ class CustomerService(
         requireDevIdentity()
         return sql.choices()
     }
+    fun membershipAgreementPreview(org: String, userId: String, planId: String, offerId: String?) =
+        agreementOperations.preview(org, userId, planId, offerId)
+
+    fun acceptMembershipAgreement(org: String, userId: String, request: AcceptMembershipAgreementDto) =
+        agreementOperations.accept(org, userId, request)
+
+    fun customerMembershipAgreements(org: String, userId: String) =
+        agreementOperations.history(org, userId)
+
 
     fun discoverableOrganizations(): List<CustomerDiscoverableOrganizationDto> =
         sql.discoverableOrganizations()
@@ -457,6 +471,9 @@ class CustomerService(
         if (context.organizationId != organizationId || context.userId != authenticatedUserId) {
             throw ForbiddenException("Business verification does not match this purchase")
         }
+        val agreementPlanId = context.planId
+            ?: throw BadRequestException("Verified membership plan is required")
+        agreementOperations.requireAccepted(organizationId, authenticatedUserId, agreementPlanId, request.idempotencyKey, request.explicitOfferId)
         return payments.startMembershipPayment(organizationId, request, authenticatedUserId)
     }
 
@@ -465,6 +482,7 @@ class CustomerService(
         customerUserId: String,
         request: AuthenticatedMembershipPaymentStartDto
     ): PaymentIntentDto {
+        agreementOperations.requireAccepted(organizationId, customerUserId, request.planId, request.idempotencyKey, request.explicitOfferId)
         return payments.startAuthenticatedMembershipPayment(
             organizationId,
             request.planId,
