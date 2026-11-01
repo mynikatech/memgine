@@ -193,6 +193,8 @@ export const APP_ROUTES = {
 
     pendingTransactions: "/counter/pending-transactions",
 
+    transactions: "/counter/transactions",
+
     supportRequests: "/counter/support-requests",
   },
 
@@ -302,6 +304,16 @@ export const COUNTER_ROUTES: CounterRoute[] = [
     href: APP_ROUTES.counter.pendingTransactions,
 
     icon: "time-outline",
+  },
+
+  {
+    name: "transactions",
+
+    title: "Transactions",
+
+    href: APP_ROUTES.counter.transactions,
+
+    icon: "receipt-outline",
   },
 
   {

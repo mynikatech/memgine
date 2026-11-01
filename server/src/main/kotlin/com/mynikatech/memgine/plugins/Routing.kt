@@ -26,6 +26,7 @@ import com.mynikatech.memgine.component.customer.CustomerService
 import com.mynikatech.memgine.component.customer.CustomerSql
 import com.mynikatech.memgine.component.customer.customerRoutes
 import com.mynikatech.memgine.component.customer.customerSelfServiceRoutes
+import com.mynikatech.memgine.component.receipt.transactionReceiptRoutes
 import com.mynikatech.memgine.component.counter.CounterService
 import com.mynikatech.memgine.component.counter.counterRoutes
 import com.mynikatech.memgine.component.payment.PaymentService
@@ -341,6 +342,9 @@ fun Application.configureRouting(
     val platformBrandingThemeService = PlatformBrandingThemeService(
         database.jdbi.onDemand(PlatformBrandingThemeSql::class.java)
     )
+    val transactionReceiptSql = database.jdbi.onDemand(
+        com.mynikatech.memgine.component.receipt.TransactionReceiptSql::class.java
+    )
 
     routing {
         get("/health") {
@@ -381,6 +385,7 @@ fun Application.configureRouting(
             redemptionResolutionRoutes(redemptionResolutionService)
             customerRoutes(customerService)
             customerSelfServiceRoutes(customerService, redemptionService)
+            transactionReceiptRoutes(transactionReceiptSql)
             counterRoutes(counterService, counterCommercePaymentService)
             counterRedemptionCheckoutRoutes(counterCommercePaymentService)
             paymentRoutes(paymentService, activityAuditService)

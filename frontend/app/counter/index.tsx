@@ -2785,8 +2785,20 @@ export default function StaffCounter() {
     );
   };
 
-  const afterIdentify = (method: RedemptionMethod) =>
-    action === "sell" ? renderSaleCatalog() : renderBenefitSelection(method);
+  const afterIdentify = (method: RedemptionMethod) => (
+    <View style={{ gap: 10 }}>
+      {customer ? (
+        <Pressable
+          testID="counter-customer-transaction-history"
+          onPress={() => router.push(`${APP_ROUTES.counter.transactions}?organizationId=${encodeURIComponent(orgId)}&storeId=${encodeURIComponent(storeId)}&staffId=${encodeURIComponent(staffId)}&customerUserId=${encodeURIComponent(customer.id)}` as never)}
+          style={styles.secondaryBtn}
+        >
+          <Text style={styles.secondaryBtnText}>Transaction History</Text>
+        </Pressable>
+      ) : null}
+      {action === "sell" ? renderSaleCatalog() : renderBenefitSelection(method)}
+    </View>
+  );
 
   const fixedPosContextReady = Boolean(
     session?.posContext &&

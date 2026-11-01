@@ -247,7 +247,76 @@ export type CustomerRedemptionItemStatus = {
     | "INACTIVE";
   displayReason?: string | null;
 };
+/** Immutable server-issued receipt. Amounts are minor units from the receipt snapshot. */
+export type TransactionReceipt = {
+  transactionReceiptId: ID;
+  receiptNumber: string;
+  organizationId: ID;
+  storeId?: ID | null;
+  customerUserId?: ID | null;
+  receiptKind: "MEMBERSHIP_PURCHASE" | "COUNTER_REDEMPTION" | "REFUND";
+  sourceTransactionId: ID;
+  currencyCode: string;
+  subtotalMinor: number;
+  discountMinor: number;
+  taxMinor: number;
+  totalMinor: number;
+  paymentMethod?: string | null;
+  providerReference?: string | null;
+  /** Server snapshot; clients render but never recompute its financial facts. */
+  receiptSnapshot: string;
+  issuedAt: string;
+};
+export type TransactionHistoryItem = {
+  transactionId: ID;
+  transactionNumber: string;
+  organizationId: ID;
+  organizationName: string;
+  storeId?: ID | null;
+  storeName?: string | null;
+  customerUserId?: ID | null;
+  transactionType: string;
+  status: string;
+  paymentMethod?: string | null;
+  currencyCode: string;
+  totalMinor: number;
+  occurredAt: string;
+  receiptId?: ID | null;
+  receiptNumber?: string | null;
+  receiptAvailable: boolean;
+  refundStatus?: string | null;
+};
 export class CustomerDataApi {
+  transactionHistory(
+    organizationId?: ID,
+    options: { status?: string; transactionType?: string; search?: string; limit?: number; offset?: number } = {},
+  ): Promise<ApiResult<TransactionHistoryItem[]>> {
+    const params = new URLSearchParams();
+    if (organizationId) params.set("organizationId", organizationId);
+    if (options.status) params.set("status", options.status);
+    if (options.transactionType) params.set("transactionType", options.transactionType);
+    if (options.search) params.set("search", options.search);
+    params.set("limit", String(options.limit ?? 25));
+    params.set("offset", String(options.offset ?? 0));
+    return httpClient.get(`/api/v1/customer/transactions?${params.toString()}`);
+  }
+  transactions(
+    organizationId: ID,
+    limit = 25,
+    offset = 0,
+  ): Promise<ApiResult<TransactionReceipt[]>> {
+    return httpClient.get(
+      `${base(organizationId)}/transactions?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`,
+    );
+  }
+  receipt(
+    organizationId: ID,
+    receiptId: ID,
+  ): Promise<ApiResult<TransactionReceipt>> {
+    return httpClient.get(
+      `${base(organizationId)}/receipts/${encodeURIComponent(receiptId)}`,
+    );
+  }
   createRedemptionTransaction(
     organizationId: ID,
     request: CustomerRedemptionTransactionRequest,

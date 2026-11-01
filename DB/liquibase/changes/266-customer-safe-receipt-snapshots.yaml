@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 266-customer-safe-receipt-snapshots
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/266-customer-safe-receipt-snapshots.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

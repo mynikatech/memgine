@@ -7,6 +7,7 @@ import { httpClient } from "./http-client";
 import { apiFailure, apiSuccess, type ApiResult } from "./result";
 
 import type { OrgAdminCustomer } from "./org-admin-customer-api";
+import type { TransactionHistoryItem, TransactionReceipt } from "./customer-data-api";
 
 import type {
   OrgAdminRedemption,
@@ -463,6 +464,32 @@ export type CounterPurchaseOtpChallenge = CounterOtpChallenge & {
 export class CounterApi {
   private path(ctx: CounterContext, suffix: string) {
     return `/api/v1/organizations/${encodeURIComponent(ctx.organizationId)}/counter/${suffix}`;
+  }
+
+  transactions(
+    ctx: CounterContext,
+    options: { customerUserId?: ID; status?: string; transactionType?: string; paymentMethod?: string; search?: string; limit?: number; offset?: number } = {},
+  ): Promise<ApiResult<TransactionHistoryItem[]>> {
+    const parameters = new URLSearchParams();
+    if (options.customerUserId) parameters.set("customerUserId", options.customerUserId);
+    if (options.status) parameters.set("status", options.status);
+    if (options.transactionType) parameters.set("transactionType", options.transactionType);
+    if (options.paymentMethod) parameters.set("paymentMethod", options.paymentMethod);
+    if (options.search) parameters.set("search", options.search);
+    parameters.set("limit", String(options.limit ?? 25));
+    parameters.set("offset", String(options.offset ?? 0));
+    return httpClient.get(
+      `${this.query(ctx, "transactions")}&${parameters.toString()}`,
+    );
+  }
+
+  receipt(
+    ctx: CounterContext,
+    receiptId: ID,
+  ): Promise<ApiResult<TransactionReceipt>> {
+    return httpClient.get(
+      this.query(ctx, `receipts/${encodeURIComponent(receiptId)}`),
+    );
   }
 
   private query(ctx: CounterContext, suffix: string) {

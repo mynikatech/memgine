@@ -52,7 +52,17 @@ import type {
 import { services } from "@/src/core";
 import { trackActivity } from "@/src/core/services/activity-audit";
 import { resolveAssetUrl } from "@/src/data/api/asset-url";
-import type { CustomerRedemptionItemStatus } from "@/src/data/api/customer-data-api";
+import {
+  CustomerDataApi,
+  type CustomerRedemptionItemStatus,
+  type TransactionHistoryItem,
+  type TransactionReceipt,
+} from "@/src/data/api/customer-data-api";
+import { TransactionReceiptViewer } from "@/src/ui/domain/TransactionReceiptViewer";
+import {
+  transactionSummary,
+  transactionReceiptCaption,
+} from "@/src/ui/domain/transaction-history-display";
 import {
   BusinessThemeScope,
   useBusiness,
@@ -82,6 +92,8 @@ function formatPhoneNumber(
   if (!phone) return "";
   return [phone.callingCode, phone.number].filter(Boolean).join(" ").trim();
 }
+
+const customerTransactionApi = new CustomerDataApi();
 
 function parseCanonicalUtcTimestamp(value: string): Date {
   let normalized = value.trim().replace(" ", "T");
@@ -559,10 +571,44 @@ export function BusinessExperience({
   const [tab, setTab] = useState<ExperienceTabKey>(initialTab);
   const [referralOpen, setReferralOpen] = useState(false);
   const [showAllHistory, setShowAllHistory] = useState(false);
+  const [orders, setOrders] = useState<TransactionHistoryItem[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
+  const [orderReceipt, setOrderReceipt] = useState<TransactionReceipt | null>(
+    null,
+  );
 
   useEffect(() => {
     setTab(initialTab);
   }, [initialTab]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (isPreviewMode) {
+      setOrders([]);
+      setOrdersError(null);
+      return;
+    }
+    setOrdersLoading(true);
+    setOrdersError(null);
+    void customerTransactionApi
+      .transactionHistory(organization.id, { limit: 10 })
+      .then((result) => {
+        if (cancelled) return;
+        if (result.success) setOrders(result.data);
+        else setOrdersError(result.error.message);
+        setOrdersLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOrdersError("Unable to load orders");
+          setOrdersLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isPreviewMode, organization.id]);
 
   const effectiveTab = activeTab ?? tab;
 
@@ -2431,6 +2477,91 @@ export function BusinessExperience({
           </Section>
         ) : null}
 
+        {!isPreviewMode ? (
+          <Section titleColor={pageTextColor} title="My Orders">
+            <View style={{ gap: theme.spacing.sm }}>
+              {ordersLoading ? (
+                <Text variant="bodySmall" color="textMuted">
+                  Loading orders…
+                </Text>
+              ) : null}
+              {ordersError ? (
+                <Text variant="bodySmall" color="textMuted">
+                  {ordersError}
+                </Text>
+              ) : null}
+              {!ordersLoading && !ordersError && !orders.length ? (
+                <Text variant="bodySmall" color="textMuted">
+                  No orders yet.
+                </Text>
+              ) : null}
+              {orders.map((order) => (
+                <ProfileThemeCard
+                  key={`${order.transactionType}-${order.transactionId}`}
+                >
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      gap: theme.spacing.md,
+                      alignItems: "center",
+                    }}
+                  >
+                    <View style={{ flex: 1, gap: 3 }}>
+                      <Text variant="bodyStrong">
+                        {order.transactionNumber}
+                      </Text>
+                      <Text variant="bodySmall" color="textSecondary">
+                        {[
+                          order.organizationName,
+                          order.storeName &&
+                          order.storeName !== order.organizationName
+                            ? order.storeName
+                            : null,
+                          new Date(order.occurredAt).toLocaleDateString(),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </Text>
+                      <Text variant="caption" color="textMuted">
+                        {transactionSummary(order)}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: "flex-end", gap: 5 }}>
+                      <Text variant="bodyStrong">
+                        {new Intl.NumberFormat(undefined, {
+                          style: "currency",
+                          currency: order.currencyCode,
+                        }).format(order.totalMinor / 100)}
+                      </Text>
+                      {order.receiptAvailable && order.receiptId ? (
+                        <Pressable
+                          onPress={() => {
+                            void customerTransactionApi
+                              .receipt(organization.id, order.receiptId!)
+                              .then((result) => {
+                                if (result.success)
+                                  setOrderReceipt(result.data);
+                                else setOrdersError(result.error.message);
+                              });
+                          }}
+                        >
+                          <Text variant="label" color="primary">
+                            View Receipt
+                          </Text>
+                        </Pressable>
+                      ) : transactionReceiptCaption(order) ? (
+                        <Text variant="caption" color="textMuted">
+                          {transactionReceiptCaption(order)}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                </ProfileThemeCard>
+              ))}
+            </View>
+          </Section>
+        ) : null}
+
         <View
           style={{
             flexDirection: "row",
@@ -3698,6 +3829,12 @@ export function BusinessExperience({
             </Text>
           </View>
         ) : null}
+
+        <TransactionReceiptViewer
+          receipt={orderReceipt}
+          visible={orderReceipt !== null}
+          onClose={() => setOrderReceipt(null)}
+        />
 
         <Modal
           visible={referralOpen}
