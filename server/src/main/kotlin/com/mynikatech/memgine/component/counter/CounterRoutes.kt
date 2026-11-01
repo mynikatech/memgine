@@ -43,6 +43,44 @@ fun Route.counterRoutes(service: CounterService, commercePaymentService: Counter
             } ?: service.subscriptions(org, store, staff, principal)
             call.respond(ApiResponse.success(subscriptions, call.callId))
         }
+        
+        get("/purchases/agreement/preview") {
+            val org = call.parameters["organizationId"]
+                ?: throw BadRequestException("Organization id is required")
+
+            val challenge = call.request.queryParameters["challengeId"]
+                ?: throw BadRequestException(
+                    "Verified purchase challenge is required"
+                )
+
+            call.respond(
+                ApiResponse.success(
+                    service.counterAgreementPreview(
+                        org,
+                        challenge,
+                        call.authenticatedPrincipal(),
+                        call.request.queryParameters["explicitOfferId"]
+                    ),
+                    call.callId
+                )
+            )
+        }
+
+        post("/purchases/agreement/accept") {
+            val org = call.parameters["organizationId"]
+                ?: throw BadRequestException("Organization id is required")
+
+            call.respond(
+                ApiResponse.success(
+                    service.counterAgreementAccept(
+                        org,
+                        call.receive<CounterAgreementAcceptanceRequest>(),
+                        call.authenticatedPrincipal()
+                    ),
+                    call.callId
+                )
+            )
+        }
         get("/subscriptions/{subscriptionId}/benefits") {
             val org =
                 call.parameters["organizationId"]

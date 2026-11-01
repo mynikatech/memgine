@@ -287,7 +287,8 @@ fun Application.configureRouting(
         paymentService,
         counterCommercePaymentService,
         redemptionService,
-        phoneNormalizer
+        phoneNormalizer,
+        customerService
     )
     val commerceService = CommerceService(
         database.jdbi.onDemand(CommerceSql::class.java),

@@ -17,6 +17,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import com.mynikatech.memgine.security.AuthenticatedPrincipal
 import com.mynikatech.memgine.security.PhoneNormalizer
+import com.mynikatech.memgine.component.customer.CustomerService
 import org.jdbi.v3.core.Jdbi
 import org.postgresql.util.PSQLException
 
@@ -26,7 +27,8 @@ class CounterService(
     private val payments: PaymentService,
     private val counterCommercePayments: CounterCommercePaymentService,
     private val redemptions: RedemptionService,
-    private val phoneNormalizer: PhoneNormalizer = PhoneNormalizer()
+    private val phoneNormalizer: PhoneNormalizer = PhoneNormalizer(),
+    private val customerService: CustomerService
 ) {
     private fun sql(): CounterSql = jdbi.onDemand(CounterSql::class.java)
 
@@ -377,6 +379,112 @@ class CounterService(
                             principal: AuthenticatedPrincipal): CounterPurchaseResult {
         throw BadRequestException("Membership purchase requires verified payment confirmation")
     }
+    
+    /** Resolve the verified customer's identity from the Counter purchase OTP. */
+        private fun verifiedAgreementPurchase(
+            org: String,
+            challengeId: String,
+            principal: AuthenticatedPrincipal
+        ): CounterPurchaseRequest {
+            val context = businessOtp.resolveVerified(
+                challengeId,
+                OtpPurpose.COUNTER_PURCHASE_VERIFY
+            )
+
+            return validatePurchaseContext(org, context, principal).also {
+                if (it.customerUserId.isNullOrBlank()) {
+                    throw BadRequestException(
+                        "Verified customer identity is required for agreement"
+                    )
+                }
+            }
+        }
+
+        fun counterAgreementPreview(
+            org: String,
+            challengeId: String,
+            principal: AuthenticatedPrincipal,
+            offerId: String?
+        ): CounterAgreementReviewDto {
+            val purchase = verifiedAgreementPurchase(
+                org,
+                challengeId,
+                principal
+            )
+
+            val agreement = customerService.membershipAgreementPreview(
+                org,
+                purchase.customerUserId!!,
+                purchase.planId,
+                offerId
+            )
+
+            val quote = purchaseQuote(
+                org,
+                purchase.storeId,
+                purchase.staffId,
+                purchase.planId,
+                purchase.customerUserId,
+                principal,
+                offerId
+            )
+
+            return CounterAgreementReviewDto(
+                agreement.organizationId,
+                agreement.membershipProductId,
+                agreement.planId,
+                agreement.agreementText,
+                agreement.agreementSha256,
+                quote
+            )
+        }
+
+        fun counterAgreementAccept(
+            org: String,
+            request: CounterAgreementAcceptanceRequest,
+            principal: AuthenticatedPrincipal
+        ) = run {
+            if (request.acceptanceChannel != "COUNTER_CUSTOMER") {
+                throw BadRequestException(
+                    "Counter agreement channel is invalid"
+                )
+            }
+
+            val purchase = verifiedAgreementPurchase(
+                org,
+                request.challengeId,
+                principal
+            )
+
+            if (
+                purchase.storeId != request.storeId ||
+                purchase.staffId != request.staffId ||
+                purchase.planId != request.planId ||
+                request.idempotencyKey !in setOf(
+                    "${request.challengeId}:provider",
+                    "${request.challengeId}:cash"
+                )
+            ) {
+                throw BadRequestException(
+                    "Agreement does not match verified Counter purchase"
+                )
+            }
+
+            customerService.acceptMembershipAgreement(
+                org,
+                purchase.customerUserId!!,
+                AcceptMembershipAgreementDto(
+                    request.planId,
+                    request.idempotencyKey,
+                    request.agreementSha256,
+                    request.explicitOfferId,
+                    "COUNTER_CUSTOMER"
+                ),
+                purchase.storeId,
+                purchase.staffId,
+                principal.userId
+            )
+        }
 
     fun startPurchasePayment(
         org: String,
@@ -387,7 +495,13 @@ class CounterService(
         val purchase = validatePurchaseContext(org, context, principal)
         val customerUserId = purchase.customerUserId
             ?: throw BadRequestException("Customer is required for Counter membership payment")
-
+        customerService.requireMembershipAgreement(
+            org,
+            customerUserId,
+            purchase.planId,
+            request.idempotencyKey,
+            request.explicitOfferId
+        )
         val intent = payments.startCounterMembershipPayment(
             org,
             request.copy(

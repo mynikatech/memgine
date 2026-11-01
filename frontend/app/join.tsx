@@ -141,6 +141,7 @@ type PendingCounterTerminalPayment = {
   membershipProductId: string;
   subscriptionPlanId: string;
   counterPurchaseId: string | null;
+  customerUserId: string | null;
   purchaseOtpChallengeId: string | null;
   pollingWindowStartedAt: number;
 };
@@ -482,6 +483,7 @@ function JoinFlow() {
 
   const [purchaseQuote, setPurchaseQuote] =
     useState<MembershipPurchaseQuote | null>(null);
+  const [counterQuoteLoading, setCounterQuoteLoading] = useState(false);
 
   const [explicitOfferId, setExplicitOfferId] = useState(
     params.explicitOfferId?.trim() ?? "",
@@ -621,8 +623,15 @@ function JoinFlow() {
   const counterTerminalPaymentPolling = useRef(false);
   const counterTerminalPaymentDispatching = useRef(false);
 
+  // Scope terminal recovery to the customer or the exact new-customer checkout.
+  // A brand-new Counter sale must never adopt another customer's saved POS payment.
+  // Legacy store/staff-only recovery records remain untouched for investigation.
   const counterTerminalPaymentStorageKey = isStaffSale
-    ? `${COUNTER_TERMINAL_PAYMENT_STORAGE_PREFIX}:${orgId}:${params.storeId ?? ""}:${params.staffId ?? ""}`
+    ? customerId
+      ? `${COUNTER_TERMINAL_PAYMENT_STORAGE_PREFIX}:${orgId}:${params.storeId ?? ""}:${params.staffId ?? ""}:customer:${customerId}`
+      : counterPurchaseId
+        ? `${COUNTER_TERMINAL_PAYMENT_STORAGE_PREFIX}:${orgId}:${params.storeId ?? ""}:${params.staffId ?? ""}:purchase:${counterPurchaseId}`
+        : ""
     : "";
 
   const clearPendingCounterTerminalPayment = useCallback(() => {
@@ -1037,14 +1046,35 @@ function JoinFlow() {
     setAgreementAccepted(false);
     setAgreementPreview(null);
     setAgreementError(null);
-    if (isStaffSale || !session?.userId || !plan?.id) return;
+    if (
+      !plan?.id ||
+      (!isStaffSale && !session?.userId) ||
+      (isStaffSale && (!purchaseOtpVerified || !purchaseOtpChallengeId))
+    )
+      return;
     let mounted = true;
     setAgreementLoading(true);
-    agreementApi
-      .preview(orgId, plan.id, explicitOfferId || undefined)
+    (isStaffSale
+      ? agreementApi.counterPreview(
+          orgId,
+          purchaseOtpChallengeId,
+          explicitOfferId || undefined,
+        )
+      : agreementApi.preview(orgId, plan.id, explicitOfferId || undefined)
+    )
       .then((result) => {
         if (!mounted) return;
         if (!result.success) throw new Error(result.error.message);
+        if (isStaffSale) {
+          // Once OTP resolves the canonical customer, replace any pre-OTP quote
+          // with the authoritative customer-specific Counter financial breakdown.
+          setPurchaseQuote(
+            (
+              result.data as import("@/src/data/api/membership-agreement-api").CounterAgreementReview
+            ).purchaseQuote,
+          );
+          setPurchaseQuoteError(undefined);
+        }
         setAgreementPreview(result.data);
       })
       .catch((error) => {
@@ -1061,7 +1091,16 @@ function JoinFlow() {
     return () => {
       mounted = false;
     };
-  }, [isStaffSale, orgId, plan?.id, explicitOfferId, session?.userId]);
+  }, [
+    isStaffSale,
+    orgId,
+    plan?.id,
+    explicitOfferId,
+    session?.userId,
+    customerId,
+    purchaseOtpVerified,
+    purchaseOtpChallengeId,
+  ]);
 
   const intervalLabel = plan ? getSubscriptionPeriodLabel(plan) : "";
 
@@ -1282,6 +1321,7 @@ function JoinFlow() {
     if (!plan) {
       setPurchaseQuote(null);
       setPurchaseQuoteError(undefined);
+      setCounterQuoteLoading(false);
       return;
     }
 
@@ -1289,6 +1329,7 @@ function JoinFlow() {
 
     setPurchaseQuote(null);
     setPurchaseQuoteError(undefined);
+    if (isStaffSale) setCounterQuoteLoading(true);
 
     const loadQuote = async () => {
       try {
@@ -1317,13 +1358,19 @@ function JoinFlow() {
           setPurchaseQuote(null);
 
           setPurchaseQuoteError(
-            explicitOfferId
+            isStaffSale
               ? error instanceof Error
                 ? error.message
-                : "Membership Offer is unavailable for this purchase."
-              : undefined,
+                : "Unable to verify the Counter purchase total."
+              : explicitOfferId
+                ? error instanceof Error
+                  ? error.message
+                  : "Membership Offer is unavailable for this purchase."
+                : undefined,
           );
         }
+      } finally {
+        if (active) setCounterQuoteLoading(false);
       }
     };
 
@@ -1577,7 +1624,11 @@ function JoinFlow() {
           saved.storeId === params.storeId &&
           saved.staffId === params.staffId &&
           saved.membershipProductId === product.id &&
-          saved.subscriptionPlanId === plan.id;
+          saved.subscriptionPlanId === plan.id &&
+          (customerId
+            ? saved.customerUserId === customerId
+            : !!counterPurchaseId &&
+              saved.counterPurchaseId === counterPurchaseId);
 
         if (!matchesCurrentPurchase) return;
 
@@ -1604,6 +1655,8 @@ function JoinFlow() {
     };
   }, [
     counterTerminalPaymentStorageKey,
+    counterPurchaseId,
+    customerId,
     isStaffSale,
     orgId,
     params.staffId,
@@ -3141,11 +3194,34 @@ function JoinFlow() {
         return;
       }
 
-      // Counter sale has exactly one Memgine OTP. Request it before payment.
+      // Never start a Counter payment from a stale or unverified price.
+      if (
+        isStaffSale &&
+        (counterQuoteLoading || !purchaseQuote || purchaseQuoteError)
+      ) {
+        setOtpError(
+          "The Counter financial summary is not verified. Refresh this checkout before payment.",
+        );
+        return;
+      }
 
+      // Resolve the canonical customer identity first, including new customers.
       if (isStaffSale && !purchaseOtpVerified) {
         await requestCounterPurchaseOtp();
-
+        return;
+      }
+      if (
+        isStaffSale &&
+        (!agreementAccepted ||
+          !agreementPreview ||
+          agreementLoading ||
+          !!agreementError ||
+          agreementPreview.planId !== plan.id ||
+          agreementPreview.membershipProductId !== product.id)
+      ) {
+        setOtpError(
+          "The customer must read and accept the Membership Agreement before payment.",
+        );
         return;
       }
 
@@ -3160,6 +3236,24 @@ function JoinFlow() {
           }
 
           const { context } = counterPurchasePayload();
+
+          const currentAgreement = agreementPreview;
+          if (!currentAgreement) {
+            throw new Error(
+              "Membership Agreement must be loaded before payment.",
+            );
+          }
+          const consent = await agreementApi.counterAccept(orgId, {
+            storeId: context.storeId,
+            staffId: context.staffId,
+            challengeId: purchaseOtpChallengeId,
+            planId: plan.id,
+            idempotencyKey: `${purchaseOtpChallengeId}:provider`,
+            agreementSha256: currentAgreement.agreementSha256,
+            explicitOfferId: explicitOfferId || undefined,
+            acceptanceChannel: "COUNTER_CUSTOMER",
+          });
+          if (!consent.success) throw new Error(consent.error.message);
 
           const intent = await services.counter.startPurchasePayment(
             context,
@@ -3233,6 +3327,7 @@ function JoinFlow() {
               membershipProductId: product.id,
               subscriptionPlanId: plan.id,
               counterPurchaseId: counterPurchaseId || null,
+              customerUserId: customerId || null,
               purchaseOtpChallengeId: purchaseOtpChallengeId || null,
               pollingWindowStartedAt: Date.now(),
             };
@@ -3677,9 +3772,36 @@ function JoinFlow() {
     customerPaymentStartStorageKey,
     agreementAccepted,
     agreementPreview,
+    counterQuoteLoading,
+    purchaseQuote,
+    purchaseQuoteError,
+    agreementLoading,
+    agreementError,
   ]);
 
   const requestCashPayment = useCallback(async () => {
+    if (
+      isStaffSale &&
+      (counterQuoteLoading || !purchaseQuote || purchaseQuoteError)
+    ) {
+      setOtpError(
+        "The Counter financial summary is not verified. Refresh this checkout before payment.",
+      );
+      return;
+    }
+    if (
+      !agreementAccepted ||
+      !agreementPreview ||
+      !plan ||
+      agreementPreview.planId !== plan.id ||
+      agreementLoading ||
+      agreementError
+    ) {
+      setOtpError(
+        "The customer must read and accept the Membership Agreement before payment.",
+      );
+      return;
+    }
     if (!isStaffSale || !purchaseOtpVerified || !purchaseOtpChallengeId) {
       await requestCounterPurchaseOtp();
 
@@ -3690,6 +3812,21 @@ function JoinFlow() {
       setOtpError(undefined);
 
       const { context } = counterPurchasePayload();
+
+      const currentAgreement = agreementPreview;
+      if (!currentAgreement)
+        throw new Error("Membership Agreement must be loaded before payment.");
+      const consent = await agreementApi.counterAccept(orgId, {
+        storeId: context.storeId,
+        staffId: context.staffId,
+        challengeId: purchaseOtpChallengeId,
+        planId: plan.id,
+        idempotencyKey: `${purchaseOtpChallengeId}:cash`,
+        agreementSha256: currentAgreement.agreementSha256,
+        explicitOfferId: explicitOfferId || undefined,
+        acceptanceChannel: "COUNTER_CUSTOMER",
+      });
+      if (!consent.success) throw new Error(consent.error.message);
 
       const intent = await services.counter.startCashPayment(
         context,
@@ -3727,6 +3864,15 @@ function JoinFlow() {
     requestCounterPurchaseOtp,
 
     explicitOfferId,
+    counterQuoteLoading,
+    purchaseQuote,
+    purchaseQuoteError,
+    agreementAccepted,
+    agreementPreview,
+    agreementLoading,
+    agreementError,
+    orgId,
+    plan,
   ]);
 
   const confirmCashReceived = useCallback(async () => {
@@ -4442,7 +4588,7 @@ function JoinFlow() {
                 : plan.price.amountMinor
             }
           />
-          {!isStaffSale ? (
+          {!isStaffSale || purchaseOtpVerified ? (
             <Card padding="md">
               {agreementLoading ? (
                 <Text variant="bodySmall" color="textMuted">
@@ -4484,8 +4630,21 @@ function JoinFlow() {
             </Card>
           ) : null}
 
-          {purchaseQuoteError ? (
+          {isStaffSale && counterQuoteLoading ? (
             <Text variant="bodySmall" color="textMuted">
+              Verifying the Counter price, discount and tax…
+            </Text>
+          ) : null}
+          {isStaffSale &&
+          !counterQuoteLoading &&
+          !purchaseQuote &&
+          !purchaseQuoteError ? (
+            <Text variant="bodySmall" color="danger">
+              Counter financial summary unavailable. Payment is disabled.
+            </Text>
+          ) : null}
+          {purchaseQuoteError ? (
+            <Text variant="bodySmall" color="danger">
               {purchaseQuoteError}
             </Text>
           ) : null}
@@ -4521,28 +4680,83 @@ function JoinFlow() {
             </Text>
           ) : null}
 
-          <Button
-            label={
-              isStaffSale && !purchaseOtpVerified
-                ? "Send Purchase OTP"
-                : t("join.payAndSubscribe")
-            }
-            fullWidth
-            disabled={
-              (!isStaffSale &&
-                (!agreementAccepted ||
-                  !agreementPreview ||
-                  agreementLoading ||
-                  !!agreementError)) ||
-              (!isStaffSale && !session?.userId) ||
-              (!isStaffSale &&
-                (restoringCustomerCollectPayment ||
-                  pendingCustomerCollectPayment !== null ||
-                  customerPaymentRecoveryBlocked))
-            }
-            onPress={payAndSubscribe}
-            testID="join-pay"
-          />
+          {isStaffSale ? (
+            <View style={{ gap: theme.spacing.sm }}>
+              <Text variant="bodyStrong" color="text">
+                {purchaseOtpVerified
+                  ? "Choose payment method"
+                  : "Customer verification"}
+              </Text>
+              {!purchaseOtpVerified ? (
+                <Button
+                  label="Send Purchase OTP"
+                  fullWidth
+                  disabled={
+                    counterQuoteLoading ||
+                    !purchaseQuote ||
+                    !!purchaseQuoteError ||
+                    purchaseOtpBusy
+                  }
+                  onPress={payAndSubscribe}
+                  testID="join-pay"
+                />
+              ) : (
+                <>
+                  <Button
+                    label="Pay at POS"
+                    fullWidth
+                    disabled={
+                      counterQuoteLoading ||
+                      !purchaseQuote ||
+                      !!purchaseQuoteError ||
+                      !agreementAccepted ||
+                      !agreementPreview ||
+                      agreementLoading ||
+                      !!agreementError ||
+                      restoringCounterTerminalPayment ||
+                      pendingCounterTerminalPayment !== null
+                    }
+                    onPress={payAndSubscribe}
+                    testID="join-pay"
+                  />
+                  <Button
+                    label="Pay by Cash and Subscribe"
+                    fullWidth
+                    disabled={
+                      counterQuoteLoading ||
+                      !purchaseQuote ||
+                      !!purchaseQuoteError ||
+                      !agreementAccepted ||
+                      !agreementPreview ||
+                      agreementLoading ||
+                      !!agreementError ||
+                      restoringCounterTerminalPayment ||
+                      pendingCounterTerminalPayment !== null
+                    }
+                    onPress={requestCashPayment}
+                    testID="join-pay-cash"
+                  />
+                </>
+              )}
+            </View>
+          ) : (
+            <Button
+              label={t("join.payAndSubscribe")}
+              fullWidth
+              disabled={
+                !agreementAccepted ||
+                !agreementPreview ||
+                agreementLoading ||
+                !!agreementError ||
+                !session?.userId ||
+                restoringCustomerCollectPayment ||
+                pendingCustomerCollectPayment !== null ||
+                customerPaymentRecoveryBlocked
+              }
+              onPress={payAndSubscribe}
+              testID="join-pay"
+            />
+          )}
           <Button
             label="Cancel"
             variant="secondary"
@@ -4550,15 +4764,6 @@ function JoinFlow() {
             onPress={close}
             testID="join-cancel"
           />
-
-          {isStaffSale && purchaseOtpVerified ? (
-            <Button
-              label="Pay By Cash and Subscribe"
-              fullWidth
-              onPress={requestCashPayment}
-              testID="join-pay-cash"
-            />
-          ) : null}
         </View>
       ) : null}
 
@@ -5100,21 +5305,21 @@ function JoinFlow() {
 
           {/* The customer preview remains part of the separate customer journey. */}
 
-          <Button
-            label="Go to My Memberships"
-            fullWidth
-            onPress={() => router.replace(APP_ROUTES.customer.cards as never)}
-            testID="join-go-to-memberships"
-          />
-
           {isStaffSale ? (
             <Button
-              label={t("common.done")}
+              label="Return to Counter"
               fullWidth
               onPress={goToCounter}
-              testID="join-done"
+              testID="join-return-to-counter"
             />
-          ) : null}
+          ) : (
+            <Button
+              label="View My Memberships"
+              fullWidth
+              onPress={() => router.replace(APP_ROUTES.customer.cards as never)}
+              testID="join-go-to-memberships"
+            />
+          )}
         </View>
       ) : null}
 

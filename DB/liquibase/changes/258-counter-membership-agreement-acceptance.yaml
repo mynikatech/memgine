@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 258-counter-membership-agreement-acceptance
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/258-counter-membership-agreement-acceptance.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

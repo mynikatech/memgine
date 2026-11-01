@@ -100,22 +100,43 @@ class MembershipAgreementOperations(
     }
 
     fun accept(
-        org: String, userId: String, request: AcceptMembershipAgreementDto
+        org: String,
+        userId: String,
+        request: AcceptMembershipAgreementDto,
+        counterStoreId: String? = null,
+        counterStaffId: String? = null,
+        counterActorUserId: String? = null
     ): MembershipAgreementAcceptedDto {
         validateCustomer(org, userId)
         if (request.idempotencyKey.isBlank() || request.idempotencyKey.length > 160 ||
             request.agreementSha256.length != 64 ||
-            request.acceptanceChannel !in setOf("CUSTOMER_WEB", "CUSTOMER_MOBILE")) {
+            request.acceptanceChannel !in setOf("CUSTOMER_WEB", "CUSTOMER_MOBILE",  "COUNTER_CUSTOMER")) {
             throw BadRequestException("Invalid membership agreement acceptance")
         }
         val preview = preview(org, userId, request.planId, request.explicitOfferId)
         if (preview.agreementSha256 != request.agreementSha256) {
             throw ConflictException("Membership agreement or pricing changed; read the updated agreement")
         }
+        if (request.acceptanceChannel == "COUNTER_CUSTOMER" &&
+            (counterStoreId.isNullOrBlank() ||
+                counterStaffId.isNullOrBlank() ||
+                counterActorUserId.isNullOrBlank())
+        ) {
+            throw BadRequestException(
+                "Counter acceptance must include an authorized Store and staff"
+            )
+        }
         val snapshot = buildJsonObject {
             put("planId", request.planId)
             put("explicitOfferId", request.explicitOfferId ?: "")
             put("renderVersion", 1)
+
+            if (request.acceptanceChannel == "COUNTER_CUSTOMER") {
+                put("counterStoreId", counterStoreId!!)
+                put("counterStaffId", counterStaffId!!)
+                put("counterActorUserId", counterActorUserId!!)
+                put("consentMethod", "CUSTOMER_TAPPED_COUNTER_SCREEN")
+            }
         }.toString()
         val stored = sql.recordMembershipAgreementAcceptance(
             UUID.randomUUID().toString(), org, userId, preview.membershipProductId,

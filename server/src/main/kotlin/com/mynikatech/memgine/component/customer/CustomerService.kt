@@ -94,9 +94,34 @@ class CustomerService(
     fun membershipAgreementPreview(org: String, userId: String, planId: String, offerId: String?) =
         agreementOperations.preview(org, userId, planId, offerId)
 
-    fun acceptMembershipAgreement(org: String, userId: String, request: AcceptMembershipAgreementDto) =
-        agreementOperations.accept(org, userId, request)
-
+    fun acceptMembershipAgreement(
+        org: String,
+        userId: String,
+        request: AcceptMembershipAgreementDto,
+        counterStoreId: String? = null,
+        counterStaffId: String? = null,
+        counterActorUserId: String? = null
+    ) = agreementOperations.accept(
+        org,
+        userId,
+        request,
+        counterStoreId,
+        counterStaffId,
+        counterActorUserId
+    )
+    fun requireMembershipAgreement(
+        org: String,
+        userId: String,
+        planId: String,
+        key: String,
+        offerId: String?
+    ) = agreementOperations.requireAccepted(
+        org,
+        userId,
+        planId,
+        key,
+        offerId
+    )
     fun customerMembershipAgreements(org: String, userId: String) =
         agreementOperations.history(org, userId)
 
