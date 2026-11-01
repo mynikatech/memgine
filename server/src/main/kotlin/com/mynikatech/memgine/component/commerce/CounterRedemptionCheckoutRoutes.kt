@@ -151,6 +151,44 @@ fun Route.counterRedemptionCheckoutRoutes(
             )
         }
 
+        post("/payment/cash/start") {
+            val organizationId = required(call.parameters["organizationId"], "Organization id")
+            val transactionId = required(call.parameters["transactionId"], "Redemption transaction id")
+            val request = call.receive<CounterRedemptionCheckoutRequest>()
+
+            call.respond(
+                ApiResponse.success(
+                    service.startRedemptionCashPayment(
+                        organizationId = organizationId,
+                        redemptionTransactionId = transactionId,
+                        storeId = request.storeId,
+                        staffId = request.staffId,
+                        actorUserId = call.authenticatedPrincipal().userId
+                    ),
+                    call.callId
+                )
+            )
+        }
+
+        post("/payment/cash/confirm") {
+            val organizationId = required(call.parameters["organizationId"], "Organization id")
+            val transactionId = required(call.parameters["transactionId"], "Redemption transaction id")
+            val request = call.receive<CounterRedemptionCheckoutRequest>()
+
+            call.respond(
+                ApiResponse.success(
+                    service.confirmRedemptionCashPayment(
+                        organizationId = organizationId,
+                        redemptionTransactionId = transactionId,
+                        storeId = request.storeId,
+                        staffId = request.staffId,
+                        actorUserId = call.authenticatedPrincipal().userId
+                    ),
+                    call.callId
+                )
+            )
+        }
+
         post("/payment/test-result") {
             val organizationId = required(call.parameters["organizationId"], "Organization id")
             val transactionId = required(call.parameters["transactionId"], "Redemption transaction id")

@@ -164,6 +164,11 @@ export type CounterRedemptionCheckout = {
 
   pricingDiscrepancies?: CounterRedemptionPriceDiscrepancy[];
 
+  /** Derived from the persisted cash attempt; never supplied by the client. */
+  paymentMethod?: "CASH" | null;
+
+  cashPaymentStatus?: "NOT_STARTED" | "PENDING" | "SUCCEEDED" | null;
+
   paymentRequired: boolean;
 };
 
@@ -1144,6 +1149,46 @@ export class CounterApi {
         `redemption-transactions/${encodeURIComponent(
           transactionId,
         )}/payment/remote-terminal/start`,
+      ),
+
+      {
+        storeId: ctx.storeId,
+
+        staffId: ctx.staffId,
+      },
+    );
+  }
+
+  startRedemptionCashPayment(
+    ctx: CounterContext,
+
+    transactionId: ID,
+  ): Promise<ApiResult<CounterRedemptionCheckout>> {
+    return httpClient.post(
+      this.path(
+        ctx,
+
+        `redemption-transactions/${encodeURIComponent(transactionId)}/payment/cash/start`,
+      ),
+
+      {
+        storeId: ctx.storeId,
+
+        staffId: ctx.staffId,
+      },
+    );
+  }
+
+  confirmRedemptionCashPayment(
+    ctx: CounterContext,
+
+    transactionId: ID,
+  ): Promise<ApiResult<CounterRedemptionCheckout>> {
+    return httpClient.post(
+      this.path(
+        ctx,
+
+        `redemption-transactions/${encodeURIComponent(transactionId)}/payment/cash/confirm`,
       ),
 
       {

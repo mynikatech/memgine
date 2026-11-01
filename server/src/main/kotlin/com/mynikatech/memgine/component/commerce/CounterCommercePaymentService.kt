@@ -927,6 +927,87 @@ class CounterCommercePaymentService(
         )
     }
 
+    /**
+     * Records the staff's intention to take cash against the already persisted
+     * redemption checkout. No provider is contacted and all financial facts
+     * remain owned by the locked Commerce transaction.
+     */
+    fun startRedemptionCashPayment(
+        organizationId: String,
+        redemptionTransactionId: String,
+        storeId: String,
+        staffId: String,
+        actorUserId: String
+    ): CounterRedemptionCheckoutDto = translate {
+        val checkout = redemptionCheckout(
+            organizationId,
+            redemptionTransactionId,
+            storeId,
+            staffId,
+            actorUserId
+        )
+        if ((checkout.totalMinor ?: 0L) <= 0L) {
+            throw BadRequestException("Counter redemption does not require cash payment")
+        }
+        if (!sql().beginRedemptionCashPayment(
+                organizationId,
+                checkout.commerceTransactionId,
+                actorUserId
+            )) {
+            throw ConflictException("Counter redemption cash payment was not started")
+        }
+        redemptionCheckoutDto(
+            redemptionCheckout(
+                organizationId,
+                redemptionTransactionId,
+                storeId,
+                staffId,
+                actorUserId
+            ),
+            actorUserId
+        )
+    }
+
+    /**
+     * Confirms the single persisted Cash attempt and atomically runs the
+     * established redemption finalizer. Replays return the same completed
+     * checkout rather than consuming benefits a second time.
+     */
+    fun confirmRedemptionCashPayment(
+        organizationId: String,
+        redemptionTransactionId: String,
+        storeId: String,
+        staffId: String,
+        actorUserId: String
+    ): CounterRedemptionCheckoutDto = translate {
+        val checkout = redemptionCheckout(
+            organizationId,
+            redemptionTransactionId,
+            storeId,
+            staffId,
+            actorUserId
+        )
+        if ((checkout.totalMinor ?: 0L) <= 0L) {
+            throw BadRequestException("Counter redemption does not require cash payment")
+        }
+        if (!sql().confirmRedemptionCashPayment(
+                organizationId,
+                checkout.commerceTransactionId,
+                actorUserId
+            )) {
+            throw ConflictException("Counter redemption cash payment was not confirmed")
+        }
+        val completed = redemptionCheckout(
+            organizationId,
+            redemptionTransactionId,
+            storeId,
+            staffId,
+            actorUserId
+        )
+        recordCompletion(completed.commerceTransactionId, actorUserId)
+        redemptionCheckoutDto(completed, actorUserId)
+    }
+
     fun confirmRedemptionTestPayment(
         organizationId: String,
         redemptionTransactionId: String,
@@ -1471,6 +1552,10 @@ class CounterCommercePaymentService(
             ?.takeIf { it.isNotBlank() }
             ?.let { Json.decodeFromString<List<CounterRedemptionPriceDiscrepancyDto>>(it) }
             ?: emptyList()
+        val cashPayment = sql().redemptionCashPaymentState(
+            row.commerceTransactionId,
+            actorUserId
+        )
 
         return CounterRedemptionCheckoutDto(
         redemptionTransactionId = row.redemptionTransactionId,
@@ -1494,6 +1579,8 @@ class CounterCommercePaymentService(
         pricingAcknowledged = pricing?.pricingReconciliationHash != null &&
             pricing.pricingReconciliationHash == pricing.pricingAcknowledgedHash,
         pricingDiscrepancies = discrepancies,
+        paymentMethod = cashPayment.paymentMethod,
+        cashPaymentStatus = cashPayment.cashPaymentStatus,
         paymentRequired = (row.totalMinor ?: 0L) > 0L &&
             row.commerceStatus !in setOf("COMPLETED", "PROVIDER_SUCCEEDED")
         )
@@ -1889,6 +1976,11 @@ class CounterRedemptionCheckoutRow {
     var customerUserId: String? = null
     var idempotencyKey: String = ""
     var organizationId: String = ""
+}
+
+class CounterRedemptionCashPaymentStateRow {
+    var cashPaymentStatus: String = "NOT_STARTED"
+    var paymentMethod: String? = null
 }
 
 class CounterPendingRedemptionTransactionRow {
@@ -2296,6 +2388,27 @@ interface CounterCommercePaymentSql {
         @Bind("staffId") staffId: String,
         @Bind("actorUserId") actorUserId: String
     ): CounterRedemptionCheckoutRow?
+
+    @SqlQuery("SELECT * FROM commerce_get_counter_redemption_cash_payment_state(:transactionId,:actorUserId)")
+    @RegisterBeanMapper(CounterRedemptionCashPaymentStateRow::class)
+    fun redemptionCashPaymentState(
+        @Bind("transactionId") transactionId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): CounterRedemptionCashPaymentStateRow
+
+    @SqlQuery("SELECT commerce_begin_counter_redemption_cash_payment(:organizationId,:transactionId,:actorUserId)")
+    fun beginRedemptionCashPayment(
+        @Bind("organizationId") organizationId: String,
+        @Bind("transactionId") transactionId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): Boolean
+
+    @SqlQuery("SELECT commerce_confirm_counter_redemption_cash_payment(:organizationId,:transactionId,:actorUserId)")
+    fun confirmRedemptionCashPayment(
+        @Bind("organizationId") organizationId: String,
+        @Bind("transactionId") transactionId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): Boolean
 
     @SqlQuery("""SELECT * FROM commerce_review_counter_redemption_checkout(
         :redemptionTransactionId,:organizationId,:storeId,:staffId,:actorUserId)""")

@@ -80,53 +80,6 @@ type PendingCounterRedemptionPayment = {
   pollingWindowStartedAt: number;
 };
 
-const quoteMatchesCheckoutReview = (
-  quote: CounterRedemptionQuote | null,
-  review: CounterRedemptionCheckoutReview,
-): boolean => {
-  if (
-    !quote ||
-    quote.currencyCode !== review.currencyCode ||
-    quote.subtotalMinor !== review.subtotalMinor ||
-    quote.adjustmentTotalMinor !== review.adjustmentTotalMinor ||
-    quote.taxTotalMinor !== review.taxTotalMinor ||
-    quote.totalMinor !== review.payableTotalMinor ||
-    quote.lines.length !== review.lines.length
-  ) {
-    return false;
-  }
-  return quote.lines.every((quoteLine) =>
-    review.lines.some((reviewLine) => {
-      const matchingAllocations =
-        quoteLine.allocations.length === reviewLine.allocations.length &&
-        quoteLine.allocations.every((quoteAllocation) =>
-          reviewLine.allocations.some(
-            (reviewAllocation) =>
-              reviewAllocation.adjustmentId === quoteAllocation.adjustmentId &&
-              reviewAllocation.adjustmentType ===
-                quoteAllocation.adjustmentType &&
-              reviewAllocation.itemType === quoteAllocation.itemType &&
-              reviewAllocation.benefitId === quoteAllocation.benefitId &&
-              reviewAllocation.offerId === quoteAllocation.offerId &&
-              reviewAllocation.appliedAmountMinor ===
-                quoteAllocation.appliedAmountMinor,
-          ),
-        );
-      return (
-        matchingAllocations &&
-        reviewLine.canonicalProductId === quoteLine.productId &&
-        reviewLine.quantity === quoteLine.quantity &&
-        reviewLine.unitPriceMinor === quoteLine.unitPriceMinor &&
-        reviewLine.lineSubtotalMinor === quoteLine.subtotalMinor &&
-        reviewLine.allocations.reduce(
-          (total, item) => total + item.appliedAmountMinor,
-          0,
-        ) === quoteLine.discountMinor
-      );
-    }),
-  );
-};
-
 const COUNTER_REDEMPTION_PAYMENT_STORAGE_PREFIX =
   "counter-redemption-terminal-payment";
 const COUNTER_REDEMPTION_PAYMENT_POLL_INTERVAL_MS = 2_000;
@@ -340,6 +293,8 @@ export default function StaffCounter() {
     useState<CounterRedemptionCheckoutReview | null>(null);
   const [redemptionCheckoutStage, setRedemptionCheckoutStage] =
     useState<RedemptionCheckoutStage>("idle");
+  const [cashConfirmationVisible, setCashConfirmationVisible] =
+    useState(false);
   const redemptionCheckoutValidationRef = useRef<
     CounterRedemptionTransactionValidation[]
   >([]);
@@ -448,6 +403,7 @@ export default function StaffCounter() {
     setRedemptionCheckout(null);
     setRedemptionReview(null);
     setRedemptionCheckoutStage("idle");
+    setCashConfirmationVisible(false);
     redemptionCheckoutValidationRef.current = [];
     redemptionCheckoutInFlight.current = false;
     redemptionRemoteStartInFlight.current = false;
@@ -1258,6 +1214,7 @@ export default function StaffCounter() {
     setExecutedTransaction(null);
     setRedemptionCheckout(null);
     setRedemptionCheckoutStage("idle");
+    setCashConfirmationVisible(false);
     redemptionCheckoutValidationRef.current = [];
     redemptionCheckoutInFlight.current = false;
     redemptionRemoteStartInFlight.current = false;
@@ -1361,7 +1318,10 @@ export default function StaffCounter() {
 
     setResult({
       kind: "SUCCESS",
-      message: `Redemption ${checkout.transactionNumber} completed after POS payment.`,
+      message:
+        checkout.paymentMethod === "CASH"
+          ? `Redemption ${checkout.transactionNumber} completed with Cash.`
+          : `Redemption ${checkout.transactionNumber} completed after POS payment.`,
       customer: customer ?? undefined,
       outcomes: validation.map((item) => ({
         benefitId: item.itemId,
@@ -1448,6 +1408,14 @@ export default function StaffCounter() {
       latest.commerceStatus === "COMPLETED"
     ) {
       await finishRedemptionCheckout(latest);
+      return;
+    }
+
+    // A cash attempt is durable but has no asynchronous provider callback.
+    // It remains recoverable through the same read-only checkout endpoint and
+    // can only be finalized by an explicit staff confirmation.
+    if (latest.cashPaymentStatus === "PENDING") {
+      setRedemptionCheckoutStage("waiting");
       return;
     }
 
@@ -1641,6 +1609,28 @@ export default function StaffCounter() {
     setError("");
   };
 
+  const setAsideReadyRedemptionCheckout = () => {
+    if (
+      !redemptionCheckout ||
+      redemptionCheckoutStage !== "ready" ||
+      redemptionCheckout.commerceStatus !== "ORDER_CREATED" ||
+      redemptionCheckout.cashPaymentStatus === "PENDING"
+    ) {
+      setError(
+        "This payment is no longer safe to set aside. Use its existing payment-status recovery path.",
+      );
+      return;
+    }
+
+    // Local-only: the persisted redemption remains available for authorized
+    // recovery, while no payment is cancelled or otherwise changed.
+    setCashConfirmationVisible(false);
+    setRedemptionCheckout(null);
+    setRedemptionCheckoutStage("idle");
+    setResult(null);
+    returnToRedemptionSelection();
+  };
+
   const startReviewedRedemptionPayment = async () => {
     if (!redemptionCheckout || busy) return;
     setBusy(true);
@@ -1661,6 +1651,46 @@ export default function StaffCounter() {
           ? failure.message
           : "Unable to start terminal payment.",
       );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmReviewedRedemptionCashPayment = async () => {
+    if (!redemptionCheckout || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      // Starting and confirming are distinct durable server operations. The
+      // confirmation dialog itself has no financial side effect until this
+      // explicit staff action; neither operation contacts Poynt.
+      const cashAttempt = await services.counter.startRedemptionCashPayment(
+        counterContext(),
+        redemptionCheckout.redemptionTransactionId,
+      );
+      setRedemptionCheckout(cashAttempt);
+      const completed = await services.counter.confirmRedemptionCashPayment(
+        counterContext(),
+        redemptionCheckout.redemptionTransactionId,
+      );
+      setCashConfirmationVisible(false);
+      await applyRedemptionCheckoutState(completed, false);
+    } catch (failure) {
+      setCashConfirmationVisible(false);
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Cash confirmation could not be verified. Check the existing transaction before taking another payment.",
+      );
+      try {
+        const latest = await services.counter.redemptionCheckout(
+          counterContext(),
+          redemptionCheckout.redemptionTransactionId,
+        );
+        await applyRedemptionCheckoutState(latest, false);
+      } catch {
+        // Preserve the already displayed checkout for explicit recovery.
+      }
     } finally {
       setBusy(false);
     }
@@ -1737,7 +1767,7 @@ export default function StaffCounter() {
       setError(
         failure instanceof Error
           ? failure.message
-          : "Unable to check terminal payment status.",
+          : "Unable to check payment status.",
       );
     } finally {
       if (foregroundGeneration === redemptionForegroundGeneration.current) {
@@ -1925,7 +1955,6 @@ export default function StaffCounter() {
     setOtpVerifying(true);
     setBusy(true);
     try {
-      const approvedQuote = preOtpReview;
       const completed = await services.counter.completeRedemptionOtp(
         counterContext(),
         otpRequestId,
@@ -1951,11 +1980,10 @@ export default function StaffCounter() {
         counterContext(),
         completed.transactionId,
       );
-      if (quoteMatchesCheckoutReview(approvedQuote, review)) {
-        await beginRedemptionCheckout(completed, validation, review.reviewHash);
-      } else {
-        setRedemptionReview(review);
-      }
+      // OTP is action-bound to the reviewed selection. The authoritative
+      // checkout review supplies the fresh hash for the same persisted
+      // transaction; it is not another staff confirmation screen.
+      await beginRedemptionCheckout(completed, validation, review.reviewHash);
     } catch (failure) {
       setError(
         failure instanceof Error
@@ -2244,6 +2272,13 @@ export default function StaffCounter() {
 
   const consolidatedRedemption =
     action === "redeem" && (mode === "assisted" || mode === "phone");
+  const redemptionWorkflowActive =
+    action === "redeem" &&
+    (redemptionReview !== null ||
+      preOtpReview !== null ||
+      otpSent ||
+      redemptionCheckout !== null ||
+      redemptionCheckoutStage !== "idle");
   const redemptionBenefitItems = redemptionSelection?.benefits ?? [];
   const redemptionOfferItems = redemptionSelection?.offers ?? [];
   const redemptionBenefitCount = redemptionBenefitItems.filter(
@@ -2297,10 +2332,7 @@ export default function StaffCounter() {
     if (!customer) {
       return null;
     }
-    if (
-      redemptionReview ||
-      (method !== RedemptionMethod.STAFF_ASSISTED && preOtpReview)
-    ) {
+    if (redemptionWorkflowActive) {
       return null;
     }
 
@@ -2508,7 +2540,7 @@ export default function StaffCounter() {
                   ]}
                 >
                   <Text style={styles.primaryBtnText}>
-                    {busy ? "Preparing..." : "Continue to POS"}
+                    {busy ? "Preparing..." : "Review Redemption"}
                   </Text>
                 </Pressable>
               ) : !otpSent ? (
@@ -2585,6 +2617,14 @@ export default function StaffCounter() {
             </View>
           </>
         )}
+        <Pressable
+          testID="counter-cancel-redemption-selection"
+          disabled={busy}
+          onPress={resetIdentity}
+          style={[styles.secondaryBtn, busy && styles.btnDisabled]}
+        >
+          <Text style={styles.secondaryBtnText}>Cancel Redemption</Text>
+        </Pressable>
       </View>
     );
   };
@@ -2979,6 +3019,63 @@ export default function StaffCounter() {
         </Pressable>
       </Modal>
 
+      <Modal
+        visible={cashConfirmationVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!busy) setCashConfirmationVisible(false);
+        }}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => {
+            if (!busy) setCashConfirmationVisible(false);
+          }}
+        >
+          <Pressable style={styles.modalCard} onPress={() => undefined}>
+            <Text style={styles.cardTitle}>Confirm Cash &amp; Redeem</Text>
+            <Text style={styles.muted}>
+              Record cash received only after collecting the exact amount below.
+            </Text>
+            <View style={styles.ctxRow}>
+              <Text style={styles.ctxLabel}>Redemption</Text>
+              <Text style={styles.ctxValue}>
+                {redemptionCheckout?.transactionNumber ?? ""}
+              </Text>
+            </View>
+            <View style={styles.ctxRow}>
+              <Text style={styles.ctxLabel}>Cash received</Text>
+              <Text style={styles.ctxValue}>
+                {redemptionCheckout?.currencyCode ?? ""} {((redemptionCheckout?.totalMinor ?? 0) / 100).toFixed(2)}
+              </Text>
+            </View>
+            <Text style={styles.muted}>
+              This completes the existing redemption. It does not send a Poynt payment request.
+            </Text>
+            <View style={styles.rowWrap}>
+              <Pressable
+                disabled={busy}
+                onPress={() => setCashConfirmationVisible(false)}
+                style={[styles.secondaryBtn, busy && styles.btnDisabled]}
+              >
+                <Text style={styles.secondaryBtnText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                testID="counter-redemption-confirm-cash"
+                disabled={busy}
+                onPress={() => void confirmReviewedRedemptionCashPayment()}
+                style={[styles.primaryBtn, busy && styles.btnDisabled]}
+              >
+                <Text style={styles.primaryBtnText}>
+                  {busy ? "Confirming..." : "Confirm Cash Received"}
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Redeem vs Sell */}
       <View style={styles.modeRow}>
         {(["redeem", "sell"] as const).map((currentAction) => {
@@ -3042,7 +3139,14 @@ export default function StaffCounter() {
       </View>
 
       {/* QR */}
-      {action === "redeem" && mode === "qr" ? (
+      {action === "redeem" &&
+      mode === "qr" &&
+      (dynamicRedemptionStage === "success" ||
+        dynamicRedemptionStage === "scan" ||
+        (dynamicRedemptionStage === "review" &&
+          !redemptionReview &&
+          !redemptionCheckout &&
+          redemptionCheckoutStage === "idle")) ? (
         <View style={styles.card}>
           {dynamicRedemptionStage === "success" && executedTransaction ? (
             <>
@@ -3336,7 +3440,8 @@ export default function StaffCounter() {
       ) : null}
 
       {/* Phone lookup — OTP is requested only after the exact action is selected */}
-      {mode === "phone" ? (
+      {mode === "phone" &&
+      (action !== "redeem" || !redemptionWorkflowActive) ? (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Phone Lookup</Text>
 
@@ -3379,7 +3484,8 @@ export default function StaffCounter() {
       ) : null}
 
       {/* Staff-Assisted */}
-      {mode === "assisted" ? (
+      {mode === "assisted" &&
+      (action !== "redeem" || !redemptionWorkflowActive) ? (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Staff-Assisted Lookup</Text>
 
@@ -3709,6 +3815,10 @@ export default function StaffCounter() {
           <Text style={styles.muted}>
             Redemption {redemptionReview.transactionNumber}
           </Text>
+          <Text style={styles.identified}>
+            Customer: {customer?.fullName ?? "Customer"}
+          </Text>
+          <Text style={styles.muted}>Store: {store?.name ?? storeId}</Text>
           {redemptionReview.lines.map((line) => (
             <View key={line.redemptionItemId} style={styles.redemptionItem}>
               <View style={styles.redemptionItemContent}>
@@ -3882,7 +3992,9 @@ export default function StaffCounter() {
           ) : null}
           {redemptionCheckoutStage === "waiting" ? (
             <Text style={styles.identified}>
-              {redemptionPaymentTimedOut
+              {redemptionCheckout.cashPaymentStatus === "PENDING"
+                ? "Cash confirmation is pending. Do not take another payment; confirm the existing cash transaction or check its status."
+                : redemptionPaymentTimedOut
                 ? "Payment confirmation is pending. Automatic checking has stopped. Do not initiate another payment until the original payment has been investigated."
                 : "Poynt accepted the payment request. Waiting for confirmation from the terminal."}
             </Text>
@@ -3929,6 +4041,55 @@ export default function StaffCounter() {
             >
               <Text style={styles.primaryBtnText}>Confirm & Send Payment</Text>
             </Pressable>
+          ) : null}
+
+          {redemptionCheckoutStage === "ready" &&
+          (redemptionCheckout.totalMinor ?? 0) > 0 &&
+          redemptionCheckout.cashPaymentStatus !== "PENDING" &&
+          (!redemptionCheckout.pricingReconciliationRequired ||
+            redemptionCheckout.pricingAcknowledged) ? (
+            <Pressable
+              testID="counter-redemption-cash-payment"
+              disabled={busy}
+              onPress={() => setCashConfirmationVisible(true)}
+              style={[styles.secondaryBtn, busy && styles.btnDisabled]}
+            >
+              <Text style={styles.secondaryBtnText}>Cash &amp; Redeem</Text>
+            </Pressable>
+          ) : null}
+
+          {redemptionCheckoutStage === "ready" &&
+          redemptionCheckout.commerceStatus === "ORDER_CREATED" &&
+          redemptionCheckout.cashPaymentStatus !== "PENDING" ? (
+            <Pressable
+              testID="counter-redemption-set-aside"
+              disabled={busy}
+              onPress={setAsideReadyRedemptionCheckout}
+              style={[styles.secondaryBtn, busy && styles.btnDisabled]}
+            >
+              <Text style={styles.secondaryBtnText}>Cancel</Text>
+            </Pressable>
+          ) : null}
+
+          {redemptionCheckoutStage === "waiting" &&
+          redemptionCheckout.cashPaymentStatus === "PENDING" ? (
+            <View style={styles.rowWrap}>
+              <Pressable
+                testID="counter-redemption-resume-cash-confirmation"
+                disabled={busy}
+                onPress={() => setCashConfirmationVisible(true)}
+                style={[styles.primaryBtn, busy && styles.btnDisabled]}
+              >
+                <Text style={styles.primaryBtnText}>Confirm Cash Received</Text>
+              </Pressable>
+              <Pressable
+                disabled={busy}
+                onPress={() => void checkRedemptionPaymentStatus()}
+                style={[styles.secondaryBtn, busy && styles.btnDisabled]}
+              >
+                <Text style={styles.secondaryBtnText}>Check Payment Status</Text>
+              </Pressable>
+            </View>
           ) : null}
 
           {redemptionCheckoutStage === "waiting" &&

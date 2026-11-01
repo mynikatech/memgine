@@ -206,6 +206,24 @@ export class CounterService {
       .then((result) => this.unwrap(result));
   }
 
+  startRedemptionCashPayment(
+    ctx: CounterContext,
+    transactionId: ID,
+  ): Promise<CounterRedemptionCheckout> {
+    return this.api
+      .startRedemptionCashPayment(ctx, transactionId)
+      .then((result) => this.unwrap(result));
+  }
+
+  confirmRedemptionCashPayment(
+    ctx: CounterContext,
+    transactionId: ID,
+  ): Promise<CounterRedemptionCheckout> {
+    return this.api
+      .confirmRedemptionCashPayment(ctx, transactionId)
+      .then((result) => this.unwrap(result));
+  }
+
   confirmRedemptionTestPayment(
     ctx: CounterContext,
     transactionId: ID,

@@ -223,6 +223,10 @@ data class CounterRedemptionCheckoutDto(
     val pricingReconciliationHash: String? = null,
     val pricingAcknowledged: Boolean = false,
     val pricingDiscrepancies: List<CounterRedemptionPriceDiscrepancyDto> = emptyList(),
+    /** CASH is derived from the persisted attempt, never from the client. */
+    val paymentMethod: String? = null,
+    /** NOT_STARTED, PENDING, or SUCCEEDED for the separate Cash & Redeem path. */
+    val cashPaymentStatus: String? = null,
     val paymentRequired: Boolean
 )
 
