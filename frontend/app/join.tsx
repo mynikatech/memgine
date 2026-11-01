@@ -146,6 +146,8 @@ type PendingCounterTerminalPayment = {
   pollingWindowStartedAt: number;
 };
 
+type PurchaseFlowType = "CUSTOMER_SELF_SERVICE" | "STAFF_ASSISTED";
+
 type PendingCustomerCollectPayment = {
   organizationId: string;
   customerUserId: string;
@@ -342,6 +344,10 @@ function JoinFlow() {
 
     source?: string;
 
+    purchaseFlowType?: PurchaseFlowType;
+
+    purchaseMode?: "COUNTER_OTP" | "STAFF_ASSISTED";
+
     paymentIntentId?: string;
 
     paymentCancelled?: string;
@@ -370,12 +376,25 @@ function JoinFlow() {
 
     */
 
-  const isStaffSale = params.source === "STAFF_ASSISTED";
+  const purchaseFlowType: PurchaseFlowType =
+    params.purchaseFlowType === "STAFF_ASSISTED" ||
+    params.source === "STAFF_ASSISTED"
+      ? "STAFF_ASSISTED"
+      : "CUSTOMER_SELF_SERVICE";
+
+  const isStaffSale = purchaseFlowType === "STAFF_ASSISTED";
 
   const suppliedCustomerId = params.customerId ?? "";
-
   const customerId =
     suppliedCustomerId || (!isStaffSale ? (session?.userId ?? "") : "");
+
+  // Purchase OTP is not required for authorized Staff-Assisted checkout.
+  const isStaffAssistedPurchase =
+    isStaffSale &&
+    Boolean(customerId) &&
+    params.purchaseMode === "STAFF_ASSISTED";
+
+  const requiresPurchaseOtp = isStaffSale && !isStaffAssistedPurchase;
 
   const returnedPaymentIntentId = params.paymentIntentId;
 
@@ -466,6 +485,10 @@ function JoinFlow() {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
 
   const [reference, setReference] = useState("");
+
+  const [receiptPaymentMethod, setReceiptPaymentMethod] = useState<
+    string | null
+  >(null);
 
   const [cashPayment, setCashPayment] = useState<{
     paymentIntentId: string;
@@ -1049,7 +1072,10 @@ function JoinFlow() {
     if (
       !plan?.id ||
       (!isStaffSale && !session?.userId) ||
-      (isStaffSale && (!purchaseOtpVerified || !purchaseOtpChallengeId))
+      (isStaffSale &&
+        (isStaffAssistedPurchase
+          ? !counterPurchaseId
+          : !purchaseOtpVerified || !purchaseOtpChallengeId))
     )
       return;
     let mounted = true;
@@ -1057,7 +1083,9 @@ function JoinFlow() {
     (isStaffSale
       ? agreementApi.counterPreview(
           orgId,
-          purchaseOtpChallengeId,
+          isStaffAssistedPurchase
+            ? { counterPurchaseId }
+            : { challengeId: purchaseOtpChallengeId },
           explicitOfferId || undefined,
         )
       : agreementApi.preview(orgId, plan.id, explicitOfferId || undefined)
@@ -1100,9 +1128,19 @@ function JoinFlow() {
     customerId,
     purchaseOtpVerified,
     purchaseOtpChallengeId,
+    counterPurchaseId,
+    isStaffAssistedPurchase,
   ]);
 
   const intervalLabel = plan ? getSubscriptionPeriodLabel(plan) : "";
+
+  const membershipPlanDisplayName = [
+    product?.displayName ?? product?.membershipProductName,
+    plan?.subscriptionPlanName,
+    intervalLabel,
+  ]
+    .filter(Boolean)
+    .join(" - ");
 
   const priceText = plan
     ? `${formatMoney(plan.price.amountMinor)} · ${intervalLabel}`
@@ -1284,7 +1322,7 @@ function JoinFlow() {
 
     const phone = customerId ? (customer?.phone ?? "") : draft!.primaryPhone;
 
-    if (!phone) {
+    if (requiresPurchaseOtp && !phone) {
       throw new Error("Customer phone number is required for verification.");
     }
 
@@ -1315,6 +1353,7 @@ function JoinFlow() {
     customer,
 
     orgId,
+    requiresPurchaseOtp,
   ]);
 
   useEffect(() => {
@@ -1388,6 +1427,51 @@ function JoinFlow() {
     params.source,
     explicitOfferId,
     session?.userId,
+  ]);
+
+  // The server validates staff permissions and existing-customer identity.
+  useEffect(() => {
+    if (
+      !isStaffAssistedPurchase ||
+      !plan?.id ||
+      !params.storeId ||
+      !params.staffId ||
+      !customerId
+    )
+      return;
+    let active = true;
+    setCounterPurchaseId("");
+    setAgreementAccepted(false);
+    void services.counter
+      .prepareStaffAssistedPurchase(
+        {
+          organizationId: orgId,
+          storeId: params.storeId,
+          staffId: params.staffId,
+        },
+        { planId: plan.id, customerUserId: customerId },
+      )
+      .then((id) => {
+        if (active) setCounterPurchaseId(id);
+      })
+      .catch((error) => {
+        if (active)
+          setOtpError(
+            error instanceof Error
+              ? error.message
+              : "Unable to prepare Staff-Assisted purchase.",
+          );
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    isStaffAssistedPurchase,
+    orgId,
+    params.storeId,
+    params.staffId,
+    customerId,
+    plan?.id,
   ]);
 
   const requestCounterPurchaseOtp = useCallback(
@@ -3206,7 +3290,7 @@ function JoinFlow() {
       }
 
       // Resolve the canonical customer identity first, including new customers.
-      if (isStaffSale && !purchaseOtpVerified) {
+      if (requiresPurchaseOtp && !purchaseOtpVerified) {
         await requestCounterPurchaseOtp();
         return;
       }
@@ -3229,10 +3313,11 @@ function JoinFlow() {
 
       try {
         if (isStaffSale) {
-          if (!purchaseOtpChallengeId) {
-            throw new Error(
-              "Purchase verification is required before payment.",
-            );
+          const paymentReference = isStaffAssistedPurchase
+            ? counterPurchaseId
+            : purchaseOtpChallengeId;
+          if (!paymentReference) {
+            throw new Error("Counter purchase authorization is not ready.");
           }
 
           const { context } = counterPurchasePayload();
@@ -3246,9 +3331,11 @@ function JoinFlow() {
           const consent = await agreementApi.counterAccept(orgId, {
             storeId: context.storeId,
             staffId: context.staffId,
-            challengeId: purchaseOtpChallengeId,
+            ...(isStaffAssistedPurchase
+              ? { counterPurchaseId: paymentReference }
+              : { challengeId: paymentReference }),
             planId: plan.id,
-            idempotencyKey: `${purchaseOtpChallengeId}:provider`,
+            idempotencyKey: `${paymentReference}:provider`,
             agreementSha256: currentAgreement.agreementSha256,
             explicitOfferId: explicitOfferId || undefined,
             acceptanceChannel: "COUNTER_CUSTOMER",
@@ -3258,13 +3345,14 @@ function JoinFlow() {
           const intent = await services.counter.startPurchasePayment(
             context,
 
-            purchaseOtpChallengeId,
+            paymentReference,
 
-            `${purchaseOtpChallengeId}:provider`,
+            `${paymentReference}:provider`,
 
             product.id,
 
             explicitOfferId || undefined,
+            isStaffAssistedPurchase,
           );
 
           if (intent.providerCode === "STRIPE" && intent.checkoutUrl) {
@@ -3745,6 +3833,8 @@ function JoinFlow() {
     customerPaymentRecoveryBlocked,
 
     purchaseOtpVerified,
+    requiresPurchaseOtp,
+    isStaffAssistedPurchase,
 
     requestCounterPurchaseOtp,
 
@@ -3802,9 +3892,18 @@ function JoinFlow() {
       );
       return;
     }
-    if (!isStaffSale || !purchaseOtpVerified || !purchaseOtpChallengeId) {
+    if (
+      requiresPurchaseOtp &&
+      (!purchaseOtpVerified || !purchaseOtpChallengeId)
+    ) {
       await requestCounterPurchaseOtp();
-
+      return;
+    }
+    const paymentReference = isStaffAssistedPurchase
+      ? counterPurchaseId
+      : purchaseOtpChallengeId;
+    if (!paymentReference) {
+      setOtpError("Counter purchase authorization is not ready.");
       return;
     }
 
@@ -3819,9 +3918,11 @@ function JoinFlow() {
       const consent = await agreementApi.counterAccept(orgId, {
         storeId: context.storeId,
         staffId: context.staffId,
-        challengeId: purchaseOtpChallengeId,
+        ...(isStaffAssistedPurchase
+          ? { counterPurchaseId: paymentReference }
+          : { challengeId: paymentReference }),
         planId: plan.id,
-        idempotencyKey: `${purchaseOtpChallengeId}:cash`,
+        idempotencyKey: `${paymentReference}:cash`,
         agreementSha256: currentAgreement.agreementSha256,
         explicitOfferId: explicitOfferId || undefined,
         acceptanceChannel: "COUNTER_CUSTOMER",
@@ -3831,11 +3932,12 @@ function JoinFlow() {
       const intent = await services.counter.startCashPayment(
         context,
 
-        purchaseOtpChallengeId,
+        paymentReference,
 
-        `${purchaseOtpChallengeId}:cash`,
+        `${paymentReference}:cash`,
 
         explicitOfferId || undefined,
+        isStaffAssistedPurchase,
       );
 
       setCashPayment({
@@ -3858,6 +3960,9 @@ function JoinFlow() {
     isStaffSale,
 
     purchaseOtpChallengeId,
+    counterPurchaseId,
+    isStaffAssistedPurchase,
+    requiresPurchaseOtp,
 
     purchaseOtpVerified,
 
@@ -3894,7 +3999,7 @@ function JoinFlow() {
       if (confirmed.payment.status !== "SUCCEEDED" || !confirmed.subscription) {
         throw new Error("Cash payment is pending or was not completed.");
       }
-
+      setReceiptPaymentMethod("Cash");
       finishSubscription(
         confirmed.subscription,
 
@@ -4534,9 +4639,7 @@ function JoinFlow() {
               {
                 label: t("join.plan"),
 
-                value: `${
-                  product.displayName ?? product.membershipProductName
-                } · ${intervalLabel}`,
+                value: membershipPlanDisplayName,
               },
             ]}
             lines={[
@@ -4588,7 +4691,7 @@ function JoinFlow() {
                 : plan.price.amountMinor
             }
           />
-          {!isStaffSale || purchaseOtpVerified ? (
+          {!isStaffSale || isStaffAssistedPurchase || purchaseOtpVerified ? (
             <Card padding="md">
               {agreementLoading ? (
                 <Text variant="bodySmall" color="textMuted">
@@ -4670,7 +4773,7 @@ function JoinFlow() {
             </Text>
           ) : null}
 
-          {isStaffSale && purchaseOtpVerified ? (
+          {isStaffSale && requiresPurchaseOtp && purchaseOtpVerified ? (
             <Badge label="Customer verified for this purchase" tone="success" />
           ) : null}
 
@@ -4683,11 +4786,11 @@ function JoinFlow() {
           {isStaffSale ? (
             <View style={{ gap: theme.spacing.sm }}>
               <Text variant="bodyStrong" color="text">
-                {purchaseOtpVerified
+                {isStaffAssistedPurchase || purchaseOtpVerified
                   ? "Choose payment method"
                   : "Customer verification"}
               </Text>
-              {!purchaseOtpVerified ? (
+              {requiresPurchaseOtp && !purchaseOtpVerified ? (
                 <Button
                   label="Send Purchase OTP"
                   fullWidth
@@ -4709,6 +4812,7 @@ function JoinFlow() {
                       counterQuoteLoading ||
                       !purchaseQuote ||
                       !!purchaseQuoteError ||
+                      (isStaffAssistedPurchase && !counterPurchaseId) ||
                       !agreementAccepted ||
                       !agreementPreview ||
                       agreementLoading ||
@@ -4726,6 +4830,7 @@ function JoinFlow() {
                       counterQuoteLoading ||
                       !purchaseQuote ||
                       !!purchaseQuoteError ||
+                      (isStaffAssistedPurchase && !counterPurchaseId) ||
                       !agreementAccepted ||
                       !agreementPreview ||
                       agreementLoading ||
@@ -4831,7 +4936,7 @@ function JoinFlow() {
                   meta={[
                     {
                       label: t("join.plan"),
-                      value: `${product?.displayName ?? product?.membershipProductName} · ${plan?.subscriptionPlanName ?? intervalLabel}`,
+                      value: membershipPlanDisplayName,
                     },
                   ]}
                   lines={
@@ -5232,12 +5337,18 @@ function JoinFlow() {
 
               {
                 label: t("join.plan"),
-
-                value: `${
-                  product.displayName ?? product.membershipProductName
-                } · ${intervalLabel}`,
+                value: [
+                  product.displayName ?? product.membershipProductName,
+                  plan?.subscriptionPlanName,
+                  intervalLabel,
+                ]
+                  .filter(Boolean)
+                  .join(" - "),
               },
-
+              {
+                label: "Payment method",
+                value: receiptPaymentMethod ?? "Payment provider",
+              },
               {
                 label: t("join.date"),
 

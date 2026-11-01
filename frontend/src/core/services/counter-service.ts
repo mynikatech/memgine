@@ -216,6 +216,15 @@ export class CounterService {
       .then((result) => this.unwrap(result));
   }
 
+  prepareStaffAssistedPurchase(
+    ctx: CounterContext,
+    purchase: { planId: string; customerUserId: string },
+  ): Promise<string> {
+    return this.api
+      .prepareStaffAssistedPurchase(ctx, purchase)
+      .then((result) => this.unwrap(result));
+  }
+
   requestPurchaseOtp(
     ctx: CounterContext,
     phone: string,
@@ -242,22 +251,23 @@ export class CounterService {
 
   startPurchasePayment(
     ctx: CounterContext,
-    challengeId: string,
+    reference: string,
     idempotencyKey: string,
     productId?: ID,
     explicitOfferId?: ID,
+    staffAssisted = false,
   ) {
     return this.api
       .startPurchasePayment(
         ctx,
-        challengeId,
+        reference,
         idempotencyKey,
         productId,
         explicitOfferId,
+        staffAssisted,
       )
       .then((result) => this.unwrap(result));
   }
-
   startRemoteTerminalPayment(ctx: CounterContext, commerceTransactionId: ID) {
     return this.api
       .startRemoteTerminalPayment(ctx, commerceTransactionId)
@@ -272,15 +282,21 @@ export class CounterService {
 
   startCashPayment(
     ctx: CounterContext,
-    challengeId: string,
+    reference: string,
     idempotencyKey: string,
     explicitOfferId?: ID,
+    staffAssisted = false,
   ) {
     return this.api
-      .startCashPayment(ctx, challengeId, idempotencyKey, explicitOfferId)
+      .startCashPayment(
+        ctx,
+        reference,
+        idempotencyKey,
+        explicitOfferId,
+        staffAssisted,
+      )
       .then((result) => this.unwrap(result));
   }
-
   confirmCashPayment(ctx: CounterContext, paymentIntentId: ID) {
     return this.api
       .confirmCashPayment(ctx, paymentIntentId)

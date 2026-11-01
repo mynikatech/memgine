@@ -11,6 +11,13 @@ data class CounterRedemptionItemStatusRow(
     var status: String = "",
     var displayReason: String? = null
 )
+data class StaffAssistedPurchaseRow(
+    var storeId: String = "",
+    var staffId: String = "",
+    var customerUserId: String = "",
+    var planId: String = "",
+    var purchaseMode: String = ""
+)
 
 interface CounterSql {
     @SqlQuery("""SELECT counter_prepare_purchase_identity(
@@ -25,6 +32,33 @@ interface CounterSql {
         @Bind("planId") planId: String,
         @Bind("actorUserId") actorUserId: String
     ): String
+    
+    @SqlQuery("""
+        SELECT counter_prepare_staff_assisted_purchase(
+            :organizationId, :storeId, :staffId,
+            :customerUserId, :planId, :actorUserId
+        )
+    """)
+    fun prepareStaffAssistedPurchase(
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String,
+        @Bind("staffId") staffId: String,
+        @Bind("customerUserId") customerUserId: String,
+        @Bind("planId") planId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): String
+
+    @SqlQuery("""
+        SELECT * FROM counter_resolve_staff_assisted_purchase(
+            :organizationId, :counterPurchaseId, :actorUserId
+        )
+    """)
+    @RegisterBeanMapper(StaffAssistedPurchaseRow::class)
+    fun resolveStaffAssistedPurchase(
+        @Bind("organizationId") organizationId: String,
+        @Bind("counterPurchaseId") counterPurchaseId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): StaffAssistedPurchaseRow?
 
     @SqlQuery("""SELECT counter_bind_purchase_otp_context(
         :counterPurchaseId, :challengeId, :organizationId, :storeId,

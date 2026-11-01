@@ -489,17 +489,45 @@ class CustomerService(
         request: PaymentStartRequestDto,
         authenticatedUserId: String
     ): PaymentIntentDto {
+
+        val challengeId = request.challengeId
+            ?.takeIf { it.isNotBlank() }
+            ?: throw BadRequestException(
+                "Purchase OTP verification is required"
+            )
+
         val context = businessOtp.resolveVerified(
-            request.challengeId,
+            challengeId,
             OtpPurpose.APP_MEMBERSHIP_PURCHASE_VERIFY
         )
-        if (context.organizationId != organizationId || context.userId != authenticatedUserId) {
-            throw ForbiddenException("Business verification does not match this purchase")
+
+        if (
+            context.organizationId != organizationId ||
+            context.userId != authenticatedUserId
+        ) {
+            throw ForbiddenException(
+                "Business verification does not match this purchase"
+            )
         }
+
         val agreementPlanId = context.planId
-            ?: throw BadRequestException("Verified membership plan is required")
-        agreementOperations.requireAccepted(organizationId, authenticatedUserId, agreementPlanId, request.idempotencyKey, request.explicitOfferId)
-        return payments.startMembershipPayment(organizationId, request, authenticatedUserId)
+            ?: throw BadRequestException(
+                "Verified membership plan is required"
+            )
+
+        agreementOperations.requireAccepted(
+            organizationId,
+            authenticatedUserId,
+            agreementPlanId,
+            request.idempotencyKey,
+            request.explicitOfferId
+        )
+
+        return payments.startMembershipPayment(
+            organizationId,
+            request,
+            authenticatedUserId
+        )
     }
 
     fun startAuthenticatedPurchasePayment(

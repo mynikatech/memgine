@@ -179,7 +179,22 @@ class PaymentService(
         providerCode: String
     ): PaymentIntentDto {
         validateId(org, "organization id")
-        validateId(request.challengeId, "challenge id")
+        val purchaseReference =
+            request.challengeId ?: request.counterPurchaseId
+            ?: throw BadRequestException(
+                "Counter purchase reference is required"
+            )
+
+        if (
+            (request.challengeId == null) ==
+            (request.counterPurchaseId == null)
+        ) {
+            throw BadRequestException(
+                "Exactly one Counter purchase reference is required"
+            )
+        }
+
+        validateId(purchaseReference, "purchase reference")
         validateId(storeId, "store id")
         validateId(staffId, "staff id")
         validateId(customerUserId, "customer user id")
@@ -192,7 +207,7 @@ class PaymentService(
                 UUID.randomUUID().toString(),
                 UUID.randomUUID().toString(),
                 org,
-                request.challengeId,
+                purchaseReference,
                 storeId,
                 staffId,
                 customerUserId,
@@ -219,15 +234,42 @@ class PaymentService(
         provider: PaymentProvider
     ): PaymentIntentDto {
         validateId(org, "organization id")
-        validateId(request.challengeId, "challenge id")
-        if (request.idempotencyKey.isBlank() || request.idempotencyKey.length > 128) {
-            throw BadRequestException("Valid payment idempotency key is required")
+
+        val challengeId = request.challengeId
+            ?.takeIf { it.isNotBlank() }
+            ?: throw BadRequestException(
+                "Verified purchase challenge is required"
+            )
+
+        validateId(challengeId, "challenge id")
+
+        if (
+            request.idempotencyKey.isBlank() ||
+            request.idempotencyKey.length > 128
+        ) {
+            throw BadRequestException(
+                "Valid payment idempotency key is required"
+            )
         }
-        val intent = translate { sql().start(
-            UUID.randomUUID().toString(), UUID.randomUUID().toString(), org,
-            request.challengeId, provider.code, request.idempotencyKey.trim(), actorUserId
-        ) ?: throw ConflictException("Payment was not started") }
-        return checkoutForProvider(intent, org, request.returnContext, actorUserId)
+
+        val intent = translate {
+            sql().start(
+                UUID.randomUUID().toString(),
+                UUID.randomUUID().toString(),
+                org,
+                challengeId,
+                provider.code,
+                request.idempotencyKey.trim(),
+                actorUserId
+            ) ?: throw ConflictException("Payment was not started")
+        }
+
+        return checkoutForProvider(
+            intent,
+            org,
+            request.returnContext,
+            actorUserId
+        )
     }
 
     fun startAuthenticatedMembershipPayment(
@@ -985,6 +1027,16 @@ class PaymentService(
             val postgres = generateSequence<Throwable>(error) { it.cause }
                 .filterIsInstance<PSQLException>()
                 .firstOrNull()
+                
+                if (postgres != null) {
+                    System.err.println(
+                        "[PAYMENT SQL ERROR] " +
+                            "sqlState=${postgres.sqlState}, " +
+                            "message=${postgres.serverErrorMessage?.message}, " +
+                            "detail=${postgres.serverErrorMessage?.detail}, " +
+                            "constraint=${postgres.serverErrorMessage?.constraint}"
+                    )
+                }
             when (postgres?.sqlState) {
                 "42501" -> throw ForbiddenException("Payment operation is not permitted")
                 "23505", "40001" -> throw ConflictException("Payment state changed; retry the request")

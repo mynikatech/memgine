@@ -12,12 +12,12 @@ data class PaymentReturnContextDto(
 
 @Serializable
 data class PaymentStartRequestDto(
-    val challengeId: String,
+    val challengeId: String? = null,
     val idempotencyKey: String,
     val returnContext: PaymentReturnContextDto? = null,
-    val explicitOfferId: String? = null
+    val explicitOfferId: String? = null,
+    val counterPurchaseId: String? = null
 )
-
 @Serializable
 data class MembershipPurchaseQuoteDto(
     val planId: String,

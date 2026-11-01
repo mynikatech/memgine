@@ -1070,14 +1070,30 @@ export default function StaffCounter() {
    * Sell membership
    * ------------------------------------------------------------
    */
-
+  type CounterPurchaseMode = "COUNTER_OTP" | "STAFF_ASSISTED";
   const sellProduct = (productId: string) => {
     if (!customer || !staffId || !storeId) {
       setError("Identify a customer and staff/store context first.");
       return;
     }
-    if (customer.id) counterCheckout.clear();
-    else if (!counterCheckout.get()) {
+    // The mode was selected by the Counter's Phone Lookup / Staff-Assisted /
+    // New Customer tabs. Never infer authorization mode from customer.id.
+    if (mode !== "phone" && mode !== "assisted" && mode !== "new") {
+      setError(
+        "Select a customer purchase method before selling a membership.",
+      );
+      return;
+    }
+    const purchaseMode: CounterPurchaseMode =
+      mode === "assisted" ? "STAFF_ASSISTED" : "COUNTER_OTP";
+    if (purchaseMode === "STAFF_ASSISTED" && !customer.id) {
+      setError("Staff-Assisted purchase requires an existing customer.");
+      return;
+    }
+
+    if (customer.id) {
+      counterCheckout.clear();
+    } else if (!counterCheckout.get()) {
       setError("Enter the new customer details first.");
       return;
     }
@@ -1088,6 +1104,7 @@ export default function StaffCounter() {
       staffId,
       membershipProductId: productId,
     });
+
     router.push({
       pathname: APP_ROUTES.join.root,
       params: {
@@ -1096,7 +1113,11 @@ export default function StaffCounter() {
         customerId: customer.id,
         staffId,
         storeId,
-        source: "STAFF_ASSISTED",
+
+        source: "COUNTER",
+        purchaseFlowType: "STAFF_ASSISTED",
+        purchaseMode,
+
         explicitOfferId: resolvedMembershipPurchaseOffer?.offerId,
         explicitOfferName: resolvedMembershipPurchaseOffer?.displayName,
       },

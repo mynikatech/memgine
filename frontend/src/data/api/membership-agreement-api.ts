@@ -14,7 +14,6 @@ export type MembershipAgreementAcceptance = {
   acceptedAt: string;
   subscriptionId?: string | null;
 };
-
 export type MembershipAgreementPreview = {
   organizationId: string;
   membershipProductId: string;
@@ -22,11 +21,9 @@ export type MembershipAgreementPreview = {
   agreementText: string;
   agreementSha256: string;
 };
-
 export type CounterAgreementReview = MembershipAgreementPreview & {
   purchaseQuote: MembershipPurchaseQuote;
 };
-
 export type MembershipAgreementAcceptRequest = {
   planId: string;
   idempotencyKey: string;
@@ -34,21 +31,22 @@ export type MembershipAgreementAcceptRequest = {
   explicitOfferId?: string;
   acceptanceChannel: "CUSTOMER_WEB" | "CUSTOMER_MOBILE";
 };
-
-export type CounterMembershipAgreementAcceptRequest = {
-  storeId: string;
-  staffId: string;
-  challengeId: string;
-  planId: string;
-  idempotencyKey: string;
-  agreementSha256: string;
-  explicitOfferId?: string;
-  acceptanceChannel: "COUNTER_CUSTOMER";
-};
+export type CounterPurchaseReference =
+  | { challengeId: string; counterPurchaseId?: never }
+  | { counterPurchaseId: string; challengeId?: never };
+export type CounterMembershipAgreementAcceptRequest =
+  CounterPurchaseReference & {
+    storeId: string;
+    staffId: string;
+    planId: string;
+    idempotencyKey: string;
+    agreementSha256: string;
+    explicitOfferId?: string;
+    acceptanceChannel: "COUNTER_CUSTOMER";
+  };
 
 const path = (organizationId: string) =>
   `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}`;
-
 const counterPath = (organizationId: string) =>
   `/api/v1/organizations/${encodeURIComponent(organizationId)}/counter/purchases/agreement`;
 
@@ -84,15 +82,15 @@ export class MembershipAgreementApi {
     return httpClient.get(`${path(organizationId)}/membership-agreements`);
   }
 
-  // Counter endpoints intentionally use staff authentication and verify customer
-  // identity against the Counter purchase/OTP context on the backend.
   counterPreview(
     organizationId: string,
-    challengeId: string,
+    reference: CounterPurchaseReference,
     explicitOfferId?: string,
   ): Promise<ApiResult<CounterAgreementReview>> {
     const params = [
-      `challengeId=${encodeURIComponent(challengeId)}`,
+      "challengeId" in reference && reference.challengeId
+        ? `challengeId=${encodeURIComponent(reference.challengeId)}`
+        : `counterPurchaseId=${encodeURIComponent(reference.counterPurchaseId!)}`,
       ...(explicitOfferId
         ? [`explicitOfferId=${encodeURIComponent(explicitOfferId)}`]
         : []),

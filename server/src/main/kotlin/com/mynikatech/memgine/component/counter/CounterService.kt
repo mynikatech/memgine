@@ -402,14 +402,16 @@ class CounterService(
 
         fun counterAgreementPreview(
             org: String,
-            challengeId: String,
+            challengeId: String?,
+            counterPurchaseId: String?,
             principal: AuthenticatedPrincipal,
             offerId: String?
         ): CounterAgreementReviewDto {
-            val purchase = verifiedAgreementPurchase(
-                org,
-                challengeId,
-                principal
+            val purchase = resolveCounterPurchase(
+                org = org,
+                challengeId = challengeId,
+                counterPurchaseId = counterPurchaseId,
+                principal = principal
             )
 
             val agreement = customerService.membershipAgreementPreview(
@@ -450,10 +452,11 @@ class CounterService(
                 )
             }
 
-            val purchase = verifiedAgreementPurchase(
-                org,
-                request.challengeId,
-                principal
+            val purchase = resolveCounterPurchase(
+                org = org,
+                challengeId = request.challengeId,
+                counterPurchaseId = request.counterPurchaseId,
+                principal = principal
             )
 
             if (
@@ -461,8 +464,8 @@ class CounterService(
                 purchase.staffId != request.staffId ||
                 purchase.planId != request.planId ||
                 request.idempotencyKey !in setOf(
-                    "${request.challengeId}:provider",
-                    "${request.challengeId}:cash"
+                    "${request.challengeId ?: request.counterPurchaseId}:provider",
+                    "${request.challengeId ?: request.counterPurchaseId}:cash"
                 )
             ) {
                 throw BadRequestException(
@@ -491,8 +494,12 @@ class CounterService(
         request: PaymentStartRequestDto,
         principal: AuthenticatedPrincipal
     ): PaymentIntentDto {
-        val context = businessOtp.resolveVerified(request.challengeId, OtpPurpose.COUNTER_PURCHASE_VERIFY)
-        val purchase = validatePurchaseContext(org, context, principal)
+        val purchase = resolveCounterPurchase(
+            org = org,
+            challengeId = request.challengeId,
+            counterPurchaseId = request.counterPurchaseId,
+            principal = principal
+        )
         val customerUserId = purchase.customerUserId
             ?: throw BadRequestException("Customer is required for Counter membership payment")
         customerService.requireMembershipAgreement(
@@ -507,8 +514,8 @@ class CounterService(
             request.copy(
                 returnContext = PaymentReturnContextDto(
                     productId = request.returnContext?.productId,
-                    storeId = context.storeId,
-                    staffId = context.staffId,
+                    storeId = purchase.storeId,
+                    staffId = purchase.staffId,
                     source = "STAFF_ASSISTED"
                 )
             ),
@@ -527,7 +534,125 @@ class CounterService(
 
         return intent
     }
+    private fun validateStaffAssistedCustomer(
+        org: String,
+        storeId: String,
+        staffId: String,
+        customerUserId: String,
+        principal: AuthenticatedPrincipal
+    ) {
+        authorize(org, storeId, staffId, principal)
+        id(customerUserId, "customer user id")
 
+        val customer = sql().customers(org, principal.userId)
+            .firstOrNull { it.userId == customerUserId }
+            ?: throw ForbiddenException(
+                "Staff-Assisted purchase requires an existing customer in this organization"
+            )
+
+        // Staff-Assisted authorization is an explicit Counter purchase mode.
+        // A customer may have a phone number and still choose this mode.
+        // Staff/store and customer-organization eligibility are checked above.
+    }
+    
+    fun prepareStaffAssistedPurchase(
+        org: String,
+        request: CounterPurchaseRequest,
+        principal: AuthenticatedPrincipal
+    ): String {
+
+        val customerUserId = request.customerUserId
+            ?: throw BadRequestException(
+                "Staff-Assisted purchase requires an existing customer"
+            )
+
+        validateStaffAssistedCustomer(
+            org,
+            request.storeId,
+            request.staffId,
+            customerUserId,
+            principal
+        )
+
+        id(request.planId, "membership plan id")
+
+        // Validate the requested plan and purchase eligibility.
+        purchaseQuote(
+            org,
+            request.storeId,
+            request.staffId,
+            request.planId,
+            customerUserId,
+            principal
+        )
+
+        // Use the dedicated mode-aware entry point. The generic identity
+        // preparation is also used by Counter OTP purchases.
+        return translate {
+            sql().prepareStaffAssistedPurchase(
+                org,
+                request.storeId,
+                request.staffId,
+                customerUserId,
+                request.planId,
+                principal.userId
+            )
+        }
+    }
+    
+    private fun resolveCounterPurchase(
+    org: String,
+    challengeId: String?,
+    counterPurchaseId: String?,
+    principal: AuthenticatedPrincipal
+): CounterPurchaseRequest {
+
+    if (!challengeId.isNullOrBlank() &&
+        counterPurchaseId.isNullOrBlank()
+    ) {
+        return verifiedAgreementPurchase(
+            org,
+            challengeId,
+            principal
+        )
+    }
+
+    if (!counterPurchaseId.isNullOrBlank() &&
+        challengeId.isNullOrBlank()
+    ) {
+        id(counterPurchaseId, "counter purchase id")
+        val resolved = translate {
+            sql().resolveStaffAssistedPurchase(org, counterPurchaseId, principal.userId)
+        } ?: throw ForbiddenException("Staff-Assisted purchase is unavailable or unauthorized")
+
+        if (resolved.purchaseMode != "STAFF_ASSISTED" ||
+            resolved.storeId.isBlank() ||
+            resolved.staffId.isBlank() ||
+            resolved.customerUserId.isBlank() ||
+            resolved.planId.isBlank()
+        ) {
+            throw ForbiddenException("Staff-Assisted purchase context is invalid")
+        }
+
+        // The database resolver verifies the persisted purchase mode, binding,
+        // state, organization and actor. Recheck current store authorization.
+        validateStaffAssistedCustomer(
+            org, resolved.storeId, resolved.staffId,
+            resolved.customerUserId, principal
+        )
+        return CounterPurchaseRequest(
+            storeId = resolved.storeId,
+            staffId = resolved.staffId,
+            planId = resolved.planId,
+            customerUserId = resolved.customerUserId
+        )
+    }
+
+    throw BadRequestException(
+        "Provide exactly one purchase verification reference"
+    )
+}
+    
     fun startTerminalPayment(
         org: String,
         request: CounterCommercePaymentRequest,
@@ -594,10 +719,18 @@ class CounterService(
         request: PaymentStartRequestDto,
         principal: AuthenticatedPrincipal
     ): PaymentIntentDto {
-        val context = businessOtp.resolveVerified(request.challengeId, OtpPurpose.COUNTER_PURCHASE_VERIFY)
-        val purchase = validatePurchaseContext(org, context, principal)
+        val purchase = resolveCounterPurchase(
+            org = org,
+            challengeId = request.challengeId,
+            counterPurchaseId = request.counterPurchaseId,
+            principal = principal
+        )
         val customerUserId = purchase.customerUserId
             ?: throw BadRequestException("Customer is required for Counter membership payment")
+        customerService.requireMembershipAgreement(
+            org, customerUserId, purchase.planId,
+            request.idempotencyKey, request.explicitOfferId
+        )
 
         return payments.startCounterCashMembershipPayment(
             org,

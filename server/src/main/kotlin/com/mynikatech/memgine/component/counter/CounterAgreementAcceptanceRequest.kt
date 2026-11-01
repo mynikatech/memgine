@@ -17,10 +17,11 @@ data class CounterAgreementReviewDto(
 data class CounterAgreementAcceptanceRequest(
     val storeId: String,
     val staffId: String,
-    val challengeId: String,
+    val challengeId: String? = null,
     val planId: String,
     val idempotencyKey: String,
     val agreementSha256: String,
     val explicitOfferId: String? = null,
-    val acceptanceChannel: String
+    val acceptanceChannel: String,
+    val counterPurchaseId: String? = null,
 )

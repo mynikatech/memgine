@@ -48,18 +48,14 @@ fun Route.counterRoutes(service: CounterService, commercePaymentService: Counter
             val org = call.parameters["organizationId"]
                 ?: throw BadRequestException("Organization id is required")
 
-            val challenge = call.request.queryParameters["challengeId"]
-                ?: throw BadRequestException(
-                    "Verified purchase challenge is required"
-                )
-
             call.respond(
                 ApiResponse.success(
                     service.counterAgreementPreview(
-                        org,
-                        challenge,
-                        call.authenticatedPrincipal(),
-                        call.request.queryParameters["explicitOfferId"]
+                        org = org,
+                        challengeId = call.request.queryParameters["challengeId"],
+                        counterPurchaseId = call.request.queryParameters["counterPurchaseId"],
+                        principal = call.authenticatedPrincipal(),
+                        offerId = call.request.queryParameters["explicitOfferId"]
                     ),
                     call.callId
                 )
@@ -175,6 +171,23 @@ fun Route.counterRoutes(service: CounterService, commercePaymentService: Counter
                 ),
                 call.callId
             ))
+        }
+        post("/purchases/staff-assisted/prepare") {
+            val org = call.parameters["organizationId"]
+                ?: throw BadRequestException("Organization id is required")
+
+            val request = call.receive<CounterPurchaseRequest>()
+
+            call.respond(
+                ApiResponse.success(
+                    service.prepareStaffAssistedPurchase(
+                        org,
+                        request,
+                        call.authenticatedPrincipal()
+                    ),
+                    call.callId
+                )
+            )
         }
         post("/purchases/otp/request") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")

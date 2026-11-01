@@ -105,13 +105,21 @@ export type PaymentConfirmation = {
 
 export type CounterRedemptionPriceDiscrepancy = {
   lineId: ID;
+
   productMappingId?: ID | null;
+
   externalProductId?: string | null;
+
   externalVariantId?: string | null;
+
   productName: string;
+
   storedPriceMinor: number;
+
   storedCurrencyCode: string;
+
   poyntPriceMinor: number;
+
   poyntCurrencyCode: string;
 };
 
@@ -149,8 +157,11 @@ export type CounterRedemptionCheckout = {
   failureMessage?: string | null;
 
   pricingReconciliationRequired?: boolean;
+
   pricingReconciliationHash?: string | null;
+
   pricingAcknowledged?: boolean;
+
   pricingDiscrepancies?: CounterRedemptionPriceDiscrepancy[];
 
   paymentRequired: boolean;
@@ -158,64 +169,107 @@ export type CounterRedemptionCheckout = {
 
 export type CounterRedemptionReviewAllocation = {
   redemptionItemId: ID;
+
   itemType: string;
+
   benefitId?: ID | null;
+
   offerId?: ID | null;
+
   adjustmentId: ID;
+
   adjustmentType: string;
+
   appliedAmountMinor: number;
 };
 
 export type CounterRedemptionReviewLine = {
   redemptionItemId: ID;
+
   productMappingId: ID;
+
   canonicalProductId: ID;
+
   productName: string;
+
   quantity: number;
+
   unitPriceMinor: number;
+
   lineSubtotalMinor: number;
+
   currencyCode: string;
+
   allocations: CounterRedemptionReviewAllocation[];
 };
 
 export type CounterRedemptionCheckoutReview = {
   redemptionTransactionId: ID;
+
   transactionNumber: string;
+
   redemptionVersionNo: number;
+
   expiresAt?: string | null;
+
   providerCode: string;
+
   currencyCode: string;
+
   lines: CounterRedemptionReviewLine[];
+
   subtotalMinor: number;
+
   adjustmentTotalMinor: number;
+
   taxTotalMinor?: number | null;
+
   payableTotalMinor: number;
+
   pricingStatus: "ESTIMATED_PROVIDER_ORDER_PENDING" | string;
+
   reviewHash: string;
 };
 
 export type CounterRedemptionQuoteLine = {
   itemType: "BENEFIT" | "OFFER" | string;
+
   itemId: ID;
+
   benefitId?: ID | null;
+
   offerId?: ID | null;
+
   productId: ID;
+
   productName: string;
+
   quantity: number;
+
   unitPriceMinor: number;
+
   subtotalMinor: number;
+
   discountMinor: number;
+
   allocations: CounterRedemptionReviewAllocation[];
 };
 
 export type CounterRedemptionQuote = {
   currencyCode: string;
+
   lines: CounterRedemptionQuoteLine[];
+
   subtotalMinor: number;
+
   adjustmentTotalMinor: number;
+
   taxTotalMinor: number;
+
   totalMinor: number;
+
   pricingStatus: string;
+
   quoteHash: string;
 };
 
@@ -228,24 +282,42 @@ export type CounterRedemptionPaymentDispatch = {
 };
 
 /** Server-authoritative Counter recovery entry; no payment credentials are exposed. */
+
 export type CounterPendingTransaction = {
   redemptionTransactionId: ID;
+
   transactionNumber: string;
+
   commerceTransactionId: ID;
+
   organizationId: ID;
+
   storeId: ID;
+
   customerUserId?: ID | null;
+
   customerDisplayName?: string | null;
+
   redemptionStatus: string;
+
   commerceStatus: string;
+
   providerCode: string;
+
   amountMinor?: number | null;
+
   currencyCode?: string | null;
+
   createdAt: string;
+
   lastAttemptAt?: string | null;
+
   lastAttemptStatus?: string | null;
+
   retryAllowed: boolean;
+
   unresolvedPayment: boolean;
+
   financialExceptionId?: ID | null;
 };
 
@@ -426,14 +498,19 @@ export class CounterApi {
 
   redemptionProductChoices(
     ctx: CounterContext,
+
     subscriptionId: ID,
+
     itemType: "BENEFIT" | "OFFER",
+
     itemId: ID,
   ): Promise<
     ApiResult<
       {
         productId: ID;
+
         productName: string;
+
         productCode?: string | null;
       }[]
     >
@@ -452,7 +529,9 @@ export class CounterApi {
 
   pendingTransactions(
     ctx: CounterContext,
+
     limit = 50,
+
     offset = 0,
   ): Promise<ApiResult<CounterPendingTransaction[]>> {
     return httpClient.get(
@@ -462,11 +541,13 @@ export class CounterApi {
 
   customerPendingTransactions(
     ctx: CounterContext,
+
     customerUserId: ID,
   ): Promise<ApiResult<CounterPendingTransaction[]>> {
     return httpClient.get(
       this.query(
         ctx,
+
         `customers/${encodeURIComponent(customerUserId)}/pending-transactions`,
       ),
     );
@@ -532,19 +613,30 @@ export class CounterApi {
 
   createRedemptionTransaction(
     ctx: CounterContext,
+
     subscriptionId: ID,
+
     benefitIds: ID[],
+
     offerIds: ID[],
+
     redemptionMethod: string,
+
     productSelections: Record<string, ID> = {},
   ): Promise<ApiResult<CounterRedemptionTransaction>> {
     return httpClient.post(this.path(ctx, "redemption-transactions"), {
       storeId: ctx.storeId,
+
       staffId: ctx.staffId,
+
       subscriptionId,
+
       benefitIds,
+
       offerIds,
+
       redemptionMethod,
+
       productSelections,
     });
   }
@@ -697,24 +789,31 @@ export class CounterApi {
     });
   }
 
+  prepareStaffAssistedPurchase(
+    ctx: CounterContext,
+    purchase: { planId: ID; customerUserId: ID },
+  ): Promise<ApiResult<string>> {
+    return httpClient.post(this.path(ctx, "purchases/staff-assisted/prepare"), {
+      storeId: ctx.storeId,
+      staffId: ctx.staffId,
+      ...purchase,
+    });
+  }
+
   startPurchasePayment(
     ctx: CounterContext,
-
-    challengeId: string,
-
+    reference: string,
     idempotencyKey: string,
-
     productId?: ID,
-
     explicitOfferId?: ID,
+    staffAssisted = false,
   ): Promise<ApiResult<PaymentIntent>> {
     return httpClient.post(this.path(ctx, "purchases/payment/start"), {
-      challengeId,
-
+      ...(staffAssisted
+        ? { counterPurchaseId: reference }
+        : { challengeId: reference }),
       idempotencyKey,
-
       explicitOfferId,
-
       returnContext: productId ? { productId } : undefined,
     });
   }
@@ -737,7 +836,9 @@ export class CounterApi {
 
       {
         commerceTransactionId,
+
         storeId: ctx.storeId,
+
         staffId: ctx.staffId,
       },
     );
@@ -755,18 +856,16 @@ export class CounterApi {
 
   startCashPayment(
     ctx: CounterContext,
-
-    challengeId: string,
-
+    reference: string,
     idempotencyKey: string,
-
     explicitOfferId?: ID,
+    staffAssisted = false,
   ): Promise<ApiResult<PaymentIntent>> {
     return httpClient.post(this.path(ctx, "purchases/payment/cash/start"), {
-      challengeId,
-
+      ...(staffAssisted
+        ? { counterPurchaseId: reference }
+        : { challengeId: reference }),
       idempotencyKey,
-
       explicitOfferId,
     });
   }
@@ -829,22 +928,35 @@ export class CounterApi {
 
   requestRedemptionOtp(
     ctx: CounterContext,
+
     phone: string,
+
     subscriptionId: ID,
+
     benefitIds: ID[],
+
     offerIds: ID[],
+
     productSelections: Record<string, ID>,
+
     regionCode?: string,
   ): Promise<ApiResult<CounterOtpChallenge>> {
     return httpClient.post(this.path(ctx, "redemptions/otp/request"), {
       phone,
+
       regionCode,
+
       redemption: {
         storeId: ctx.storeId,
+
         staffId: ctx.staffId,
+
         subscriptionId,
+
         benefitIds,
+
         offerIds,
+
         productSelections,
       },
     });
@@ -852,17 +964,26 @@ export class CounterApi {
 
   redemptionQuote(
     ctx: CounterContext,
+
     subscriptionId: ID,
+
     benefitIds: ID[],
+
     offerIds: ID[],
+
     productSelections: Record<string, ID>,
   ): Promise<ApiResult<CounterRedemptionQuote>> {
     return httpClient.post(this.path(ctx, "redemptions/quote"), {
       storeId: ctx.storeId,
+
       staffId: ctx.staffId,
+
       subscriptionId,
+
       benefitIds,
+
       offerIds,
+
       productSelections,
     });
   }
@@ -939,17 +1060,23 @@ export class CounterApi {
 
   prepareRedemptionCheckout(
     ctx: CounterContext,
+
     transactionId: ID,
+
     reviewHash?: string,
   ): Promise<ApiResult<CounterRedemptionCheckout>> {
     return httpClient.post(
       this.path(
         ctx,
+
         `redemption-transactions/${encodeURIComponent(transactionId)}/checkout`,
       ),
+
       {
         storeId: ctx.storeId,
+
         staffId: ctx.staffId,
+
         reviewHash,
       },
     );
@@ -957,6 +1084,7 @@ export class CounterApi {
 
   redemptionCheckoutReview(
     ctx: CounterContext,
+
     transactionId: ID,
   ): Promise<ApiResult<CounterRedemptionCheckoutReview>> {
     return httpClient.get(
@@ -966,11 +1094,13 @@ export class CounterApi {
 
   redemptionCheckout(
     ctx: CounterContext,
+
     transactionId: ID,
   ): Promise<ApiResult<CounterRedemptionCheckout>> {
     return httpClient.get(
       `${this.path(
         ctx,
+
         `redemption-transactions/${encodeURIComponent(transactionId)}/checkout`,
       )}?storeId=${encodeURIComponent(ctx.storeId)}&staffId=${encodeURIComponent(
         ctx.staffId,
@@ -980,34 +1110,45 @@ export class CounterApi {
 
   acknowledgeRedemptionPricing(
     ctx: CounterContext,
+
     transactionId: ID,
+
     pricingReconciliationHash: string,
   ): Promise<ApiResult<CounterRedemptionCheckout>> {
     return httpClient.post(
       this.path(
         ctx,
+
         `redemption-transactions/${encodeURIComponent(transactionId)}/checkout/pricing/acknowledge`,
       ),
+
       {
         storeId: ctx.storeId,
+
         staffId: ctx.staffId,
+
         pricingReconciliationHash,
       },
     );
   }
+
   startRedemptionRemoteTerminalPayment(
     ctx: CounterContext,
+
     transactionId: ID,
   ): Promise<ApiResult<CounterRedemptionPaymentDispatch>> {
     return httpClient.post(
       this.path(
         ctx,
+
         `redemption-transactions/${encodeURIComponent(
           transactionId,
         )}/payment/remote-terminal/start`,
       ),
+
       {
         storeId: ctx.storeId,
+
         staffId: ctx.staffId,
       },
     );
@@ -1015,19 +1156,25 @@ export class CounterApi {
 
   confirmRedemptionTestPayment(
     ctx: CounterContext,
+
     transactionId: ID,
+
     status: "SUCCEEDED" | "FAILED" | "CANCELLED" = "SUCCEEDED",
   ): Promise<ApiResult<CounterRedemptionCheckout>> {
     return httpClient.post(
       this.path(
         ctx,
+
         `redemption-transactions/${encodeURIComponent(
           transactionId,
         )}/payment/test-result`,
       ),
+
       {
         storeId: ctx.storeId,
+
         staffId: ctx.staffId,
+
         status,
       },
     );

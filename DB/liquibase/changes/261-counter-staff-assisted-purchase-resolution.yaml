@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 261-counter-staff-assisted-purchase-resolution
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/261-counter-staff-assisted-purchase-resolution.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

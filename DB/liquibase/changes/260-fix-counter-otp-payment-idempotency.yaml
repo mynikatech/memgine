@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 260-fix-counter-otp-payment-idempotency
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/260-fix-counter-otp-payment-idempotency.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8
