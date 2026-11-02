@@ -13,7 +13,6 @@ import com.mynikatech.memgine.net.dto.AcceptMembershipAgreementDto
 import com.mynikatech.memgine.net.dto.MembershipAgreementAcceptedDto
 import com.mynikatech.memgine.net.dto.MembershipAgreementPreviewDto
 import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -39,6 +38,29 @@ class MembershipAgreementOperations(
         }
     }
 
+    /** Preserve restrictions exactly; only translate known rule codes to readable words. */
+    private fun frequencyDescription(interval: Int, type: String): String {
+        val period = when (type.uppercase()) {
+            "DAILY" -> "day"
+            "WEEKLY" -> "week"
+            "MONTHLY" -> "month"
+            "YEARLY", "ANNUALLY", "ANNUAL" -> "year"
+            else -> return "every $interval ${type.lowercase().replace('_', ' ')} period"
+        }
+        return if (interval == 1) "per $period" else "every $interval ${period}s"
+    }
+
+    private fun applicableDaysText(raw: String?): String {
+        if (raw.isNullOrBlank()) return "subject to the applicable schedule"
+        val weekdays = mapOf("MON" to "Monday", "TUE" to "Tuesday", "WED" to "Wednesday",
+            "THU" to "Thursday", "FRI" to "Friday", "SAT" to "Saturday", "SUN" to "Sunday")
+        val codes = raw.split(',').map { it.trim().uppercase() }.filter { it.isNotEmpty() }
+        if (codes.isEmpty() || codes.any { it !in weekdays }) return "on applicable days: $raw"
+        if (codes.toSet() == weekdays.keys) return "every day"
+        val names = codes.distinct().mapNotNull(weekdays::get)
+        return "on ${names.joinToString(", ")}" 
+    }
+
     fun preview(
         org: String, userId: String, planId: String, offerId: String? = null
     ): MembershipAgreementPreviewDto {
@@ -58,28 +80,46 @@ class MembershipAgreementOperations(
             ?: organization["name"]?.jsonPrimitive?.content.orEmpty()
         val allBenefits = benefits.list(org).filter { !it.isDeleted && it.id in product.benefitIds }
         val knownStores = stores.list(org).filter { !it.isDeleted }.associateBy { it.id }
-        val restrictionLines = allBenefits.flatMap { benefit ->
+        // Keep benefit information together: name, description, usage and disclaimer.
+        // Do not repeat these details under a separate "Restrictions" section.
+        val benefitLines = allBenefits.map { benefit ->
             val name = benefit.displayName ?: benefit.benefitName
-            val policy = benefit.disclaimerText?.takeIf { it.isNotBlank() }
-                ?.let { listOf("$name: $it") }.orEmpty()
-            val storeScope = benefit.storeAvailability?.let { availability ->
-                if (availability.mode.name == "SELECTED_STORES") {
-                    val names = availability.storeIds.mapNotNull { knownStores[it]?.name }.sorted()
-                    listOf("$name — participating stores: " +
-                        if (names.isEmpty()) "Store eligibility must be confirmed" else names.joinToString(", "))
-                } else emptyList()
-            }.orEmpty()
-            val usage = benefits.rules(org, benefit.id)
+            val lines = mutableListOf<String>()
+            lines += name
+            benefit.description?.trim()?.takeIf { it.isNotEmpty() }?.let { lines += it }
+            benefits.rules(org, benefit.id)
                 .filter { !it.isDeleted }
-                .map { rule ->
-                    "$name — ${rule.ruleName}: up to ${rule.usageLimit} use(s) per ${rule.frequencyInterval} ${rule.frequencyType}; " +
-                        "applicable days ${rule.applicableDays ?: "per applicable schedule"}"
+                .forEach { rule ->
+                    val times = if (rule.usageLimit.toString() == "1") {
+                        "Once"
+                    } else {
+                        "Up to ${rule.usageLimit} times"
+                    }
+                    val interval = rule.frequencyInterval.toString().toIntOrNull() ?: 1
+                    val frequency = frequencyDescription(interval, rule.frequencyType.toString())
+                    val days = applicableDaysText(rule.applicableDays)
+                    lines += "$times $frequency, $days."
                 }
-            policy + storeScope + usage
+            benefit.disclaimerText?.trim()?.takeIf { it.isNotEmpty() }?.let { disclaimer ->
+                lines += "Please note: $disclaimer"
+            }
+            lines.joinToString(" — ")
         }
-        // Restrictions describe store eligibility per Benefit, not an inaccurate
-        // union of stores that implies every Benefit is accepted everywhere.
-        val storeLines = emptyList<String>()
+
+        // Store eligibility belongs to each benefit. Never imply that a Store
+        // accepts every benefit simply because it accepts one of them.
+        val storeLines = allBenefits.flatMap { benefit ->
+            val availability = benefit.storeAvailability ?: return@flatMap emptyList<String>()
+            val benefitName = benefit.displayName ?: benefit.benefitName
+            val names = when (availability.mode.name) {
+                "SELECTED_STORES" -> availability.storeIds
+                    .mapNotNull { knownStores[it]?.name }
+                "ALL_STORES" -> knownStores.values.map { it.name }
+                else -> emptyList()
+            }
+            names.distinct().sorted().map { name -> "$name — $benefitName" }
+        }.distinct()
+
         val document = MembershipAgreementDocumentRenderer.render(
             MembershipAgreementDetails(
                 organizationName = orgName,
@@ -87,11 +127,7 @@ class MembershipAgreementOperations(
                 planName = plan.subscriptionPlanName,
                 priceDisplay = "${quote.currencyCode} ${"%.2f".format(java.util.Locale.US, quote.totalAmount)} (including applicable tax and offer adjustments)",
                 durationDisplay = "${plan.subscriptionPeriod} ${plan.subscriptionPeriodUnit}",
-                benefits = allBenefits.map { benefit ->
-                    listOfNotNull(benefit.displayName ?: benefit.benefitName, benefit.description?.takeIf { it.isNotBlank() })
-                        .joinToString(" — ")
-                },
-                restrictions = restrictionLines,
+                benefits = benefitLines,
                 eligibleStores = storeLines,
                 organizationTerms = organizationTerms
             )
@@ -110,7 +146,7 @@ class MembershipAgreementOperations(
         validateCustomer(org, userId)
         if (request.idempotencyKey.isBlank() || request.idempotencyKey.length > 160 ||
             request.agreementSha256.length != 64 ||
-            request.acceptanceChannel !in setOf("CUSTOMER_WEB", "CUSTOMER_MOBILE",  "COUNTER_CUSTOMER")) {
+            request.acceptanceChannel !in setOf("CUSTOMER_WEB", "CUSTOMER_MOBILE", "COUNTER_CUSTOMER")) {
             throw BadRequestException("Invalid membership agreement acceptance")
         }
         val preview = preview(org, userId, request.planId, request.explicitOfferId)
@@ -122,9 +158,7 @@ class MembershipAgreementOperations(
                 counterStaffId.isNullOrBlank() ||
                 counterActorUserId.isNullOrBlank())
         ) {
-            throw BadRequestException(
-                "Counter acceptance must include an authorized Store and staff"
-            )
+            throw BadRequestException("Counter acceptance must include an authorized Store and staff")
         }
         val snapshot = buildJsonObject {
             put("planId", request.planId)

@@ -837,6 +837,27 @@ class PaymentService(
         if (!translate { sql().claimCollectCharge(org, intentId, actorUserId) }) {
             throw ConflictException("Payment is already in progress or closed")
         }
+        val checkoutMethod = when (request.method) {
+            "card" -> "CARD"
+            "apple_pay" -> "APPLE_PAY"
+            "google_pay" -> "GOOGLE_PAY"
+            else -> throw BadRequestException("Unsupported payment method")
+        }
+
+        val recorded = translate {
+            sql().recordCheckoutPaymentMethod(
+                intentId,
+                org,
+                actorUserId,
+                checkoutMethod
+            )
+        }
+
+        if (!recorded) {
+            throw ConflictException(
+                "Payment method could not be recorded; payment was not submitted"
+            )
+        }
         val result = if (walletPayment) {
             provider.chargeWalletNonce(current, configuration, nonce, token, amountMinor(current.amount))
         } else {

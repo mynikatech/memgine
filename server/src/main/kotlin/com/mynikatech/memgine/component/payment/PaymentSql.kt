@@ -214,6 +214,22 @@ interface PaymentSql {
         @Bind("intentId") intentId: String,
         @Bind("actorUserId") actorUserId: String
     ): CounterPaymentFinalizationRow?
+        
+        
+    @SqlQuery("""
+        SELECT payment_record_checkout_method(
+            :intentId,
+            :organizationId,
+            :actorUserId,
+            :method
+        )
+    """)
+    fun recordCheckoutPaymentMethod(
+        @Bind("intentId") intentId: String,
+        @Bind("organizationId") organizationId: String,
+        @Bind("actorUserId") actorUserId: String,
+        @Bind("method") method: String
+    ): Boolean
 }
 
 data class PoyntCollectConfigurationRow(

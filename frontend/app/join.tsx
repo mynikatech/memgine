@@ -9,6 +9,7 @@ import { Modal, Platform, Pressable, View } from "react-native";
 
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
 import { beginNativeCollectReturn } from "@/src/core/services/native-collect-return";
+import { paymentMethodDisplay } from "@/src/ui/domain/payment-method-display";
 
 import type {
   Benefit,
@@ -4630,8 +4631,9 @@ function JoinFlow() {
                 ? [
                     {
                       label: t("join.customer"),
-
-                      value: customer?.fullName ?? customerId,
+                      value:
+                        customer?.fullName?.trim() ||
+                        "Customer name unavailable",
                     },
                   ]
                 : []),
@@ -4667,7 +4669,7 @@ function JoinFlow() {
                   ]
                 : [
                     {
-                      label: product.membershipProductName,
+                      label: membershipPlanDisplayName,
                       amountMinor:
                         purchaseQuote?.subtotalAmount != null
                           ? Math.round(purchaseQuote.subtotalAmount * 100)
@@ -5331,23 +5333,17 @@ function JoinFlow() {
 
               {
                 label: t("join.customer"),
-
-                value: customer?.fullName ?? customerId,
+                value:
+                  customer?.fullName?.trim() || "Customer name unavailable",
               },
 
               {
                 label: t("join.plan"),
-                value: [
-                  product.displayName ?? product.membershipProductName,
-                  plan?.subscriptionPlanName,
-                  intervalLabel,
-                ]
-                  .filter(Boolean)
-                  .join(" - "),
+                value: membershipPlanDisplayName,
               },
               {
                 label: "Payment method",
-                value: receiptPaymentMethod ?? "Payment provider",
+                value: paymentMethodDisplay(receiptPaymentMethod),
               },
               {
                 label: t("join.date"),
@@ -5392,7 +5388,7 @@ function JoinFlow() {
                   ]
                 : [
                     {
-                      label: product.membershipProductName,
+                      label: membershipPlanDisplayName,
                       amountMinor:
                         purchaseQuote?.subtotalAmount != null
                           ? Math.round(purchaseQuote.subtotalAmount * 100)

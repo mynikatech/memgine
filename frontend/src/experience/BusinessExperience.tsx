@@ -276,6 +276,16 @@ type Props = {
   onRefreshRedemptionState?: () => Promise<void> | void;
 };
 
+const customerOrderReference = (order: TransactionHistoryItem): string => {
+  if (order.transactionNumber && !order.transactionNumber.startsWith("RCP-")) {
+    return order.transactionNumber;
+  }
+
+  const suffix = order.transactionId.replace(/-/g, "").slice(-8).toUpperCase();
+
+  return `ORDER-${suffix}`;
+};
+
 export function BusinessExperience({
   content,
   previewProductStoreIds,
@@ -572,6 +582,9 @@ export function BusinessExperience({
   const [referralOpen, setReferralOpen] = useState(false);
   const [showAllHistory, setShowAllHistory] = useState(false);
   const [orders, setOrders] = useState<TransactionHistoryItem[]>([]);
+  const [orderDescriptions, setOrderDescriptions] = useState<
+    Record<string, string>
+  >({});
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [orderReceipt, setOrderReceipt] = useState<TransactionReceipt | null>(
@@ -609,6 +622,52 @@ export function BusinessExperience({
       cancelled = true;
     };
   }, [isPreviewMode, organization.id]);
+  // Fetch purchased item descriptions from existing receipt snapshots.
+  useEffect(() => {
+    let cancelled = false;
+
+    setOrderDescriptions({});
+
+    if (isPreviewMode || !orders.length) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const eligibleOrders = orders.filter(
+      (order) => order.receiptAvailable && !!order.receiptId,
+    );
+    void Promise.all(
+      eligibleOrders.map(async (order) => {
+        try {
+          const result = await customerTransactionApi.receipt(
+            organization.id,
+            order.receiptId!,
+          );
+
+          if (!result.success || cancelled) return;
+
+          const raw = result.data.receiptSnapshot;
+          const snapshot = typeof raw === "string" ? JSON.parse(raw) : raw;
+
+          const description = snapshot?.lines?.[0]?.description;
+
+          if (typeof description === "string" && description.trim()) {
+            setOrderDescriptions((current) => ({
+              ...current,
+              [order.transactionId]: description.trim(),
+            }));
+          }
+        } catch {
+          // Fall back to the standard transaction description.
+        }
+      }),
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orders, organization.id, isPreviewMode]);
 
   const effectiveTab = activeTab ?? tab;
 
@@ -2508,22 +2567,32 @@ export function BusinessExperience({
                   >
                     <View style={{ flex: 1, gap: 3 }}>
                       <Text variant="bodyStrong">
-                        {order.transactionNumber}
+                        {orderDescriptions[order.transactionId] ||
+                          (order.transactionType === "REFUND"
+                            ? "Refund"
+                            : order.transactionType === "COUNTER_REDEMPTION"
+                              ? "Benefit / Offer redemption"
+                              : "Membership purchase")}
                       </Text>
-                      <Text variant="bodySmall" color="textSecondary">
+
+                      <Text variant="caption" color="textMuted">
                         {[
+                          customerOrderReference(order),
                           order.organizationName,
                           order.storeName &&
                           order.storeName !== order.organizationName
                             ? order.storeName
                             : null,
-                          new Date(order.occurredAt).toLocaleDateString(),
                         ]
                           .filter(Boolean)
                           .join(" · ")}
                       </Text>
+
                       <Text variant="caption" color="textMuted">
-                        {transactionSummary(order)}
+                        {[
+                          transactionSummary(order),
+                          new Date(order.occurredAt).toLocaleDateString(),
+                        ].join(" · ")}
                       </Text>
                     </View>
                     <View style={{ alignItems: "flex-end", gap: 5 }}>

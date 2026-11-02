@@ -146,6 +146,9 @@ export function TransactionReceiptViewer({
   // Itemized discounts already explain the discount total; do not list it twice.
   const showDiscountSummary = adjustments.length === 0;
   const orderNumber = snapshot.orderNumber ?? receipt.receiptNumber;
+  const customerOrderNumber = orderNumber.startsWith("RCP-")
+    ? null
+    : orderNumber;
   const issueDate = formatIssuedAt(
     snapshot.issuedAt ?? receipt.issuedAt,
     snapshot.store?.timezone,
@@ -230,11 +233,7 @@ ${showDiscountSummary ? `<tr><td>Discounts</td><td>−${escapeHtml(discount)}</t
   };
 
   return (
-    <Modal
-      visible={visible}
-      onClose={onClose}
-      title={`Receipt ${receipt.receiptNumber}`}
-    >
+    <Modal visible={visible} onClose={onClose} title="Payment Receipt">
       <ScrollView
         contentContainerStyle={styles.content}
         testID="transaction-receipt-viewer"

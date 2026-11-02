@@ -121,13 +121,33 @@ class OrganizationService(
         return MembershipTermsResponseDto(organizationId, sql.getMembershipTerms(organizationId))
     }
 
-    fun saveMembershipTerms(organizationId: String, terms: String, actorUserId: String): MembershipTermsResponseDto {
+    fun saveMembershipTerms(
+        organizationId: String,
+        terms: String,
+        actorUserId: String
+    ): MembershipTermsResponseDto {
         validateOrganizationId(organizationId)
-        if (terms.length > 30000) throw BadRequestException("Membership terms exceed 30000 characters")
-        sql.saveMembershipTerms(organizationId, terms, actorUserId)
+
+        if (terms.isBlank()) {
+            throw BadRequestException(
+                "Membership Terms & Conditions are required"
+            )
+        }
+
+        if (terms.length > 30000) {
+            throw BadRequestException(
+                "Membership terms exceed 30000 characters"
+            )
+        }
+
+        sql.saveMembershipTerms(
+            organizationId,
+            terms.trim(),
+            actorUserId
+        )
+
         return getMembershipTerms(organizationId)
     }
-
 
     private fun validateCreate(request: CreateOrganizationRequestDto) {
         validateOrganization(request.organization)

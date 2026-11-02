@@ -345,6 +345,7 @@ export function BusinessForm({
       !validateEmail(form.primaryEmail) ||
       !form.primaryPhone.number.trim() ||
       !validatePhone(form.primaryPhone.number) ||
+      !detailForm.membershipTermsAndConditions?.trim() ||
       validateAddress(detailForm.address) ||
       !!addressErrors
     );

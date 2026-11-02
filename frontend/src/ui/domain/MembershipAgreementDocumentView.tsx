@@ -1,15 +1,15 @@
 import React from "react";
 import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 
-function isSectionHeading(line: string) {
+function isSectionHeading(line: string): boolean {
   return [
-    "Included benefits",
-    "Restrictions",
-    "Participating stores",
-    "Organization membership terms and conditions",
-  ].includes(line.trim());
+    "included benefits",
+    "restrictions",
+    "participating stores",
+    "organization membership terms and conditions",
+    "membership terms and conditions",
+  ].includes(line.trim().toLowerCase());
 }
-
 function renderAgreementLines(agreementText: string) {
   const lines = agreementText.split(/\r?\n/).map((line) => line.trimEnd());
 
