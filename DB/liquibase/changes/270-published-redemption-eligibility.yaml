@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 270-published-redemption-eligibility
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/270-published-redemption-eligibility.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8
