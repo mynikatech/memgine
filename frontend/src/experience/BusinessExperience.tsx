@@ -286,6 +286,35 @@ const customerOrderReference = (order: TransactionHistoryItem): string => {
   return `ORDER-${suffix}`;
 };
 
+type HeroImageProps = {
+  uri?: string;
+  height?: number;
+  borderRadius: number;
+  backgroundColor: string;
+};
+
+function HeroImage({
+  uri,
+  height = 168,
+  borderRadius,
+  backgroundColor,
+}: HeroImageProps) {
+  const resolvedUri = resolveAssetUrl(uri);
+
+  return resolvedUri ? (
+    <Image
+      source={{ uri: resolvedUri }}
+      resizeMode="cover"
+      style={{
+        width: "100%",
+        height,
+        borderRadius,
+        backgroundColor,
+      }}
+    />
+  ) : null;
+}
+
 export function BusinessExperience({
   content,
   previewProductStoreIds,
@@ -1542,35 +1571,15 @@ export function BusinessExperience({
   /* Sub-renderers                                                      */
   /* ------------------------------------------------------------------ */
 
-  const HeroImage = ({
-    uri,
-    height = 168,
-  }: {
-    uri?: string;
-    height?: number;
-  }) => {
-    const resolvedUri = resolveAssetUrl(uri);
-
-    return resolvedUri ? (
-      <Image
-        source={{ uri: resolvedUri }}
-        resizeMode="cover"
-        style={{
-          width: "100%",
-          height,
-          borderRadius: theme.radius.lg,
-          backgroundColor: theme.colors.surfaceAlt,
-        }}
-      />
-    ) : null;
-  };
-
   const renderPromotionCard = (
     promo: NonNullable<typeof exp.heroPromotion>,
   ) => (
     <Card padding="none" style={{ overflow: "hidden", borderRadius: 22 }}>
-      <HeroImage uri={promo.imageUrl} />
-
+      <HeroImage
+        uri={promo.imageUrl}
+        borderRadius={theme.radius.lg}
+        backgroundColor={theme.colors.surfaceAlt}
+      />
       <View
         style={{
           padding: theme.spacing.xl,
@@ -1648,7 +1657,12 @@ export function BusinessExperience({
             borderRadius: 22,
           }}
         >
-          <HeroImage uri={heroImageUrl} height={isMobileLayout ? 190 : 250} />
+          <HeroImage
+            uri={heroImageUrl}
+            height={isMobileLayout ? 190 : 250}
+            borderRadius={theme.radius.lg}
+            backgroundColor={theme.colors.surfaceAlt}
+          />
 
           <View
             style={{

@@ -1608,6 +1608,7 @@ function JoinFlow() {
 
       paymentReference: string,
       nativeCollect = false,
+      paymentMethod?: string | null,
     ) => {
       if (!isStaffSale && customerPaymentStartStorageKey) {
         void storage.removeItem(customerPaymentStartStorageKey);
@@ -1653,7 +1654,9 @@ function JoinFlow() {
 
         isDeleted: false,
       } as Subscription;
-
+      if (paymentMethod) {
+        setReceiptPaymentMethod(paymentMethod);
+      }
       setSubscription(sub);
 
       setReference(paymentReference);
@@ -2734,6 +2737,7 @@ function JoinFlow() {
               confirmed.payment.providerReferenceId ??
                 confirmed.payment.paymentIntentId,
               true,
+              method,
             );
             return true;
           }

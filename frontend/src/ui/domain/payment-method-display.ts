@@ -15,10 +15,17 @@ export function paymentMethodDisplay(method?: string | null): string {
       return "Cash";
 
     case "POYNT_TERMINAL":
+    case "REMOTE_TERMINAL":
       return "Card payment at Counter";
+
+    case "MONERIS":
+      return "Credit/Debit Card";
 
     case "NO_PAYMENT":
       return "No payment required";
+
+    case "TEST":
+      return "Test payment";
 
     default:
       return "Payment method unavailable";
