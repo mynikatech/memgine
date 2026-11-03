@@ -334,7 +334,9 @@ export default function PoyntCollectCheckoutScreen() {
                   backgroundColor: checkoutTheme.colors.accentSoft,
                 }}
               >
-                <Text variant="h2" color="primary">Payment Successful</Text>
+                <Text variant="h2" color="primary">
+                  Payment Successful
+                </Text>
 
                 <Text variant="bodyStrong">Your membership is active.</Text>
 
@@ -439,9 +441,11 @@ export default function PoyntCollectCheckoutScreen() {
                   />
                 ) : null}
                 {/* CARD PAYMENT */}
+                {/* CARD PAYMENT */}
                 {canPay && bootstrap ? (
-                  <View style={{ gap: 10 }}>
+                  <View style={{ gap: 10, minWidth: 0, width: "100%" }}>
                     <Text variant="bodyStrong">Credit or debit card</Text>
+
                     <PoyntCollectCardForm
                       configuration={bootstrap}
                       onNonce={async (nonce) => {
@@ -449,12 +453,6 @@ export default function PoyntCollectCheckoutScreen() {
                       }}
                       onBack={() => returnToMemgine(true)}
                       payLabel={`Pay ${amountText} & Subscribe`}
-                    />
-                    <Button
-                      label="Cancel Payment"
-                      fullWidth
-                      variant="secondary"
-                      onPress={() => returnToMemgine(true)}
                     />
                   </View>
                 ) : null}

@@ -207,6 +207,7 @@ function installDevCancellationLogFilter(): () => void {
 let walletIdCounter = 0;
 
 const WalletHost = "div" as any;
+const WalletStyle = "style" as any;
 
 /** Never displays unverified wallet buttons. Poynt provides the genuine branded controls. */
 
@@ -567,7 +568,49 @@ export function PoyntCollectWallets({
   }
 
   return (
-    <View style={{ width: "100%", gap: 12 }}>
+    <View style={{ width: "100%", minWidth: 0, gap: 12 }}>
+      <WalletStyle>
+        {`
+        #${hostId} {
+          display: grid !important;
+          grid-template-columns: minmax(0, 1fr) !important;
+          gap: 12px !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
+          box-sizing: border-box !important;
+        }
+
+        #${hostId} > div {
+          display: grid !important;
+          grid-template-columns: minmax(0, 1fr) !important;
+          gap: 12px !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
+          box-sizing: border-box !important;
+        }
+
+        #${hostId} > div > * {
+          max-width: 100% !important;
+          min-width: 0 !important;
+          box-sizing: border-box !important;
+        }
+      `}
+      </WalletStyle>
+
+      <WalletHost
+        id={hostId}
+        aria-label="Secure wallet checkout"
+        style={{
+          width: "100%",
+          maxWidth: "100%",
+          minWidth: 0,
+          boxSizing: "border-box",
+          minHeight: available ? 52 : 0,
+          display: selectedWallet ? "none" : "grid",
+        }}
+      />
       <WalletHost
         id={hostId}
         aria-label="Secure wallet checkout"
