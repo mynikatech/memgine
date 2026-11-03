@@ -126,6 +126,9 @@ export const APP_ROUTES = {
     memberships: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/memberships`,
 
+    marketingQr: (organizationId: string) =>
+      `/org-admin/${encodeURIComponent(organizationId)}/marketing-qr`,
+
     offers: (organizationId: string) =>
       `/org-admin/${encodeURIComponent(organizationId)}/offers`,
 
@@ -425,6 +428,11 @@ export const createOrgAdminRoutes = (organizationId: string): AdminRoute[] => [
 
     icon: "phone-portrait-outline",
   },
+  {
+    title: "Marketing QR Codes",
+    href: APP_ROUTES.orgAdmin.marketingQr(organizationId),
+    icon: "qr-code-outline",
+  },
 
   {
     title: "Customers",
@@ -488,7 +496,6 @@ export const createOrgAdminRoutes = (organizationId: string): AdminRoute[] => [
 
         icon: "notifications-outline",
       },
-
     ],
   },
 ];
