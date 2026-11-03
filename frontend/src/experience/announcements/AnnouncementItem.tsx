@@ -1,7 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { AccessibilityInfo, Animated, AppState, Easing, Linking, Pressable, View } from "react-native";
+import {
+  AccessibilityInfo,
+  Animated,
+  AppState,
+  Easing,
+  Linking,
+  Pressable,
+  View,
+} from "react-native";
 import { Text } from "@/src/ui";
 import type { AnnouncementStyle } from "./announcement-model";
+import type { ThemeExperienceConfig } from "@/src/core/theme-experience.types";
+import { ThemeMark } from "@/src/ui/domain/ThemeExperienceVisuals";
 
 /** Shared, configuration-driven announcement used by both Preview and Customer. */
 export function AnnouncementItem({
@@ -12,6 +22,7 @@ export function AnnouncementItem({
   link,
   paddingHorizontal,
   paddingVertical,
+  themeExperience,
 }: {
   message: string;
   style: AnnouncementStyle;
@@ -20,6 +31,7 @@ export function AnnouncementItem({
   link: string | null;
   paddingHorizontal: number;
   paddingVertical: number;
+  themeExperience?: ThemeExperienceConfig | null;
 }) {
   const progress = useRef(new Animated.Value(0)).current;
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -30,6 +42,12 @@ export function AnnouncementItem({
   const [messageWidth, setMessageWidth] = useState(0);
   const [typedCharacters, setTypedCharacters] = useState(0);
   const fullMessage = message + (link ? "  ·  Learn more ↗" : "");
+
+  const themed =
+    themeExperience?.enabled === true &&
+    themeExperience.announcementEnabled === true &&
+    themeExperience.artStyle !== "NONE";
+
   const animated = !reducedMotion && appIsActive;
 
   useEffect(() => {
@@ -173,7 +191,7 @@ export function AnnouncementItem({
       }}
       style={{
         backgroundColor: background,
-        paddingHorizontal,
+        paddingHorizontal: paddingHorizontal + (themed ? 30 : 0),
         paddingVertical: Math.max(paddingVertical, 14),
         overflow: "hidden",
         borderRadius: 18,
@@ -182,6 +200,43 @@ export function AnnouncementItem({
       }}
       onLayout={(event) => setContainerWidth(event.nativeEvent.layout.width)}
     >
+      {themed ? (
+        <>
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: 10,
+              top: 0,
+              bottom: 0,
+              justifyContent: "center",
+            }}
+          >
+            <ThemeMark
+              style={themeExperience!.artStyle}
+              color={foreground}
+              size={19}
+            />
+          </View>
+
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              right: 10,
+              top: 0,
+              bottom: 0,
+              justifyContent: "center",
+            }}
+          >
+            <ThemeMark
+              style={themeExperience!.artStyle}
+              color={foreground}
+              size={15}
+            />
+          </View>
+        </>
+      ) : null}
       {style === "TICKER" || style === "REVEAL" ? (
         <View
           pointerEvents="none"

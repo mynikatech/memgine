@@ -1,5 +1,6 @@
 import { Capability, StaffRole } from "../permissions/permissions";
 import type { AnnouncementConfiguration } from "@/src/experience/announcements/announcement-model";
+import type { ThemeExperienceConfig } from "../theme-experience.types";
 
 import {
   Address,
@@ -157,7 +158,7 @@ export interface OrganizationBranding {
   announcementLinkUrl?: string | null;
   announcementStartsAt?: ISODateString | null;
   announcementEndsAt?: ISODateString | null;
-
+  themeExperience?: ThemeExperienceConfig | null;
   brandingStatusId: ID;
 
   createdAt: ISODateString;

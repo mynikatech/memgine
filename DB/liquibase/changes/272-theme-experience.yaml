@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 272-theme-experience
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/272-theme-experience.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

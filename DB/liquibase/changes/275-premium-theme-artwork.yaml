@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 275-premium-theme-artwork
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/275-premium-theme-artwork.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

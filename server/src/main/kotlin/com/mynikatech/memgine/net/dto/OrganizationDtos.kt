@@ -43,7 +43,8 @@ import kotlinx.serialization.json.JsonObject
  val announcementEnabled: Boolean = false, val announcementMessage: String? = null,
  val announcementStyle: String = "STATIC", val announcementBackgroundColor: String? = null,
  val announcementTextColor: String? = null, val announcementLinkUrl: String? = null,
- val announcementStartsAt: String? = null, val announcementEndsAt: String? = null
+ val announcementStartsAt: String? = null, val announcementEndsAt: String? = null,
+ val themeExperience: JsonObject? = null
 )
 @Serializable data class BusinessOwnerIdentityDto(
  val firstName: String, val lastName: String? = null,

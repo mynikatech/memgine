@@ -9,6 +9,11 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { resolveThemeExperience } from "@/src/core/theme-experience.types";
+
+import { ThemeHeaderDecoration } from "@/src/ui/domain/ThemeHeaderDecoration";
+
+import { ThemeFeatureSection } from "@/src/ui/domain/ThemeFeatureSection";
 import {
   RedemptionProductPicker,
   type RedemptionItemChoice,
@@ -474,6 +479,7 @@ export function BusinessExperience({
       decoration: enhancedVisualsEnabled
         ? brandingOverride?.decoration
         : undefined,
+      themeExperience: brandingOverride?.themeExperience ?? null,
       announcementEnabled: brandingOverride?.announcementEnabled,
       announcementMessage: brandingOverride?.announcementMessage,
       announcementStyle: brandingOverride?.announcementStyle,
@@ -488,6 +494,10 @@ export function BusinessExperience({
     [definitionResolvedBranding, brandingOverride],
   );
 
+  const themeExperience = useMemo(
+    () => resolveThemeExperience(resolvedBranding.themeExperience),
+    [resolvedBranding.themeExperience],
+  );
   const resolvedConfiguration = useMemo(
     () => ({
       ...configuration,
@@ -1576,7 +1586,7 @@ export function BusinessExperience({
   ) => (
     <Card padding="none" style={{ overflow: "hidden", borderRadius: 22 }}>
       <HeroImage
-        uri={promo.imageUrl}
+        uri={heroImageUrl?.trim() || promo.imageUrl}
         borderRadius={theme.radius.lg}
         backgroundColor={theme.colors.surfaceAlt}
       />
@@ -1663,7 +1673,6 @@ export function BusinessExperience({
             borderRadius={theme.radius.lg}
             backgroundColor={theme.colors.surfaceAlt}
           />
-
           <View
             style={{
               paddingHorizontal: theme.spacing.xl,
@@ -1706,6 +1715,25 @@ export function BusinessExperience({
         </Card>
       ) : exp.heroPromotion ? (
         renderPromotionCard(exp.heroPromotion)
+      ) : null}
+
+      {/* W277: published season scene is independent of the disabled legacy
+          decorative hero mode. It ends before the membership cards begin. */}
+      {themeExperience.enabled && themeExperience.featureEnabled ? (
+        <View
+          style={{
+            marginHorizontal: -theme.spacing.lg,
+            overflow: "hidden",
+            backgroundColor: customerBackground,
+          }}
+        >
+          <ThemeFeatureSection
+            config={themeExperience}
+            primaryColor={theme.colors.primary}
+            accentColor={theme.colors.accent}
+            sessionKey={`theme:${organization.id}`}
+          />
+        </View>
       ) : null}
 
       {isHistoricalSubscription && subscription ? (
@@ -1766,22 +1794,33 @@ export function BusinessExperience({
           titleColor={pageTextColor}
           title={t("experience.yourMemberships")}
         >
-          <MembershipCard
-            decoration={resolvedBranding.decoration}
-            decorationImageUrl={
-              resolvedBranding.decoration?.cardBackgroundImageUrl
+          <View
+            style={
+              themeExperience.enabled && themeExperience.membershipAccentEnabled
+                ? {
+                    borderWidth: 2,
+                    borderColor: theme.colors.accent,
+                    borderRadius: 20,
+                    padding: 3,
+                  }
+                : undefined
             }
-            decorationBackgroundColor={customerBackground}
-            testID="experience-membership-card"
-            organizationName={exp.displayName}
-            tier={exp.membership.tier}
-            validUntil={exp.membership.validUntilLabel}
-            status={subscriptionStatus}
-            cardStyle={cardStyle}
-            logoUrl={
-              membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl
-            }
-          />
+          >
+            <MembershipCard
+              decoration={undefined}
+              decorationImageUrl={undefined}
+              decorationBackgroundColor={customerBackground}
+              testID="experience-membership-card"
+              organizationName={exp.displayName}
+              tier={exp.membership.tier}
+              validUntil={exp.membership.validUntilLabel}
+              status={subscriptionStatus}
+              cardStyle={cardStyle}
+              logoUrl={
+                membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl
+              }
+            />
+          </View>
         </Section>
       ) : isPreviewMode ? (
         <Section
@@ -3748,6 +3787,10 @@ export function BusinessExperience({
               {tagline?.trim() || exp.tagline}
             </Text>
           </View>
+          <ThemeHeaderDecoration
+            config={themeExperience}
+            accentColor={theme.colors.accent}
+          />
         </View>
 
         <ScrollView
@@ -3766,6 +3809,7 @@ export function BusinessExperience({
               fallbackBackground={theme.colors.accent}
               paddingHorizontal={theme.spacing.md}
               paddingVertical={theme.spacing.sm}
+              themeExperience={themeExperience}
             />
           ) : null}
           {customerActionError ? (

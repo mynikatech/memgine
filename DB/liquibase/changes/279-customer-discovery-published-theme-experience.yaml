@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - changeSet:
+      id: 279-customer-discovery-published-theme-experience
+      author: mynikatech
+      comment: Expose organization-owned published themeExperience in customer discovery without changing other projection or filters.
+      changes:
+        - sqlFile:
+            path: ../sql/279-customer-discovery-published-theme-experience.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

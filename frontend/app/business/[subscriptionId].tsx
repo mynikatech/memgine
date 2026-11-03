@@ -190,6 +190,15 @@ export default function BusinessExperienceRoute() {
             | OrganizationBranding
             | null
             | undefined) ?? null;
+
+        console.log("MEMGINE CUSTOMER RELEASE BRANDING", {
+          organizationId: orgId,
+          brandingPresent: !!publishedBranding,
+          platformThemeCode: publishedBranding?.platformThemeCode,
+          themeExperience: publishedBranding?.themeExperience,
+          announcementConfiguration:
+            publishedBranding?.announcementConfiguration,
+        });
         const details =
           (experience.organizationDetails as
             | OrganizationDetails

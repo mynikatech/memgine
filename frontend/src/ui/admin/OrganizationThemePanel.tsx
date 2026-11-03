@@ -1,23 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { ScrollView, View } from "react-native";
-import type { OrganizationBranding, PlatformBrandingThemeV2 } from "@/src/core";
-import type { BrandingDecorationConfig } from "@/src/core/branding-decoration.types";
-import { DEFAULT_DECORATION } from "@/src/core/branding-decoration.types";
+import type { OrganizationBranding, PlatformBrandingTheme } from "@/src/core";
 import { pickBrandingAsset } from "@/src/core/brandingAssetPicker";
 import { brandingAssetApi } from "@/src/data/api/branding-asset-api";
 import { platformBrandingThemeApi } from "@/src/data/api/platform-branding-theme-api";
-import {
-  BrandColourSelect,
-  Button,
-  Card,
-  Section,
-  Text,
-} from "@/src/ui";
+import { BrandColourSelect, Button, Card, Section, Text } from "@/src/ui";
 import { CustomerThemePreview } from "@/src/ui/domain/CustomerThemePreview";
 import { AnnouncementEditor } from "@/src/experience/announcements/AnnouncementEditor";
 import { AnnouncementDisplay } from "@/src/experience/announcements/AnnouncementDisplay";
 import { resolveAnnouncementConfiguration } from "@/src/experience/announcements/announcement-model";
-
+import { ThemeExperienceEditor } from "./ThemeExperienceEditor";
+import { resolveThemeExperience } from "@/src/core/theme-experience.types";
 type Props = {
   branding: OrganizationBranding;
   editing: boolean;
@@ -33,15 +26,6 @@ const fields = [
   "backgroundColor",
   "textColor",
 ] as const;
-const previewTheme = (b: OrganizationBranding) => ({
-  primaryColor: b.primaryColor ?? "#0F766E",
-  secondaryColor: b.secondaryColor ?? "#115E59",
-  accentColor: b.accentColor ?? "#F59E0B",
-  backgroundColor: b.backgroundColor ?? "#FFFFFF",
-  textColor: b.textColor ?? "#1F2937",
-  backgroundImageUrl: b.backgroundImageUrl ?? null,
-  decoration: b.decoration ?? null,
-});
 export function OrganizationThemePanel({
   branding,
   editing,
@@ -50,7 +34,7 @@ export function OrganizationThemePanel({
   onDraftChange,
   resetKey,
 }: Props) {
-  const [themes, setThemes] = useState<PlatformBrandingThemeV2[]>([]);
+  const [themes, setThemes] = useState<PlatformBrandingTheme[]>([]);
   const [draft, setDraft] = useState<OrganizationBranding>(branding);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -94,22 +78,18 @@ export function OrganizationThemePanel({
     setNotice(null);
     setError(null);
   };
-  const editDecoration = <K extends keyof BrandingDecorationConfig>(
-    key: K,
-    value: BrandingDecorationConfig[K],
-  ) => {
-    change({
-      decoration: {
-        ...DEFAULT_DECORATION,
-        ...(draft.decoration ?? {}),
-        [key]: value,
-      },
-    });
-  };
-  const choose = (t: PlatformBrandingThemeV2) => {
+  const choose = (t: PlatformBrandingTheme) => {
     if (locked || !t.publishedTheme) return;
-    change({ ...t.publishedTheme, platformThemeCode: t.code });
-    setNotice(`Selected ${t.displayName}. Save Changes to retain changes.`);
+    const published = t.publishedTheme;
+    // Choose only the published seasonal experience. Never spread a platform theme
+    // across organization-owned branding, content, announcements, or assets.
+    change({
+      platformThemeCode: t.code,
+      themeExperience: resolveThemeExperience(published.themeExperience),
+    });
+    setNotice(
+      `Selected ${t.displayName}. Review Theme Experience and save changes.`,
+    );
   };
   const upload = async () => {
     if (locked) return;
@@ -191,6 +171,25 @@ export function OrganizationThemePanel({
               returns publishedTheme values.
             </Text>
           ) : null}
+          <Section
+            title="Organization theme draft preview"
+            description="Uses your organization's own colours with the selected published seasonal artwork. This is a sample layout; the Proposed Customer Experience preview uses actual content."
+          >
+            <View style={{ width: "100%", maxWidth: 440 }}>
+              <CustomerThemePreview
+                theme={{
+                  ...draft,
+                  primaryColor: draft.primaryColor ?? "#0F766E",
+                  secondaryColor: draft.secondaryColor ?? "#115E59",
+                  accentColor: draft.accentColor ?? "#F59E0B",
+                  backgroundColor: draft.backgroundColor ?? "#FFFFFF",
+                  textColor: draft.textColor ?? "#1F2937",
+                }}
+                businessName={organizationName}
+              />
+            </View>
+          </Section>
+
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
             {fields.map((key) => (
               <View key={key} style={{ width: 235, maxWidth: "100%" }}>
@@ -229,7 +228,7 @@ export function OrganizationThemePanel({
               onPress={() => change({ backgroundImageUrl: null })}
             />
             <Button
-              label="Restore Preset"
+              label="Restore Theme Artwork"
               variant="secondary"
               disabled={locked || !selected}
               onPress={() => {
@@ -237,280 +236,41 @@ export function OrganizationThemePanel({
               }}
             />
           </View>
+          <Text variant="bodySmall" color="textSecondary">
+            Seasonal artwork comes from the published Platform theme. Your
+            organization can adjust its feature text, animation and display
+            toggles without altering the original theme artwork or its business
+            identity.
+          </Text>
+          <ThemeExperienceEditor
+            value={draft.themeExperience}
+            disabled={locked}
+            onChange={(themeExperience) => change({ themeExperience })}
+          />
           <Section
-            title="Decoration"
-            description="The selected theme's configurable decorations. Customer changes stay private until Customer Experience is published."
+            title="Announcements"
+            description="Messages remain draft until Customer Experience is published."
           >
-            <View style={{ gap: 12 }}>
-              <Text variant="bodyStrong">Decoration style</Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                <Button
-                  label="NONE"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.style ?? DEFAULT_DECORATION.style) ===
-                    "NONE"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("style", "NONE")}
-                />
-                <Button
-                  label="CORNERS"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.style ?? DEFAULT_DECORATION.style) ===
-                    "CORNERS"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("style", "CORNERS")}
-                />
-                <Button
-                  label="PATTERN"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.style ?? DEFAULT_DECORATION.style) ===
-                    "PATTERN"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("style", "PATTERN")}
-                />
-                <Button
-                  label="CONFETTI"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.style ?? DEFAULT_DECORATION.style) ===
-                    "CONFETTI"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("style", "CONFETTI")}
-                />
-                <Button
-                  label="BORDER"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.style ?? DEFAULT_DECORATION.style) ===
-                    "BORDER"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("style", "BORDER")}
-                />
-              </View>
-              <Text variant="bodyStrong">Intensity</Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                <Button
-                  label="SUBTLE"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.intensity ??
-                      DEFAULT_DECORATION.intensity) === "SUBTLE"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("intensity", "SUBTLE")}
-                />
-                <Button
-                  label="BALANCED"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.intensity ??
-                      DEFAULT_DECORATION.intensity) === "BALANCED"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("intensity", "BALANCED")}
-                />
-                <Button
-                  label="FESTIVE"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.intensity ??
-                      DEFAULT_DECORATION.intensity) === "FESTIVE"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("intensity", "FESTIVE")}
-                />
-              </View>
-              <Text variant="bodyStrong">Card surface</Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                <Button
-                  label="SOLID"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.cardTreatment ??
-                      DEFAULT_DECORATION.cardTreatment) === "SOLID"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("cardTreatment", "SOLID")}
-                />
-                <Button
-                  label="DECORATIVE"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.cardTreatment ??
-                      DEFAULT_DECORATION.cardTreatment) === "DECORATIVE"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("cardTreatment", "DECORATIVE")}
-                />
-                <Button
-                  label="IMAGE_OVERLAY"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.cardTreatment ??
-                      DEFAULT_DECORATION.cardTreatment) === "IMAGE_OVERLAY"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() =>
-                    editDecoration("cardTreatment", "IMAGE_OVERLAY")
-                  }
-                />
-              </View>
-              <Text variant="bodyStrong">Header</Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                <Button
-                  label="SOLID"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.headerTreatment ??
-                      DEFAULT_DECORATION.headerTreatment) === "SOLID"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("headerTreatment", "SOLID")}
-                />
-                <Button
-                  label="DECORATIVE"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.headerTreatment ??
-                      DEFAULT_DECORATION.headerTreatment) === "DECORATIVE"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() =>
-                    editDecoration("headerTreatment", "DECORATIVE")
-                  }
-                />
-                <Button
-                  label="IMAGE"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.headerTreatment ??
-                      DEFAULT_DECORATION.headerTreatment) === "IMAGE"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("headerTreatment", "IMAGE")}
-                />
-              </View>
-              <Text variant="bodyStrong">Pattern</Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                <Button
-                  label="NONE"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.pattern ??
-                      DEFAULT_DECORATION.pattern) === "NONE"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("pattern", "NONE")}
-                />
-                <Button
-                  label="DOTS"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.pattern ??
-                      DEFAULT_DECORATION.pattern) === "DOTS"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("pattern", "DOTS")}
-                />
-                <Button
-                  label="SPARKLES"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.pattern ??
-                      DEFAULT_DECORATION.pattern) === "SPARKLES"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("pattern", "SPARKLES")}
-                />
-                <Button
-                  label="DIAMONDS"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.pattern ??
-                      DEFAULT_DECORATION.pattern) === "DIAMONDS"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("pattern", "DIAMONDS")}
-                />
-              </View>
-              <Text variant="bodyStrong">Border</Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                <Button
-                  label="NONE"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.borderStyle ??
-                      DEFAULT_DECORATION.borderStyle) === "NONE"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("borderStyle", "NONE")}
-                />
-                <Button
-                  label="SOLID"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.borderStyle ??
-                      DEFAULT_DECORATION.borderStyle) === "SOLID"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("borderStyle", "SOLID")}
-                />
-                <Button
-                  label="ELEGANT"
-                  disabled={locked}
-                  variant={
-                    (draft.decoration?.borderStyle ??
-                      DEFAULT_DECORATION.borderStyle) === "ELEGANT"
-                      ? "primary"
-                      : "secondary"
-                  }
-                  onPress={() => editDecoration("borderStyle", "ELEGANT")}
-                />
-              </View>
-            </View>
-          </Section>
-          <Section title="Announcements" description="Messages remain draft until Customer Experience is published.">
             <AnnouncementEditor
               key={resetKey}
               value={resolveAnnouncementConfiguration(draft)}
-              onChange={announcementConfiguration => change({ announcementConfiguration })}
+              onChange={(announcementConfiguration) =>
+                change({ announcementConfiguration })
+              }
               disabled={locked}
             />
             <View style={{ marginTop: 12, maxWidth: 860, gap: 8 }}>
               <Text variant="bodyStrong">Announcement preview</Text>
               <AnnouncementDisplay
                 configuration={resolveAnnouncementConfiguration(draft)}
-                fallbackBackground={/^#[0-9a-f]{6}$/i.test(draft.accentColor ?? "") ? draft.accentColor! : "#F59E0B"}
+                fallbackBackground={
+                  /^#[0-9a-f]{6}$/i.test(draft.accentColor ?? "")
+                    ? draft.accentColor!
+                    : "#F59E0B"
+                }
                 paddingHorizontal={16}
                 paddingVertical={10}
+                themeExperience={draft.themeExperience}
               />
             </View>
           </Section>
