@@ -48,6 +48,7 @@ data class TransactionHistoryRow(
     var storeId: String? = null,
     var storeName: String? = null,
     var customerUserId: String? = null,
+    var customerDisplayName: String? = null,
     var transactionType: String = "",
     var status: String = "",
     var paymentMethod: String? = null,

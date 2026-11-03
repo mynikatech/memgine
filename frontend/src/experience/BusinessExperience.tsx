@@ -2530,9 +2530,6 @@ export function BusinessExperience({
                   tone="neutral"
                 />
                 <Text variant="bodySmall" color="textMuted">
-                  Subscription: {subscription.subscriptionNumber}
-                </Text>
-                <Text variant="bodySmall" color="textMuted">
                   Start: {formatDate(subscription.startDate)}
                 </Text>
                 <Text variant="bodySmall" color="textMuted">
