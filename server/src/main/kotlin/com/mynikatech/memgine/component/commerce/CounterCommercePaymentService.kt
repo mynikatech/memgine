@@ -18,6 +18,7 @@ import com.mynikatech.memgine.net.dto.CommerceTerminalPaymentResultRequest
 import com.mynikatech.memgine.net.dto.CommerceTransactionAdjustmentDto
 import com.mynikatech.memgine.net.dto.CommerceTransactionLineDto
 import com.mynikatech.memgine.net.dto.CounterRedemptionCheckoutDto
+import com.mynikatech.memgine.net.dto.CounterRedemptionPaymentAttemptDto
 import com.mynikatech.memgine.net.dto.CounterRedemptionCheckoutReviewDto
 import com.mynikatech.memgine.net.dto.CounterRedemptionQuoteDto
 import com.mynikatech.memgine.net.dto.CounterRedemptionQuoteLineDto
@@ -875,6 +876,14 @@ class CounterCommercePaymentService(
             throw ConflictException("Counter redemption price reconciliation is incomplete")
         }
 
+        if (sql().redemptionPaymentAttemptSummary(
+                checkout.commerceTransactionId,
+                actorUserId
+            )?.unresolvedPayment == true
+        ) {
+            throw ConflictException("Counter redemption has unresolved payment evidence")
+        }
+
         activeRemoteTerminalDispatchDto(organizationId, checkout.commerceTransactionId, actorUserId)?.let {
             return@translate it
         }
@@ -949,6 +958,13 @@ class CounterCommercePaymentService(
         if ((checkout.totalMinor ?: 0L) <= 0L) {
             throw BadRequestException("Counter redemption does not require cash payment")
         }
+        if (sql().redemptionPaymentAttemptSummary(
+                checkout.commerceTransactionId,
+                actorUserId
+            )?.unresolvedPayment == true
+        ) {
+            throw ConflictException("Counter redemption has unresolved payment evidence")
+        }
         if (!sql().beginRedemptionCashPayment(
                 organizationId,
                 checkout.commerceTransactionId,
@@ -1006,6 +1022,35 @@ class CounterCommercePaymentService(
         )
         recordCompletion(completed.commerceTransactionId, actorUserId)
         redemptionCheckoutDto(completed, actorUserId)
+    }
+
+    /**
+     * Explicit staff closure for a redemption that has never collected a
+     * successful or unresolved payment. The database locks the persisted
+     * Commerce/redemption pair and preserves every prior attempt as evidence.
+     */
+    fun closeRedemptionUnpaid(
+        organizationId: String,
+        redemptionTransactionId: String,
+        storeId: String,
+        staffId: String,
+        actorUserId: String
+    ): Boolean = translate {
+        val checkout = redemptionCheckout(
+            organizationId,
+            redemptionTransactionId,
+            storeId,
+            staffId,
+            actorUserId
+        )
+        if (!sql().closeRedemptionUnpaid(
+                organizationId,
+                checkout.commerceTransactionId,
+                actorUserId
+            )) {
+            throw ConflictException("Counter redemption was not closed unpaid")
+        }
+        true
     }
 
     fun confirmRedemptionTestPayment(
@@ -1556,6 +1601,10 @@ class CounterCommercePaymentService(
             row.commerceTransactionId,
             actorUserId
         )
+        val latestAttempt = sql().redemptionPaymentAttemptSummary(
+            row.commerceTransactionId,
+            actorUserId
+        )
 
         return CounterRedemptionCheckoutDto(
         redemptionTransactionId = row.redemptionTransactionId,
@@ -1581,6 +1630,19 @@ class CounterCommercePaymentService(
         pricingDiscrepancies = discrepancies,
         paymentMethod = cashPayment.paymentMethod,
         cashPaymentStatus = cashPayment.cashPaymentStatus,
+        latestPaymentAttempt = latestAttempt?.let {
+            CounterRedemptionPaymentAttemptDto(
+                paymentAttemptId = it.paymentAttemptId,
+                providerReferenceId = it.providerReferenceId,
+                providerStatus = it.providerStatus,
+                providerTransactionId = it.providerTransactionId,
+                failureCode = it.failureCode,
+                failureMessage = it.failureMessage,
+                lastCallbackAt = it.lastCallbackAt,
+                retryAllowed = it.retryAllowed,
+                unresolvedPayment = it.unresolvedPayment
+            )
+        },
         paymentRequired = (row.totalMinor ?: 0L) > 0L &&
             row.commerceStatus !in setOf("COMPLETED", "PROVIDER_SUCCEEDED")
         )
@@ -1981,6 +2043,18 @@ class CounterRedemptionCheckoutRow {
 class CounterRedemptionCashPaymentStateRow {
     var cashPaymentStatus: String = "NOT_STARTED"
     var paymentMethod: String? = null
+}
+
+class CounterRedemptionPaymentAttemptSummaryRow {
+    var paymentAttemptId: String = ""
+    var providerReferenceId: String = ""
+    var providerStatus: String = ""
+    var providerTransactionId: String? = null
+    var failureCode: String? = null
+    var failureMessage: String? = null
+    var lastCallbackAt: String? = null
+    var retryAllowed: Boolean = false
+    var unresolvedPayment: Boolean = false
 }
 
 class CounterPendingRedemptionTransactionRow {
@@ -2395,6 +2469,20 @@ interface CounterCommercePaymentSql {
         @Bind("transactionId") transactionId: String,
         @Bind("actorUserId") actorUserId: String
     ): CounterRedemptionCashPaymentStateRow
+
+    @SqlQuery("SELECT * FROM commerce_get_counter_redemption_payment_attempt_summary(:transactionId,:actorUserId)")
+    @RegisterBeanMapper(CounterRedemptionPaymentAttemptSummaryRow::class)
+    fun redemptionPaymentAttemptSummary(
+        @Bind("transactionId") transactionId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): CounterRedemptionPaymentAttemptSummaryRow?
+
+    @SqlQuery("SELECT commerce_close_counter_redemption_unpaid(:organizationId,:transactionId,:actorUserId)")
+    fun closeRedemptionUnpaid(
+        @Bind("organizationId") organizationId: String,
+        @Bind("transactionId") transactionId: String,
+        @Bind("actorUserId") actorUserId: String
+    ): Boolean
 
     @SqlQuery("SELECT commerce_begin_counter_redemption_cash_payment(:organizationId,:transactionId,:actorUserId)")
     fun beginRedemptionCashPayment(

@@ -117,7 +117,7 @@ class CommerceRemotePaymentLifecycleTest {
                 true
             }
             "remoteTerminalPaymentAttemptState" -> remotePaymentState
-            "recordRemotePaymentCallback" -> { callbackStatus=args!![1] as String; true }
+            "recordRemotePaymentCallbackDetail" -> { callbackStatus=args!![1] as String; true }
             else -> throw UnsupportedOperationException(method.name)
         } } as CommerceSql
     }

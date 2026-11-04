@@ -2,6 +2,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Modal,
   Platform,
   Pressable,
@@ -50,6 +51,7 @@ import {
 import type {
   CounterRedemptionCheckout,
   CounterRedemptionCheckoutReview,
+  CounterRedemptionPaymentAttemptSummary,
   CounterRedemptionQuote,
   CounterRedemptionTransaction,
   CounterRedemptionTransactionValidation,
@@ -84,6 +86,68 @@ const COUNTER_REDEMPTION_PAYMENT_STORAGE_PREFIX =
   "counter-redemption-terminal-payment";
 const COUNTER_REDEMPTION_PAYMENT_POLL_INTERVAL_MS = 2_000;
 const COUNTER_REDEMPTION_PAYMENT_AUTO_POLL_WINDOW_MS = 120_000;
+
+const ACTIVE_TERMINAL_ATTEMPT_STATUSES = new Set([
+  "DISPATCHING",
+  "DISPATCHED",
+  "RECEIVED",
+  "STARTED",
+]);
+const FAILED_TERMINAL_ATTEMPT_STATUSES = new Set(["FAILED", "CANCELLED"]);
+
+const isActiveTerminalAttempt = (checkout: CounterRedemptionCheckout) =>
+  checkout.latestPaymentAttempt?.providerStatus != null &&
+  ACTIVE_TERMINAL_ATTEMPT_STATUSES.has(
+    checkout.latestPaymentAttempt.providerStatus,
+  );
+
+const isFailedTerminalAttempt = (checkout: CounterRedemptionCheckout) =>
+  checkout.latestPaymentAttempt?.providerStatus != null &&
+  FAILED_TERMINAL_ATTEMPT_STATUSES.has(
+    checkout.latestPaymentAttempt.providerStatus,
+  );
+
+const paymentAttemptStatusLabel = (status?: string | null) => {
+  switch (status) {
+    case "DISPATCHING":
+      return "Request being sent";
+    case "DISPATCHED":
+      return "Request sent to terminal";
+    case "RECEIVED":
+      return "Terminal request received";
+    case "STARTED":
+      return "Terminal is processing payment";
+    case "SUCCEEDED":
+      return "Payment confirmed";
+    case "FAILED":
+      return "Payment declined";
+    case "CANCELLED":
+      return "Payment cancelled";
+    default:
+      return status ? status.replaceAll("_", " ") : "Outcome unknown";
+  }
+};
+
+const paymentAttemptOutcomeLabel = (
+  attempt?: CounterRedemptionPaymentAttemptSummary | null,
+) => {
+  if (!attempt || attempt.unresolvedPayment) return "Payment outcome unresolved";
+  switch (attempt.providerStatus) {
+    case "SUCCEEDED":
+      return "Payment successful";
+    case "FAILED":
+      return "Payment declined";
+    case "CANCELLED":
+      return "Payment cancelled";
+    case "DISPATCHING":
+    case "DISPATCHED":
+    case "RECEIVED":
+    case "STARTED":
+      return "Payment processing";
+    default:
+      return "Payment outcome unresolved";
+  }
+};
 
 type RedemptionCheckoutStage =
   | "idle"
@@ -294,6 +358,10 @@ export default function StaffCounter() {
   const [redemptionCheckoutStage, setRedemptionCheckoutStage] =
     useState<RedemptionCheckoutStage>("idle");
   const [cashConfirmationVisible, setCashConfirmationVisible] =
+    useState(false);
+  const [closeUnpaidConfirmationVisible, setCloseUnpaidConfirmationVisible] =
+    useState(false);
+  const [terminalPaymentDetailsExpanded, setTerminalPaymentDetailsExpanded] =
     useState(false);
   const redemptionCheckoutValidationRef = useRef<
     CounterRedemptionTransactionValidation[]
@@ -697,6 +765,31 @@ export default function StaffCounter() {
       void storage.removeItem(counterRedemptionPaymentStorageKey);
     }
   }, [counterRedemptionPaymentStorageKey]);
+  const beginPendingRedemptionTerminalPayment = useCallback(
+    async (
+      checkout: CounterRedemptionCheckout,
+      pollingWindowStartedAt = Date.now(),
+    ) => {
+      if (!orgId || !storeId || !staffId || !counterRedemptionPaymentStorageKey)
+        return;
+      const pending: PendingCounterRedemptionPayment = {
+        organizationId: orgId,
+        storeId,
+        staffId,
+        redemptionTransactionId: checkout.redemptionTransactionId,
+        commerceTransactionId: checkout.commerceTransactionId,
+        pollingWindowStartedAt,
+      };
+      await storage.setItem(counterRedemptionPaymentStorageKey, pending);
+      setPendingRedemptionTerminalPayment(pending);
+      setRedemptionPaymentTimedOut(
+        Date.now() - pollingWindowStartedAt >=
+          COUNTER_REDEMPTION_PAYMENT_AUTO_POLL_WINDOW_MS,
+      );
+      setRedemptionCheckoutStage("waiting");
+    },
+    [counterRedemptionPaymentStorageKey, orgId, staffId, storeId],
+  );
   useEffect(() => {
     if (!counterRedemptionPaymentStorageKey || !orgId || !storeId || !staffId) {
       setRestoringRedemptionPayment(false);
@@ -736,17 +829,30 @@ export default function StaffCounter() {
           )
             return;
           setRedemptionCheckout(latest);
-          setPendingRedemptionTerminalPayment(saved);
-          setRedemptionPaymentTimedOut(
-            Date.now() - saved.pollingWindowStartedAt >=
-              COUNTER_REDEMPTION_PAYMENT_AUTO_POLL_WINDOW_MS,
-          );
-          setRedemptionCheckoutStage(
+          if (
             latest.redemptionStatus === "SUCCESS" ||
-              latest.commerceStatus === "COMPLETED"
-              ? "complete"
-              : "waiting",
-          );
+            latest.commerceStatus === "COMPLETED"
+          ) {
+            clearPendingRedemptionTerminalPayment();
+            setRedemptionCheckoutStage("complete");
+          } else if (
+            isActiveTerminalAttempt(latest) ||
+            latest.commerceStatus === "PROVIDER_IN_PROGRESS"
+          ) {
+            await beginPendingRedemptionTerminalPayment(
+              latest,
+              saved.pollingWindowStartedAt,
+            );
+          } else if (isFailedTerminalAttempt(latest)) {
+            clearPendingRedemptionTerminalPayment();
+            setRedemptionCheckoutStage("ready");
+          } else {
+            // No active terminal attempt is safe to poll. Keep any unresolved
+            // financial state visible without treating it as a declined payment.
+            clearPendingRedemptionTerminalPayment();
+            setRedemptionPaymentTimedOut(true);
+            setRedemptionCheckoutStage("waiting");
+          }
         } catch {
           // Retain the local pending record for an explicit later status check.
         }
@@ -763,6 +869,8 @@ export default function StaffCounter() {
     requestedResumeTransactionId,
     storeId,
     staffId,
+    beginPendingRedemptionTerminalPayment,
+    clearPendingRedemptionTerminalPayment,
   ]);
   const selectMembership = (
     subId: string,
@@ -1355,22 +1463,29 @@ export default function StaffCounter() {
         redemptionTransactionId,
       );
       setRedemptionCheckout(latest);
-      setRedemptionCheckoutStage(
-        latest.redemptionStatus === "SUCCESS" ||
-          latest.commerceStatus === "COMPLETED"
-          ? "complete"
-          : "waiting",
-      );
-      setRedemptionPaymentTimedOut(
-        latest.redemptionStatus !== "SUCCESS" &&
-          latest.commerceStatus !== "COMPLETED",
-      );
       if (
         latest.redemptionStatus === "SUCCESS" ||
         latest.commerceStatus === "COMPLETED"
       ) {
+        clearPendingRedemptionTerminalPayment();
+        setRedemptionCheckoutStage("complete");
         await finishRedemptionCheckout(latest);
+        return;
       }
+      if (
+        isActiveTerminalAttempt(latest) ||
+        latest.commerceStatus === "PROVIDER_IN_PROGRESS"
+      ) {
+        await beginPendingRedemptionTerminalPayment(latest);
+        return;
+      }
+      clearPendingRedemptionTerminalPayment();
+      setRedemptionPaymentTimedOut(
+        latest.latestPaymentAttempt?.unresolvedPayment === true,
+      );
+      setRedemptionCheckoutStage(
+        isFailedTerminalAttempt(latest) ? "ready" : "waiting",
+      );
     } catch (failure) {
       setError(
         failure instanceof Error
@@ -1411,15 +1526,31 @@ export default function StaffCounter() {
       return;
     }
 
-    // A cash attempt is durable but has no asynchronous provider callback.
-    // It remains recoverable through the same read-only checkout endpoint and
-    // can only be finalized by an explicit staff confirmation.
-    if (latest.cashPaymentStatus === "PENDING") {
+    const hasActiveTerminalAttempt =
+      isActiveTerminalAttempt(latest) ||
+      latest.commerceStatus === "PROVIDER_IN_PROGRESS";
+    if (hasActiveTerminalAttempt) {
+      await beginPendingRedemptionTerminalPayment(latest);
+      return;
+    }
+
+    if (latest.latestPaymentAttempt?.unresolvedPayment) {
+      clearPendingRedemptionTerminalPayment();
+      setRedemptionPaymentTimedOut(true);
       setRedemptionCheckoutStage("waiting");
       return;
     }
 
-    if (latest.commerceStatus === "PROVIDER_IN_PROGRESS") {
+    if (isFailedTerminalAttempt(latest)) {
+      clearPendingRedemptionTerminalPayment();
+      setRedemptionCheckoutStage("ready");
+      return;
+    }
+
+    // A cash attempt is durable but has no asynchronous provider callback.
+    // It remains recoverable through the same read-only checkout endpoint and
+    // can only be finalized by an explicit staff confirmation.
+    if (latest.cashPaymentStatus === "PENDING") {
       setRedemptionCheckoutStage("waiting");
       return;
     }
@@ -1454,21 +1585,8 @@ export default function StaffCounter() {
             counterContext(),
             latest.redemptionTransactionId,
           );
-          const pending: PendingCounterRedemptionPayment = {
-            organizationId: orgId,
-            storeId,
-            staffId,
-            redemptionTransactionId: latest.redemptionTransactionId,
-            commerceTransactionId: latest.commerceTransactionId,
-            pollingWindowStartedAt: Date.now(),
-          };
-          if (counterRedemptionPaymentStorageKey) {
-            await storage.setItem(counterRedemptionPaymentStorageKey, pending);
-          }
-          setPendingRedemptionTerminalPayment(pending);
-          setRedemptionPaymentTimedOut(false);
           setRedemptionCheckout(waiting);
-          setRedemptionCheckoutStage("waiting");
+          await beginPendingRedemptionTerminalPayment(waiting);
         } finally {
           redemptionRemoteStartInFlight.current = false;
         }
@@ -1644,7 +1762,20 @@ export default function StaffCounter() {
         counterContext(),
         redemptionCheckout.redemptionTransactionId,
       );
-      await applyRedemptionCheckoutState(checkout, false);
+      // A successful dispatch is enough to establish the single durable
+      // polling context. The subsequent checkout read can briefly lag the
+      // provider-attempt status transition, so do not wait for a particular
+      // status value before starting status-only polling.
+      if (
+        checkout.redemptionStatus !== "SUCCESS" &&
+        checkout.commerceStatus !== "COMPLETED" &&
+        !isFailedTerminalAttempt(checkout)
+      ) {
+        setRedemptionCheckout(checkout);
+        await beginPendingRedemptionTerminalPayment(checkout);
+      } else {
+        await applyRedemptionCheckoutState(checkout, false);
+      }
     } catch (failure) {
       setError(
         failure instanceof Error
@@ -1691,6 +1822,32 @@ export default function StaffCounter() {
       } catch {
         // Preserve the already displayed checkout for explicit recovery.
       }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const closeRedemptionUnpaid = async () => {
+    if (!redemptionCheckout || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await services.counter.closeRedemptionUnpaid(
+        counterContext(),
+        redemptionCheckout.redemptionTransactionId,
+      );
+      setCloseUnpaidConfirmationVisible(false);
+      clearPendingRedemptionTerminalPayment();
+      setRedemptionCheckout(null);
+      setRedemptionCheckoutStage("idle");
+      setResult(null);
+      returnToRedemptionSelection();
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Unable to close this unpaid redemption.",
+      );
     } finally {
       setBusy(false);
     }
@@ -1818,6 +1975,9 @@ export default function StaffCounter() {
           pendingRedemptionTerminalPayment.redemptionTransactionId,
         );
         if (!isCurrentForegroundPoll()) return;
+        // Keep the displayed attempt state in lockstep with the same
+        // server-authoritative read that drives recovery decisions.
+        setRedemptionCheckout(latest);
         if (
           latest.redemptionStatus === "SUCCESS" ||
           latest.commerceStatus === "COMPLETED"
@@ -1825,17 +1985,21 @@ export default function StaffCounter() {
           await finishRedemptionCheckout(latest);
           return;
         }
-        if (
-          ["PROVIDER_FAILED", "CANCELLED", "CANCELED"].includes(
-            latest.commerceStatus,
-          ) ||
-          (latest.commerceStatus === "ORDER_CREATED" && !!latest.failureCode)
-        ) {
+        if (isFailedTerminalAttempt(latest)) {
           clearPendingRedemptionTerminalPayment();
           setRedemptionCheckout(latest);
-          setRedemptionCheckoutStage("failed");
+          setRedemptionCheckoutStage("ready");
           setError(
-            latest.failureMessage || "Terminal payment was not completed.",
+            latest.latestPaymentAttempt?.failureMessage ||
+              latest.failureMessage ||
+              "Terminal payment was not completed.",
+          );
+          return;
+        }
+        if (latest.latestPaymentAttempt?.unresolvedPayment) {
+          setRedemptionPaymentTimedOut(true);
+          setError(
+            "The terminal payment outcome cannot yet be confirmed. Check status after it has been investigated.",
           );
           return;
         }
@@ -1881,6 +2045,19 @@ export default function StaffCounter() {
     redemptionCheckoutStage,
     redemptionPaymentTimedOut,
   ]);
+  const latestPaymentAttempt = redemptionCheckout?.latestPaymentAttempt;
+  const paymentOutcomeUnresolved =
+    latestPaymentAttempt?.unresolvedPayment === true;
+  const terminalRecoveryAvailable =
+    !!redemptionCheckout &&
+    isFailedTerminalAttempt(redemptionCheckout) &&
+    !paymentOutcomeUnresolved;
+  const retryCardAvailable =
+    terminalRecoveryAvailable &&
+    latestPaymentAttempt?.retryAllowed === true;
+  useEffect(() => {
+    setTerminalPaymentDetailsExpanded(false);
+  }, [latestPaymentAttempt?.paymentAttemptId]);
   const executeDynamicRedemption = async () => {
     if (
       !resolvedTransaction ||
@@ -3088,6 +3265,54 @@ export default function StaffCounter() {
         </Pressable>
       </Modal>
 
+      <Modal
+        visible={closeUnpaidConfirmationVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!busy) setCloseUnpaidConfirmationVisible(false);
+        }}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => {
+            if (!busy) setCloseUnpaidConfirmationVisible(false);
+          }}
+        >
+          <Pressable style={styles.modalCard} onPress={() => undefined}>
+            <Text style={styles.cardTitle}>Close Unpaid Redemption</Text>
+            <Text style={styles.muted}>
+              Confirm only when the terminal outcome is recorded as declined or cancelled. This does not refund, reverse, or consume the redemption.
+            </Text>
+            <View style={styles.ctxRow}>
+              <Text style={styles.ctxLabel}>Redemption</Text>
+              <Text style={styles.ctxValue}>
+                {redemptionCheckout?.transactionNumber ?? ""}
+              </Text>
+            </View>
+            <View style={styles.rowWrap}>
+              <Pressable
+                disabled={busy}
+                onPress={() => setCloseUnpaidConfirmationVisible(false)}
+                style={[styles.secondaryBtn, busy && styles.btnDisabled]}
+              >
+                <Text style={styles.secondaryBtnText}>Keep Open</Text>
+              </Pressable>
+              <Pressable
+                testID="counter-redemption-confirm-close-unpaid"
+                disabled={busy}
+                onPress={() => void closeRedemptionUnpaid()}
+                style={[styles.primaryBtn, busy && styles.btnDisabled]}
+              >
+                <Text style={styles.primaryBtnText}>
+                  {busy ? "Closing..." : "Confirm Close Unpaid"}
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Redeem vs Sell */}
       <View style={styles.modeRow}>
         {(["redeem", "sell"] as const).map((currentAction) => {
@@ -4002,14 +4227,85 @@ export default function StaffCounter() {
               </Pressable>
             </View>
           ) : null}
+          {latestPaymentAttempt ? (
+            <View style={styles.customerSavedBox} testID="counter-payment-attempt-status">
+              <Text style={styles.identified}>
+                {paymentAttemptOutcomeLabel(latestPaymentAttempt)}
+              </Text>
+              <Pressable
+                testID="counter-redemption-toggle-payment-details"
+                accessibilityRole="button"
+                accessibilityState={{ expanded: terminalPaymentDetailsExpanded }}
+                onPress={() =>
+                  setTerminalPaymentDetailsExpanded((expanded) => !expanded)
+                }
+                style={styles.paymentDetailsToggle}
+              >
+                <Text style={styles.secondaryBtnText}>
+                  {terminalPaymentDetailsExpanded ? "−" : "+"} Terminal payment details
+                </Text>
+              </Pressable>
+              {terminalPaymentDetailsExpanded ? (
+                <View style={styles.paymentDetailsContent}>
+                  <View style={styles.ctxRow}>
+                    <Text style={styles.ctxLabel}>Provider</Text>
+                    <Text style={styles.ctxValue}>Poynt</Text>
+                  </View>
+                  <View style={styles.ctxRow}>
+                    <Text style={styles.ctxLabel}>Method</Text>
+                    <Text style={styles.ctxValue}>Terminal</Text>
+                  </View>
+                  <View style={styles.ctxRow}>
+                    <Text style={styles.ctxLabel}>Status</Text>
+                    <Text style={styles.ctxValue}>
+                      {paymentAttemptStatusLabel(latestPaymentAttempt.providerStatus)}
+                    </Text>
+                  </View>
+                  <View style={styles.ctxRow}>
+                    <Text style={styles.ctxLabel}>Reference</Text>
+                    <Text style={styles.ctxValue}>
+                      {latestPaymentAttempt.providerReferenceId}
+                    </Text>
+                  </View>
+                  {latestPaymentAttempt.failureMessage ? (
+                    <View style={styles.ctxRow}>
+                      <Text style={styles.ctxLabel}>Terminal response</Text>
+                      <Text style={styles.ctxValue}>
+                        {latestPaymentAttempt.failureMessage}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {latestPaymentAttempt.lastCallbackAt ? (
+                    <View style={styles.ctxRow}>
+                      <Text style={styles.ctxLabel}>Last update</Text>
+                      <Text style={styles.ctxValue}>
+                        {new Date(latestPaymentAttempt.lastCallbackAt).toLocaleString()}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.ctxRow}>
+                    <Text style={styles.ctxLabel}>Amount</Text>
+                    <Text style={styles.ctxValue}>
+                      {redemptionCheckout.currencyCode ?? ""} {((redemptionCheckout.totalMinor ?? 0) / 100).toFixed(2)}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
           {redemptionCheckoutStage === "waiting" ? (
-            <Text style={styles.identified}>
-              {redemptionCheckout.cashPaymentStatus === "PENDING"
-                ? "Cash confirmation is pending. Do not take another payment; confirm the existing cash transaction or check its status."
-                : redemptionPaymentTimedOut
-                ? "Payment confirmation is pending. Automatic checking has stopped. Do not initiate another payment until the original payment has been investigated."
-                : "Poynt accepted the payment request. Waiting for confirmation from the terminal."}
-            </Text>
+            <View style={styles.rowWrap}>
+              {redemptionCheckout.cashPaymentStatus !== "PENDING" ? (
+                <ActivityIndicator color={COLORS.accent} />
+              ) : null}
+              <Text style={styles.identified}>
+                {redemptionCheckout.cashPaymentStatus === "PENDING"
+                  ? "Cash confirmation is pending. Do not take another payment; confirm the existing cash transaction or check its status."
+                  : paymentOutcomeUnresolved || redemptionPaymentTimedOut
+                  ? "The terminal payment outcome cannot yet be confirmed. Do not take another payment until it has been investigated."
+                  : "Waiting for payment confirmation from Poynt terminal."}
+              </Text>
+            </View>
           ) : null}
 
           {redemptionCheckoutStage === "waiting" ? (
@@ -4043,6 +4339,8 @@ export default function StaffCounter() {
 
           {redemptionCheckoutStage === "ready" &&
           redemptionCheckout.providerCode === "POYNT" &&
+          (!isFailedTerminalAttempt(redemptionCheckout) || retryCardAvailable) &&
+          !paymentOutcomeUnresolved &&
           (!redemptionCheckout.pricingReconciliationRequired ||
             redemptionCheckout.pricingAcknowledged) ? (
             <Pressable
@@ -4051,13 +4349,16 @@ export default function StaffCounter() {
               onPress={() => void startReviewedRedemptionPayment()}
               style={[styles.primaryBtn, busy && styles.btnDisabled]}
             >
-              <Text style={styles.primaryBtnText}>Confirm & Send Payment</Text>
+              <Text style={styles.primaryBtnText}>
+                {retryCardAvailable ? "Retry Payment" : "Confirm & Send Payment"}
+              </Text>
             </Pressable>
           ) : null}
 
           {redemptionCheckoutStage === "ready" &&
           (redemptionCheckout.totalMinor ?? 0) > 0 &&
           redemptionCheckout.cashPaymentStatus !== "PENDING" &&
+          !paymentOutcomeUnresolved &&
           (!redemptionCheckout.pricingReconciliationRequired ||
             redemptionCheckout.pricingAcknowledged) ? (
             <Pressable
@@ -4068,6 +4369,27 @@ export default function StaffCounter() {
             >
               <Text style={styles.secondaryBtnText}>Cash &amp; Redeem</Text>
             </Pressable>
+          ) : null}
+
+          {redemptionCheckoutStage === "ready" && terminalRecoveryAvailable ? (
+            <View style={styles.rowWrap}>
+              <Pressable
+                testID="counter-redemption-close-unpaid"
+                disabled={busy}
+                onPress={() => setCloseUnpaidConfirmationVisible(true)}
+                style={[styles.smallDestructiveBtn, busy && styles.btnDisabled]}
+              >
+                <Text style={styles.smallDestructiveBtnText}>Close Unpaid</Text>
+              </Pressable>
+              <Pressable
+                testID="counter-redemption-back-to-counter"
+                disabled={busy}
+                onPress={continueWithNextCustomer}
+                style={[styles.smallNavigationBtn, busy && styles.btnDisabled]}
+              >
+                <Text style={styles.secondaryBtnText}>Back to Counter</Text>
+              </Pressable>
+            </View>
           ) : null}
 
           {redemptionCheckoutStage === "ready" &&
@@ -4115,6 +4437,19 @@ export default function StaffCounter() {
               <Text style={styles.primaryBtnText}>
                 {busy ? "Checking..." : "Check Payment Status"}
               </Text>
+            </Pressable>
+          ) : null}
+
+          {redemptionCheckoutStage === "waiting" &&
+          redemptionCheckout.cashPaymentStatus !== "PENDING" &&
+          !redemptionPaymentTimedOut ? (
+            <Pressable
+              testID="counter-redemption-check-payment-status"
+              disabled={busy}
+              onPress={() => void checkRedemptionPaymentStatus()}
+              style={[styles.secondaryBtn, busy && styles.btnDisabled]}
+            >
+              <Text style={styles.secondaryBtnText}>Check Payment Status</Text>
             </Pressable>
           ) : null}
         </View>
@@ -4517,6 +4852,33 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
+  smallNavigationBtn: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  smallDestructiveBtn: {
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FEF2F2",
+  },
+
+  smallDestructiveBtnText: {
+    color: "#B91C1C",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
   secondaryBtnText: {
     color: COLORS.text,
     fontSize: 14,
@@ -4534,6 +4896,16 @@ const styles = StyleSheet.create({
     padding: 12,
     backgroundColor: COLORS.background,
     gap: 4,
+  },
+
+  paymentDetailsToggle: {
+    alignSelf: "flex-start",
+    paddingVertical: 4,
+  },
+
+  paymentDetailsContent: {
+    gap: 4,
+    paddingTop: 4,
   },
 
   primaryBtnText: {

@@ -3,6 +3,7 @@ package com.mynikatech.memgine.component.commerce
 import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.model.common.ApiResponse
 import com.mynikatech.memgine.net.dto.CounterRedemptionCheckoutRequest
+import com.mynikatech.memgine.net.dto.CounterRedemptionCloseUnpaidRequest
 import com.mynikatech.memgine.net.dto.CounterRedemptionPricingAcknowledgementRequest
 import com.mynikatech.memgine.net.dto.CounterRedemptionTestPaymentRequest
 import com.mynikatech.memgine.security.authenticatedPrincipal
@@ -178,6 +179,28 @@ fun Route.counterRedemptionCheckoutRoutes(
             call.respond(
                 ApiResponse.success(
                     service.confirmRedemptionCashPayment(
+                        organizationId = organizationId,
+                        redemptionTransactionId = transactionId,
+                        storeId = request.storeId,
+                        staffId = request.staffId,
+                        actorUserId = call.authenticatedPrincipal().userId
+                    ),
+                    call.callId
+                )
+            )
+        }
+
+        post("/payment/close-unpaid") {
+            val organizationId = required(call.parameters["organizationId"], "Organization id")
+            val transactionId = required(call.parameters["transactionId"], "Redemption transaction id")
+            val request = call.receive<CounterRedemptionCloseUnpaidRequest>()
+            if (!request.confirmed) {
+                throw BadRequestException("Unpaid redemption closure must be confirmed")
+            }
+
+            call.respond(
+                ApiResponse.success(
+                    service.closeRedemptionUnpaid(
                         organizationId = organizationId,
                         redemptionTransactionId = transactionId,
                         storeId = request.storeId,

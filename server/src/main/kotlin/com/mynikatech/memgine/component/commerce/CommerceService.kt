@@ -13,6 +13,7 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.postgresql.util.PSQLException
+import org.slf4j.LoggerFactory
 
 class CommerceService(
     private val sql: CommerceSql,
@@ -21,6 +22,7 @@ class CommerceService(
     private val paymentProviderPolicy: CommercePaymentProviderPolicy = CommercePaymentProviderPolicy("local"),
     private val terminalBindingResolver: PoyntTerminalBindingResolver = RejectingPoyntTerminalBindingResolver
 ) {
+    private val logger = LoggerFactory.getLogger(CommerceService::class.java)
     /** Internal foundation for future Counter and Customer Commerce flows. */
     internal fun resolvePaymentProviderRoute(
         organizationId: String,
@@ -677,13 +679,24 @@ class CommerceService(
     }
     internal fun recordRemoteTerminalPaymentCallback(callback: PoyntPaymentBridgeCallback) = translate {
         val candidate = callback.usableTransaction()
-        val failure = callback.status !in setOf("RECEIVED", "STARTED", "CANCELED") &&
-            (candidate == null || candidate.status != "CAPTURED" || candidate.authOnly)
-        sql.recordRemotePaymentCallback(
-            callback.referenceId, if (failure) "FAILED" else callback.status,
+        val callbackStatus = when {
+            callback.status in setOf("RECEIVED", "STARTED") -> callback.status
+            callback.status in setOf("CANCELED", "CANCELLED") ||
+                candidate?.status in setOf("CANCELED", "CANCELLED") -> "CANCELED"
+            candidate?.status == "CAPTURED" && !candidate.authOnly -> "PROCESSED"
+            else -> "FAILED"
+        }
+        val recorded = sql.recordRemotePaymentCallbackDetail(
+            callback.referenceId, callbackStatus,
             candidate?.id, candidate?.status, candidate?.amountMinor, candidate?.currencyCode,
-            candidate?.businessId, candidate?.storeId
+            candidate?.businessId, candidate?.storeId, callback.failureCode, callback.failureMessage
         )
+        if (!recorded) {
+            logger.error(
+                "Conflicting late terminal capture preserved for financial review; providerReferenceId={}",
+                callback.referenceId
+            )
+        }
     }
     fun recordTerminalPaymentResult(
         organizationId: String,

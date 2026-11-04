@@ -236,6 +236,7 @@ export function PoyntCollectWallets({
 
   const [available, setAvailable] = useState(false);
 
+  const [walletDiagnostic, setWalletDiagnostic] = useState<string>("");
   const [selectedWallet, setSelectedWallet] = useState<WalletMethod | null>(
     null,
   );
@@ -409,6 +410,17 @@ export function PoyntCollectWallets({
         });
 
         const supported = await walletInstance.supportWalletPayments();
+        console.info("[Poynt Wallet Availability]", {
+          googlePaySupported: supported.googlePay === true,
+          applePaySupported: supported.applePay === true,
+          applePayEnabled: walletConfig.applePayEnabled === true,
+        });
+
+        setWalletDiagnostic(
+          `Apple Pay SDK: ${String(supported.applePay)} | ` +
+            `Apple Pay enabled: ${String(walletConfig.applePayEnabled)} | ` +
+            `Google Pay SDK: ${String(supported.googlePay)}`,
+        );
 
         if (!active) return;
 
@@ -611,19 +623,9 @@ export function PoyntCollectWallets({
           display: selectedWallet ? "none" : "grid",
         }}
       />
-      <WalletHost
-        id={hostId}
-        aria-label="Secure wallet checkout"
-        style={{
-          width: "100%",
-          maxWidth: "100%",
-          minWidth: 0,
-          boxSizing: "border-box",
-          minHeight: available ? 52 : 0,
-          display: selectedWallet ? "none" : "block",
-        }}
-      />
-
+      {walletDiagnostic ? (
+        <Text variant="bodySmall">{walletDiagnostic}</Text>
+      ) : null}
       {selectedWallet ? (
         <View
           style={{

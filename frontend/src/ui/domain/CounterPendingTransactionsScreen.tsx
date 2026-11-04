@@ -146,6 +146,11 @@ export function CounterPendingTransactionsScreen({
                 Last attempt: {label(row.lastAttemptStatus)}
               </Text>
             ) : null}
+            {row.unresolvedPayment || row.financialExceptionId ? (
+              <Text variant="caption" color="warning">
+                Financial review required
+              </Text>
+            ) : null}
           </View>
         ),
       },

@@ -1,5 +1,11 @@
 import React from "react";
-import { Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import {
+  isDocumentActionCancellation,
+  membershipAgreementHtml,
+  printDocumentHtml,
+  saveOrShareDocumentPdf,
+} from "./document-printing";
 
 function isSectionHeading(line: string): boolean {
   return [
@@ -159,9 +165,30 @@ export function MembershipAgreementDocumentView({
   agreementText: string;
   onClose?: () => void;
 }) {
-  const printDocument = () => {
-    if (Platform.OS !== "web") return;
-    window.print();
+  const [documentAction, setDocumentAction] = React.useState<
+    "print" | "pdf" | null
+  >(null);
+  const [documentError, setDocumentError] = React.useState<string | null>(null);
+
+  const runDocumentAction = async (action: "print" | "pdf") => {
+    if (documentAction) return;
+    setDocumentAction(action);
+    setDocumentError(null);
+    try {
+      const html = membershipAgreementHtml(agreementText);
+      if (action === "print") await printDocumentHtml(html);
+      else await saveOrShareDocumentPdf(html);
+    } catch (error) {
+      if (!isDocumentActionCancellation(error)) {
+        setDocumentError(
+          error instanceof Error
+            ? error.message
+            : "Unable to prepare this agreement document.",
+        );
+      }
+    } finally {
+      setDocumentAction(null);
+    }
   };
 
   return (
@@ -201,21 +228,42 @@ export function MembershipAgreementDocumentView({
           </Text>
         </View>
 
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          {Platform.OS === "web" ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={printDocument}
-              style={{
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                borderRadius: 10,
-                backgroundColor: "#111827",
-              }}
-            >
-              <Text style={{ color: "#FFFFFF", fontWeight: "600" }}>Print</Text>
-            </Pressable>
-          ) : null}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, justifyContent: "flex-end" }}>
+          <Pressable
+            accessibilityRole="button"
+            disabled={documentAction !== null}
+            onPress={() => void runDocumentAction("print")}
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              borderRadius: 10,
+              backgroundColor: "#111827",
+              opacity: documentAction !== null ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: "#FFFFFF", fontWeight: "600" }}>
+              {documentAction === "print" ? "Preparing..." : "Print"}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            disabled={documentAction !== null}
+            onPress={() => void runDocumentAction("pdf")}
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: "#D1D5DB",
+              backgroundColor: "#FFFFFF",
+              opacity: documentAction !== null ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: "#111827", fontWeight: "600" }}>
+              {documentAction === "pdf" ? "Preparing..." : "Save / Share PDF"}
+            </Text>
+          </Pressable>
 
           {onClose ? (
             <Pressable
@@ -235,6 +283,19 @@ export function MembershipAgreementDocumentView({
           ) : null}
         </View>
       </View>
+
+      {documentError ? (
+        <Text
+          style={{
+            paddingHorizontal: 20,
+            paddingTop: 10,
+            color: "#B91C1C",
+            fontSize: 13,
+          }}
+        >
+          {documentError}
+        </Text>
+      ) : null}
 
       <ScrollView
         contentContainerStyle={{

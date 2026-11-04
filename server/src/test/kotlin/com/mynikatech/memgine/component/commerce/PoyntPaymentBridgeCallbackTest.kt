@@ -103,4 +103,12 @@ class PoyntPaymentBridgeCallbackTest {
     @Test fun `auth only transaction remains distinguishable for lifecycle rejection`() {
         assertEquals(true, PoyntPaymentBridgeCallbackParser.parse(captured.replace("\"authOnly\":false", "\"authOnly\":true")).usableTransaction()!!.authOnly)
     }
+    @Test fun `decline diagnostics are whitelisted without retaining the raw callback`() {
+        val callback = PoyntPaymentBridgeCallbackParser.parse(
+            """{"referenceId":"ref-1","status":"DECLINED","failureCode":"CARD_DECLINED","failureMessage":"Issuer declined","transactions":[{"id":"txn-1","status":"DECLINED","references":[{"customType":"referenceId","id":"ref-1"}]}]}"""
+        )
+        assertEquals("CARD_DECLINED", callback.failureCode)
+        assertEquals("Issuer declined", callback.failureMessage)
+        assertEquals("DECLINED", callback.usableTransaction()!!.status)
+    }
 }

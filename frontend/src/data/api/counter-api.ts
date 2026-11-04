@@ -124,6 +124,19 @@ export type CounterRedemptionPriceDiscrepancy = {
   poyntCurrencyCode: string;
 };
 
+/** Sanitized, server-authoritative terminal recovery state. */
+export type CounterRedemptionPaymentAttemptSummary = {
+  paymentAttemptId: ID;
+  providerReferenceId: string;
+  providerStatus: string;
+  providerTransactionId?: string | null;
+  failureCode?: string | null;
+  failureMessage?: string | null;
+  lastCallbackAt?: string | null;
+  retryAllowed: boolean;
+  unresolvedPayment: boolean;
+};
+
 export type CounterRedemptionCheckout = {
   redemptionTransactionId: ID;
 
@@ -169,6 +182,8 @@ export type CounterRedemptionCheckout = {
   paymentMethod?: "CASH" | null;
 
   cashPaymentStatus?: "NOT_STARTED" | "PENDING" | "SUCCEEDED" | null;
+
+  latestPaymentAttempt?: CounterRedemptionPaymentAttemptSummary | null;
 
   paymentRequired: boolean;
 };
@@ -1222,6 +1237,23 @@ export class CounterApi {
         storeId: ctx.storeId,
 
         staffId: ctx.staffId,
+      },
+    );
+  }
+
+  closeRedemptionUnpaid(
+    ctx: CounterContext,
+    transactionId: ID,
+  ): Promise<ApiResult<boolean>> {
+    return httpClient.post(
+      this.path(
+        ctx,
+        `redemption-transactions/${encodeURIComponent(transactionId)}/payment/close-unpaid`,
+      ),
+      {
+        storeId: ctx.storeId,
+        staffId: ctx.staffId,
+        confirmed: true,
       },
     );
   }

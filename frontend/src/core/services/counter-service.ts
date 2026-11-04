@@ -224,6 +224,12 @@ export class CounterService {
       .then((result) => this.unwrap(result));
   }
 
+  closeRedemptionUnpaid(ctx: CounterContext, transactionId: ID): Promise<boolean> {
+    return this.api
+      .closeRedemptionUnpaid(ctx, transactionId)
+      .then((result) => this.unwrap(result));
+  }
+
   confirmRedemptionTestPayment(
     ctx: CounterContext,
     transactionId: ID,

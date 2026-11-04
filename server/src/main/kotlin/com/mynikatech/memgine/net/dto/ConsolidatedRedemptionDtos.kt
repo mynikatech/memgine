@@ -124,6 +124,14 @@ data class CounterRedemptionCheckoutRequest(
     val reviewHash: String? = null
 )
 
+/** Explicit acknowledgement required before staff close an unpaid redemption. */
+@Serializable
+data class CounterRedemptionCloseUnpaidRequest(
+    val storeId: String,
+    val staffId: String,
+    val confirmed: Boolean
+)
+
 @Serializable
 data class CounterRedemptionReviewAllocationDto(
     val redemptionItemId: String,
@@ -227,7 +235,27 @@ data class CounterRedemptionCheckoutDto(
     val paymentMethod: String? = null,
     /** NOT_STARTED, PENDING, or SUCCEEDED for the separate Cash & Redeem path. */
     val cashPaymentStatus: String? = null,
+    /** Latest persisted terminal attempt; never a client-created payment state. */
+    val latestPaymentAttempt: CounterRedemptionPaymentAttemptDto? = null,
     val paymentRequired: Boolean
+)
+
+/**
+ * Counter-authorized, sanitized payment-attempt recovery information.
+ * Provider credentials, callback payloads, and terminal instructions are
+ * intentionally excluded.
+ */
+@Serializable
+data class CounterRedemptionPaymentAttemptDto(
+    val paymentAttemptId: String,
+    val providerReferenceId: String,
+    val providerStatus: String,
+    val providerTransactionId: String? = null,
+    val failureCode: String? = null,
+    val failureMessage: String? = null,
+    val lastCallbackAt: String? = null,
+    val retryAllowed: Boolean = false,
+    val unresolvedPayment: Boolean = false
 )
 
 /**

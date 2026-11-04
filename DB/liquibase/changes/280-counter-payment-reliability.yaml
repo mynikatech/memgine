@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 280-counter-payment-reliability
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/280-counter-payment-reliability.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

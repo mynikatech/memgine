@@ -10,10 +10,16 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
 /** Whitelisted Payment Bridge fields only. Raw provider payload is never retained. */
-data class PoyntPaymentBridgeCallback(val referenceId: String, val status: String, val transactions: List<PoyntPaymentBridgeTransaction>) {
+data class PoyntPaymentBridgeCallback(
+    val referenceId: String,
+    val status: String,
+    val transactions: List<PoyntPaymentBridgeTransaction>,
+    val failureCode: String? = null,
+    val failureMessage: String? = null
+) {
     fun usableTransaction(): PoyntPaymentBridgeTransaction? = transactions.singleOrNull { it.id.isNotBlank() }
 }
-data class PoyntPaymentBridgeTransaction(val id: String, val status: String, val authOnly: Boolean, val amountMinor: Long?, val currencyCode: String?, val businessId: String?, val storeId: String?, val references: List<PoyntPaymentBridgeReference>)
+data class PoyntPaymentBridgeTransaction(val id: String, val status: String, val authOnly: Boolean, val amountMinor: Long?, val currencyCode: String?, val businessId: String?, val storeId: String?, val references: List<PoyntPaymentBridgeReference>, val failureCode: String? = null, val failureMessage: String? = null)
 data class PoyntPaymentBridgeReference(val type: String?, val id: String?, val customType: String?)
 
 object PoyntPaymentBridgeCallbackParser {
@@ -28,10 +34,16 @@ object PoyntPaymentBridgeCallbackParser {
             PoyntPaymentBridgeTransaction(text(t,"id").orEmpty(), text(t,"status")?.uppercase().orEmpty(), t["authOnly"]?.jsonPrimitive?.booleanOrNull ?: false,
                 amounts?.get("transactionAmount")?.jsonPrimitive?.longOrNull, amounts?.get("currency")?.jsonPrimitive?.contentOrNull?.uppercase(),
                 context?.get("businessId")?.jsonPrimitive?.contentOrNull, context?.get("storeId")?.jsonPrimitive?.contentOrNull,
-                t["references"]?.jsonArray?.map { r -> val o=r.jsonObject; PoyntPaymentBridgeReference(text(o,"type"),text(o,"id"),text(o,"customType")) } ?: emptyList())
+                t["references"]?.jsonArray?.map { r -> val o=r.jsonObject; PoyntPaymentBridgeReference(text(o,"type"),text(o,"id"),text(o,"customType")) } ?: emptyList(),
+                text(t,"failureCode") ?: text(t,"errorCode"), text(t,"failureMessage") ?: text(t,"errorMessage"))
         } ?: emptyList()
         if (transactions.any { tx -> tx.references.any { it.id != null && it.customType == "referenceId" && it.id != reference } }) throw BadRequestException("Poynt callback reference conflicts")
-        return PoyntPaymentBridgeCallback(reference,status,transactions)
+        val candidate = transactions.singleOrNull { it.id.isNotBlank() }
+        return PoyntPaymentBridgeCallback(
+            reference,status,transactions,
+            candidate?.failureCode ?: text(root,"failureCode") ?: text(root,"errorCode"),
+            candidate?.failureMessage ?: text(root,"failureMessage") ?: text(root,"errorMessage")
+        )
     }
 }
 

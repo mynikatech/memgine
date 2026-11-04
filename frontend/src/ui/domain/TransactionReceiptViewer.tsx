@@ -1,6 +1,13 @@
+import { useState } from "react";
 import { Platform, ScrollView, Share, StyleSheet, View } from "react-native";
 import { Modal, Text, Button } from "@/src/ui";
 import type { TransactionReceipt } from "@/src/data/api/customer-data-api";
+import {
+  escapeDocumentHtml,
+  isDocumentActionCancellation,
+  printDocumentHtml,
+  saveOrShareDocumentPdf,
+} from "./document-printing";
 
 type ReceiptAdjustment = {
   label?: string;
@@ -41,10 +48,10 @@ type Snapshot = {
 const money = (minor: number | undefined, currency: string | undefined) => {
   const code = currency || "CAD";
   try {
-    return `${code} ${new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat(undefined, {
       style: "currency",
       currency: code,
-    }).format((minor ?? 0) / 100)}`;
+    }).format((minor ?? 0) / 100);
   } catch {
     return `${code} ${((minor ?? 0) / 100).toFixed(2)}`;
   }
@@ -103,17 +110,64 @@ const adjustmentLabel = (item: ReceiptAdjustment) =>
 const adjustmentAmount = (item: ReceiptAdjustment) =>
   item.amountMinor ?? item.appliedAmountMinor;
 
-const escapeHtml = (value: string) =>
-  value.replace(/[&<>"']/g, (character) => {
-    const escapes: Record<string, string> = {
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;",
-    };
-    return escapes[character] ?? character;
-  });
+const receiptHtml = ({
+  receipt,
+  snapshot,
+  currency,
+  adjustments,
+  showDiscountSummary,
+  orderNumber,
+  issueDate,
+  totalAmount,
+  isRefund,
+  statusLabel,
+}: {
+  receipt: TransactionReceipt;
+  snapshot: Snapshot;
+  currency: string | undefined;
+  adjustments: ReceiptAdjustment[];
+  showDiscountSummary: boolean;
+  orderNumber: string;
+  issueDate: string;
+  totalAmount: number | undefined;
+  isRefund: boolean;
+  statusLabel: string;
+}) => {
+  const totals = snapshot.totals;
+  const lineRows = (snapshot.lines ?? [])
+    .map(
+      (line) =>
+        `<tr><td>${escapeDocumentHtml(line.description ?? "Item")} × ${line.quantity ?? 1}</td>` +
+        `<td>${escapeDocumentHtml(money(line.subtotalMinor ?? line.unitPriceMinor, line.currency ?? currency))}</td></tr>`,
+    )
+    .join("");
+  const discountRows = adjustments
+    .map(
+      (item) =>
+        `<tr><td>${escapeDocumentHtml(adjustmentLabel(item))}</td>` +
+        `<td>−${escapeDocumentHtml(money(adjustmentAmount(item), item.currency ?? currency))}</td></tr>`,
+    )
+    .join("");
+  const subtotal = money(totals?.subtotalMinor ?? receipt.subtotalMinor, currency);
+  const discount = money(totals?.discountMinor ?? receipt.discountMinor, currency);
+  const tax = money(totals?.taxMinor ?? receipt.taxMinor, currency);
+  const total = money(totalAmount, currency);
+  const reference = safeReference(
+    snapshot.payment?.reference ?? receipt.providerReference,
+  );
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>${escapeDocumentHtml(receipt.receiptNumber)}</title>
+<style>@page{size:A4;margin:18mm}body{font:13px Arial,sans-serif;color:#111;max-width:720px;margin:auto}h1{font-size:22px;margin:0}table{width:100%;border-collapse:collapse;margin:16px 0}td{padding:7px 0;border-bottom:1px solid #ddd}td:last-child{text-align:right}.total{font-size:18px;font-weight:bold}.muted{color:#555}</style></head>
+<body><h1>${escapeDocumentHtml(snapshot.organization?.name ?? "Memgine")}</h1>
+<p class="muted">${escapeDocumentHtml(snapshot.store?.name ?? "")}<br>Order: ${escapeDocumentHtml(orderNumber)}<br>Receipt: ${escapeDocumentHtml(receipt.receiptNumber)}<br>Issued: ${escapeDocumentHtml(issueDate)}</p>
+<table>${lineRows}${discountRows}
+<tr><td>Subtotal</td><td>${escapeDocumentHtml(subtotal)}</td></tr>
+${showDiscountSummary ? `<tr><td>Discounts</td><td>−${escapeDocumentHtml(discount)}</td></tr>` : ""}
+<tr><td>Tax</td><td>${escapeDocumentHtml(tax)}</td></tr>
+<tr class="total"><td>${isRefund ? "Refund amount" : "Total paid"}</td><td>${escapeDocumentHtml(total)}</td></tr></table>
+<p>Payment method: ${escapeDocumentHtml(paymentLabel(snapshot.payment?.method ?? receipt.paymentMethod))}<br>${escapeDocumentHtml(statusLabel)}${reference ? `<br>Payment reference: ${escapeDocumentHtml(reference)}` : ""}</p>
+</body></html>`;
+};
 
 /** Renders saved snapshot facts only; never recalculates historic prices. */
 export function TransactionReceiptViewer({
@@ -125,6 +179,10 @@ export function TransactionReceiptViewer({
   visible: boolean;
   onClose: () => void;
 }) {
+  const [documentAction, setDocumentAction] = useState<"print" | "pdf" | null>(
+    null,
+  );
+  const [documentError, setDocumentError] = useState<string | null>(null);
   if (!receipt) return null;
 
   let snapshot: Snapshot = {};
@@ -164,54 +222,37 @@ export function TransactionReceiptViewer({
         ? "Payment status unavailable"
         : "Completed transaction receipt";
 
-  const print = () => {
-    if (Platform.OS !== "web" || typeof window === "undefined") return;
-    const popup = window.open("", "_blank");
-    if (!popup) return;
+  const printableHtml = receiptHtml({
+    receipt,
+    snapshot,
+    currency,
+    adjustments,
+    showDiscountSummary,
+    orderNumber,
+    issueDate,
+    totalAmount,
+    isRefund,
+    statusLabel,
+  });
 
-    const lineRows = (snapshot.lines ?? [])
-      .map(
-        (line) =>
-          `<tr><td>${escapeHtml(line.description ?? "Item")} × ${line.quantity ?? 1}</td>` +
-          `<td>${escapeHtml(money(line.subtotalMinor ?? line.unitPriceMinor, line.currency ?? currency))}</td></tr>`,
-      )
-      .join("");
-    const discountRows = adjustments
-      .map(
-        (item) =>
-          `<tr><td>${escapeHtml(adjustmentLabel(item))}</td>` +
-          `<td>−${escapeHtml(money(adjustmentAmount(item), item.currency ?? currency))}</td></tr>`,
-      )
-      .join("");
-    const subtotal = money(
-      totals?.subtotalMinor ?? receipt.subtotalMinor,
-      currency,
-    );
-    const discount = money(
-      totals?.discountMinor ?? receipt.discountMinor,
-      currency,
-    );
-    const tax = money(totals?.taxMinor ?? receipt.taxMinor, currency);
-    const total = money(totalAmount, currency);
-    const reference = safeReference(
-      snapshot.payment?.reference ?? receipt.providerReference,
-    );
-    const html = `<!doctype html>
-<html><head><meta charset="utf-8"><title>${escapeHtml(receipt.receiptNumber)}</title>
-<style>@page{size:A4;margin:18mm}body{font:13px Arial,sans-serif;color:#111;max-width:720px;margin:auto}h1{font-size:22px;margin:0}table{width:100%;border-collapse:collapse;margin:16px 0}td{padding:7px 0;border-bottom:1px solid #ddd}td:last-child{text-align:right}.total{font-size:18px;font-weight:bold}.muted{color:#555}</style></head>
-<body><h1>${escapeHtml(snapshot.organization?.name ?? "Memgine")}</h1>
-<p class="muted">${escapeHtml(snapshot.store?.name ?? "")}<br>Order: ${escapeHtml(orderNumber)}<br>Receipt: ${escapeHtml(receipt.receiptNumber)}<br>Issued: ${escapeHtml(issueDate)}</p>
-<table>${lineRows}${discountRows}
-<tr><td>Subtotal</td><td>${escapeHtml(subtotal)}</td></tr>
-${showDiscountSummary ? `<tr><td>Discounts</td><td>−${escapeHtml(discount)}</td></tr>` : ""}
-<tr><td>Tax</td><td>${escapeHtml(tax)}</td></tr>
-<tr class="total"><td>${isRefund ? "Refund amount" : "Total paid"}</td><td>${escapeHtml(total)}</td></tr></table>
-<p>Payment method: ${escapeHtml(paymentLabel(snapshot.payment?.method ?? receipt.paymentMethod))}<br>${escapeHtml(statusLabel)}${reference ? `<br>Payment reference: ${escapeHtml(reference)}` : ""}</p>
-</body></html>`;
-    popup.document.write(html);
-    popup.document.close();
-    popup.focus();
-    popup.print();
+  const runDocumentAction = async (action: "print" | "pdf") => {
+    if (documentAction) return;
+    setDocumentAction(action);
+    setDocumentError(null);
+    try {
+      if (action === "print") await printDocumentHtml(printableHtml);
+      else await saveOrShareDocumentPdf(printableHtml);
+    } catch (error) {
+      if (!isDocumentActionCancellation(error)) {
+        setDocumentError(
+          error instanceof Error
+            ? error.message
+            : "Unable to prepare this receipt document.",
+        );
+      }
+    } finally {
+      setDocumentAction(null);
+    }
   };
 
   const share = () => {
@@ -344,11 +385,24 @@ ${showDiscountSummary ? `<tr><td>Discounts</td><td>−${escapeHtml(discount)}</t
             )}
           </Text>
         ) : null}
+        {documentError ? (
+          <Text variant="bodySmall" color="danger">
+            {documentError}
+          </Text>
+        ) : null}
         <View style={styles.actions}>
           <Button label="Close" variant="secondary" onPress={onClose} />
-          {Platform.OS === "web" ? (
-            <Button label="Print / Save PDF" onPress={print} />
-          ) : null}
+          <Button
+            label={documentAction === "print" ? "Preparing..." : "Print"}
+            disabled={documentAction !== null}
+            onPress={() => void runDocumentAction("print")}
+          />
+          <Button
+            label={documentAction === "pdf" ? "Preparing..." : "Save / Share PDF"}
+            variant="secondary"
+            disabled={documentAction !== null}
+            onPress={() => void runDocumentAction("pdf")}
+          />
           <Button label="Share Receipt" variant="secondary" onPress={share} />
         </View>
       </ScrollView>
@@ -375,6 +429,7 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "flex-end",
     gap: 8,
     marginTop: 8,
