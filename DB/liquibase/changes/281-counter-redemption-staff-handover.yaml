@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - changeSet:
+      id: 281-counter-redemption-staff-handover
+      author: mynikatech
+      comment: Allow authorized same-store Counter staff to resume an existing redemption without rewriting the original staff attribution.
+      changes:
+        - sqlFile:
+            path: ../sql/281-counter-redemption-staff-handover.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8
