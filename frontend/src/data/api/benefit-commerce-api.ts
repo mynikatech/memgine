@@ -7,6 +7,7 @@ export type CommerceProductMapping = {
   /** Canonical durable Product identity from migration 124. */
   productId?: ID | null;
   integrationConfigurationId: ID;
+  externalCatalogId?: string | null;
   storeId?: ID | null;
   active: boolean;
   externalProductId: string;

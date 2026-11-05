@@ -431,7 +431,15 @@ export function BenefitForm({
   const [pickerLoading, setPickerLoading] = useState(true);
   const [pickerError, setPickerError] = useState<string>();
   const [storeCatalogs, setStoreCatalogs] = useState<
-    Record<string, { catalogId: string; integrationId: string; name: string }>
+    Record<
+      string,
+      {
+        catalogId: string;
+        externalCatalogId: string;
+        integrationId: string;
+        name: string;
+      }
+    >
   >({});
   const [pickerSourceLoading, setPickerSourceLoading] = useState(false);
   const [pickerSourceError, setPickerSourceError] = useState<string>();
@@ -597,6 +605,7 @@ export function BenefitForm({
           store.id,
           {
             catalogId: matches[0].productCatalogId,
+            externalCatalogId: catalogId,
             integrationId,
             name: source?.catalogName?.trim() || catalogId,
           },
@@ -821,7 +830,8 @@ export function BenefitForm({
         !mapping.productId ||
         !activeProducts.has(mapping.productId) ||
         !source ||
-        mapping.integrationConfigurationId !== source.integrationId
+        mapping.integrationConfigurationId !== source.integrationId ||
+        mapping.externalCatalogId?.trim() !== source.externalCatalogId
       )
         continue;
       const storeName = storesById.get(storeId)?.name;

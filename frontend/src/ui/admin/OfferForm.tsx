@@ -367,12 +367,18 @@ export function OfferForm({
       (offer.storeId ? "SELECTED_STORES" : "ALL_STORES"),
   );
   const [availabilityStoreIds, setAvailabilityStoreIds] = useState<string[]>(
-    () => offer.storeAvailability?.storeIds ?? (offer.storeId ? [offer.storeId] : []),
+    () =>
+      offer.storeAvailability?.storeIds ??
+      (offer.storeId ? [offer.storeId] : []),
   );
   const [activeStoreIds, setActiveStoreIds] = useState<Set<string>>(
-    () => new Set(stores.filter((store) => !store.isDeleted).map((store) => store.id)),
+    () =>
+      new Set(
+        stores.filter((store) => !store.isDeleted).map((store) => store.id),
+      ),
   );
-  const [storeAvailabilityLoading, setStoreAvailabilityLoading] = useState(true);
+  const [storeAvailabilityLoading, setStoreAvailabilityLoading] =
+    useState(true);
   const [organizationProducts, setOrganizationProducts] = useState<
     OrganizationProduct[]
   >([]);
@@ -390,7 +396,10 @@ export function OfferForm({
   >({});
   const [storeCatalogSourcesLoading, setStoreCatalogSourcesLoading] =
     useState(false);
-  const catalogSourceApi = useMemo(() => new CommerceStoreCatalogSourceApi(), []);
+  const catalogSourceApi = useMemo(
+    () => new CommerceStoreCatalogSourceApi(),
+    [],
+  );
 
   const timeZoneOptions = useMemo(getTimeZoneOptions, []);
 
@@ -529,12 +538,14 @@ export function OfferForm({
       if (
         !source?.integrationConfigurationId ||
         !source.externalCatalogId ||
-        mapping.integrationConfigurationId !== source.integrationConfigurationId ||
+        mapping.integrationConfigurationId !==
+          source.integrationConfigurationId ||
         mapping.externalCatalogId !== source.externalCatalogId
       ) {
         continue;
       }
-      const storesForProduct = mappedStores.get(mapping.productId) ?? new Set<string>();
+      const storesForProduct =
+        mappedStores.get(mapping.productId) ?? new Set<string>();
       storesForProduct.add(mapping.storeId);
       mappedStores.set(mapping.productId, storesForProduct);
     }
@@ -560,7 +571,10 @@ export function OfferForm({
     setStoreCatalogSourcesLoading(true);
     void Promise.all(
       scopeStoreIds.map(async (storeId) => {
-        const result = await catalogSourceApi.get(offer.organizationId, storeId);
+        const result = await catalogSourceApi.get(
+          offer.organizationId,
+          storeId,
+        );
         const source = result.success ? result.data.source : undefined;
         return [
           storeId,
@@ -615,20 +629,37 @@ export function OfferForm({
     "Previously selected Product";
   const filteredPosProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
-    return query
-      ? canonicalPosProducts.filter((product) =>
-          `${product.name} ${product.code ?? ""}`.toLowerCase().includes(query),
-        )
-      : canonicalPosProducts;
-  }, [canonicalPosProducts, productSearch]);
+
+    return canonicalPosProducts.filter((product) => {
+      const mappedStoreIds = productMappedStoreIds.get(product.id);
+
+      const eligible =
+        mappedStoreIds !== undefined &&
+        scopeStoreIds.some((storeId) => mappedStoreIds.has(storeId));
+
+      if (!eligible) return false;
+
+      return (
+        !query ||
+        `${product.name} ${product.code ?? ""}`.toLowerCase().includes(query)
+      );
+    });
+  }, [
+    canonicalPosProducts,
+    productMappedStoreIds,
+    scopeStoreIds,
+    productSearch,
+  ]);
   const productIsCompatibleWithScope = (productId: string) => {
     const mappedStoreIds = productMappedStoreIds.get(productId);
     return Boolean(
-      mappedStoreIds && scopeStoreIds.some((storeId) => mappedStoreIds.has(storeId)),
+      mappedStoreIds &&
+      scopeStoreIds.some((storeId) => mappedStoreIds.has(storeId)),
     );
   };
   const productMappingDescription = (productId: string) => {
-    const mappedStoreIds = productMappedStoreIds.get(productId) ?? new Set<string>();
+    const mappedStoreIds =
+      productMappedStoreIds.get(productId) ?? new Set<string>();
     const names = activeStores
       .filter((store) => mappedStoreIds.has(store.id))
       .map((store) => store.name);
@@ -1025,7 +1056,9 @@ export function OfferForm({
           return "One or more selected Stores are no longer active.";
         }
       }
-      if (applicability.productIds.some((id) => !productIsCompatibleWithScope(id))) {
+      if (
+        applicability.productIds.some((id) => !productIsCompatibleWithScope(id))
+      ) {
         return "Each selected Org Product must have an active mapping in the configured Store scope.";
       }
     } else if (mode === "MEMBERSHIP_PRODUCT") {
@@ -1190,11 +1223,12 @@ export function OfferForm({
         // applicability only carries the adjustment configuration.
         productIds:
           mode === "POS_PRODUCT"
-            ? applicability?.productIds ?? []
+            ? (applicability?.productIds ?? [])
             : draft.productIds,
         // Org Product Offer Store scope is persisted through storeAvailability.
         // The legacy single Store projection must not represent a multi-Store scope.
-        storeId: mode === "POS_PRODUCT" ? undefined : draft.storeId || undefined,
+        storeId:
+          mode === "POS_PRODUCT" ? undefined : draft.storeId || undefined,
         storeAvailability:
           mode === "POS_PRODUCT"
             ? {
@@ -1724,8 +1758,8 @@ export function OfferForm({
                       </Text>
                       <Text variant="bodySmall" color="textMuted">
                         Choose where this Offer can be redeemed. Product mapping
-                        availability is shown separately and is not inferred from
-                        the Offer Store scope.
+                        availability is shown separately and is not inferred
+                        from the Offer Store scope.
                       </Text>
                       <Pressable
                         onPress={() => {
@@ -1739,7 +1773,8 @@ export function OfferForm({
                         ]}
                       >
                         <Text variant="body" color="text">
-                          {availabilityMode === "ALL_STORES" ? "●" : "○"} All active Stores
+                          {availabilityMode === "ALL_STORES" ? "●" : "○"} All
+                          active Stores
                         </Text>
                       </Pressable>
                       <Pressable
@@ -1751,7 +1786,8 @@ export function OfferForm({
                         ]}
                       >
                         <Text variant="body" color="text">
-                          {availabilityMode === "SELECTED_STORES" ? "●" : "○"} Selected Stores
+                          {availabilityMode === "SELECTED_STORES" ? "●" : "○"}{" "}
+                          Selected Stores
                         </Text>
                       </Pressable>
                       {availabilityMode === "SELECTED_STORES" ? (
@@ -1762,7 +1798,9 @@ export function OfferForm({
                             </Text>
                           ) : activeStores.length ? (
                             activeStores.map((store) => {
-                              const selected = availabilityStoreIds.includes(store.id);
+                              const selected = availabilityStoreIds.includes(
+                                store.id,
+                              );
                               return (
                                 <Checkbox
                                   key={store.id}
@@ -1771,7 +1809,9 @@ export function OfferForm({
                                   onValueChange={() =>
                                     setAvailabilityStoreIds((current) =>
                                       selected
-                                        ? current.filter((id) => id !== store.id)
+                                        ? current.filter(
+                                            (id) => id !== store.id,
+                                          )
                                         : [...current, store.id],
                                     )
                                   }
@@ -1783,7 +1823,8 @@ export function OfferForm({
                               No active Stores are available for selection.
                             </Text>
                           )}
-                          {!storeAvailabilityLoading && !availabilityStoreIds.length ? (
+                          {!storeAvailabilityLoading &&
+                          !availabilityStoreIds.length ? (
                             <Text variant="bodySmall" color="danger">
                               Select at least one Store.
                             </Text>
@@ -1859,18 +1900,16 @@ export function OfferForm({
                             })
                           }
                           label={product.name}
-                          description={
-                            [
-                              product.categoryName?.trim()
-                                ? `Category: ${product.categoryName.trim()}`
-                                : undefined,
-                              productIsCompatibleWithScope(product.id)
-                                ? productMappingDescription(product.id)
-                                : `${productMappingDescription(product.id)} — unavailable in the configured Store scope`,
-                            ]
-                              .filter(Boolean)
-                              .join("\n")
-                          }
+                          description={[
+                            product.categoryName?.trim()
+                              ? `Category: ${product.categoryName.trim()}`
+                              : undefined,
+                            productIsCompatibleWithScope(product.id)
+                              ? productMappingDescription(product.id)
+                              : `${productMappingDescription(product.id)} — unavailable in the configured Store scope`,
+                          ]
+                            .filter(Boolean)
+                            .join("\n")}
                         />
                       ))}
                     </ScrollView>
@@ -1880,7 +1919,9 @@ export function OfferForm({
                       mappings={commerceMappings}
                       showUnavailableStores
                       storeContexts={scopeStoreIds.map((storeId) => {
-                        const store = activeStores.find((item) => item.id === storeId);
+                        const store = activeStores.find(
+                          (item) => item.id === storeId,
+                        );
                         const source = storeCatalogSources[storeId];
                         return {
                           storeId,
