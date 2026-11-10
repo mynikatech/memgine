@@ -17,7 +17,4 @@ db_skip_final_snapshot      = false
 # otp_sms_canada_origination_identity = "<verified-production-Canadian-origin>"
 allow_live_sms = true
 
-# Supply only existing secret ARNs; the RDS master secret is managed by RDS.
-additional_secret_arns = [
-  "arn:aws:secretsmanager:ca-central-1:REPLACE_ACCOUNT_ID:secret:memgine/prod/REPLACE_ME",
-]
+
