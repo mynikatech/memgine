@@ -59,8 +59,8 @@ if (-not (Get-Command $PsqlPath -ErrorAction SilentlyContinue)) {
     throw "psql was not found. Set -PsqlPath to the PostgreSQL client executable."
 }
 
-$liquibasePasswordText = Get-Password $LiquibasePassword "Enter memgine_prod_user password"
-$runtimePasswordText = Get-Password $RuntimePassword "Enter memgine_app_prod password"
+$liquibasePasswordText = Get-Password $LiquibasePassword "Enter memgine_user password"
+$runtimePasswordText = Get-Password $RuntimePassword "Enter memgine_app_password"
 $masterSecretJson = Invoke-Aws @("secretsmanager", "get-secret-value", "--secret-id", $MasterSecretArn, "--query", "SecretString", "--output", "text")
 $masterSecret = $masterSecretJson | ConvertFrom-Json
 $psqlHost = if ([string]::IsNullOrWhiteSpace($DatabaseHost)) { [string]$masterSecret.host } else { $DatabaseHost }
@@ -84,20 +84,20 @@ try {
     }
 
     $liquibaseSecret = [ordered]@{
-        username = "memgine_prod_user"
+        username = "memgine_user"
         password = $liquibasePasswordText
         host     = $masterSecret.host
         port     = $masterSecret.port
-        database = "memgine_prod"
-        schema   = "memgineprod"
+        database = "memgine"
+        schema   = "memgine"
     } | ConvertTo-Json -Compress
     $runtimeSecret = [ordered]@{
-        username = "memgine_app_prod"
+        username = "memgine_app"
         password = $runtimePasswordText
         host     = $masterSecret.host
         port     = $masterSecret.port
-        database = "memgine_prod"
-        schema   = "memgineprod"
+        database = "memgine"
+        schema   = "memgine"
     } | ConvertTo-Json -Compress
 
     Invoke-Aws @("secretsmanager", "put-secret-value", "--secret-id", $LiquibaseSecretArn, "--secret-string", $liquibaseSecret) | Out-Null

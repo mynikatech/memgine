@@ -1,12 +1,11 @@
 databaseChangeLog:
-
   - property:
       name: schemaName
-      value: memgineprod
+      value: memgine
 
   - property:
       name: appRole
-      value: memgine_app_prod
+      value: memgine_app
 
   - property:
       name: poyntCredentialProfileSeedEnabled
