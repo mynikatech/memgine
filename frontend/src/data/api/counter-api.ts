@@ -7,7 +7,10 @@ import { httpClient } from "./http-client";
 import { apiFailure, apiSuccess, type ApiResult } from "./result";
 
 import type { OrgAdminCustomer } from "./org-admin-customer-api";
-import type { TransactionHistoryItem, TransactionReceipt } from "./customer-data-api";
+import type {
+  TransactionHistoryItem,
+  TransactionReceipt,
+} from "./customer-data-api";
 
 import type {
   OrgAdminRedemption,
@@ -483,13 +486,24 @@ export class CounterApi {
 
   transactions(
     ctx: CounterContext,
-    options: { customerUserId?: ID; status?: string; transactionType?: string; paymentMethod?: string; search?: string; limit?: number; offset?: number } = {},
+    options: {
+      customerUserId?: ID;
+      status?: string;
+      transactionType?: string;
+      paymentMethod?: string;
+      search?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
   ): Promise<ApiResult<TransactionHistoryItem[]>> {
     const parameters = new URLSearchParams();
-    if (options.customerUserId) parameters.set("customerUserId", options.customerUserId);
+    if (options.customerUserId)
+      parameters.set("customerUserId", options.customerUserId);
     if (options.status) parameters.set("status", options.status);
-    if (options.transactionType) parameters.set("transactionType", options.transactionType);
-    if (options.paymentMethod) parameters.set("paymentMethod", options.paymentMethod);
+    if (options.transactionType)
+      parameters.set("transactionType", options.transactionType);
+    if (options.paymentMethod)
+      parameters.set("paymentMethod", options.paymentMethod);
     if (options.search) parameters.set("search", options.search);
     parameters.set("limit", String(options.limit ?? 25));
     parameters.set("offset", String(options.offset ?? 0));
@@ -509,6 +523,26 @@ export class CounterApi {
 
   private query(ctx: CounterContext, suffix: string) {
     return `${this.path(ctx, suffix)}?storeId=${encodeURIComponent(ctx.storeId)}&staffId=${encodeURIComponent(ctx.staffId)}`;
+  }
+
+  simulateRedemptionPoyntPayment(
+    ctx: CounterContext,
+    transactionId: ID,
+    outcome: "SUCCESS" | "DECLINE" | "CANCEL",
+  ): Promise<ApiResult<CounterRedemptionCheckout>> {
+    return httpClient.post(
+      this.path(
+        ctx,
+        `redemption-transactions/${encodeURIComponent(
+          transactionId,
+        )}/payment/dev-simulate`,
+      ),
+      {
+        storeId: ctx.storeId,
+        staffId: ctx.staffId,
+        outcome,
+      },
+    );
   }
 
   async customers(ctx: CounterContext): Promise<ApiResult<OrgAdminCustomer[]>> {

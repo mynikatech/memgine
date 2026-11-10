@@ -7,6 +7,7 @@ import com.mynikatech.memgine.net.dto.CounterRedemptionCloseUnpaidRequest
 import com.mynikatech.memgine.net.dto.CounterRedemptionPricingAcknowledgementRequest
 import com.mynikatech.memgine.net.dto.CounterRedemptionTestPaymentRequest
 import com.mynikatech.memgine.security.authenticatedPrincipal
+import kotlinx.serialization.Serializable
 import io.ktor.server.application.call
 import io.ktor.server.plugins.callid.callId
 import io.ktor.server.request.receive
@@ -15,6 +16,13 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+
+@Serializable
+private data class CounterDevPoyntSimulationRequest(
+    val storeId: String,
+    val staffId: String,
+    val outcome: String
+)
 
 /**
  * Counter-safe checkout endpoints for a previously created Redemption Transaction.
@@ -151,6 +159,36 @@ fun Route.counterRedemptionCheckoutRoutes(
                 )
             )
         }
+        
+        
+        post("/payment/dev-simulate") {
+            val organizationId = required(
+                call.parameters["organizationId"],
+                "Organization id"
+            )
+
+            val transactionId = required(
+                call.parameters["transactionId"],
+                "Redemption transaction id"
+            )
+
+            val request =
+                call.receive<CounterDevPoyntSimulationRequest>()
+
+            val result = service.simulateRedemptionTerminalPayment(
+                organizationId = organizationId,
+                redemptionTransactionId = transactionId,
+                storeId = request.storeId,
+                staffId = request.staffId,
+                actorUserId = call.authenticatedPrincipal().userId,
+                requestedOutcome = request.outcome
+            )
+
+            call.respond(
+                ApiResponse.success(result, call.callId)
+            )
+        }
+
         
         post("/payment/timeout-recovery") {
             val organizationId = required(call.parameters["organizationId"], "Organization id")

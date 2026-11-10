@@ -44,6 +44,7 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.security.MessageDigest
 import java.util.UUID
+import kotlinx.coroutines.delay
 
 /**
  * Counter-only Commerce payment orchestration.
@@ -935,6 +936,233 @@ class CounterCommercePaymentService(
             actorUserId
         )
     }
+    
+    
+suspend fun simulateRedemptionTerminalPayment(
+    organizationId: String,
+    redemptionTransactionId: String,
+    storeId: String,
+    staffId: String,
+    actorUserId: String,
+    requestedOutcome: String
+): CounterRedemptionCheckoutDto {
+
+    val environment = System.getenv("MEMGINE_ENVIRONMENT")
+        ?.trim()?.lowercase()
+
+    val enabled = System.getenv(
+        "MEMGINE_ENABLE_POYNT_SIMULATOR"
+    )?.equals("true", ignoreCase = true) == true
+
+    if (environment != "dev" || !enabled) {
+        throw ForbiddenException("Poynt simulator is disabled")
+    }
+
+    val outcome =
+        CounterDevPoyntSimulator.parseOutcome(requestedOutcome)
+
+    // Normal Commerce attempt creation, but no Poynt HTTP dispatch.
+    val simulation = translate {
+        val checkout = redemptionCheckout(
+            organizationId,
+            redemptionTransactionId,
+            storeId,
+            staffId,
+            actorUserId
+        )
+
+        if (checkout.providerCode.uppercase() != "POYNT" ||
+            checkout.commerceStatus !in setOf(
+                "ORDER_CREATED",
+                "PROVIDER_IN_PROGRESS"
+            ) ||
+            (checkout.totalMinor ?: 0L) <= 0L
+        ) {
+            throw ConflictException(
+                "Redemption is not ready for simulated payment"
+            )
+        }
+
+        if (checkout.commerceStatus == "ORDER_CREATED" &&
+            !sql().isRedemptionPricingAcknowledged(
+                checkout.commerceTransactionId,
+                actorUserId
+            )
+        ) {
+            throw ConflictException(
+                "Checkout pricing must be acknowledged"
+            )
+        }
+
+        if (sql().redemptionPaymentAttemptSummary(
+                checkout.commerceTransactionId,
+                actorUserId
+            )?.unresolvedPayment == true ||
+            activeRemoteTerminalDispatchDto(
+                organizationId,
+                checkout.commerceTransactionId,
+                actorUserId
+            ) != null
+        ) {
+            throw ConflictException(
+                "An existing terminal payment remains unresolved"
+            )
+        }
+
+        val integrationId = checkout.integrationConfigurationId
+            ?: throw BadRequestException(
+                "Commerce integration is unavailable"
+            )
+
+        val posDeviceId = sql().resolvePosDevice(
+            organizationId,
+            storeId,
+            staffId,
+            actorUserId,
+            integrationId
+        )
+
+        val referenceId = "RDP-${UUID.randomUUID()}"
+
+        val row = sql().beginRedemptionRemoteTerminalPayment(
+            organizationId,
+            checkout.commerceTransactionId,
+            posDeviceId,
+            referenceId,
+            actorUserId
+        )
+
+        if (row.alreadyDispatched) {
+            throw ConflictException(
+                "A previous payment attempt already exists"
+            )
+        }
+
+        // Mark as DISPATCHED without calling the real Poynt adapter.
+        if (!sql().markRemotePaymentDispatched(
+                row.providerReferenceId
+            )
+        ) {
+            throw ConflictException(
+                "Unable to record simulated payment dispatch"
+            )
+        }
+
+        val providerContext =
+            jdbi.withHandle<Pair<String?, String?>, Exception> {
+                handle ->
+                handle.createQuery(
+                    """
+                    SELECT provider_business_id,
+                           provider_store_id
+                    FROM commerce_provider_payment_attempts
+                    WHERE commerce_transaction_id = :transactionId
+                      AND provider_reference_id = :referenceId
+                    """.trimIndent()
+                )
+                    .bind(
+                        "transactionId",
+                        checkout.commerceTransactionId
+                    )
+                    .bind("referenceId", row.providerReferenceId)
+                    .map { rs, _ ->
+                        Pair(
+                            rs.getString("provider_business_id"),
+                            rs.getString("provider_store_id")
+                        )
+                    }
+                    .one()
+            }
+
+        Triple(
+            row,
+            providerContext.first,
+            providerContext.second
+        )
+    }
+
+    // The real checkout remains in PROVIDER_IN_PROGRESS
+    // during this artificial terminal processing period.
+    val delayMs = System.getenv(
+        "MEMGINE_DEV_POYNT_SIMULATOR_DELAY_MS"
+    )?.toLongOrNull()?.coerceIn(2000L, 15000L) ?: 5000L
+
+    delay(delayMs)
+
+    val row = simulation.first
+
+    val simulatedJson = CounterDevPoyntSimulator.callbackJson(
+        referenceId = row.providerReferenceId,
+        providerTransactionId = "DEV-${UUID.randomUUID()}",
+        amountMinor = row.amountMinor,
+        currencyCode = row.currencyCode,
+        businessId = simulation.second,
+        storeId = simulation.third,
+        outcome = outcome
+    )
+
+    // Use the existing real Payment Bridge parser.
+    val callback =
+        PoyntPaymentBridgeCallbackParser.parse(simulatedJson)
+
+    val transaction = callback.usableTransaction()
+        ?: throw BadRequestException(
+            "Simulated Poynt callback transaction missing"
+        )
+
+    // Same normalization used by CommerceService.
+    val callbackStatus = when {
+        callback.status in setOf("RECEIVED", "STARTED") ->
+            callback.status
+
+        callback.status in setOf("CANCELED", "CANCELLED") ||
+            transaction.status in setOf("CANCELED", "CANCELLED") ->
+            "CANCELED"
+
+        transaction.status == "CAPTURED" &&
+            !transaction.authOnly ->
+            "PROCESSED"
+
+        else -> "FAILED"
+    }
+
+    // The same PostgreSQL callback-detail function
+    // that processes real Poynt callbacks.
+    translate {
+        val recorded = sql().recordDevRemotePaymentCallback(
+            callback.referenceId,
+            callbackStatus,
+            transaction.id,
+            transaction.status,
+            transaction.amountMinor,
+            transaction.currencyCode,
+            transaction.businessId,
+            transaction.storeId,
+            callback.failureCode,
+            callback.failureMessage
+        )
+
+        if (!recorded) {
+            throw ConflictException(
+                "Simulated Poynt callback was not persisted"
+            )
+        }
+    }
+
+    // Real redemption finalization.
+    if (outcome == CounterDevPoyntSimulator.Outcome.SUCCESS) {
+        finalizeRemoteTerminalPayment(row.providerReferenceId)
+    }
+
+    return redemptionCheckoutStatus(
+        organizationId,
+        redemptionTransactionId,
+        storeId,
+        staffId,
+        actorUserId
+    )
+}
+
     
         /** Staff confirms the physical terminal did not report a completed payment.
      *  No new provider payment is initiated here.
@@ -2395,6 +2623,37 @@ interface CounterCommercePaymentSql {
         @Bind("transactionId") transactionId: String,
         @Bind("actorUserId") actorUserId: String
     ): List<CounterCommerceLineRow>
+    
+    
+    @SqlQuery(
+        """
+        SELECT commerce_record_remote_payment_callback_detail(
+            :referenceId,
+            :callbackStatus,
+            :providerTransactionId,
+            :transactionStatus,
+            :amountMinor,
+            :currencyCode,
+            :businessId,
+            :storeId,
+            :failureCode,
+            :failureMessage
+        )
+        """
+    )
+    fun recordDevRemotePaymentCallback(
+        @Bind("referenceId") referenceId: String,
+        @Bind("callbackStatus") callbackStatus: String,
+        @Bind("providerTransactionId") providerTransactionId: String?,
+        @Bind("transactionStatus") transactionStatus: String?,
+        @Bind("amountMinor") amountMinor: Long?,
+        @Bind("currencyCode") currencyCode: String?,
+        @Bind("businessId") businessId: String?,
+        @Bind("storeId") storeId: String?,
+        @Bind("failureCode") failureCode: String?,
+        @Bind("failureMessage") failureMessage: String?
+    ): Boolean
+
 
     @SqlQuery("SELECT * FROM commerce_get_counter_payment_provider(:transactionId,:actorUserId)")
     @RegisterBeanMapper(CounterCommerceProviderRow::class)

@@ -205,6 +205,15 @@ export class CounterService {
       .startRedemptionRemoteTerminalPayment(ctx, transactionId)
       .then((result) => this.unwrap(result));
   }
+  simulateRedemptionPoyntPayment(
+    ctx: CounterContext,
+    transactionId: ID,
+    outcome: "SUCCESS" | "DECLINE" | "CANCEL",
+  ): Promise<CounterRedemptionCheckout> {
+    return this.api
+      .simulateRedemptionPoyntPayment(ctx, transactionId, outcome)
+      .then((result) => this.unwrap(result));
+  }
 
   startRedemptionCashPayment(
     ctx: CounterContext,
@@ -224,7 +233,10 @@ export class CounterService {
       .then((result) => this.unwrap(result));
   }
 
-  closeRedemptionUnpaid(ctx: CounterContext, transactionId: ID): Promise<boolean> {
+  closeRedemptionUnpaid(
+    ctx: CounterContext,
+    transactionId: ID,
+  ): Promise<boolean> {
     return this.api
       .closeRedemptionUnpaid(ctx, transactionId)
       .then((result) => this.unwrap(result));
