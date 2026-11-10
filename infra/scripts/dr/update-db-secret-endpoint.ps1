@@ -50,8 +50,8 @@ $expectedIdentity = @{
         runtime   = @{ Username = "memgine_app_dev"; Database = "memgine_dev"; Schema = "memginedev" }
     }
     prod = @{
-        liquibase = @{ Username = "memgine_prod_user"; Database = "memgine_prod"; Schema = "memgineprod" }
-        runtime   = @{ Username = "memgine_app_prod"; Database = "memgine_prod"; Schema = "memgineprod" }
+        liquibase = @{ Username = "memgine_user"; Database = "memgine"; Schema = "memgine" }
+        runtime   = @{ Username = "memgine_app"; Database = "memgine"; Schema = "memgine" }
     }
 }[$Environment][$SecretRole]
 

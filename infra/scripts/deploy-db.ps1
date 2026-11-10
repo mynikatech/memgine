@@ -61,9 +61,9 @@ $expectedDatabaseIdentity = @{
         Schema   = "memginedev"
     }
     prod = @{
-        Username = "memgine_prod_user"
-        Database = "memgine_prod"
-        Schema   = "memgineprod"
+        Username = "memgine_user"
+        Database = "memgine"
+        Schema   = "memgine"
     }
 }[$Environment]
 

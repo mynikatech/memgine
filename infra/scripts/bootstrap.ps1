@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("dev")]
+    [ValidateSet("dev", "prod")]
     [string]$Environment,
 
     [Parameter(Mandatory = $true, Position = 1)]
@@ -12,6 +12,10 @@ $ErrorActionPreference = "Stop"
 
 $Accounts = @{
     dev = @{
+        AccountId = "482762107384"
+        Profile   = "memgine"
+    }
+    prod = @{
         AccountId = "482762107384"
         Profile   = "memgine"
     }
