@@ -935,6 +935,39 @@ class CounterCommercePaymentService(
             actorUserId
         )
     }
+    
+        /** Staff confirms the physical terminal did not report a completed payment.
+     *  No new provider payment is initiated here.
+     */
+    fun recoverTimedOutRedemptionPayment(
+        organizationId: String,
+        redemptionTransactionId: String,
+        storeId: String,
+        staffId: String,
+        actorUserId: String,
+        paymentAttemptId: String,
+        action: String,
+        confirmedNoSuccessfulPayment: Boolean
+    ): CounterTimeoutRecoveryResult = translate {
+        if (!confirmedNoSuccessfulPayment || action !in setOf("CASH", "CANCEL")) {
+            throw BadRequestException("Please check the card terminal before continuing")
+        }
+        val checkout = redemptionCheckout(
+            organizationId, redemptionTransactionId, storeId, staffId, actorUserId
+        )
+        val result = jdbi.onDemand(CounterTimeoutRecoverySql::class.java).recover(
+            organizationId,
+            checkout.commerceTransactionId,
+            storeId,
+            staffId,
+            actorUserId,
+            paymentAttemptId,
+            action,
+            confirmedNoSuccessfulPayment
+        )
+
+        CounterTimeoutRecoveryResult(result)
+    }
 
     /**
      * Records the staff's intention to take cash against the already persisted
@@ -961,9 +994,12 @@ class CounterCommercePaymentService(
         if (sql().redemptionPaymentAttemptSummary(
                 checkout.commerceTransactionId,
                 actorUserId
-            )?.unresolvedPayment == true
+            )?.unresolvedPayment == true &&
+            !jdbi.onDemand(CounterTimeoutRecoverySql::class.java).cashAllowed(
+                checkout.commerceTransactionId, actorUserId
+            )
         ) {
-            throw ConflictException("Counter redemption has unresolved payment evidence")
+            throw ConflictException("Please check the card terminal before taking cash")
         }
         if (!sql().beginRedemptionCashPayment(
                 organizationId,
@@ -1154,6 +1190,9 @@ class CounterCommercePaymentService(
     }
     fun finalizeRemoteTerminalPayment(referenceId: String) = translate {
         val normalizedReference = referenceId.trim()
+                // Late callbacks for staff-recovered redemptions remain evidence only.
+        if (jdbi.onDemand(CounterTimeoutRecoverySql::class.java)
+                .attemptRecovered(normalizedReference)) return@translate null
         RemoteTerminalFinancialExceptionFinalizer(
             finalizePayment  = { sql().finalizeRemoteTerminalPayment(normalizedReference) },
             openExceptionCase = { financialExceptionSql().openRemoteTerminalCase(normalizedReference) },

@@ -45,7 +45,12 @@ resource "aws_lambda_function" "email" {
   memory_size      = 512
   depends_on       = [aws_cloudwatch_log_group.email]
   tags             = merge(local.lambda_tags, { Purpose = "notification-email-processor" })
-  environment { variables = { RESEND_FROM_EMAIL = var.resend_from_email, RESEND_API_KEY_SECRET_ID = aws_secretsmanager_secret.resend_api_key.name } }
+  environment { 
+    variables = { 
+      RESEND_FROM_EMAIL = var.resend_from_email,
+      RESEND_API_KEY_SECRET_ID = aws_secretsmanager_secret.resend_api_key.name 
+      }
+   }
 }
 
 resource "aws_lambda_function" "whatsapp" {

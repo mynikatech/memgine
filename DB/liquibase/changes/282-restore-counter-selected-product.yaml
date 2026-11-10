@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - changeSet:
+      id: 282-restore-counter-selected-product
+      author: mynikatech
+      comment: Restore canonical product selection for checkout review and preparation while preserving same-store staff handover.
+      changes:
+        - sqlFile:
+            path: ../sql/282-restore-counter-selected-product.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

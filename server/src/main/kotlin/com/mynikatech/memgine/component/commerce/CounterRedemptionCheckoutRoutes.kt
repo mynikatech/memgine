@@ -151,6 +151,28 @@ fun Route.counterRedemptionCheckoutRoutes(
                 )
             )
         }
+        
+        post("/payment/timeout-recovery") {
+            val organizationId = required(call.parameters["organizationId"], "Organization id")
+            val transactionId = required(call.parameters["transactionId"], "Redemption transaction id")
+            val request = call.receive<CounterTimeoutRecoveryRequest>()
+
+            call.respond(
+                ApiResponse.success(
+                    service.recoverTimedOutRedemptionPayment(
+                        organizationId = organizationId,
+                        redemptionTransactionId = transactionId,
+                        storeId = request.storeId,
+                        staffId = request.staffId,
+                        actorUserId = call.authenticatedPrincipal().userId,
+                        paymentAttemptId = request.paymentAttemptId,
+                        action = request.action,
+                        confirmedNoSuccessfulPayment = request.confirmedNoSuccessfulPayment
+                    ),
+                    call.callId
+                )
+            )
+        }
 
         post("/payment/cash/start") {
             val organizationId = required(call.parameters["organizationId"], "Organization id")

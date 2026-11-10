@@ -85,20 +85,36 @@ variable "db_deletion_protection" {
 variable "db_skip_final_snapshot" {
   type = bool
 }
-
-variable "additional_secret_arns" {
-  type        = list(string)
-  default     = []
-  description = "Existing production Secrets Manager secret ARNs needed by the runtime."
-}
-
-# Set from the environment's verified AWS End User Messaging origin; never use a simulator identity.
-variable "otp_sms_canada_origination_identity" {
+ariable "resend_from_email" {
   type    = string
-  default = ""
+  default = "support@mynikatech.in"
 }
 
+variable "meta_phone_number_id" {
+  type = string
+}
+
+variable "meta_graph_api_version" {
+  type    = string
+  default = "v22.0"
+}
 variable "allow_live_sms" {
   type    = bool
   default = true
 }
+variable "whatsapp_delivery_ack_url" {
+  type    = string
+  default = ""
+}
+variable "whatsapp_delivery_ack_secret" {
+  type      = string
+  sensitive = true
+  nullable  = false
+  validation {
+    condition     = length(var.whatsapp_delivery_ack_secret) >= 32
+    error_message = "WhatsApp delivery acknowledgement secret must be at least 32 characters."
+  }
+}
+
+
+

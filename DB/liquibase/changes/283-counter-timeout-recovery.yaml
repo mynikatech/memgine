@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 283-counter-timeout-recovery
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/283-counter-timeout-recovery.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

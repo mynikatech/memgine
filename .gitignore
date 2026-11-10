@@ -114,6 +114,7 @@ hs_err_pid36856.log
 *.tfstate.*
 *.tfplan
 infra/**/terraform.tfvars
+infra/**/*.tfvars
 email-test.json
 whatsapp-test.json
 sms-test.json
@@ -327,3 +328,5 @@ frontend/eas-android-inspect-v3
 frontend/eas-android-inspect-v3
 frontend/eas-android-inspect-v3
 frontend/eas-android-inspect-v3
+frontend/eas-android-inspect-v3
+infra/envs/dev/dev.tfvars

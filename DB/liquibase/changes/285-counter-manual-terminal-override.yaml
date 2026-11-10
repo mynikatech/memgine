@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 285-counter-manual-terminal-override
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/285-counter-manual-terminal-override.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8
