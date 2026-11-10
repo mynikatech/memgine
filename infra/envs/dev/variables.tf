@@ -1,5 +1,6 @@
 variable "aws_profile" {
   type    = string
+  description = "Memgine infrastructure AWS CLI profile."
   default = "memgine"
 }
 

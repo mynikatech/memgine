@@ -1,7 +1,7 @@
 variable "aws_profile" {
-  type        = string
+  type    = string
   description = "Memgine infrastructure AWS CLI profile."
-  default     = "memgine"
+  default = "memgine"
 }
 
 variable "aws_region" {
@@ -58,7 +58,7 @@ variable "db_engine_version" {
 
 variable "db_name" {
   type    = string
-  default = "memgine_prod"
+  default = "memgine"
 }
 
 variable "db_master_username" {
@@ -85,7 +85,7 @@ variable "db_deletion_protection" {
 variable "db_skip_final_snapshot" {
   type = bool
 }
-ariable "resend_from_email" {
+variable "resend_from_email" {
   type    = string
   default = "support@mynikatech.in"
 }
@@ -98,6 +98,7 @@ variable "meta_graph_api_version" {
   type    = string
   default = "v22.0"
 }
+
 variable "allow_live_sms" {
   type    = bool
   default = true
@@ -110,11 +111,9 @@ variable "whatsapp_delivery_ack_secret" {
   type      = string
   sensitive = true
   nullable  = false
+
   validation {
     condition     = length(var.whatsapp_delivery_ack_secret) >= 32
     error_message = "WhatsApp delivery acknowledgement secret must be at least 32 characters."
   }
 }
-
-
-

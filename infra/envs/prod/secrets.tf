@@ -52,3 +52,10 @@ resource "aws_secretsmanager_secret" "otp_pepper" {
     ManagedBy   = "terraform"
   }
 }
+
+resource "aws_secretsmanager_secret" "poynt_cloud_app" {
+  name        = "memgine/prod/poynt/cloud-app"
+  description = "Poynt Production Cloud Application private key for Memgine PROD"
+
+  tags = prod.lambda_tags
+}
