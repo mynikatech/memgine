@@ -1,19 +1,96 @@
-# PROD HTTPS (Linux)
+# Memgine PROD HTTPS Deployment
 
-PROD uses the same shared EC2 deployment, Nginx, systemd, and Certbot scripts as DEV. This directory supplies only production domains and non-secret configuration. The Route53 and Terraform backend values remain placeholders until the production account and state bucket are approved.
+This directory contains production environment configuration examples
+and service-management scripts.
 
-After the approved production Terraform state configuration exists, the host flow is:
+PROD uses the shared Memgine deployment infrastructure, with
+production-specific domain names, database identities and secrets.
 
-```bash
-sudo /usr/local/bin/memgine-sync-scripts
-sudo /opt/memgine/scripts/setup-https.sh prod
-sudo /opt/memgine/scripts/deploy.sh prod <release-id>
-```
+## Canonical setup guide
 
-Run the separately approved Liquibase deployment from the deployment workstation before application deployment:
+Follow:
+
+`docs/operations/prod-first-time-setup.md`
+
+The guide covers:
+
+- AWS and Terraform initialization.
+- RDS provisioning and PostgreSQL bootstrap.
+- Liquibase preview and update.
+- EC2 host initialization.
+- HTTPS and Nginx.
+- Backend and frontend builds.
+- Production release publication and deployment.
+- Health checks and mobile build prerequisites.
+
+## Production configuration
+
+The following files must contain reviewed production values:
+
+- `memgine.env`
+- `frontend.env`
+- `deployment.properties`
+
+The `.example` files are templates only.
+
+Do not copy DEV runtime credentials or callback secrets into PROD.
+
+## Host setup
+
+From the repository root on the authorized Windows workstation:
 
 ```powershell
-.\infra\scripts\deploy-db.ps1 prod
+.\server\scripts\setup-host.ps1 `
+    -Environment prod `
+    -AwsProfile $env:AWS_PROFILE
 ```
 
-Do not put certificate keys, database passwords, provider tokens, or any other secrets in the ignored environment files or in the deployment bucket. Certbot maintains private keys below `/etc/letsencrypt` on the EC2 host.
+The initial setup requires all host prerequisites and DNS configuration
+to be in place.
+
+## Liquibase
+
+Preview production SQL:
+
+```powershell
+.\DB\scripts\liquibase-update-sql.ps1 `
+    -Environment prod `
+    -AwsProfile $env:AWS_PROFILE `
+    -DatabaseHost "<approved-rds-endpoint>" `
+    -DatabasePort 5432
+```
+
+After reviewing and approving the SQL:
+
+```powershell
+.\DB\scripts\liquibase-update.ps1 `
+    -Environment prod `
+    -AwsProfile $env:AWS_PROFILE `
+    -DatabaseHost "<approved-rds-endpoint>" `
+    -DatabasePort 5432
+```
+
+The alternative `infra/scripts/deploy-db.ps1` requires
+`-LiquibaseSecretArn` and cannot be invoked with only `prod`.
+
+## Production builds
+
+```powershell
+.\server\scripts\build-backend.ps1 -Environment prod
+.\server\scripts\build-frontend.ps1 -Environment prod
+```
+
+The frontend must be built using the environment-aware script rather
+than a direct Expo export from an inherited LOCAL or DEV shell.
+
+## Deployment
+
+Publish and deploy using the approved PowerShell release scripts:
+
+- `server/scripts/publish-release.ps1`
+- `server/scripts/deploy-release.ps1`
+
+Follow the canonical setup guide for full command arguments.
+
+Never publish secrets, database passwords, callback header values,
+private keys or TLS private keys into Git or S3 release artifacts.

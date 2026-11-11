@@ -233,7 +233,7 @@ data class PoyntApplePayRegistrationDiagnosticDto(
     val httpStatus: Int,
     val registered: Boolean? = null,
     val registeredDomains: List<String>? = null,
-    val memgineDevDomainRegistered: Boolean? = null
+    val configuredDomainRegistered: Boolean? = null
 )
 
 /** Trusted-configuration Apple Pay readiness for one authorized Poynt integration. */

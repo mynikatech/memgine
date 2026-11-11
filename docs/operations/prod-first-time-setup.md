@@ -1,268 +1,524 @@
-# Memgine production first-time setup
+# Memgine — Production First-Time Setup
 
-This runbook is for a reviewed production setup only. It never authorizes a
-blind recreation of existing resources. Run every discovery command first and
-stop if a resource or database already exists without matching Terraform state.
+## Purpose
 
-## Current source gate
+This document describes the controlled first-time setup of Memgine PROD.
 
-Do **not** run the database bootstrap, Liquibase update, Terraform apply, or
-release deployment until the historical Liquibase checksum-reconciliation gate
-is resolved. The shared migrations `076`, `084`, `202`, `262`, and `278` have
-been made schema-neutral for clean PROD initialization, but existing LOCAL/DEV
-checksums must be read and reconciled before the corrected historical files can
-be deployed safely.
+Run all commands from `D:\MynikaTech\memgine` unless stated otherwise.
 
-The commands below are the approved sequence once that gate has been resolved
-and validated against both an empty disposable PostgreSQL database and an
-existing DEV-compatible changelog history.
+Do not recreate existing production resources blindly. If AWS resources
+already exist, inspect and adopt them into Terraform state before proceeding.
 
-Before adding any `validCheckSum` values for the corrected historical files,
-an authorized operator must obtain the actual stored checksums from both LOCAL
-and DEV. This query is read-only and must be run against each environment's
-`memginedev` schema:
+### Environment identity
 
-```sql
-SELECT id, author, filename, md5sum
-FROM memginedev.databasechangelog
-WHERE author = 'mynikatech'
-  AND id IN (
-    '076-poynt-timestamps-utc',
-    '084-standardize-internal-code-columns',
-    '202-fix-counter-redemption-pricing-reconciliation-actor',
-    '262-staff-assisted-payment-finalization',
-    '278-organization-announcement-configuration'
-  )
-ORDER BY id;
-```
+| Component           | PROD value                        |
+| ------------------- | --------------------------------- |
+| AWS region          | ca-central-1                      |
+| Database            | memgine                           |
+| Schema              | memgine                           |
+| Liquibase role      | memgine_user                      |
+| Application role    | memgine_app                       |
+| Backend service     | memgine-prod                      |
+| Backend port        | 8082                              |
+| Application root    | /opt/memgine                      |
+| Web root            | /var/www/memgine-prod             |
+| Web URL             | https://memgine.mynikatech.in     |
+| API URL             | https://api-memgine.mynikatech.in |
+| Terraform state key | prod/terraform.tfstate            |
 
-Do not set `MD5SUM` to `NULL`, use `clearCheckSums`, or add guessed checksum
-values. The retrieved values must be reviewed before adding one exact
-`validCheckSum` entry per historical changeset (or both values if LOCAL and
-DEV differ).
+## 1. Database migration readiness
 
-## 1. Prerequisites and account discovery
+Historical migrations 076, 084, 202, 262 and 278 were corrected to use
+Liquibase environment-specific schema and application-role properties.
 
-Use PowerShell from the repository root. Replace profile placeholders only with
-approved production profiles; never enter secret values into `prod.tfvars`.
+LOCAL and DEV database checksums have been reconciled by the operator.
+The five records remain EXECUTED with recalculated checksums.
+
+No validCheckSum entries or additional changes to DATABASECHANGELOG are
+required for this completed reconciliation.
+
+IMPORTANT:
+
+Before running migrations against the actual PROD database, validate
+the complete historical Liquibase chain against an empty disposable
+PostgreSQL 17 database using schema `memgine`.
+
+Successful LOCAL/DEV reconciliation does not establish that a complete
+fresh production initialization has succeeded.
+
+Do not create schema `memginedev` in PROD.
+
+## 2. AWS prerequisites
+
+Verify the approved AWS account, CLI profile and region.
 
 ```powershell
 Set-Location D:\MynikaTech\memgine
-$env:AWS_PROFILE = 'REPLACE_WITH_PRODUCTION_AWS_PROFILE'
-$env:AWS_REGION = 'ca-central-1'
+
+$env:AWS_PROFILE = "memgine"
+$env:AWS_REGION = "ca-central-1"
+
 aws sts get-caller-identity
+```
+
+Verify that this is the intended production infrastructure account.
+
+Inspect existing resources:
+
+```powershell
 aws s3api head-bucket --bucket memgine-prod-terraform-state-482762107384
+
 aws rds describe-db-instances --db-instance-identifier memgine-prod-postgres
+
 aws ec2 describe-instances --filters Name=tag:Application,Values=memgine Name=tag:Environment,Values=prod
+
 aws secretsmanager list-secrets --filters Key=name,Values=memgine/prod
 ```
 
-Expected before a first setup: caller identity is the approved production
-account; the Terraform state bucket exists; and no unadopted `memgine-prod-*`
-RDS, EC2, or secret resources exist. `DBInstanceNotFound` is expected only for
-a genuinely new RDS installation. If any existing resource is found, stop and
-either import it into reviewed Terraform state or use the existing deployment
-process. Never apply a plan that proposes a replacement/deletion of an existing
-production resource.
+Stop if existing resources are not represented correctly in Terraform state.
 
-## 2. Terraform backend and configuration
+The remote Terraform state bucket must exist before backend initialization.
 
-Review `infra/envs/prod/backend.hcl` and `prod.tfvars` first. `prod.tfvars`
-must contain the approved non-secret production values, including the real
-Meta phone-number ID and verified Canadian OTP origination identity. Supply the
-WhatsApp acknowledgement secret only through the process environment.
+## 3. Terraform configuration
+
+Directory:
+
+`infra/envs/prod`
+
+Files:
+
+- backend.hcl
+- prod.tfvars
+- .terraform.lock.hcl
+
+The PROD provider lockfile is already committed and pins AWS provider 5.100.0.
+
+Do not overwrite the configured `backend.hcl` with
+`backend.hcl.example`.
+
+Review its bucket, key, region and AWS profile.
 
 ```powershell
 Set-Location D:\MynikaTech\memgine\infra\envs\prod
-Copy-Item backend.hcl.example backend.hcl -ErrorAction Stop
-Copy-Item prod.tfvars.example prod.tfvars -ErrorAction Stop
-# Edit the two files using the approved account, DNS and non-secret values.
-$ackSecret = Read-Host 'WhatsApp acknowledgement secret' -AsSecureString
-$ackPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($ackSecret)
-try {
-  $env:TF_VAR_whatsapp_delivery_ack_secret = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ackPointer)
-  terraform init -input=false -reconfigure -backend-config=backend.hcl
-  terraform validate
-  terraform plan -input=false -var-file=prod.tfvars -out=prod.tfplan
+
+if (-not (Test-Path .\backend.hcl)) {
+    throw "Configure PROD backend.hcl before continuing."
 }
-finally {
-  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ackPointer)
-  Remove-Item Env:TF_VAR_whatsapp_delivery_ack_secret -ErrorAction SilentlyContinue
+
+if (-not (Test-Path .\prod.tfvars)) {
+    Copy-Item .\prod.tfvars.example .\prod.tfvars
 }
 ```
 
-Expected: `validate` succeeds and the plan creates only reviewed production
-resources. The plan must not show DEV resources, replacements of discovered
-production resources, or deletion of state infrastructure. If it does, stop;
-do not use `-replace`, `-target`, or `apply` to force progress.
+Review and complete prod.tfvars, including:
 
-After a second-person review of `prod.tfplan`, the authorized operator may run:
+- Approved AWS profiles.
+- EC2 instance type.
+- RDS instance class and storage configuration.
+- Production Meta WhatsApp phone-number ID.
+- Production live-SMS approval.
+
+The required WhatsApp acknowledgement secret must be supplied securely
+through TF_VAR_whatsapp_delivery_ack_secret, not prod.tfvars.
+
+The Canadian OTP origination identity is provisioned by sms.tf and
+published through Terraform outputs. It is not a tfvars input.
+
+### Initialize and validate
+
+```powershell
+$ackSecret = Read-Host "WhatsApp acknowledgement secret" -AsSecureString
+$ackPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($ackSecret)
+
+try {
+    $env:TF_VAR_whatsapp_delivery_ack_secret =
+        [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ackPointer)
+
+    terraform init -input=false -backend-config=backend.hcl
+    terraform validate
+    terraform plan -input=false -var-file=prod.tfvars -out=prod.tfplan
+}
+finally {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ackPointer)
+    Remove-Item Env:TF_VAR_whatsapp_delivery_ack_secret -ErrorAction SilentlyContinue
+}
+```
+
+Review the saved plan carefully.
+
+The plan must not delete or unexpectedly replace existing resources.
+It must not create DEV resources.
+
+Saved Terraform plans may contain sensitive inputs. Do not commit or
+publish prod.tfplan.
+
+### Apply only after approval
 
 ```powershell
 terraform apply prod.tfplan
 ```
 
-Then capture only non-secret outputs needed by subsequent commands:
+Do not proceed if the plan is unexpected.
+
+## 4. Terraform outputs
+
+After successful provisioning:
 
 ```powershell
+terraform output app_ec2_instance_id
+terraform output app_elastic_ip
 terraform output app_database_endpoint
 terraform output app_database_port
-terraform output app_elastic_ip
-terraform output app_database_liquibase_secret_arn
-terraform output app_database_runtime_secret_arn
-terraform output app_otp_pepper_secret_arn
+terraform output -raw app_database_master_secret_arn
+terraform output -raw app_database_liquibase_secret_arn
+terraform output -raw app_database_runtime_secret_arn
+terraform output -raw app_otp_pepper_secret_arn
 terraform output -raw app_poynt_payment_bridge_callback_secret_arn
+terraform output otp_sms_canada_origination_identity
 ```
 
-## 3. Populate approved secrets and provider configuration
+Check that these outputs refer to the approved production AWS account.
 
-Terraform creates containers, not credential values. Populate values through
-the approved Secrets Manager console or approved CLI procedure only after
-reviewing each ARN. Required production entries include the Liquibase/runtime
-database credentials, OTP pepper, Poynt Cloud integration credentials, and the
-Poynt Payment Bridge callback secret. Do not put a callback value in
-`memgine.env`, Terraform source, release properties, or `prod.tfvars`.
+## 5. Production Secrets Manager configuration
 
-The Poynt callback secret must be distinct from DEV. Confirm the production
-Poynt callback URL is:
+Terraform creates secret containers; it does not automatically populate
+all application credentials.
 
-```text
-https://api-memgine.mynikatech.in/api/v1/commerce/providers/poynt/payment-bridge/callback
-```
+Populate and verify the approved production secrets.
 
-Expected: `aws secretsmanager get-secret-value --secret-id <approved-arn>`
-returns a non-empty value only to an authorized operator. Do not print it.
+Required secrets include:
 
-## 4. PostgreSQL bootstrap
+- Database Liquibase credentials.
+- Database runtime credentials.
+- OTP pepper.
+- Poynt production Cloud Application credentials.
+- Poynt Payment Bridge callback credential.
+- Other provider credentials required by enabled integrations.
 
-Use an approved RDS master secret ARN and a direct RDS/approved administrative
-connection. The bootstrap creates database `memgine`, schema `memgine`,
-Liquibase role `memgine_user`, and runtime role `memgine_app`.
+PROD callback secret name:
+
+`memgine/prod/poynt/payment-bridge-callback`
+
+Production callback URL:
+
+`https://api-memgine.mynikatech.in/api/v1/commerce/providers/poynt/payment-bridge/callback`
+
+Never use the DEV callback credential for PROD.
+
+Do not place secret values in:
+
+- memgine.env
+- frontend.env
+- deployment.properties
+- prod.tfvars
+- Git
+- S3 release artifacts
+
+Review the production SMS origination identity and provider eligibility
+before allowing live messages.
+
+## 6. PostgreSQL bootstrap
+
+The intended production identities are:
+
+- Database: memgine
+- Schema: memgine
+- Liquibase role: memgine_user
+- Runtime role: memgine_app
+
+Run from the repository root after reviewing RDS provisioning and
+Secrets Manager outputs.
 
 ```powershell
 Set-Location D:\MynikaTech\memgine
+
 .\DB\env\prod\bootstrap-prod-memgine.ps1 `
-  -MasterSecretArn '<approved-rds-master-secret-arn>' `
-  -LiquibaseSecretArn (terraform -chdir=infra/envs/prod output -raw app_database_liquibase_secret_arn) `
-  -RuntimeSecretArn (terraform -chdir=infra/envs/prod output -raw app_database_runtime_secret_arn) `
-  -AwsProfile $env:AWS_PROFILE `
-  -AwsRegion ca-central-1
+    -MasterSecretArn "<approved-rds-master-secret-arn>" `
+    -LiquibaseSecretArn (terraform -chdir=infra/envs/prod output -raw app_database_liquibase_secret_arn) `
+    -RuntimeSecretArn (terraform -chdir=infra/envs/prod output -raw app_database_runtime_secret_arn) `
+    -AwsProfile $env:AWS_PROFILE `
+    -AwsRegion "ca-central-1"
 ```
 
-Expected: bootstrap completes without printing passwords. It grants default
-DML and sequence privileges only to `memgine_app`; it does not grant schema
-ownership or DDL rights to that runtime role. If the database/schema already
-exists, stop and inspect its ownership and migration history before rerunning.
+Before executing:
 
-## 5. Liquibase preview and update
+- Verify the target RDS endpoint.
+- Verify the selected AWS account.
+- Ensure the database does not already contain production data.
+- Verify both database-role passwords are supplied securely.
 
-Only run these after the historical migration gate is resolved.
+Do not reset an existing PROD database.
+
+## 7. Liquibase validation and update
+
+Only proceed once the corrected migrations have passed the disposable
+empty-PROD-schema test.
+
+### Preview
 
 ```powershell
 Set-Location D:\MynikaTech\memgine
+
 .\DB\scripts\liquibase-update-sql.ps1 `
-  -Environment prod `
-  -AwsProfile $env:AWS_PROFILE `
-  -AwsRegion ca-central-1 `
-  -DatabaseHost '<approved-rds-endpoint>' `
-  -DatabasePort 5432
+    -Environment prod `
+    -AwsProfile $env:AWS_PROFILE `
+    -AwsRegion "ca-central-1" `
+    -DatabaseHost "<approved-rds-endpoint>" `
+    -DatabasePort 5432
 ```
 
-Expected: a non-mutating `DB/build/liquibase/update-prod.sql` with every
-statement reviewed. Validate that `DATABASECHANGELOG` is empty only for a new
-database and that the target schema is `memgine`.
+Generated file:
 
-After DBA review, run:
+`DB/build/liquibase/update-prod.sql`
+
+Review the generated SQL and confirm:
+
+- The target schema is memgine.
+- No memginedev objects are created.
+- No DEV-specific roles are referenced.
+- All required migration files are included.
+- There are no unresolved schema-property placeholders.
+
+### Apply
 
 ```powershell
 .\DB\scripts\liquibase-update.ps1 `
-  -Environment prod `
-  -AwsProfile $env:AWS_PROFILE `
-  -AwsRegion ca-central-1 `
-  -DatabaseHost '<approved-rds-endpoint>' `
-  -DatabasePort 5432
+    -Environment prod `
+    -AwsProfile $env:AWS_PROFILE `
+    -AwsRegion "ca-central-1" `
+    -DatabaseHost "<approved-rds-endpoint>" `
+    -DatabasePort 5432
 ```
 
-Expected: the operator must type `APPLY-PROD`; Liquibase uses `memgine_user`.
-On any validation, checksum, ownership, or schema error, stop. Do not run
-`clearCheckSums`, `changelogSync`, or manual `DATABASECHANGELOG` updates.
+The operator must explicitly approve the production update.
 
-## 6. EC2 host, TLS, and Nginx
+Stop immediately on migration, ownership or permission errors.
 
-After Terraform creates or adopts the EC2 host, connect through the approved
-administrative path. Install Java 21, Nginx, AWS CLI, jq, Certbot, curl, and
-OpenSSL, then run the repository’s setup validation. Configure DNS only after
-the reviewed Terraform output supplies the Elastic IP.
+Do not use clearCheckSums or changelogSync to bypass failures.
 
-```bash
-sudo /opt/memgine/scripts/common/deployment/linux/setup-host.sh prod --check-only
-sudo /opt/memgine/scripts/common/https/linux/check-certificates.sh /opt/memgine/scripts/env/prod/https
-sudo nginx -t
-sudo systemctl is-active --quiet nginx
-```
+## 8. EC2 host prerequisites and setup
 
-Expected: `memgine-prod` uses `/opt/memgine`, `/var/www/memgine-prod`, and
-port `8082`. Nginx proxies the API to `127.0.0.1:8082`; the health check uses
-that same port. Certificate failure, DNS mismatch, or Nginx test failure is a
-stop condition.
+Before initial host setup, verify the following are installed/configured
+on the production EC2 instance:
 
-## 7. Build, publish, and deploy the first release
+- Java 21.
+- Nginx.
+- AWS CLI.
+- jq.
+- Certbot.
+- curl.
+- OpenSSL.
+- memgine Linux user.
+- /opt/memgine application directories.
+- /var/www/memgine-prod directory.
+- SSM connectivity and the memgine-sync-scripts bootstrap utility.
 
-Build artifacts from a reviewed commit. The production EAS and web settings use
-`https://memgine.mynikatech.in` and `https://api-memgine.mynikatech.in`; Poynt
-simulator settings must remain disabled.
+The shared setup-host script validates these prerequisites; it does not
+install missing OS packages or create all required users/directories.
+
+Set up the host through the approved provisioning/bootstrap process.
+
+Configure DNS for both production domains to point to the Terraform
+Elastic IP before requesting certificates.
+
+### Initial setup
+
+From the Windows deployment workstation:
 
 ```powershell
 Set-Location D:\MynikaTech\memgine
-.\gradlew.bat :server:shadowJar --no-daemon --console=plain
-Set-Location frontend
-npx tsc --noEmit
-npx expo export --platform web
-Set-Location ..
-.\server\scripts\publish-release.ps1 `
-  -Environment prod `
-  -ReleaseId '<approved-release-id>' `
-  -FrontendOutputDirectory '.\frontend\dist' `
-  -AwsProfile $env:AWS_PROFILE
+
+.\server\scripts\setup-host.ps1 `
+    -Environment prod `
+    -AwsProfile $env:AWS_PROFILE
 ```
 
-Expected: release publication contains no direct secret values. The generated
-deployment properties contain only the production callback secret ARN. On EC2,
-run the approved remote deployment command for that release; it retrieves the
-callback secret into `backend-secrets.env` and fails closed if unavailable.
+This synchronizes the deployment scripts and invokes production host
+initialization, including HTTPS configuration.
 
-## 8. Post-deployment checks and payment readiness
+Only after initial setup succeeds, validate:
+
+```powershell
+.\server\scripts\setup-host.ps1 `
+    -Environment prod `
+    -AwsProfile $env:AWS_PROFILE `
+    -CheckOnly
+```
+
+Do not run CheckOnly before certificates, runtime files and Nginx have
+been established.
+
+Do not attempt backend health checks until the first release is deployed.
+
+## 9. Production runtime configuration
+
+Review the Git-ignored runtime configuration files:
+
+`server/scripts/env/prod/https/memgine.env`
+
+`server/scripts/env/prod/https/frontend.env`
+
+Create them from their corresponding .example files only when absent.
+
+Verify:
+
+- MEMGINE_ENVIRONMENT=prod
+- MEMGINE_DB_SCHEMA=memgine
+- MEMGINE_SERVER_PORT=8082
+- MEMGINE_ENFORCE_HTTPS=true
+- MEMGINE_OTP_AWS_REGION=ca-central-1
+- MEMGINE_WEB_BASE_URL=https://memgine.mynikatech.in
+- MEMGINE_API_BASE_URL=https://api-memgine.mynikatech.in
+- MEMGINE_ALLOWED_ORIGINS=https://memgine.mynikatech.in
+- Production Poynt Cloud endpoint
+- Correct callback URL
+- No DEV URLs or credentials
+- Production simulator disabled
+
+Ensure all required production-specific settings are supplied before
+the backend starts.
+
+## 10. Build the first production release
+
+Use the repository's environment-aware build scripts.
+
+Do not run a direct `npx expo export` from a shell that may contain
+LOCAL or DEV environment variables.
+
+### Backend build
+
+```powershell
+Set-Location D:\MynikaTech\memgine
+
+.\server\scripts\build-backend.ps1 -Environment prod
+```
+
+### Frontend build
+
+```powershell
+.\server\scripts\build-frontend.ps1 -Environment prod
+```
+
+The frontend build script:
+
+- Clears inherited EXPO*PUBLIC*\* variables.
+- Disables automatic dotenv loading.
+- Loads the PROD frontend environment.
+- Clears the Metro cache.
+- Generates a web-only export.
+- Verifies the expected API URL.
+
+Expected output:
+
+`frontend/dist-web`
+
+Verify that the bundle targets:
+
+`https://api-memgine.mynikatech.in`
+
+## 11. Publish the approved release
+
+```powershell
+.\server\scripts\publish-release.ps1 `
+    -Environment prod `
+    -ReleaseId "<approved-release-id>" `
+    -FrontendOutputDirectory ".\frontend\dist-web" `
+    -AwsProfile $env:AWS_PROFILE
+```
+
+The release must contain:
+
+- Backend application JAR.
+- Web frontend.
+- Release manifest.
+- Sanitized runtime configuration.
+- Non-secret deployment properties.
+- Deployment scripts.
+
+The production callback credential must not be published directly.
+Only its Secrets Manager ARN may be included.
+
+## 12. Deploy the approved release
+
+```powershell
+.\server\scripts\deploy-release.ps1 `
+    -Environment prod `
+    -ReleaseId "<approved-release-id>" `
+    -AwsProfile $env:AWS_PROFILE
+```
+
+The deployment runs through SSM, synchronizes scripts, retrieves
+production runtime secrets, updates the backend service and web files,
+and performs health checks.
+
+Do not deploy using DEV release artifacts.
+
+## 13. Post-deployment verification
+
+On the production EC2 instance:
 
 ```bash
 sudo systemctl status memgine-prod --no-pager
-sudo /opt/memgine/scripts/common/deployment/linux/health-check.sh /opt/memgine/scripts/env/prod/https
-curl --fail --silent --show-error https://api-memgine.mynikatech.in/health
-curl --fail --silent --show-error -I https://memgine.mynikatech.in
+
+sudo /opt/memgine/scripts/common/deployment/linux/health-check.sh \
+    /opt/memgine/scripts/env/prod/https
+
+sudo nginx -t
 ```
 
-Confirm the callback route returns unauthorized without its header and that a
-controlled authorized integration test is approved before any real terminal
-transaction. Do not enable LIVE messaging, refunds, Apple Pay registration, or
-support workers as part of this runbook.
+Verify the public endpoints:
 
-## 9. Android and iOS release prerequisites
+```bash
+curl --fail --silent --show-error \
+    https://api-memgine.mynikatech.in/health
 
-Before a store build, verify the production EAS profile, production API URL,
-Android package ID, iOS bundle ID, signing credentials, associated domains,
-privacy metadata, and store listing ownership. Missing Apple/Google signing
-identities are a release blocker; never fabricate them in source or EAS config.
-
-```powershell
-Set-Location D:\MynikaTech\memgine\frontend
-npx tsc --noEmit
-npx eas build:configure
-# Submit only after an approved production binary and store-account review.
+curl --fail --silent --show-error -I \
+    https://memgine.mynikatech.in
 ```
 
-## Failure handling
+Verify:
 
-Stop at the failing stage, preserve logs without secrets, and return to the
-last successful Terraform state/release. Terraform apply failures require a
-reviewed recovery plan; do not delete resources or state. Deployment failures
-use the existing release rollback path and must not delete a working callback
-credential or database.
+- Backend service is running.
+- PostgreSQL connection succeeds.
+- Assets use the production S3 bucket.
+- OTP configuration is production-specific.
+- Production notification resources are selected.
+- Payment Bridge rejects unauthenticated callbacks.
+- Poynt integrations use approved production credentials.
+- No DEV endpoints or simulator settings are active.
+
+Real payment testing requires a separately approved controlled test.
+
+## 14. Android and iOS
+
+Before production builds verify:
+
+- frontend/eas.json production profile.
+- Production API and web URL.
+- Android package ID.
+- iOS bundle ID.
+- Android signing credentials.
+- iOS provisioning certificates.
+- Associated domains and app-link identity values.
+- App Store / Play Console account configuration.
+- Poynt simulator disabled.
+
+Use the production EAS profile only after these checks.
+
+## 15. Failure and rollback
+
+Stop immediately if any stage fails.
+
+Do not:
+
+- Delete Terraform state.
+- Recreate RDS without investigation.
+- Force-replace production resources.
+- Clear Liquibase history.
+- Substitute DEV credentials.
+- Publish application secrets.
+- Retry a destructive operation without reviewing its effects.
+
+Preserve diagnostic logs without credentials, investigate the failed
+stage and use the existing approved deployment rollback process where
+applicable.

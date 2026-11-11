@@ -172,7 +172,7 @@ interface AuthenticationSql {
         )
         fun debugConnection(): String
 
-        @SqlQuery(
+       /* @SqlQuery(
             """
             SELECT COUNT(*)
             FROM memginedev."user"
@@ -181,5 +181,5 @@ interface AuthenticationSql {
         )
         fun debugPhoneCount(
             @Bind("phone") phone: String
-        ): Int
+        ): Int*/
 }

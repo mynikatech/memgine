@@ -1026,7 +1026,7 @@ class PlatformPoyntPaymentService(
             httpStatus = httpStatus,
             registered = registered,
             registeredDomains = domains,
-            memgineDevDomainRegistered = configuredDomain?.let { expected ->
+            configuredDomainRegistered  = configuredDomain?.let { expected ->
                 domains?.any { it.equals(expected, ignoreCase = true) }
             }
         )

@@ -41,7 +41,7 @@ class PlatformPoyntApplePayRegistrationDiagnosticTest {
         assertEquals(200, result.httpStatus)
         assertEquals(true, result.registered)
         assertEquals(listOf("memgine-dev.mynikatech.in", "example.test"), result.registeredDomains)
-        assertEquals(true, result.memgineDevDomainRegistered)
+        assertEquals(true, result.configuredDomainRegistered)
         assertEquals(
             "https://configured-poynt.example/businesses/business-1/apple-pay/registration",
             transport.uri.toString()
@@ -77,7 +77,7 @@ class PlatformPoyntApplePayRegistrationDiagnosticTest {
         assertEquals(403, result.httpStatus)
         assertNull(result.registered)
         assertNull(result.registeredDomains)
-        assertNull(result.memgineDevDomainRegistered)
+        assertNull(result.configuredDomainRegistered)
     }
 
     @Test
@@ -86,7 +86,7 @@ class PlatformPoyntApplePayRegistrationDiagnosticTest {
             .applePayRegistrationDiagnostic("integration-1", "platform-user")
         assertEquals(404, inconclusive.httpStatus)
         assertNull(inconclusive.registered)
-        assertNull(inconclusive.memgineDevDomainRegistered)
+        assertNull(inconclusive.configuredDomainRegistered)
 
         val explicit = service(FakeTransport(PoyntHttpResponse(404, """{"registered":false}""")))
             .applePayRegistrationDiagnostic("integration-1", "platform-user")
@@ -102,7 +102,7 @@ class PlatformPoyntApplePayRegistrationDiagnosticTest {
         assertEquals(200, result.httpStatus)
         assertNull(result.registered)
         assertNull(result.registeredDomains)
-        assertNull(result.memgineDevDomainRegistered)
+        assertNull(result.configuredDomainRegistered)
     }
 
     @Test
@@ -113,7 +113,7 @@ class PlatformPoyntApplePayRegistrationDiagnosticTest {
         assertEquals(503, result.httpStatus)
         assertNull(result.registered)
         assertNull(result.registeredDomains)
-        assertNull(result.memgineDevDomainRegistered)
+        assertNull(result.configuredDomainRegistered)
     }
 
     @Test
