@@ -93,6 +93,11 @@ output "app_otp_pepper_secret_arn" {
   sensitive = true
 }
 
+output "app_poynt_payment_bridge_callback_secret_arn" {
+  value     = aws_secretsmanager_secret.poynt_payment_bridge_callback.arn
+  sensitive = true
+}
+
 output "app_database_port" {
   value = module.application_host.database_port
 }

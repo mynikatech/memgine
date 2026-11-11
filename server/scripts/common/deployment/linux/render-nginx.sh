@@ -18,10 +18,16 @@ frontend_host="${frontend_host%%/*}"
 api_host="${MEMGINE_API_BASE_URL#*://}"
 api_host="${api_host%%/*}"
 web_root="${MEMGINE_WEB_ROOT:-/var/www/memgine-${MEMGINE_ENVIRONMENT}}"
+server_port="${MEMGINE_SERVER_PORT:-}"
 target="$environment_dir/conf.d/memgine.conf"
+[[ "$server_port" =~ ^[0-9]+$ ]] && (( server_port >= 1 && server_port <= 65535 )) || {
+  echo "MEMGINE_SERVER_PORT is invalid." >&2
+  exit 1
+}
 export FRONTEND_HOST="$frontend_host"
 export API_HOST="$api_host"
 export WEB_ROOT="$web_root"
+export SERVER_PORT="$server_port"
 # Allow larger branding image uploads on DEV only.
 # Preserve the existing Nginx 1 MB request limit on PROD.
 case "${MEMGINE_ENVIRONMENT:-}" in
@@ -84,7 +90,7 @@ server {
 
     location /.well-known/acme-challenge/ { root ${web_root}; }
     location / {
-        proxy_pass http://127.0.0.1:8082;
+        proxy_pass http://127.0.0.1:${server_port};
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -94,7 +100,7 @@ server {
 EOF
     ;;
   https)
-    envsubst '${FRONTEND_HOST} ${API_HOST} ${WEB_ROOT} ${APPLE_PAY_ASSOCIATION_LOCATION} ${NGINX_API_MAX_BODY_SIZE}' \
+    envsubst '${FRONTEND_HOST} ${API_HOST} ${WEB_ROOT} ${SERVER_PORT} ${APPLE_PAY_ASSOCIATION_LOCATION} ${NGINX_API_MAX_BODY_SIZE}' \
       < "$script_dir/nginx-https.conf.template" \
       > "$target"
     ;;

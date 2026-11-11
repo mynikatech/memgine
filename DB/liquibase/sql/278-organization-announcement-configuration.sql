@@ -2,10 +2,10 @@
 -- Preserves existing single-announcement columns for backward compatibility.
 -- Review current environment function definitions before applying to other schemas.
 
-ALTER TABLE "memginedev".organization_branding
+ALTER TABLE "${schemaName}".organization_branding
     ADD COLUMN IF NOT EXISTS announcement_configuration jsonb;
 
-CREATE OR REPLACE FUNCTION "memginedev".get_organization_branding(p_organization_id character varying)
+CREATE OR REPLACE FUNCTION "${schemaName}".get_organization_branding(p_organization_id character varying)
 RETURNS jsonb
 LANGUAGE sql
 STABLE
@@ -48,12 +48,12 @@ AS $function$
         'isDeleted', b.is_deleted,
         'versionNo', b.version_no
     )
-    FROM "memginedev".organization_branding b
+    FROM "${schemaName}".organization_branding b
     WHERE b.organization_id = p_organization_id
       AND NOT b.is_deleted;
 $function$;
 
-CREATE OR REPLACE FUNCTION "memginedev".save_organization_branding_draft(
+CREATE OR REPLACE FUNCTION "${schemaName}".save_organization_branding_draft(
     p_organization_id character varying,
     p_branding jsonb,
     p_actor_user_id character varying
@@ -61,7 +61,7 @@ CREATE OR REPLACE FUNCTION "memginedev".save_organization_branding_draft(
 RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path TO 'pg_catalog', 'memginedev'
+SET search_path TO 'pg_catalog', '${schemaName}'
 AS $function$
 DECLARE
     v_version integer;
@@ -93,7 +93,7 @@ BEGIN
     v_theme_code := NULLIF(lower(btrim(p_branding ->> 'platformThemeCode')), '');
     IF v_theme_code IS NOT NULL
        AND NOT EXISTS (
-           SELECT 1 FROM "memginedev".platform_branding_themes
+           SELECT 1 FROM "${schemaName}".platform_branding_themes
            WHERE theme_code = v_theme_code
              AND publication_status = 'PUBLISHED'
              AND is_active
@@ -108,7 +108,7 @@ BEGIN
 
     v_experience := NULLIF(p_branding -> 'themeExperience', 'null'::jsonb);
     IF p_branding ? 'themeExperience' THEN
-        PERFORM "memginedev".validate_theme_experience(v_experience);
+        PERFORM "${schemaName}".validate_theme_experience(v_experience);
     END IF;
 
     -- Never silently erase a previously saved configuration if old clients omit it.
@@ -121,7 +121,7 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
-    UPDATE "memginedev".organization_branding
+    UPDATE "${schemaName}".organization_branding
     SET
         primary_color = p_branding ->> 'primaryColor',
         secondary_color = p_branding ->> 'secondaryColor',

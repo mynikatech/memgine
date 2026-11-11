@@ -28,6 +28,7 @@ load_memgine_environment_file "$deployment_file"
 
 : "${MEMGINE_DEPLOY_BUCKET:?MEMGINE_DEPLOY_BUCKET is required}"
 : "${MEMGINE_ENVIRONMENT:?MEMGINE_ENVIRONMENT is required}"
+: "${MEMGINE_SERVER_PORT:?MEMGINE_SERVER_PORT is required}"
 : "${MEMGINE_DB_SECRET_ARN:?MEMGINE_DB_SECRET_ARN is required}"
 : "${MEMGINE_DB_HOST:?MEMGINE_DB_HOST is required}"
 : "${MEMGINE_DB_PORT:?MEMGINE_DB_PORT is required}"
@@ -44,6 +45,12 @@ fi
 if ! [[ "$MEMGINE_DB_PORT" =~ ^[0-9]+$ ]] ||
    (( MEMGINE_DB_PORT < 1 || MEMGINE_DB_PORT > 65535 )); then
   echo "MEMGINE_DB_PORT must be an integer between 1 and 65535." >&2
+  exit 1
+fi
+
+if [[ "$MEMGINE_ENVIRONMENT" == "dev" || "$MEMGINE_ENVIRONMENT" == "prod" ]] &&
+   [[ "$MEMGINE_SERVER_PORT" != "8082" ]]; then
+  echo "MEMGINE_SERVER_PORT must be 8082 for DEV and PROD Nginx/health-check compatibility." >&2
   exit 1
 fi
 
@@ -432,9 +439,43 @@ trap 'rm -f "${backend_candidate:-}"' EXIT
 
 install -m 0600 "$runtime_env_file" "$backend_candidate"
 
+# DEV currently uses a direct callback header value in its host-local runtime
+# file. Preserve that deployed integration while removing the value from the
+# generated non-secret file. PROD must use an approved secret reference.
+legacy_dev_callback_value=""
+if [[ "$MEMGINE_ENVIRONMENT" == "dev" ]]; then
+  legacy_dev_callback_secret_file="$environment_dir/poynt-payment-bridge-callback.secret"
+  if [[ -f "$legacy_dev_callback_secret_file" ]]; then
+    legacy_dev_callback_value="$(cat "$legacy_dev_callback_secret_file")"
+    [[ "$legacy_dev_callback_value" != *$'\n'* &&
+       "$legacy_dev_callback_value" != *$'\r'* ]] || {
+      echo "Host-local DEV Poynt callback credential has invalid line breaks." >&2
+      exit 1
+    }
+  fi
+
+  direct_dev_callback_value="$(grep -m 1 '^MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_VALUE=' "$backend_candidate" | cut -d= -f2- || true)"
+  if [[ -n "$direct_dev_callback_value" ]]; then
+    if [[ -n "$legacy_dev_callback_value" && "$legacy_dev_callback_value" != "$direct_dev_callback_value" ]]; then
+      echo "DEV callback configuration conflicts with the host-local callback credential." >&2
+      exit 1
+    fi
+    legacy_dev_callback_value="$direct_dev_callback_value"
+  fi
+fi
+
+if [[ -n "$legacy_dev_callback_value" && -n "${MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_SECRET_ID:-}" ]]; then
+  echo "DEV callback configuration is ambiguous: use either the existing direct value or a secret reference." >&2
+  exit 1
+fi
+
+if [[ -n "$legacy_dev_callback_value" ]]; then
+  set_candidate_property "MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_VALUE" ""
+fi
+
 # Refuse secret values in the published non-secret file.
 if grep -Eq \
-  '^(MEMGINE_DB_PASSWORD|MEMGINE_DB_USER|MEMGINE_DB_URL|MEMGINE_OTP_PEPPER|STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|MONERIS_CLIENT_SECRET)=' \
+  '^(MEMGINE_DB_PASSWORD|MEMGINE_DB_USER|MEMGINE_DB_URL|MEMGINE_OTP_PEPPER|STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|MONERIS_CLIENT_SECRET|MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_VALUE|MEMGINE_WHATSAPP_DELIVERY_ACK_SECRET|MEMGINE_META_APP_SECRET|MEMGINE_META_WEBHOOK_VERIFY_TOKEN|MEMGINE_POYNT_PRIVATE_KEY|MEMGINE_POYNT_API_KEY|RESEND_API_KEY|MEMGINE_META_WA_TOKEN|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY)=' \
   "$backend_candidate"; then
   echo "Runtime memgine.env contains sensitive properties." >&2
   exit 1
@@ -471,6 +512,7 @@ set_candidate_property \
 
 for required_key in \
   MEMGINE_ENVIRONMENT \
+  MEMGINE_SERVER_PORT \
   MEMGINE_ENFORCE_HTTPS \
   MEMGINE_DB_SCHEMA \
   MEMGINE_WEB_BASE_URL \
@@ -505,6 +547,9 @@ if [[ -n "$callback_secret_id" ]]; then
     echo "Poynt callback secret has invalid line breaks." >&2
     exit 1
   }
+elif [[ -n "$legacy_dev_callback_value" ]]; then
+  callback_value="$legacy_dev_callback_value"
+  unset legacy_dev_callback_value
 fi
 
 #

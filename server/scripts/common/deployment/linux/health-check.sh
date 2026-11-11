@@ -10,7 +10,8 @@ env_file="$environment_dir/memgine.env"
 load_memgine_environment_file "$env_file"
 
 systemctl is-active --quiet "memgine-${MEMGINE_ENVIRONMENT}"
-curl --fail --silent --show-error http://127.0.0.1:8082/health >/dev/null
+: "${MEMGINE_SERVER_PORT:?MEMGINE_SERVER_PORT is required}"
+curl --fail --silent --show-error "http://127.0.0.1:${MEMGINE_SERVER_PORT}/health" >/dev/null
 curl --fail --silent --show-error "${MEMGINE_API_BASE_URL}/health" >/dev/null
 curl --fail --silent --show-error "${MEMGINE_WEB_BASE_URL}" >/dev/null
 echo "Memgine ${MEMGINE_ENVIRONMENT} health checks passed."

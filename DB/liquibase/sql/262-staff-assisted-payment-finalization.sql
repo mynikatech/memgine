@@ -6,10 +6,93 @@
 ALTER TABLE "${schemaName}".payment_intents
     ADD COLUMN IF NOT EXISTS counter_purchase_id varchar(64);
 
-ALTER TABLE "${schemaName}".payment_intents
-    ADD CONSTRAINT payment_intents_counter_purchase_id_fk
-    FOREIGN KEY (counter_purchase_id)
-    REFERENCES "${schemaName}".counter_purchases(counter_purchase_id);
+-- A retry of this historical migration must not add a second equivalent FK.
+-- If an existing FK on counter_purchase_id is not the intended relationship,
+-- fail explicitly rather than silently accepting a conflicting constraint.
+DO $migration$
+DECLARE
+    v_schema text := '${schemaName}';
+    v_payment_intents_oid oid;
+    v_counter_purchases_oid oid;
+    v_counter_purchase_attnum smallint;
+    v_counter_purchase_ref_attnum smallint;
+    v_constraint record;
+    v_matching_constraint_count integer := 0;
+BEGIN
+    v_payment_intents_oid := to_regclass(format('%I.payment_intents', v_schema));
+    v_counter_purchases_oid := to_regclass(format('%I.counter_purchases', v_schema));
+
+    IF v_payment_intents_oid IS NULL OR v_counter_purchases_oid IS NULL THEN
+        RAISE EXCEPTION 'Counter purchase FK prerequisites are unavailable';
+    END IF;
+
+    SELECT a.attnum
+      INTO v_counter_purchase_attnum
+      FROM pg_attribute a
+     WHERE a.attrelid = v_payment_intents_oid
+       AND a.attname = 'counter_purchase_id'
+       AND NOT a.attisdropped;
+
+    SELECT a.attnum
+      INTO v_counter_purchase_ref_attnum
+      FROM pg_attribute a
+     WHERE a.attrelid = v_counter_purchases_oid
+       AND a.attname = 'counter_purchase_id'
+       AND NOT a.attisdropped;
+
+    IF v_counter_purchase_attnum IS NULL
+       OR v_counter_purchase_ref_attnum IS NULL THEN
+        RAISE EXCEPTION 'Counter purchase FK columns are unavailable';
+    END IF;
+
+    FOR v_constraint IN
+        SELECT c.conname,
+               c.confrelid,
+               c.conkey,
+               c.confkey,
+               c.confupdtype,
+               c.confdeltype,
+               c.confmatchtype,
+               c.condeferrable,
+               c.condeferred
+          FROM pg_constraint c
+         WHERE c.conrelid = v_payment_intents_oid
+           AND c.contype = 'f'
+           AND (
+               c.conname = 'payment_intents_counter_purchase_id_fk'
+               OR c.conkey = ARRAY[v_counter_purchase_attnum]::smallint[]
+           )
+    LOOP
+        IF v_constraint.confrelid <> v_counter_purchases_oid
+           OR v_constraint.confkey <> ARRAY[v_counter_purchase_ref_attnum]::smallint[]
+           OR v_constraint.confupdtype <> 'a'
+           OR v_constraint.confdeltype <> 'a'
+           OR v_constraint.confmatchtype <> 's'
+           OR v_constraint.condeferrable
+           OR v_constraint.condeferred THEN
+            RAISE EXCEPTION
+                'Existing foreign key % on payment_intents.counter_purchase_id has an unexpected definition',
+                v_constraint.conname;
+        END IF;
+
+        v_matching_constraint_count := v_matching_constraint_count + 1;
+    END LOOP;
+
+    IF v_matching_constraint_count > 1 THEN
+        RAISE EXCEPTION
+            'Multiple foreign keys exist on payment_intents.counter_purchase_id';
+    ELSIF v_matching_constraint_count = 0 THEN
+        EXECUTE format(
+            'ALTER TABLE %I.payment_intents '
+            || 'ADD CONSTRAINT payment_intents_counter_purchase_id_fk '
+            || 'FOREIGN KEY (counter_purchase_id) '
+            || 'REFERENCES %I.counter_purchases(counter_purchase_id)',
+            v_schema,
+            v_schema
+        );
+    END IF;
+END;
+$migration$;
 
 -- The existing DB default assigns OTP when authorization_mode is omitted.
 -- The Staff-Assisted insert explicitly assigns STAFF_ASSISTED instead.
@@ -147,7 +230,7 @@ CREATE OR REPLACE FUNCTION "${schemaName}".payment_finalize_membership(p_intent_
  RETURNS TABLE("subscriptionId" character varying, "organizationUserId" character varying, "userId" character varying, "subscriptionNumber" character varying, "subscriptionPlanId" character varying, "subscriptionDate" text, "startDate" text, "endDate" text, "subscriptionStatusId" character varying, "totalAmount" double precision, "currencyCode" character varying)
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'memginedev'
+ SET search_path TO 'pg_catalog', '${schemaName}'
 AS $function$
 DECLARE
     i payment_intents%ROWTYPE;

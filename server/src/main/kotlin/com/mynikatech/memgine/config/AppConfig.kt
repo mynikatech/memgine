@@ -17,15 +17,34 @@ data class AppConfig(
 ) {
     companion object {
         fun load(config: ApplicationConfig? = null): AppConfig {
+            val explicitEnvironment = (
+                System.getenv("MEMGINE_ENVIRONMENT")
+                    ?: config?.propertyOrNull("memgine.server.environment")?.getString()
+                    ?: ""
+                ).lowercase()
+
+            // application-local.properties is a developer convenience only.
+            // A declared production runtime must never even load local values.
+            val useLocalProperties = explicitEnvironment.isBlank() || explicitEnvironment in setOf(
+                "local",
+                "dev",
+                "development"
+            )
+
             val localProperties = Properties().apply {
-                AppConfig::class.java.classLoader
-                    .getResourceAsStream("application-local.properties")
-                    ?.use { load(it) }
+                if (useLocalProperties) {
+                    AppConfig::class.java.classLoader
+                        .getResourceAsStream("application-local.properties")
+                        ?.use { load(it) }
+                }
             }
+
+            val declaredEnvironment = explicitEnvironment
+                .ifBlank { localProperties.getProperty("MEMGINE_ENVIRONMENT") ?: "local" }
 
             fun optionalValue(path: String, env: String): String? =
                 System.getenv(env)
-                    ?: localProperties.getProperty(env)
+                    ?: if (useLocalProperties) localProperties.getProperty(env) else null
                     ?: config?.propertyOrNull(path)?.getString()
 
             fun value(
@@ -167,9 +186,9 @@ data class AppConfig(
                     environment = environment,
                     corsAllowedHosts = (
                         System.getenv("MEMGINE_ALLOWED_ORIGINS")
-                            ?: localProperties.getProperty("MEMGINE_ALLOWED_ORIGINS")
+                            ?: if (useLocalProperties) localProperties.getProperty("MEMGINE_ALLOWED_ORIGINS") else null
                             ?: System.getenv("MEMGINE_CORS_ALLOWED_HOSTS")
-                            ?: localProperties.getProperty("MEMGINE_CORS_ALLOWED_HOSTS")
+                            ?: if (useLocalProperties) localProperties.getProperty("MEMGINE_CORS_ALLOWED_HOSTS") else null
                             ?: config?.propertyOrNull("memgine.server.allowedOrigins")?.getString()
                             ?: value(
                                 "memgine.server.corsAllowedHosts",

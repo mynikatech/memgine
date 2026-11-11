@@ -66,8 +66,14 @@ $masterSecret = $masterSecretJson | ConvertFrom-Json
 $psqlHost = if ([string]::IsNullOrWhiteSpace($DatabaseHost)) { [string]$masterSecret.host } else { $DatabaseHost }
 $psqlPort = if ($DatabasePort -gt 0) { $DatabasePort } else { [int]$masterSecret.port }
 
+$previousPgPassword = $env:PGPASSWORD
+$previousLiquibasePassword = $env:MEMGINE_LIQUIBASE_PASSWORD
+$previousRuntimePassword = $env:MEMGINE_RUNTIME_PASSWORD
+
 try {
     $env:PGPASSWORD = [string]$masterSecret.password
+    $env:MEMGINE_LIQUIBASE_PASSWORD = $liquibasePasswordText
+    $env:MEMGINE_RUNTIME_PASSWORD = $runtimePasswordText
 
     & $PsqlPath `
         -h $psqlHost `
@@ -75,8 +81,6 @@ try {
         -U $masterSecret.username `
         -d postgres `
         -v ON_ERROR_STOP=1 `
-        -v "liquibase_password=$liquibasePasswordText" `
-        -v "runtime_password=$runtimePasswordText" `
         -f $BootstrapSql
 
     if ($LASTEXITCODE -ne 0) {
@@ -104,7 +108,9 @@ try {
     Invoke-Aws @("secretsmanager", "put-secret-value", "--secret-id", $RuntimeSecretArn, "--secret-string", $runtimeSecret) | Out-Null
 }
 finally {
-    Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+    if ($null -eq $previousPgPassword) { Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue } else { $env:PGPASSWORD = $previousPgPassword }
+    if ($null -eq $previousLiquibasePassword) { Remove-Item Env:MEMGINE_LIQUIBASE_PASSWORD -ErrorAction SilentlyContinue } else { $env:MEMGINE_LIQUIBASE_PASSWORD = $previousLiquibasePassword }
+    if ($null -eq $previousRuntimePassword) { Remove-Item Env:MEMGINE_RUNTIME_PASSWORD -ErrorAction SilentlyContinue } else { $env:MEMGINE_RUNTIME_PASSWORD = $previousRuntimePassword }
     $liquibasePasswordText = $null
     $runtimePasswordText = $null
 }

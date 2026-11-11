@@ -108,6 +108,7 @@ if (-not (Test-Path -LiteralPath $runtimeConfigPath)) {
 }
 
 $runtimeConfig = Get-Content -LiteralPath $runtimeConfigPath -Raw
+$releaseRuntimeConfig = $runtimeConfig
 
 if ([string]::IsNullOrWhiteSpace($runtimeConfig)) {
     throw "memgine.env is empty."
@@ -121,15 +122,41 @@ $secretKeys = @(
     "MEMGINE_OTP_PEPPER",
     "STRIPE_SECRET_KEY",
     "STRIPE_WEBHOOK_SECRET",
-    "MONERIS_CLIENT_SECRET"
+    "MONERIS_CLIENT_SECRET",
+    "MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_VALUE",
+    "MEMGINE_WHATSAPP_DELIVERY_ACK_SECRET",
+    "MEMGINE_META_APP_SECRET",
+    "MEMGINE_META_WEBHOOK_VERIFY_TOKEN",
+    "MEMGINE_POYNT_PRIVATE_KEY",
+    "MEMGINE_POYNT_API_KEY",
+    "RESEND_API_KEY",
+    "MEMGINE_META_WA_TOKEN",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY"
 )
 
 foreach ($key in $secretKeys) {
+    if ($Environment -eq "dev" -and $key -eq "MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_VALUE") {
+        continue
+    }
+
     $pattern = '(?m)^\s*' + [regex]::Escape($key) + '\s*='
 
     if ($runtimeConfig -match $pattern) {
         throw "Sensitive property $key must not be present in memgine.env."
     }
+}
+
+# Preserve a pre-existing DEV callback deployment without publishing its
+# direct authentication value. The remote updater captures the old host-local
+# value once and stores it in a root-readable file before replacing this
+# sanitized runtime configuration.
+if ($Environment -eq "dev") {
+    $releaseRuntimeConfig = [regex]::Replace(
+        $releaseRuntimeConfig,
+        '(?m)^\s*MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_VALUE\s*=.*(?:\r?\n|$)',
+        ""
+    )
 }
 
 if ($runtimeConfig -notmatch "(?m)^\s*MEMGINE_ENVIRONMENT\s*=\s*$([regex]::Escape($Environment))\s*$") {
@@ -172,6 +199,12 @@ try {
     $awsRegion = Terraform-Output "app_aws_region"
     $runtimeSecretArn = Terraform-Output "app_database_runtime_secret_arn"
     $otpPepperSecretArn = Terraform-Output "app_otp_pepper_secret_arn"
+    $poyntPaymentBridgeCallbackSecretArn = if ($Environment -eq "prod") {
+        Terraform-Output "app_poynt_payment_bridge_callback_secret_arn"
+    }
+    else {
+        $null
+    }
 
     $databaseHost = Terraform-Output "app_database_endpoint"
     $databasePortText = Terraform-Output "app_database_port"
@@ -205,6 +238,10 @@ try {
         "MEMGINE_EXPECTED_PUBLIC_IP=$ip"
     ) -join "`n"
 
+    if (-not [string]::IsNullOrWhiteSpace($poyntPaymentBridgeCallbackSecretArn)) {
+        $deploymentProperties += "`nMEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_SECRET_ID=$poyntPaymentBridgeCallbackSecretArn"
+    }
+
     if (-not [string]::IsNullOrWhiteSpace($notificationTopicArn)) {
         $deploymentProperties += "`nMEMGINE_NOTIFICATION_EVENTS_TOPIC_ARN=$notificationTopicArn"
     }
@@ -218,11 +255,13 @@ try {
     }
 
     $deploymentFile = Join-Path $staging "deployment.properties"
+    $releaseRuntimeConfigFile = Join-Path $staging "memgine.env"
 
     [IO.File]::WriteAllText(
         $deploymentFile,
         "$deploymentProperties`n"
     )
+    [IO.File]::WriteAllText($releaseRuntimeConfigFile, $releaseRuntimeConfig)
 
     $sha256 = (Get-FileHash $Jar -Algorithm SHA256).Hash.ToLowerInvariant()
 
@@ -263,7 +302,7 @@ try {
 
     # Publish actual non-secret config tied to this release.
     & aws --profile $AwsProfile --no-cli-pager s3 cp `
-        $runtimeConfigPath `
+        $releaseRuntimeConfigFile `
         "s3://$bucket/releases/$ReleaseId/config/memgine.env"
 
     Assert-LastExitCode "Release environment configuration upload failed."

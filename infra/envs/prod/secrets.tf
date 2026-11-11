@@ -59,3 +59,10 @@ resource "aws_secretsmanager_secret" "poynt_cloud_app" {
 
   tags = local.lambda_tags
 }
+
+resource "aws_secretsmanager_secret" "poynt_payment_bridge_callback" {
+  name        = "memgine/prod/poynt/payment-bridge-callback"
+  description = "Poynt Payment Bridge callback authentication value for Memgine PROD"
+
+  tags = local.lambda_tags
+}

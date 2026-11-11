@@ -1,10 +1,10 @@
 -- Liquibase migration: use the resolved organization-user audit identifier.
 -- updated_by references organization_user(organization_user_id).
-CREATE OR REPLACE FUNCTION memginedev.commerce_set_counter_redemption_pricing_reconciliation(p_transaction_id character varying, p_reconciliation jsonb, p_reconciliation_hash character varying, p_actor_user_id character varying)
+CREATE OR REPLACE FUNCTION "${schemaName}".commerce_set_counter_redemption_pricing_reconciliation(p_transaction_id character varying, p_reconciliation jsonb, p_reconciliation_hash character varying, p_actor_user_id character varying)
  RETURNS boolean
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'memginedev'
+ SET search_path TO 'pg_catalog', '${schemaName}'
 AS $function$
 DECLARE
     v_transaction commerce_transactions%ROWTYPE;

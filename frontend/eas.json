@@ -13,7 +13,12 @@
       "environment": "preview",
       "env": {
         "EXPO_PUBLIC_APP_ENV": "dev",
-        "EXPO_PUBLIC_WEB_BASE_URL": "https://memgine-dev.mynikatech.in"
+        "EXPO_PUBLIC_WEB_BASE_URL": "https://memgine-dev.mynikatech.in",
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-memgine-dev.mynikatech.in",
+        "EXPO_PUBLIC_MEMGINE_API_BASE_URL_WEB": "https://api-memgine-dev.mynikatech.in",
+        "EXPO_PUBLIC_MEMGINE_API_BASE_URL_NATIVE": "https://api-memgine-dev.mynikatech.in",
+        "EXPO_PUBLIC_CUSTOMER_WEB_URL": "https://memgine-dev.mynikatech.in",
+        "EXPO_PUBLIC_ENABLE_POYNT_SIMULATOR": "true"
       },
       "android": {
         "buildType": "apk"
@@ -25,7 +30,12 @@
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_APP_ENV": "dev",
-        "EXPO_PUBLIC_WEB_BASE_URL": "https://memgine-dev.mynikatech.in"
+        "EXPO_PUBLIC_WEB_BASE_URL": "https://memgine-dev.mynikatech.in",
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-memgine-dev.mynikatech.in",
+        "EXPO_PUBLIC_MEMGINE_API_BASE_URL_WEB": "https://api-memgine-dev.mynikatech.in",
+        "EXPO_PUBLIC_MEMGINE_API_BASE_URL_NATIVE": "https://api-memgine-dev.mynikatech.in",
+        "EXPO_PUBLIC_CUSTOMER_WEB_URL": "https://memgine-dev.mynikatech.in",
+        "EXPO_PUBLIC_ENABLE_POYNT_SIMULATOR": "true"
       },
       "android": {
         "buildType": "app-bundle"
@@ -37,7 +47,12 @@
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_APP_ENV": "dev",
-        "EXPO_PUBLIC_WEB_BASE_URL": "https://memgine-dev.mynikatech.in"
+        "EXPO_PUBLIC_WEB_BASE_URL": "https://memgine-dev.mynikatech.in",
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-memgine-dev.mynikatech.in",
+        "EXPO_PUBLIC_MEMGINE_API_BASE_URL_WEB": "https://api-memgine-dev.mynikatech.in",
+        "EXPO_PUBLIC_MEMGINE_API_BASE_URL_NATIVE": "https://api-memgine-dev.mynikatech.in",
+        "EXPO_PUBLIC_CUSTOMER_WEB_URL": "https://memgine-dev.mynikatech.in",
+        "EXPO_PUBLIC_ENABLE_POYNT_SIMULATOR": "true"
       }
     },
     "production": {
@@ -46,7 +61,12 @@
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_APP_ENV": "prod",
-        "EXPO_PUBLIC_WEB_BASE_URL": "https://memgine.mynikatech.in"
+        "EXPO_PUBLIC_WEB_BASE_URL": "https://memgine.mynikatech.in",
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-memgine.mynikatech.in",
+        "EXPO_PUBLIC_MEMGINE_API_BASE_URL_WEB": "https://api-memgine.mynikatech.in",
+        "EXPO_PUBLIC_MEMGINE_API_BASE_URL_NATIVE": "https://api-memgine.mynikatech.in",
+        "EXPO_PUBLIC_CUSTOMER_WEB_URL": "https://memgine.mynikatech.in",
+        "EXPO_PUBLIC_ENABLE_POYNT_SIMULATOR": "false"
       }
     }
   },
