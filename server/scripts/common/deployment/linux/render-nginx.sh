@@ -28,16 +28,8 @@ export FRONTEND_HOST="$frontend_host"
 export API_HOST="$api_host"
 export WEB_ROOT="$web_root"
 export SERVER_PORT="$server_port"
-# Allow larger branding image uploads on DEV only.
-# Preserve the existing Nginx 1 MB request limit on PROD.
-case "${MEMGINE_ENVIRONMENT:-}" in
-  dev)
-    export NGINX_API_MAX_BODY_SIZE="12m"
-    ;;
-  *)
-    export NGINX_API_MAX_BODY_SIZE="1m"
-    ;;
-esac
+# Allow larger branding image uploads.
+export NGINX_API_MAX_BODY_SIZE="12m"
 
 apple_pay_association_location() {
   local enabled="${MEMGINE_APPLE_PAY_ASSOCIATION_ENABLED:-false}"
