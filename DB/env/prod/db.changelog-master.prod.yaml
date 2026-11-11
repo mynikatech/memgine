@@ -9,16 +9,16 @@ databaseChangeLog:
 
   - property:
       name: poyntCredentialProfileSeedEnabled
-      value: "false"
+      value: "true"
   - property:
       name: poyntCredentialProfileSeedId
-      value: POYNT-CRED-UNCONFIGURED
+      value: POYNT-CRED-PROD-001
   - property:
       name: poyntCredentialProfileSeedDisplayName
-      value: Unconfigured
+      value: Primary Poynt Production Cloud App
   - property:
       name: poyntCredentialProfileSeedSecretReference
-      value: UNCONFIGURED
+      value: memgine/prod/poynt/cloud-app
 
   - include:
       file: ../../liquibase/baseline/000-initial-baseline.yaml

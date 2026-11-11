@@ -224,5 +224,5 @@ resource "aws_lambda_event_source_mapping" "sms" {
   event_source_arn = module.notifications.sms_queue_arn
   function_name    = aws_lambda_function.sms.arn
   batch_size       = 1
-  enabled          = true
+  enabled          = var.allow_live_sms
 }

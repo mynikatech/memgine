@@ -286,14 +286,42 @@ try {
 
     $masterSecret = Get-SecretObject $MasterSecretArn
 
-    if ([string]::IsNullOrWhiteSpace([string]$masterSecret.username) -or
-        [string]::IsNullOrWhiteSpace([string]$masterSecret.password) -or
-        [string]::IsNullOrWhiteSpace([string]$masterSecret.host)) {
-        throw "RDS master secret is incomplete."
+    # Validate the AWS-managed RDS master secret.
+    # RDS-managed secrets contain username/password, not host/port.
+
+    if ([string]$masterSecret.username -ne "memgine_admin" -or
+        [string]::IsNullOrWhiteSpace([string]$masterSecret.password)) {
+        throw "PROD RDS master secret has an unexpected username or missing password."
     }
 
+    # Retrieve the authoritative PROD RDS endpoint.
+
+    $rds = Invoke-Aws @(
+        "rds",
+        "describe-db-instances",
+        "--db-instance-identifier", "memgine-prod-postgres",
+        "--query", "DBInstances[0].{Identifier:DBInstanceIdentifier,Status:DBInstanceStatus,Host:Endpoint.Address,Port:Endpoint.Port,Database:DBName,Public:PubliclyAccessible}",
+        "--output", "json"
+    ) | Out-String | ConvertFrom-Json
+
+    if ($null -eq $rds -or
+        $rds.Identifier -ne "memgine-prod-postgres" -or
+        $rds.Status -ne "available" -or
+        $rds.Database -ne "memgine" -or
+        $rds.Public -ne $false -or
+        [string]::IsNullOrWhiteSpace([string]$rds.Host) -or
+        [int]$rds.Port -ne 5432) {
+        throw "PROD RDS identity, status or endpoint verification failed."
+    }
+
+    $rdsHost = [string]$rds.Host
+    $rdsPort = [int]$rds.Port
+
+    # Use the verified SSM tunnel for local database access.
+    # The actual RDS endpoint remains authoritative.
+
     $psqlHost = if ([string]::IsNullOrWhiteSpace($DatabaseHost)) {
-        [string]$masterSecret.host
+        $rdsHost
     }
     else {
         $DatabaseHost
@@ -303,9 +331,11 @@ try {
         $DatabasePort
     }
     else {
-        [int]$masterSecret.port
+        $rdsPort
     }
 
+    Write-Host "Verified PROD RDS: $rdsHost`:$rdsPort"
+    Write-Host "Connection route : $psqlHost`:$psqlPort"
     # ----------------------------------------------------------
     # PostgreSQL bootstrap
     # ----------------------------------------------------------
@@ -344,8 +374,8 @@ try {
     $liquibaseSecret = [ordered]@{
         username = $ExpectedLiquibaseUser
         password = $liquibasePasswordText
-        host     = [string]$masterSecret.host
-        port     = [int]$masterSecret.port
+        host     = $rdsHost
+        port     = $rdsPort
         database = $ExpectedDatabase
         schema   = $ExpectedSchema
     }
@@ -353,8 +383,8 @@ try {
     $runtimeSecret = [ordered]@{
         username = $ExpectedRuntimeUser
         password = $runtimePasswordText
-        host     = [string]$masterSecret.host
-        port     = [int]$masterSecret.port
+        host     = $rdsHost
+        port     = $rdsPort
         database = $ExpectedDatabase
         schema   = $ExpectedSchema
     }

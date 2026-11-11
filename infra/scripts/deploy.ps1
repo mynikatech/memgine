@@ -111,14 +111,13 @@ try {
         }
 
         Write-Host ""
-        Write-Host "Running terraform fmt..."
+        Write-Host "Checking terraform formatting..."
 
-        terraform fmt -recursive ..\..
+        terraform fmt -check -recursive .
 
         if ($LASTEXITCODE -ne 0) {
-            throw "terraform fmt failed."
+            throw "terraform fmt -check failed."
         }
-
         Write-Host ""
         Write-Host "Running terraform validate..."
 
