@@ -27,16 +27,59 @@ class OtpService(
     private val config: OtpConfig,
     private val notificationDispatch: NotificationDispatchService,
     private val clock: Clock = Clock.systemUTC(),
-    private val random: SecureRandom = SecureRandom()
+    private val random: SecureRandom = SecureRandom(),
+    private val organizationSql: OtpOrganizationSql? = null
 ) {
-    private val deliveryModeResolver = OtpDeliveryModeResolver(config.environment, config.allowLiveSms)
+    private val deliveryModeResolver = OtpDeliveryModeResolver()
 
     fun request(
         phone: String,
         regionCode: String?,
         purpose: OtpPurpose,
         channel: OtpChannel = OtpChannel.SMS,
-        contextJson: String? = null, organizationId: String? = null, recipientUserId: String? = null
+        contextJson: String? = null,
+        organizationId: String? = null,
+        recipientUserId: String? = null
+    ): OtpRequestResult = requestInternal(
+        phone, regionCode, purpose, channel, contextJson, organizationId, recipientUserId,
+        mockEligible = false
+    )
+
+    /**
+     * Used only by [BusinessOtpService] after its caller has validated the
+     * organization-bound business operation. The eligibility lookup still
+     * rejects missing, deleted, inactive, and non-DEMO organizations.
+     */
+    internal fun requestForVerifiedBusinessOperation(
+        phone: String,
+        regionCode: String?,
+        purpose: OtpPurpose,
+        organizationId: String,
+        recipientUserId: String?
+    ): OtpRequestResult = requestInternal(
+        phone, regionCode, purpose, OtpChannel.SMS, null, organizationId, recipientUserId,
+        mockEligible = organizationSql?.activeDemoOrganization(organizationId) == true
+    )
+
+    /** The authenticated identity is resolved by AuthenticationService, never by the client. */
+    internal fun requestForCustomerLogin(
+        phone: String,
+        regionCode: String?,
+        userId: String?
+    ): OtpRequestResult = requestInternal(
+        phone, regionCode, OtpPurpose.LOGIN, OtpChannel.SMS, null, null, userId,
+        mockEligible = userId?.let(sql::activeDemoUser) == true
+    )
+
+    private fun requestInternal(
+        phone: String,
+        regionCode: String?,
+        purpose: OtpPurpose,
+        channel: OtpChannel,
+        contextJson: String?,
+        organizationId: String?,
+        recipientUserId: String?,
+        mockEligible: Boolean
     ): OtpRequestResult {
         val canonical = phoneNormalizer.normalize(phone, regionCode)
         val preferredChannel = organizationId?.let { OtpChannel.valueOf(sql.organizationChannel(it)) } ?: OtpChannel.SMS
@@ -47,11 +90,10 @@ class OtpService(
             OtpChannel.SMS -> OtpChannel.SMS
         }
         val selectedUserId = recipientUserId?.takeIf { it.isNotBlank() } ?: recipient?.userId?.takeIf { it.isNotBlank() }
-        val deliveryMode = try {
-            deliveryModeResolver.resolve(selectedUserId?.let(sql::userDeliveryMode))
-        } catch (_: IllegalStateException) {
-            throw ConflictException("Live SMS is disabled for this environment")
-        }
+        val deliveryMode = deliveryModeResolver.resolve(
+            selectedUserId?.let(sql::userDeliveryMode),
+            effectiveDevMockOtpEnabled || mockEligible
+        )
         val challengeId = UUID.randomUUID().toString()
         val code = (random.nextInt(900_000) + 100_000).toString()
         val salt = randomBytes(24)
@@ -59,6 +101,9 @@ class OtpService(
         val otpHash = hash(challengeId, canonical.e164, purpose, code, salt)
 
         val actualChannel = if (deliveryMode == OtpDeliveryMode.MOCK) OtpChannel.SMS else resolvedChannel
+        if (deliveryMode == OtpDeliveryMode.LIVE && actualChannel == OtpChannel.SMS && !config.allowLiveSms) {
+            throw ConflictException("Live SMS is disabled for this environment")
+        }
         val providerCode = when {
             deliveryMode == OtpDeliveryMode.MOCK -> "DEV"
             actualChannel == OtpChannel.SMS -> "AWS_END_USER_MESSAGING_SMS"
@@ -132,6 +177,9 @@ class OtpService(
             canonical.e164, delivered.devCode
         )
     }
+
+    private val effectiveDevMockOtpEnabled: Boolean
+        get() = config.mockOtpEnabled && config.environment.lowercase() in setOf("local", "dev", "development")
 
     private fun deliverThroughNotificationPipeline(organizationId: String?, recipientUserId: String?, recipient: OtpDeliveryRecipient?, phone: String, purpose: OtpPurpose, channel: OtpChannel, code: String, challengeId: String): OtpDeliveryResult {
         val event = NotificationEvent(

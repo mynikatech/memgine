@@ -20,7 +20,7 @@ import org.postgresql.util.PSQLException
 class OrganizationAccessService(
     private val sql: OrganizationAccessSql,
     private val pinSetter: (String, String, String, String) -> Boolean,
-    private val environment: String = "local",
+    environment: String = "local",
     private val json: Json = Json { encodeDefaults = false; explicitNulls = false }
 ) {
     constructor(sql: OrganizationAccessSql, posAuthenticationService: PosAuthenticationService, environment: String = "local") :
@@ -83,9 +83,6 @@ class OrganizationAccessService(
         val normalized = mode.trim().uppercase()
         if (normalized !in setOf("DEFAULT", "MOCK", "LIVE")) {
             throw BadRequestException("OTP delivery mode must be DEFAULT, MOCK, or LIVE")
-        }
-        if (environment == "prod" && normalized == "MOCK") {
-            throw BadRequestException("Mock OTP delivery is not available in production")
         }
         return write { sql.setOtpDeliveryMode(id(org, "Organization"), id(organizationUserId, "Organization user"), normalized, id(actor, "Actor")) }
     }

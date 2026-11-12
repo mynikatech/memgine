@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 289-fix-platform-demo-customer-designation
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/289-fix-platform-demo-customer-designation.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

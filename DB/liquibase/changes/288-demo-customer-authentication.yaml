@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 288-demo-customer-authentication
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/288-demo-customer-authentication.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

@@ -113,15 +113,6 @@ data class AppConfig(
                 "MEMGINE_OTP_PROVIDER"
             ).uppercase()
 
-            if (
-                otpProvider == "DEV" &&
-                environment !in setOf("local", "dev", "development")
-            ) {
-                error(
-                    "DevOtpProvider cannot be used outside local/development environments"
-                )
-            }
-
             val otpPepper = value(
                 "memgine.otp.pepper",
                 "MEMGINE_OTP_PEPPER"
@@ -278,6 +269,11 @@ data class AppConfig(
                     awsConfigurationSet = awsConfigurationSet,
                     awsCanadaOriginationIdentity = awsCanadaOriginationIdentity,
                     allowLiveSms = allowLiveSms,
+                    mockOtpEnabled = booleanValue(
+                        "memgine.otp.mockOtpEnabled",
+                        "MEMGINE_MOCK_OTP_ENABLED",
+                        false
+                    ),
                     notificationEventsTopicArn = notificationEventsTopicArn,
                     whatsappTemplateName = whatsappTemplateName,
                     whatsappTemplateLanguage = whatsappTemplateLanguage
@@ -454,6 +450,7 @@ data class OtpConfig(
     val awsConfigurationSet: String,
     val awsCanadaOriginationIdentity: String,
     val allowLiveSms: Boolean,
+    val mockOtpEnabled: Boolean = false,
     val notificationEventsTopicArn: String,
     val whatsappTemplateName: String,
     val whatsappTemplateLanguage: String

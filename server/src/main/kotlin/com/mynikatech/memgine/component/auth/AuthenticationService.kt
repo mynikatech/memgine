@@ -62,7 +62,13 @@ class AuthenticationService(
     }
 
     fun requestLoginOtp(request: OtpLoginRequest): OtpChallengeResponse {
-        val result = otpService.request(request.phone, request.regionCode, OtpPurpose.LOGIN)
+        val canonical = phoneNormalizer.normalize(request.phone, request.regionCode)
+        val identity = sql.identity(canonical.e164)
+        val result = otpService.requestForCustomerLogin(
+            canonical.e164,
+            canonical.regionCode,
+            identity?.takeIf { it.userActive }?.userId
+        )
         return OtpChallengeResponse(result.challengeId, result.expiresAt, result.resendAt, result.devCode)
     }
 

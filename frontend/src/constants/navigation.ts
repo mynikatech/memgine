@@ -76,6 +76,8 @@ export const APP_ROUTES = {
 
     organizationMaintenance: "/platform-admin/organization-maintenance",
 
+    demoCustomers: "/platform-admin/demo-customers",
+
     organizationMaintenanceFor: (organizationId: string) =>
       `/platform-admin/organization-maintenance/${encodeURIComponent(organizationId)}`,
 
@@ -525,6 +527,14 @@ export const PLATFORM_ADMIN_ROUTES: AdminRoute[] = [
     href: APP_ROUTES.platformAdmin.organizationMaintenance,
 
     icon: "people-circle-outline",
+  },
+
+  {
+    title: "DEMO Customers",
+
+    href: APP_ROUTES.platformAdmin.demoCustomers,
+
+    icon: "person-outline",
   },
 
   {

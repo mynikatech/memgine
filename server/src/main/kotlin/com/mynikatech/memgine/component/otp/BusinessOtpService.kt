@@ -23,7 +23,13 @@ class BusinessOtpService(
     ): OtpRequestResult {
         requireBusinessPurpose(purpose)
 
-        val challenge = otp.request(phone, regionCode, purpose, organizationId = organizationId, recipientUserId = userId)
+        val challenge = otp.requestForVerifiedBusinessOperation(
+            phone,
+            regionCode,
+            purpose,
+            organizationId,
+            userId
+        )
 
         sql.create(
             UUID.randomUUID().toString(),

@@ -14,7 +14,32 @@ data class OtpChallengeRow(
 
 data class OtpDeliveryRecipient(var userId: String = "", var email: String? = null)
 
+/** Read-only eligibility lookup for a server-validated business OTP context. */
+interface OtpOrganizationSql {
+    @SqlQuery("""
+        SELECT COALESCE((
+            SELECT o.is_demo
+              FROM organization o
+             WHERE o.organization_id = :organizationId
+               AND o.is_deleted = FALSE
+               AND o.organization_status_id = 'entity-status-org-active'
+        ), FALSE)
+    """)
+    fun activeDemoOrganization(@Bind("organizationId") organizationId: String): Boolean
+}
+
 interface OtpSql {
+    @SqlQuery("""
+        SELECT COALESCE((
+            SELECT u.is_demo
+              FROM "user" u
+             WHERE u.user_id = :userId
+               AND u.is_deleted = FALSE
+               AND u.user_status_id = 'entity-status-user-active'
+        ), FALSE)
+    """)
+    fun activeDemoUser(@Bind("userId") userId: String): Boolean
+
     @SqlQuery("""SELECT otp_create_challenge(:challengeId, :destination, :destinationRegion, :purpose,
         :channel, :provider, :otpHash, :otpSalt, CAST(:contextJson AS jsonb),
         CAST(:expiresAt AS timestamp), :maxAttempts, :cooldownSeconds)""")

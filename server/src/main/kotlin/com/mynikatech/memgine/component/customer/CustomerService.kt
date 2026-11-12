@@ -426,6 +426,9 @@ class CustomerService(
     fun requestPurchaseOtp(organizationId: String, input: CustomerPurchaseOtpRequestDto, authenticatedUserId: String?): OtpRequestResult {
         val request = input.purchase
         if (request.planId.isBlank() || request.planId.length > 40) throw BadRequestException("Valid membership plan is required")
+        if (sql.discoverableOrganization(organizationId) == null || request.planId !in sql.joinPlanIds(organizationId)) {
+            throw BadRequestException("Membership plan is unavailable")
+        }
         if (authenticatedUserId != null && sql.hasActiveRelationship(organizationId, authenticatedUserId)) throw BadRequestException("An active customer relationship does not require purchase verification")
         val phone = if (authenticatedUserId != null) {
             sql.userPhone(authenticatedUserId)

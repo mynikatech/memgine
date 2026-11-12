@@ -102,6 +102,9 @@ import com.mynikatech.memgine.component.organizationaccess.organizationAccessRou
 import com.mynikatech.memgine.component.organizationmaintenance.OrganizationMaintenanceService
 import com.mynikatech.memgine.component.organizationmaintenance.OrganizationMaintenanceSql
 import com.mynikatech.memgine.component.organizationmaintenance.organizationMaintenanceRoutes
+import com.mynikatech.memgine.component.democustomer.DemoCustomerService
+import com.mynikatech.memgine.component.democustomer.DemoCustomerSql
+import com.mynikatech.memgine.component.democustomer.demoCustomerRoutes
 import com.mynikatech.memgine.component.commerce.counterRedemptionCheckoutRoutes
 import com.mynikatech.memgine.component.auth.AuthenticationService
 import com.mynikatech.memgine.component.auth.AuthenticationSql
@@ -145,9 +148,7 @@ fun Application.configureRouting(
 ) {
     val customerDevIdentityEnabled = config.server.environment in setOf("local", "dev", "development")
     val phoneNormalizer = PhoneNormalizer()
-    val mockOtpProvider = config.server.environment
-        .takeIf { it in setOf("local", "dev", "development") }
-        ?.let(::DevOtpProvider)
+    val mockOtpProvider = DevOtpProvider()
     val liveOtpProvider = config.otp.awsRegion.takeIf(String::isNotBlank)
         ?.let { AwsEndUserMessagingSmsProvider(config.otp) }
     val notificationService = NotificationService(database.jdbi.onDemand(NotificationSql::class.java))
@@ -157,7 +158,8 @@ fun Application.configureRouting(
             ?: UnavailableExternalNotificationPublisher()
     )
     val otpService = OtpService(database.jdbi.onDemand(OtpSql::class.java), phoneNormalizer,
-        OtpProviderRouter(config.otp, mockOtpProvider, liveOtpProvider), config.otp, notificationDispatchService)
+        OtpProviderRouter(config.otp, mockOtpProvider, liveOtpProvider), config.otp, notificationDispatchService,
+        organizationSql = database.jdbi.onDemand(OtpOrganizationSql::class.java))
     val businessOtpService = BusinessOtpService(otpService, database.jdbi.onDemand(BusinessOtpSql::class.java))
     val authenticationService = AuthenticationService(
         database.jdbi.onDemand(AuthenticationSql::class.java), otpService,
@@ -192,6 +194,11 @@ fun Application.configureRouting(
         OrganizationMaintenanceService(
             database.jdbi.onDemand(OrganizationMaintenanceSql::class.java), phoneNormalizer
         )
+    val demoCustomerService = DemoCustomerService(
+        database.jdbi.onDemand(DemoCustomerSql::class.java),
+        database.jdbi.onDemand(AuthenticationSql::class.java),
+        phoneNormalizer
+    )
 
     val storeService =
         StoreService(
@@ -366,6 +373,7 @@ fun Application.configureRouting(
             organizationUserRoutes(organizationUserService)
             organizationAccessRoutes(organizationAccessService)
             organizationMaintenanceRoutes(organizationMaintenanceService)
+            demoCustomerRoutes(demoCustomerService)
             platformPoyntPaymentRoutes(platformPoyntPaymentService, platformPoyntTerminalBindingService)
             organizationPoyntPaymentSummaryRoutes(platformPoyntPaymentService, organizationPoyntTerminalBindingService, poyntOperationalDiscoveryService)
 

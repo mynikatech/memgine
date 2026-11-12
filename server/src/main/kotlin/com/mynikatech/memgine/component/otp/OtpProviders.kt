@@ -25,12 +25,7 @@ class OtpSmsRouteResolver(private val canadaOriginationIdentity: String) {
     }
 }
 
-class DevOtpProvider(private val environment: String) : OtpProvider {
-    init {
-        require(environment in setOf("local", "dev", "development")) {
-            "DevOtpProvider is restricted to local/development environments"
-        }
-    }
+class DevOtpProvider(@Suppress("UNUSED_PARAMETER") environment: String = "") : OtpProvider {
     override val providerCode = "DEV"
     override fun supports(regionCode: String, channel: OtpChannel) = channel == OtpChannel.SMS
     override fun send(delivery: OtpDelivery) =
