@@ -8,7 +8,9 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class OrganizationDto(
  val id: String, val code: String, val name: String, val displayName: String? = null,
  val organizationTypeId: String, val organizationStatusId: String,
- val primaryEmail: String, val primaryPhone: PhoneDto, val website: String? = null
+ val primaryEmail: String, val primaryPhone: PhoneDto, val website: String? = null,
+ /** Null means an older update client omitted the administrative setting. */
+ val isDemo: Boolean? = null
 )
 @Serializable data class OrganizationDetailsDto(
  val id: String, val organizationId: String, val registrationNumber: String = "",

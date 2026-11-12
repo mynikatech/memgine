@@ -30,7 +30,12 @@ class OrganizationService(
         )
         try {
             return sql.createOrganization(
-                json.encodeToString(request.organization),
+                // Creation defaults an omitted administrative flag to REAL.
+                // Update deliberately preserves null so older clients cannot
+                // reset a stored demo setting by omitting the field.
+                json.encodeToString(
+                    request.organization.copy(isDemo = request.organization.isDemo ?: false)
+                ),
                 json.encodeToString(request.details),
                 json.encodeToString(request.branding),
                 json.encodeToString(owner),

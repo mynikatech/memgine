@@ -228,6 +228,7 @@ export async function onboardOrganization(
       },
 
       useDefaultBusinessContent: input.useDefaultBusinessContent,
+      isDemo: input.isDemo ?? false,
     },
     template,
   );

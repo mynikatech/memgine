@@ -46,6 +46,7 @@ export default function OrganizationNew() {
   const [businessName, setBusinessName] = useState("");
   const [useDefaultBusinessContent, setUseDefaultBusinessContent] =
     useState(false);
+  const [isDemo, setIsDemo] = useState(false);
   const [organizationTypeId, setOrganizationTypeId] = useState("");
 
   const [primaryEmail, setPrimaryEmail] = useState("");
@@ -194,6 +195,7 @@ export default function OrganizationNew() {
         setBusinessName(organization.name);
         setOrganizationTypeId(organization.organizationTypeId);
         setPrimaryEmail(organization.primaryEmail);
+        setIsDemo(organization.isDemo ?? false);
 
         setPrimaryPhone({
           countryId: organization.primaryPhone.countryId,
@@ -458,6 +460,7 @@ export default function OrganizationNew() {
           name: businessName.trim(),
           organizationTypeId,
           primaryEmail: primaryEmail.trim(),
+          isDemo,
 
           primaryPhone: {
             countryId: primaryPhone.countryId,
@@ -515,6 +518,7 @@ export default function OrganizationNew() {
           },
         },
         useDefaultBusinessContent,
+        isDemo,
       });
 
       /*
@@ -639,6 +643,15 @@ export default function OrganizationNew() {
             testID="organization-use-default-business-content"
           />
         ) : null}
+
+        <Checkbox
+          value={isDemo}
+          onValueChange={setIsDemo}
+          label="Demo Organization"
+          description="Use this organization for testing and demonstrations. Real customer operations should use a separate organization."
+          disabled={busy || loadingOrganization}
+          testID="organization-is-demo"
+        />
 
         <Input
           label="Primary Email"

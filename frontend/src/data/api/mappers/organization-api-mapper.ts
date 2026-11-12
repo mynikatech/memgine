@@ -20,6 +20,7 @@ export type OrganizationApiDto = {
     number: string;
   };
   website?: string | null;
+  isDemo?: boolean | null;
 };
 
 export type OrganizationDetailsApiDto = {
@@ -121,6 +122,7 @@ function toOrganizationDto(organization: Organization): OrganizationApiDto {
       number: organization.primaryPhone.number,
     },
     website: organization.website ?? null,
+    isDemo: organization.isDemo ?? false,
   };
 }
 

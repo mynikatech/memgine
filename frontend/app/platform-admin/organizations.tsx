@@ -590,6 +590,14 @@ function OrganizationCard({
             </View>
           ) : null}
 
+          {organization.isDemo ? (
+            <View style={styles.demoBadge}>
+              <Text variant="caption" color="text">
+                DEMO
+              </Text>
+            </View>
+          ) : null}
+
           <View style={styles.statusBadge}>
             <Text variant="caption" color="text">
               {isInactive ? "Inactive" : "Active"}
@@ -780,6 +788,13 @@ const styles = StyleSheet.create({
   },
 
   currentBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: COLORS.accentSoft,
+  },
+
+  demoBadge: {
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 999,

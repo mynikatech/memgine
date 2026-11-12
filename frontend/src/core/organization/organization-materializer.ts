@@ -55,6 +55,7 @@ export function materializeOrganization(
       number: string;
     };
     useDefaultBusinessContent: boolean;
+    isDemo?: boolean;
   },
   template: DefaultBusinessTemplate,
 ): MaterializedOrganization {
@@ -108,6 +109,8 @@ export function materializeOrganization(
     },
 
     website: businessInformation?.website,
+
+    isDemo: input.isDemo ?? false,
 
     createdAt: now,
     createdBy: "platform-admin",

@@ -81,6 +81,8 @@ export interface Organization {
   primaryEmail: string;
   primaryPhone: PhoneNumber;
   website?: string;
+  /** Platform-admin configuration; absent only for older persisted/API data. */
+  isDemo?: boolean;
 
   publishedCustomerExperienceReleaseId?: ID;
 

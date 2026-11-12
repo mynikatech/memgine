@@ -124,6 +124,9 @@ export interface OnboardOrganizationInput {
   };
 
   useDefaultBusinessContent: boolean;
+
+  /** Platform Admin only. Omitted input remains a REAL organization. */
+  isDemo?: boolean;
 }
 
 export interface OnboardOrganizationResult {
