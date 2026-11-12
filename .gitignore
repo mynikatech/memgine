@@ -334,3 +334,6 @@ frontend/eas-android-inspect-v3
 frontend/eas-android-inspect-v3
 frontend/eas-android-inspect-v3
 docs/~WRL0645.tmp
+
+# Local Kotlin compiler session files - exclude from EAS uploads
+/.kotlin/
