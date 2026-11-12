@@ -473,6 +473,35 @@ if [[ -n "$legacy_dev_callback_value" ]]; then
   set_candidate_property "MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_VALUE" ""
 fi
 
+#
+# Preserve existing DEV WhatsApp ACK authentication across releases.
+# Prefer the previous secrets environment after the first migration.
+# Never log the credential or read it from a published release.
+#
+legacy_dev_whatsapp_ack_line=""
+
+if [[ "$MEMGINE_ENVIRONMENT" == "dev" ]]; then
+  for existing_config in \
+    "$config_root/backend-secrets.env" \
+    "$config_root/backend.env"
+  do
+    if [[ -f "$existing_config" ]]; then
+      legacy_dev_whatsapp_ack_line="$(
+        grep -m 1 '^MEMGINE_WHATSAPP_DELIVERY_ACK_SECRET=' \
+          "$existing_config" || true
+      )"
+
+      if [[ -n "$legacy_dev_whatsapp_ack_line" ]]; then
+        break
+      fi
+    fi
+  done
+
+  if [[ -z "${legacy_dev_whatsapp_ack_line#*=}" ]]; then
+    echo "DEV WhatsApp ACK credential is missing or empty." >&2
+    exit 1
+  fi
+fi
 # Refuse secret values in the published non-secret file.
 if grep -Eq \
   '^(MEMGINE_DB_PASSWORD|MEMGINE_DB_USER|MEMGINE_DB_URL|MEMGINE_OTP_PEPPER|STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|MONERIS_CLIENT_SECRET|MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_VALUE|MEMGINE_WHATSAPP_DELIVERY_ACK_SECRET|MEMGINE_META_APP_SECRET|MEMGINE_META_WEBHOOK_VERIFY_TOKEN|MEMGINE_POYNT_PRIVATE_KEY|MEMGINE_POYNT_API_KEY|RESEND_API_KEY|MEMGINE_META_WA_TOKEN|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY)=' \
@@ -587,6 +616,17 @@ if [[ -n "$callback_value" ]]; then
     >> "$config_root/backend-secrets.env"
 
   unset callback_value
+fi
+
+#
+# Preserve the existing DEV WhatsApp ACK credential in the
+# protected runtime secrets file.
+#
+if [[ "$MEMGINE_ENVIRONMENT" == "dev" ]]; then
+  printf '%s\n' "$legacy_dev_whatsapp_ack_line" \
+    >> "$config_root/backend-secrets.env"
+
+  unset legacy_dev_whatsapp_ack_line
 fi
 
 chmod 0600 "$config_root/backend-secrets.env"

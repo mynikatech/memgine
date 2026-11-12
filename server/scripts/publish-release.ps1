@@ -136,10 +136,12 @@ $secretKeys = @(
 )
 
 foreach ($key in $secretKeys) {
-    if ($Environment -eq "dev" -and $key -eq "MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_VALUE") {
+    if ($Environment -eq "dev" -and $key -in @(
+        "MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_VALUE",
+        "MEMGINE_WHATSAPP_DELIVERY_ACK_SECRET"
+    )) {
         continue
     }
-
     $pattern = '(?m)^\s*' + [regex]::Escape($key) + '\s*='
 
     if ($runtimeConfig -match $pattern) {
@@ -152,11 +154,16 @@ foreach ($key in $secretKeys) {
 # value once and stores it in a root-readable file before replacing this
 # sanitized runtime configuration.
 if ($Environment -eq "dev") {
-    $releaseRuntimeConfig = [regex]::Replace(
-        $releaseRuntimeConfig,
-        '(?m)^\s*MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_VALUE\s*=.*(?:\r?\n|$)',
-        ""
-    )
+    foreach ($key in @(
+        "MEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_HEADER_VALUE",
+        "MEMGINE_WHATSAPP_DELIVERY_ACK_SECRET"
+    )) {
+        $releaseRuntimeConfig = [regex]::Replace(
+            $releaseRuntimeConfig,
+            '(?m)^\s*' + [regex]::Escape($key) + '\s*=.*(?:\r?\n|$)',
+            ""
+        )
+    }
 }
 
 if ($runtimeConfig -notmatch "(?m)^\s*MEMGINE_ENVIRONMENT\s*=\s*$([regex]::Escape($Environment))\s*$") {
