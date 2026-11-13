@@ -112,15 +112,25 @@ export function LocalizationProvider({ children }: { children: ReactNode }) {
         ),
 
       formatDate: (date) => {
-        const d = typeof date === "string" ? new Date(date) : date;
+        const isDateOnly =
+          typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date);
+
+        const d =
+          typeof date === "string"
+            ? new Date(isDateOnly ? `${date}T00:00:00.000Z` : date)
+            : date;
+
+        if (Number.isNaN(d.getTime())) {
+          return "Invalid Date";
+        }
 
         return safe(
           () =>
             new Intl.DateTimeFormat(language, {
               dateStyle: "medium",
-              timeZone: timezone,
+              timeZone: isDateOnly ? "UTC" : timezone,
             }).format(d),
-          d.toDateString(),
+          typeof date === "string" ? date : d.toDateString(),
         );
       },
     };

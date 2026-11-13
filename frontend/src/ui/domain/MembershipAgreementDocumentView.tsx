@@ -195,19 +195,17 @@ export function MembershipAgreementDocumentView({
     <View style={{ flex: 1, backgroundColor: "#F3F4F6" }}>
       <View
         style={{
-          paddingHorizontal: 20,
-          paddingTop: 18,
+          paddingHorizontal: 16,
+          paddingTop: 16,
           paddingBottom: 14,
           borderBottomWidth: 1,
           borderBottomColor: "#E5E7EB",
           backgroundColor: "#FFFFFF",
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
+          gap: 14,
         }}
       >
-        <View style={{ flex: 1 }}>
+        {/* Agreement heading */}
+        <View>
           <Text
             style={{
               fontSize: 20,
@@ -217,6 +215,7 @@ export function MembershipAgreementDocumentView({
           >
             Membership Agreement
           </Text>
+
           <Text
             style={{
               marginTop: 4,
@@ -228,14 +227,22 @@ export function MembershipAgreementDocumentView({
           </Text>
         </View>
 
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, justifyContent: "flex-end" }}>
+        {/* Document actions */}
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            gap: 10,
+            alignItems: "center",
+          }}
+        >
           <Pressable
             accessibilityRole="button"
             disabled={documentAction !== null}
             onPress={() => void runDocumentAction("print")}
             style={{
-              paddingHorizontal: 14,
-              paddingVertical: 10,
+              paddingHorizontal: 16,
+              paddingVertical: 12,
               borderRadius: 10,
               backgroundColor: "#111827",
               opacity: documentAction !== null ? 0.6 : 1,
@@ -251,8 +258,8 @@ export function MembershipAgreementDocumentView({
             disabled={documentAction !== null}
             onPress={() => void runDocumentAction("pdf")}
             style={{
-              paddingHorizontal: 14,
-              paddingVertical: 10,
+              paddingHorizontal: 16,
+              paddingVertical: 12,
               borderRadius: 10,
               borderWidth: 1,
               borderColor: "#D1D5DB",
@@ -270,8 +277,8 @@ export function MembershipAgreementDocumentView({
               accessibilityRole="button"
               onPress={onClose}
               style={{
-                paddingHorizontal: 14,
-                paddingVertical: 10,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
                 borderRadius: 10,
                 borderWidth: 1,
                 borderColor: "#D1D5DB",

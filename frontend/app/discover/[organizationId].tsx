@@ -60,10 +60,7 @@ const androidInstallUrl = process.env.EXPO_PUBLIC_ANDROID_INSTALL_URL?.trim();
 const iosInstallUrl = process.env.EXPO_PUBLIC_IOS_INSTALL_URL?.trim();
 
 function AppInstallSection() {
-  if (
-    Platform.OS !== "web" ||
-    (!androidInstallUrl && !iosInstallUrl)
-  ) {
+  if (Platform.OS !== "web" || (!androidInstallUrl && !iosInstallUrl)) {
     return null;
   }
 
@@ -482,6 +479,13 @@ function DiscoverContent() {
         }
         brandingOverride={
           detail.publishedExperience.organizationBranding as never
+        }
+        tagline={
+          detail.publishedExperience.organizationBranding?.tagline ?? undefined
+        }
+        heroImageUrl={
+          detail.publishedExperience.organizationBranding?.heroImageUrl ??
+          undefined
         }
         previewDefinition={detail.publishedExperience.definition}
         subscription={focused?.subscription}

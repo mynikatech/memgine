@@ -623,9 +623,6 @@ export function PoyntCollectWallets({
           display: selectedWallet ? "none" : "grid",
         }}
       />
-      {walletDiagnostic ? (
-        <Text variant="bodySmall">{walletDiagnostic}</Text>
-      ) : null}
       {selectedWallet ? (
         <View
           style={{
