@@ -7,7 +7,9 @@ import com.mynikatech.memgine.net.dto.CommerceCheckoutRequest
 import com.mynikatech.memgine.net.dto.CommerceCheckoutResult
 import com.mynikatech.memgine.net.dto.CommerceProductSnapshotWriteDto
 import com.mynikatech.memgine.net.dto.CommerceExternalCategoryReferenceDto
+import java.util.Currency
 import kotlinx.serialization.json.*
+import org.slf4j.LoggerFactory
 import org.jdbi.v3.sqlobject.config.RegisterBeanMapper
 import org.jdbi.v3.sqlobject.customizer.Bind
 import org.jdbi.v3.sqlobject.statement.SqlQuery
@@ -19,6 +21,7 @@ class PoyntCommerceProvider(
     private val checkoutConfigurationResolver: PoyntCheckoutConfigurationResolver? = null,
     private val paymentBridgeClient: PoyntPaymentBridgeClient? = null
 ) : CommerceCatalogProvider, CommerceCheckoutProvider, CommerceRemoteTerminalPaymentProvider {
+    private val logger = LoggerFactory.getLogger(PoyntCommerceProvider::class.java)
     override val providerCode = "POYNT"
     override val capabilities get() = buildSet { addAll(setOf(CommerceCapability.CATALOG, CommerceCapability.PRODUCT_LOOKUP, CommerceCapability.ORDER, CommerceCapability.DISCOUNT, CommerceCapability.TERMINAL_PAYMENT)); if (paymentBridgeClient != null) add(CommerceCapability.REMOTE_PAYMENT) }
 
@@ -35,6 +38,7 @@ class PoyntCommerceProvider(
     override fun syncProduct(request: CommerceCatalogProductRequest): CommerceProductSnapshotWriteDto? = product(request)
     override fun syncCatalog(request: CommerceCatalogSyncRequest): List<CommerceProductSnapshotWriteDto> {
         val config = config(request.organizationId, request.integrationConfigurationId, request.actorUserId)
+        val storeCurrency = verifiedStoreCurrency(config)
         val catalogId = request.externalCatalogId?.trim()?.takeIf { it.isNotEmpty() }
         if (catalogId != null) {
             // A full catalog is authoritative for membership; the business-wide
@@ -43,7 +47,7 @@ class PoyntCommerceProvider(
             val body = client.get(config, client.catalogFullUri(config.businessId, catalogId))
             val entries = parseFullCatalog(body, catalogId, config.businessId)
             return entries.flatMap { (product, categories) ->
-                mapProduct(product, config, request.storeId).map { snapshot ->
+                mapProduct(product, config, request.storeId, storeCurrency).map { snapshot ->
                     snapshot.copy(externalCategories = categories, categoryMetadataAvailable = true)
                 }
             }
@@ -65,7 +69,7 @@ class PoyntCommerceProvider(
             ) {
                 throw BadRequestException("Poynt catalog pagination was inconsistent")
             }
-            mapped += products.flatMap { mapProduct(it, config, request.storeId) }
+            mapped += products.flatMap { mapProduct(it, config, request.storeId, storeCurrency) }
             if (products.size < CATALOG_PAGE_SIZE) break
             offset += products.size
         }
@@ -103,7 +107,7 @@ class PoyntCommerceProvider(
         )
         val body = client.get(config, client.productUri(config.businessId, request.externalProductId))
         val product = parseProduct(Json.parseToJsonElement(body).jsonObject)
-        return mapProduct(product, config, request.storeId)
+        return mapProduct(product, config, request.storeId, verifiedStoreCurrency(config))
             .firstOrNull { it.externalVariantId == request.externalVariantId }
     }
 
@@ -283,13 +287,30 @@ class PoyntCommerceProvider(
         )
     }
 
-    private fun mapProduct(product: PoyntProduct, config: PoyntCatalogConfiguration, storeId: String?): List<CommerceProductSnapshotWriteDto> {
+    private fun mapProduct(
+        product: PoyntProduct,
+        config: PoyntCatalogConfiguration,
+        storeId: String?,
+        storeCurrency: String
+    ): List<CommerceProductSnapshotWriteDto> {
         val variants = product.variants
         val choices = if (variants.isEmpty()) listOf<PoyntProductVariant?>(null) else variants
         return choices.map { variant ->
             val price = variant?.price ?: product.price ?: throw BadRequestException("Poynt product price is unavailable")
             val amount = price.amount ?: throw BadRequestException("Poynt product price is unavailable")
             if (amount < 0) throw BadRequestException("Poynt product price is invalid")
+            val providerCurrency = price.currency?.trim()?.uppercase()?.takeIf { it.isNotEmpty() }
+            if (providerCurrency != null && providerCurrency != storeCurrency) {
+                logger.warn(
+                    "Poynt catalog currency normalized integrationId={} providerStoreId={} productId={} variantId={} providerCurrency={} storeCurrency={}",
+                    config.integrationConfigurationId,
+                    config.providerStoreId,
+                    product.id,
+                    variant?.id,
+                    providerCurrency,
+                    storeCurrency
+                )
+            }
             CommerceProductSnapshotWriteDto(
                 config.integrationConfigurationId,
                 storeId,
@@ -298,12 +319,55 @@ class PoyntCommerceProvider(
                 variant?.sku ?: product.sku ?: product.shortCode,
                 listOfNotNull(product.name, variant?.name).joinToString(" - "),
                 product.description,
-                (price.currency ?: config.merchantCurrencyCode).trim().uppercase(),
+                storeCurrency,
                 amount,
                 product.active && (variant?.active != false),
                 variant?.updatedAt ?: product.updatedAt
             )
         }
+    }
+
+    /**
+     * Catalog prices are store-scoped. Poynt product currency is retained only
+     * as diagnostics because the store endpoint is the verified source for the
+     * effective catalog currency.
+     */
+    private fun verifiedStoreCurrency(config: PoyntCatalogConfiguration): String {
+        val providerStoreId = config.providerStoreId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: throw BadRequestException("Poynt provider store configuration is required for catalog synchronization")
+        val configuredCurrency = validCurrency(config.merchantCurrencyCode)
+            ?: throw BadRequestException("Memgine Poynt catalog currency is invalid")
+        val root = try {
+            Json.parseToJsonElement(client.get(config, client.storeUri(config.businessId, providerStoreId))).jsonObject
+        } catch (error: BadRequestException) {
+            throw error
+        } catch (_: Exception) {
+            throw BadRequestException("Poynt Store response was invalid")
+        }
+        val returnedStoreId = string(root, "id") ?: string(root, "storeId")
+        val returnedBusinessId = string(root, "businessId")
+        // The authenticated endpoint itself is scoped to /businesses/{businessId}.
+        // Some Store response versions omit businessId, but a supplied value must
+        // still agree with that verified request scope.
+        if (returnedStoreId != providerStoreId ||
+            (returnedBusinessId != null && returnedBusinessId != config.businessId)
+        ) {
+            throw BadRequestException("Poynt Store identity did not match the configured business and store")
+        }
+        val storeCurrency = validCurrency(string(root, "currency") ?: string(root, "currencyCode"))
+            ?: throw BadRequestException("Poynt Store currency is unavailable or invalid")
+        if (storeCurrency != configuredCurrency) {
+            throw BadRequestException(
+                "Poynt Store currency $storeCurrency does not match configured Memgine currency $configuredCurrency"
+            )
+        }
+        return storeCurrency
+    }
+
+    private fun validCurrency(value: String?): String? {
+        val normalized = value?.trim()?.uppercase()?.takeIf { it.matches(Regex("^[A-Z]{3}$")) }
+            ?: return null
+        return normalized.takeIf { runCatching { Currency.getInstance(it).currencyCode == it }.isSuccess }
     }
 
     /**

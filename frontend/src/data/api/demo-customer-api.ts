@@ -10,7 +10,21 @@ export type DemoCustomer = {
   otpDeliveryMode: "DEFAULT" | "MOCK" | "LIVE";
 };
 
+export type DemoCustomerPage = {
+  items: DemoCustomer[];
+  totalCount: number;
+};
+
 export class DemoCustomerApi {
+  list(search: string, limit: number, offset: number): Promise<ApiResult<DemoCustomerPage>> {
+    const query = [
+      `limit=${encodeURIComponent(String(limit))}`,
+      `offset=${encodeURIComponent(String(offset))}`,
+      ...(search.trim() ? [`search=${encodeURIComponent(search.trim())}`] : []),
+    ].join("&");
+    return httpClient.get(`/api/v1/platform/demo-customers?${query}`);
+  }
+
   lookup(phone: string): Promise<ApiResult<DemoCustomer | null>> {
     return httpClient.get(`/api/v1/platform/demo-customers/lookup?phone=${encodeURIComponent(phone)}`);
   }

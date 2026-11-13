@@ -31,6 +31,7 @@ module "application_host" {
     aws_secretsmanager_secret.resend_api_key.arn,
     aws_secretsmanager_secret.meta_wa_token.arn,
     aws_secretsmanager_secret.poynt_cloud_app.arn,
+    aws_secretsmanager_secret.poynt_test_lab_cloud_app.arn,
     aws_secretsmanager_secret.poynt_payment_bridge_callback.arn,
   ]
 

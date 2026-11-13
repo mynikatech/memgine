@@ -174,5 +174,6 @@ class OtpTimezoneTest {
         override fun organizationChannel(organizationId: String) = "SMS"
         override fun recipient(destination: String) = null
         override fun userDeliveryMode(userId: String) = "MOCK"
+        override fun activeDemoUser(userId: String): Boolean = false
     }
 }

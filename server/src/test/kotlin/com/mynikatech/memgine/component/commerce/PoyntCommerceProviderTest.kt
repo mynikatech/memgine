@@ -22,10 +22,10 @@ import kotlin.test.assertTrue
 import kotlinx.serialization.json.*
 
 class PoyntCommerceProviderTest {
-    private val configuration = PoyntCatalogConfiguration("integration", "org", "urn:aid:memgine", "business", null, "secret", "USD", "2026-01-01T00:00:00Z")
+    private val configuration = PoyntCatalogConfiguration("integration", "org", "urn:aid:memgine", "business", "store", "secret", "USD", "2026-01-01T00:00:00Z")
     private val sql = object : PoyntCommerceSql {
         override fun catalogConfiguration(organizationId: String, integrationId: String, actorUserId: String) =
-            PoyntCatalogConfigurationRow(integrationId, organizationId, "urn:aid:memgine", "business", null, "secret", "USD", null, null, "2026-01-01T00:00:00Z")
+            PoyntCatalogConfigurationRow(integrationId, organizationId, "urn:aid:memgine", "business", "store", "secret", "USD", null, null, "2026-01-01T00:00:00Z")
         override fun counterRedemptionReviewCatalogConfiguration(
             organizationId: String,
             redemptionTransactionId: String,
@@ -47,7 +47,10 @@ class PoyntCommerceProviderTest {
         "-----BEGIN PRIVATE KEY-----\n${Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(it)}\n-----END PRIVATE KEY-----"
     }
 
-    private class FakeTransport(private val responses: MutableList<PoyntHttpResponse>) : PoyntHttpTransport {
+    private class FakeTransport(
+        private val responses: MutableList<PoyntHttpResponse>,
+        private val storeResponse: PoyntHttpResponse? = null
+    ) : PoyntHttpTransport {
         var calls = 0
         var modifiedSince: String? = null
         var authorization: String? = null
@@ -57,8 +60,16 @@ class PoyntCommerceProviderTest {
         var postUri: URI? = null
         var getUri: URI? = null
         val getUris = mutableListOf<URI>()
+        val storeUris = mutableListOf<URI>()
         val modifiedSinceValues = mutableListOf<String?>()
         override fun get(uri: URI, authorization: String, modifiedSince: String?): PoyntHttpResponse {
+            if (uri.path.contains("/stores/")) {
+                storeUris += uri
+                return storeResponse ?: PoyntHttpResponse(
+                    200,
+                    "{\"id\":\"${uri.path.substringAfterLast('/')}\",\"businessId\":\"${uri.path.substringAfter("/businesses/").substringBefore('/')}\",\"currency\":\"USD\"}"
+                )
+            }
             this.getUri = uri
             this.getUris += uri
             this.authorization = authorization
@@ -78,6 +89,8 @@ class PoyntCommerceProviderTest {
         override fun productUri(businessId: String, productId: String) = URI.create("https://example.test/product")
         override fun productsUri(businessId: String, offset: Int) =
             URI.create("https://example.test/businesses/$businessId/products?limit=100&startOffset=$offset")
+        override fun storeUri(businessId: String, storeId: String) =
+            URI.create("https://example.test/businesses/$businessId/stores/$storeId")
         override fun orderUri(businessId: String, orderId: String) = URI.create("https://example.test/businesses/$businessId/orders/$orderId")
         override fun ordersUri(businessId: String) = URI.create("https://example.test/businesses/$businessId/orders")
     }
@@ -177,6 +190,21 @@ class PoyntCommerceProviderTest {
             PoyntCheckoutConfigurationResolver { configuration.copy(providerStoreId = "poynt-store") }
         )
 
+    private fun catalogProvider(
+        http: FakeTransport,
+        configuredCurrency: String = "USD",
+        providerStoreId: String = "store"
+    ): PoyntCommerceProvider = PoyntCommerceProvider(
+        object : PoyntCommerceSql {
+            override fun catalogConfiguration(organizationId: String, integrationId: String, actorUserId: String) =
+                PoyntCatalogConfigurationRow(integrationId, organizationId, "urn:aid:memgine", "business", providerStoreId, "secret", configuredCurrency, null, null, "2026-01-01T00:00:00Z")
+            override fun counterCatalogConfiguration(transactionId: String, actorUserId: String) = null
+            override fun counterRedemptionReviewCatalogConfiguration(organizationId: String, redemptionTransactionId: String, storeId: String, staffId: String, actorUserId: String) = null
+            override fun counterRedemptionQuoteCatalogConfiguration(organizationId: String, storeId: String, staffId: String, actorUserId: String, integrationId: String) = null
+        },
+        PoyntAuthenticatedCatalogClient(http, tokens())
+    )
+
     @Test fun `JWT has Poynt application claims and RS256 lifetime`() {
         val jwt = tokens().assertion(configuration.applicationId, privateKeyPem)
         val decoded = JWT.decode(jwt)
@@ -230,6 +258,119 @@ class PoyntCommerceProviderTest {
         assertEquals("Bearer token-2", http.authorization)
     }
 
+    @Test
+    fun `USD product price uses verified CAD Store currency without changing amount`() {
+        val http = FakeTransport(
+            mutableListOf(PoyntHttpResponse(200, """{"products":[{"id":"cake","name":"Blueberry Cheesecake","price":{"amount":490,"currency":"USD"}}]}""")),
+            PoyntHttpResponse(200, """{"id":"store","businessId":"business","currency":"cad"}""")
+        )
+
+        val snapshot = catalogProvider(http, "CAD")
+            .syncCatalog(CommerceCatalogSyncRequest("org", "integration", storeId = "memgine-store", actorUserId = "admin"))
+            .single()
+
+        assertEquals(490L, snapshot.unitPriceMinorSnapshot)
+        assertEquals("CAD", snapshot.currencyCode)
+    }
+
+    @Test
+    fun `verified Store currency applies to every product and variant in selected catalog`() {
+        val fullCatalog = """
+            {"id":"catalog-1","businessId":"business","products":[
+              {"product":{"id":"coffee","name":"Coffee","price":{"amount":199,"currency":"USD"},"variants":[{"id":"large","name":"Large","price":{"amount":299,"currency":"USD"}}]}},
+              {"product":{"id":"lemonade","name":"Lemonade","price":{"amount":299,"currency":"CAD"}}}
+            ],"categories":[]}
+        """.trimIndent()
+        val http = FakeTransport(
+            mutableListOf(PoyntHttpResponse(200, fullCatalog)),
+            PoyntHttpResponse(200, """{"id":"store","businessId":"business","currency":"CAD"}""")
+        )
+
+        val snapshots = catalogProvider(http, "CAD")
+            .syncCatalog(CommerceCatalogSyncRequest("org", "integration", storeId = "memgine-store", externalCatalogId = "catalog-1", actorUserId = "admin"))
+
+        assertEquals(listOf(299L, 299L), snapshots.map { it.unitPriceMinorSnapshot })
+        assertTrue(snapshots.all { it.currencyCode == "CAD" })
+    }
+
+    @Test
+    fun `individual refresh and invalid Store currency fail safely`() {
+        val product = """{"id":"cake","name":"Blueberry Cheesecake","price":{"amount":490,"currency":"USD"}}"""
+        val valid = FakeTransport(
+            mutableListOf(PoyntHttpResponse(200, product)),
+            PoyntHttpResponse(200, """{"id":"store","businessId":"business","currency":"CAD"}""")
+        )
+        val refreshed = catalogProvider(valid, "CAD").syncProduct(
+            com.mynikatech.memgine.component.commerce.CommerceCatalogProductRequest(
+                organizationId = "org",
+                integrationConfigurationId = "integration",
+                storeId = "memgine-store",
+                externalProductId = "cake",
+                externalVariantId = null,
+                actorUserId = "admin"
+            )
+        )
+        assertEquals("CAD", refreshed?.currencyCode)
+        assertEquals(490L, refreshed?.unitPriceMinorSnapshot)
+
+        val mismatch = FakeTransport(
+            mutableListOf(PoyntHttpResponse(200, "{\"products\":[]}")),
+            PoyntHttpResponse(200, """{"id":"store","businessId":"business","currency":"USD"}""")
+        )
+        assertFailsWith<BadRequestException> {
+            catalogProvider(mismatch, "CAD").syncCatalog(CommerceCatalogSyncRequest("org", "integration", actorUserId = "admin"))
+        }
+    }
+
+    @Test
+    fun `missing or mismatched verified Store identity fails before catalog snapshots are created`() {
+        val missingCurrency = FakeTransport(
+            mutableListOf(PoyntHttpResponse(200, "{\"products\":[]}")),
+            PoyntHttpResponse(200, """{"id":"store","businessId":"business"}""")
+        )
+        assertFailsWith<BadRequestException> {
+            catalogProvider(missingCurrency, "CAD")
+                .syncCatalog(CommerceCatalogSyncRequest("org", "integration", actorUserId = "admin"))
+        }
+        assertEquals(0, missingCurrency.calls)
+
+        val invalidCurrency = FakeTransport(
+            mutableListOf(PoyntHttpResponse(200, "{\"products\":[]}")),
+            PoyntHttpResponse(200, """{"id":"store","businessId":"business","currency":"invalid"}""")
+        )
+        assertFailsWith<BadRequestException> {
+            catalogProvider(invalidCurrency, "CAD")
+                .syncCatalog(CommerceCatalogSyncRequest("org", "integration", actorUserId = "admin"))
+        }
+        assertEquals(0, invalidCurrency.calls)
+
+        val wrongStore = FakeTransport(
+            mutableListOf(PoyntHttpResponse(200, "{\"products\":[]}")),
+            PoyntHttpResponse(200, """{"id":"different-store","businessId":"business","currency":"CAD"}""")
+        )
+        assertFailsWith<BadRequestException> {
+            catalogProvider(wrongStore, "CAD")
+                .syncCatalog(CommerceCatalogSyncRequest("org", "integration", actorUserId = "admin"))
+        }
+        assertEquals(0, wrongStore.calls)
+    }
+
+    @Test
+    fun `sync uses the configured provider Store rather than a Memgine Store identifier`() {
+        val http = FakeTransport(
+            mutableListOf(PoyntHttpResponse(200, """{"products":[{"id":"cake","name":"Cake","price":490}]}""")),
+            PoyntHttpResponse(200, """{"id":"poynt-store-b","businessId":"business","currency":"CAD"}""")
+        )
+
+        catalogProvider(http, configuredCurrency = "CAD", providerStoreId = "poynt-store-b")
+            .syncCatalog(CommerceCatalogSyncRequest("org", "integration", storeId = "memgine-store-a", actorUserId = "admin"))
+
+        assertEquals(
+            listOf("https://example.test/businesses/business/stores/poynt-store-b"),
+            http.storeUris.map(URI::toString)
+        )
+    }
+
     @Test fun `a second 401 fails after exactly one refresh retry`() {
         val tokenTransport = FakeTokenTransport()
         val http = FakeTransport(mutableListOf(PoyntHttpResponse(401, ""), PoyntHttpResponse(401, "")))
@@ -272,7 +413,7 @@ class PoyntCommerceProviderTest {
 
         assertEquals(listOf("structured", "numeric", "free"), snapshots.map { it.externalProductId })
         assertEquals(listOf(250L, 199L, 0L), snapshots.map { it.unitPriceMinorSnapshot })
-        assertEquals("CAD", snapshots[0].currencyCode)
+        assertEquals("USD", snapshots[0].currencyCode)
         assertEquals("USD", snapshots[1].currencyCode)
         assertEquals(null, snapshots[2].externalSku)
     }
@@ -438,6 +579,7 @@ class PoyntCommerceProviderTest {
         organizationId = "org",
         applicationId = "urn:aid:memgine",
         businessId = businessId,
+        providerStoreId = "store",
         secretReference = "secret",
         merchantCurrencyCode = "USD",
         lastIncrementalSyncAt = cursor
@@ -618,7 +760,7 @@ class PoyntCommerceProviderTest {
         assertEquals(350L, originalResults.single().unitPriceMinorSnapshot)
         assertEquals("USD", originalResults.single().currencyCode)
         assertEquals(199L, ajaxResults.single().unitPriceMinorSnapshot)
-        assertEquals("CAD", ajaxResults.single().currencyCode)
+        assertEquals("USD", ajaxResults.single().currencyCode)
         assertEquals("memgine-b", ajaxResults.single().storeId)
         assertEquals("cat-1", ajaxResults.single().externalCategories.single().externalCategoryId)
         assertTrue(ajaxResults.single().categoryMetadataAvailable)
@@ -670,3 +812,4 @@ class PoyntCommerceProviderTest {
     }
 
 }
+

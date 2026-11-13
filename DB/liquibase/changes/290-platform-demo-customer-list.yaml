@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 290-platform-demo-customer-list
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/290-platform-demo-customer-list.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

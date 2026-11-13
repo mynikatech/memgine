@@ -88,9 +88,669 @@ class PoyntProductionCatalogDiscoveryTest {
         }
         inspectBlueberryCheesecakeCurrency(inspections, business, listOf(store))
         inspectTestLabCurrencyComparison(inspections, business, store, config, transport, authorization)
+        inspectCadProductComparison(inspections, config, transport, authorization)
+        inspectEntireTestLabCatalogCurrency(
+            inspections,
+            config,
+            transport,
+            authorization
+        )
         inspectPaginatedProductCurrency(config, transport, authorization)
         inspectTestLabOrderCurrency(config, store, transport, authorization)
         println("Poynt Test Lab catalog currency diagnostic complete. GET requests only.")
+    }
+    
+    
+    @Test
+    fun inspectTestLabLemonadeVsBlueberryCompleteProducts() {
+        if (System.getenv("POYNT_TEST_LAB_PRODUCT_DETAIL_DIAGNOSTIC") != "true") {
+            println("Poynt Test Lab product detail diagnostic: SKIPPED")
+            return
+        }
+
+        val config = testLabCurrencyConfiguration()
+
+        val transport = PoyntCloudHttpTransport(
+            config.baseUrl,
+            API_VERSION
+        )
+
+        val token = PoyntTokenService(
+            credentials = AwsSecretsManagerPoyntCredentialResolver(
+                config.awsRegion
+            ),
+            transport = PoyntCloudTokenTransport(
+                config.baseUrl,
+                API_VERSION
+            ),
+            audience = config.baseUrl
+        ).token(
+            PoyntCatalogConfiguration(
+                integrationConfigurationId = "test-lab-product-detail-diagnostic",
+                organizationId = "test-lab-product-detail-diagnostic",
+                applicationId = config.applicationId,
+                businessId = config.businessId,
+                providerStoreId = config.storeId,
+                secretReference = config.secretReference,
+                merchantCurrencyCode = "CAD",
+                lastIncrementalSyncAt = null
+            )
+        )
+
+        val authorization = "${token.tokenType} ${token.value}"
+
+        val products = listOf(
+            "Lemonade" to "8b86d8bb-49f5-489b-9cc0-4200381dcda5",
+            "Blueberry Cheesecake" to BLUEBERRY_CHEESECAKE_PRODUCT_ID
+        )
+
+        val prettyJson = Json {
+            prettyPrint = true
+            prettyPrintIndent = "  "
+        }
+
+        val responses = linkedMapOf<String, JsonObject>()
+
+        products.forEach { (name, productId) ->
+            println()
+            println("========== $name ==========")
+
+            val response = transport.get(
+                transport.productUri(config.businessId, productId),
+                authorization
+            )
+
+            println("HTTP Status: ${response.statusCode}")
+
+            assertEquals(
+                200,
+                response.statusCode,
+                "$name product GET failed"
+            )
+
+            val product = parseObject(
+                response.body,
+                "$name full product"
+            ) ?: error("$name returned invalid product JSON")
+
+            assertEquals(
+                productId,
+                primitive(product, "id"),
+                "$name product ID mismatch"
+            )
+
+            responses[name] = product
+
+            println("PRODUCT NAME: ${primitive(product, "name")}")
+            println("PRODUCT ID: ${primitive(product, "id")}")
+            println("SKU: ${primitive(product, "sku")}")
+
+            val price = product["price"]
+
+            println("PRICE AMOUNT: ${priceAmount(price)}")
+            println(
+                "PRICE CURRENCY: " +
+                    observedCurrency(price, "\$.price").value
+            )
+
+            println()
+            println("FULL RAW PRODUCT JSON:")
+            println(
+                prettyJson.encodeToString(
+                    kotlinx.serialization.json.JsonElement.serializer(),
+                    product
+                )
+            )
+        }
+
+        println()
+        println("========== FIELD-BY-FIELD COMPARISON ==========")
+
+        val lemonade = responses.getValue("Lemonade")
+        val blueberry = responses.getValue("Blueberry Cheesecake")
+
+        fun compare(
+            path: String,
+            left: JsonElement?,
+            right: JsonElement?
+        ) {
+            if (left is JsonObject && right is JsonObject) {
+                (left.keys + right.keys).toSortedSet().forEach { key ->
+                    compare(
+                        if (path.isEmpty()) key else "$path.$key",
+                        left[key],
+                        right[key]
+                    )
+                }
+                return
+            }
+
+            if (left is JsonArray && right is JsonArray) {
+                (0 until maxOf(left.size, right.size)).forEach { index ->
+                    compare(
+                        "$path[$index]",
+                        left.getOrNull(index),
+                        right.getOrNull(index)
+                    )
+                }
+                return
+            }
+
+            if (left != right) {
+                println("FIELD: $path")
+                println("  Lemonade: ${left ?: "<ABSENT>"}")
+                println("  Blueberry: ${right ?: "<ABSENT>"}")
+            }
+        }
+
+        compare("", lemonade, blueberry)
+
+        println()
+        println("========== CURRENCY COMPARISON ==========")
+
+        val lemonadeCurrency =
+            observedCurrency(lemonade["price"], "\$.price").value
+
+        val blueberryCurrency =
+            observedCurrency(blueberry["price"], "\$.price").value
+
+        println("Lemonade currency: $lemonadeCurrency")
+        println("Blueberry currency: $blueberryCurrency")
+
+        println(
+            "Currencies identical: " +
+                lemonadeCurrency.equals(
+                    blueberryCurrency,
+                    ignoreCase = true
+                )
+        )
+
+        println("Diagnostic complete. Two product GET requests only.")
+    }
+    
+    
+    @Test
+    fun inspectAllTenTestLabCadProductDetails() {
+        if (System.getenv("POYNT_TEST_LAB_CAD_PRODUCTS_DIAGNOSTIC") != "true") {
+            println("Test Lab CAD product diagnostic: SKIPPED")
+            return
+        }
+
+        val config = testLabCurrencyConfiguration()
+        val transport = PoyntCloudHttpTransport(
+            config.baseUrl,
+            API_VERSION
+        )
+
+        val token = PoyntTokenService(
+            credentials = AwsSecretsManagerPoyntCredentialResolver(
+                config.awsRegion
+            ),
+            transport = PoyntCloudTokenTransport(
+                config.baseUrl,
+                API_VERSION
+            ),
+            audience = config.baseUrl
+        ).token(
+            PoyntCatalogConfiguration(
+                integrationConfigurationId = "test-lab-cad-products-diagnostic",
+                organizationId = "test-lab-cad-products-diagnostic",
+                applicationId = config.applicationId,
+                businessId = config.businessId,
+                providerStoreId = config.storeId,
+                secretReference = config.secretReference,
+                merchantCurrencyCode = "CAD",
+                lastIncrementalSyncAt = null
+            )
+        )
+
+        val authorization = "${token.tokenType} ${token.value}"
+
+        // Ten distinct CAD product IDs verified in the previous audit.
+        val products = linkedMapOf(
+            "Lemonade" to
+                "8b86d8bb-49f5-489b-9cc0-4200381dcda5",
+            "4 Scones" to
+                "be18caf2-e4dc-4b40-ac83-df38783326a4",
+            "Greek Yogurt" to
+                "d6c38010-cf35-4f8d-b57d-63dcb58bd181",
+            "Chia Seeds" to
+                "62d7b83c-621c-4ca5-ae2f-2db9e15609c0",
+            "Extra Fruits" to
+                "c2fb2121-94d9-4458-ab10-e02e8b943d62",
+            "Oat Milk" to
+                "61674fe6-31a9-4f7d-b584-6f5af07327a3",
+            "Orange Cookie" to
+                "3b65eff6-51f1-4512-832f-a1559416ae5c",
+            "Coffee" to
+                "70ed9f7e-1e09-4008-8d05-29bcfd413a52",
+            "OSC Only Coffee" to
+                "95a1d481-9589-4930-898e-2eb713a2d375",
+            "Ajax Exclusive Coffee" to
+                "9ffb1123-05c1-4753-883c-99350d15a274"
+        )
+
+        val prettyJson = Json {
+            prettyPrint = true
+            prettyPrintIndent = "  "
+        }
+
+        val results = linkedMapOf<String, JsonObject>()
+
+        println("========== ALL TEN CAD PRODUCTS ==========")
+
+        products.forEach { (label, productId) ->
+            val response = transport.get(
+                transport.productUri(config.businessId, productId),
+                authorization
+            )
+
+            println("PRODUCT: $label | HTTP ${response.statusCode}")
+
+            assertEquals(
+                200,
+                response.statusCode,
+                "Unable to retrieve $label"
+            )
+
+            val product = parseObject(
+                response.body,
+                "$label complete product"
+            ) ?: error("Invalid product JSON: $label")
+
+            assertEquals(
+                productId,
+                primitive(product, "id"),
+                "Product identity mismatch: $label"
+            )
+
+            results[label] = product
+
+            println("FULL PRODUCT JSON: $label")
+            println(
+                prettyJson.encodeToString(
+                    JsonElement.serializer(),
+                    product
+                )
+            )
+        }
+
+        println()
+        println("========== COMPARISON SUMMARY ==========")
+
+        val fields = listOf(
+            "createdAt",
+            "updatedAt",
+            "source",
+            "externalId",
+            "isCustomPrice",
+            "isTrackInventory",
+            "isTrackInventoryExternal",
+            "type",
+            "status",
+            "businessId",
+            "storeId"
+        )
+
+        results.forEach { (name, product) ->
+            val price = product["price"]
+            val currency = observedCurrency(price, "\$.price").value
+
+            println()
+            println("PRODUCT: $name")
+            println("CURRENCY: ${currency ?: "ABSENT"}")
+            println("AMOUNT: ${priceAmount(price) ?: "ABSENT"}")
+
+            fields.forEach { field ->
+                val value = product[field]
+
+                println(
+                    "$field = " +
+                        if (value == null) "ABSENT" else value.toString()
+                )
+            }
+
+            println(
+                "ROOT FIELDS = " +
+                    product.keys.sorted().joinToString(", ")
+            )
+        }
+
+        println()
+        println("========== COMPARISON AGAINST LEMONADE ==========")
+
+        val lemonade = results.getValue("Lemonade")
+
+        results.forEach { (name, product) ->
+            if (name == "Lemonade") return@forEach
+
+            val lemonadeKeys = lemonade.keys
+            val productKeys = product.keys
+
+            val additionalFields =
+                (productKeys - lemonadeKeys).sorted()
+
+            val missingFields =
+                (lemonadeKeys - productKeys).sorted()
+
+            println()
+            println("PRODUCT: $name")
+            println("Same root field set: ${lemonadeKeys == productKeys}")
+            println("Fields additional to Lemonade: $additionalFields")
+            println("Fields missing versus Lemonade: $missingFields")
+        }
+
+        println()
+        println("========== CAD PRODUCT FIELD STATISTICS ==========")
+
+        fun countPresent(field: String): Int =
+            results.values.count {
+                it.containsKey(field) && it[field] != JsonNull
+            }
+
+        fun countTrue(field: String): Int =
+            results.values.count {
+                (it[field] as? JsonPrimitive)?.contentOrNull == "true"
+            }
+
+        println("Total products: ${results.size}")
+        println("externalId PRESENT: ${countPresent("externalId")}")
+        println("externalId ABSENT: ${results.size - countPresent("externalId")}")
+        println(
+            "isTrackInventoryExternal TRUE: " +
+                countTrue("isTrackInventoryExternal")
+        )
+        println(
+            "isTrackInventory PRESENT: " +
+                countPresent("isTrackInventory")
+        )
+        println(
+            "isCustomPrice PRESENT: " +
+                countPresent("isCustomPrice")
+        )
+
+        val currencies = results.values.groupingBy {
+            observedCurrency(it["price"], "\$.price").value ?: "ABSENT"
+        }.eachCount()
+
+        println("Currency distribution: $currencies")
+
+        println()
+        println("========== CONCLUSION DATA ==========")
+
+        results.forEach { (name, product) ->
+            val currency = observedCurrency(
+                product["price"],
+                "\$.price"
+            ).value
+
+            println(
+                "$name | currency=$currency" +
+                    " | externalId=${if (product.containsKey("externalId")) "PRESENT" else "ABSENT"}" +
+                    " | externalInventory=${product["isTrackInventoryExternal"] ?: "ABSENT"}" +
+                    " | createdAt=${primitive(product, "createdAt") ?: "ABSENT"}" +
+                    " | source=${primitive(product, "source") ?: "ABSENT"}"
+            )
+        }
+
+        println("Diagnostic complete. Ten product GET requests only.")
+    }
+
+
+    
+    
+    private fun inspectEntireTestLabCatalogCurrency(
+        catalogs: List<CatalogInspection>,
+        config: ProductionConfig,
+        transport: PoyntCloudHttpTransport,
+        authorization: String
+    ) {
+        println("=== FULL TEST LAB CATALOG CURRENCY AUDIT ===")
+
+        val assignedCatalogs = catalogs.filter {
+            it.storeId == config.storeId && it.status == "FOUND"
+        }
+
+        val paginatedProducts = mutableMapOf<String, JsonObject>()
+        var offset = 0
+        var completed = false
+
+        // Read the business-wide product listing.
+        repeat(50) {
+            if (completed) return@repeat
+
+            val response = transport.get(
+                transport.productsUri(config.businessId, offset),
+                authorization
+            )
+
+            if (response.statusCode != 200) {
+                println("Products API failed: HTTP ${response.statusCode}")
+                return
+            }
+
+            val root = parseObject(response.body, "Products page") ?: return
+            val items = (root["products"] ?: root["items"]) as? JsonArray
+                ?: return
+
+            items.filterIsInstance<JsonObject>().forEach { product ->
+                primitive(product, "id")?.let { id ->
+                    paginatedProducts[id] = product
+                }
+            }
+
+            offset += items.size
+            if (items.size < 100) completed = true
+        }
+
+        println("Business products retrieved: ${paginatedProducts.size}")
+        if (!completed) {
+            println("WARNING: Products pagination incomplete; comparison is partial")
+        }
+
+        val allEntries = assignedCatalogs.flatMap { catalog ->
+            catalog.products.map { product -> catalog to product }
+        }
+
+        println("Catalog entries inspected: ${allEntries.size}")
+        println("Distinct product IDs: ${allEntries.map { it.second.id }.distinct().size}")
+
+        assignedCatalogs.forEach { catalog ->
+            println("=== CATALOG: ${safe(catalog.catalogName)} ===")
+
+            val products = catalog.products.sortedWith(
+                compareBy<CatalogProduct> { it.name.orEmpty().lowercase() }
+                    .thenBy { it.sku }
+                    .thenBy { it.id }
+            )
+
+            val counts = products.groupingBy {
+                it.currency?.uppercase() ?: "MISSING"
+            }.eachCount()
+
+            println("Total entries: ${products.size}")
+            println("Currency distribution: $counts")
+
+            products.forEach { item ->
+                val direct = paginatedProducts[item.id]
+                val variant = if (item.variantId != null) {
+                    (direct?.get("variants") as? JsonArray)
+                        ?.filterIsInstance<JsonObject>()
+                        ?.firstOrNull {
+                            primitive(it, "id") == item.variantId
+                        }
+                } else null
+
+                val priceNode = when {
+                    direct == null -> null
+                    item.variantId == null -> direct["price"]
+                    variant != null -> variant["price"] ?: direct["price"]
+                    else -> null
+                }
+
+                val apiAmount = priceAmount(priceNode)
+                val apiCurrency = if (priceNode != null) {
+                    observedCurrency(priceNode, "\$.price").value
+                } else null
+
+                val result = when {
+                    direct == null -> "NOT_FOUND_IN_BUSINESS_PRODUCTS"
+                    item.variantId != null && variant == null ->
+                        "VARIANT_NOT_VERIFIED"
+                    item.currency == null || apiCurrency == null ->
+                        "CURRENCY_NOT_EXPOSED"
+                    !item.currency.equals(apiCurrency, ignoreCase = true) ->
+                        "CURRENCY_MISMATCH"
+                    item.priceMinor != apiAmount ->
+                        "PRICE_MISMATCH"
+                    else -> "MATCH"
+                }
+
+                println(
+                    "PRODUCT | ${safe(item.name)}" +
+                        " | SKU=${safe(item.sku)}" +
+                        " | ID=${item.id}" +
+                        " | VARIANT=${safe(item.variantId)}" +
+                        " | CATALOG=${item.priceMinor ?: "NA"} ${safe(item.currency)}" +
+                        " | API=${apiAmount ?: "NA"} ${safe(apiCurrency)}" +
+                        " | RESULT=$result"
+                )
+            }
+        }
+
+        val unique = allEntries.distinctBy {
+            it.second.id to it.second.variantId
+        }
+
+        println("=== OVERALL CURRENCY SUMMARY ===")
+
+        unique.groupBy {
+            it.second.currency?.uppercase() ?: "MISSING"
+        }.toSortedMap().forEach { (currency, products) ->
+            println("$currency: ${products.size} distinct product/variant entries")
+        }
+
+        val conflictingIds = allEntries.groupBy { it.second.id }
+            .filterValues { entries ->
+                entries.mapNotNull {
+                    it.second.currency?.uppercase()
+                }.distinct().size > 1
+            }
+
+        println("Cross-catalog currency conflicts: ${conflictingIds.size}")
+
+        conflictingIds.forEach { (id, entries) ->
+            println(
+                "CONFLICT | ID=$id | " +
+                    entries.joinToString(" | ") {
+                        "${safe(it.first.catalogName)}:" +
+                            "${safe(it.second.currency)}"
+                    }
+            )
+        }
+
+        println("=== END FULL CATALOG CURRENCY AUDIT ===")
+    }
+
+    
+    private fun inspectCadProductComparison(
+        catalogs: List<CatalogInspection>,
+        config: ProductionConfig,
+        transport: PoyntCloudHttpTransport,
+        authorization: String
+    ) {
+        println("=== Poynt USD versus CAD product comparison (GET only) ===")
+
+        val blueberryCatalogs = catalogs.filter { catalog ->
+            catalog.storeId == config.storeId &&
+                catalog.status == "FOUND" &&
+                catalog.products.any {
+                    it.id == BLUEBERRY_CHEESECAKE_PRODUCT_ID
+                }
+        }
+
+        if (blueberryCatalogs.isEmpty()) {
+            println("No verified Blueberry Cheesecake catalog found")
+            return
+        }
+
+        val candidates = blueberryCatalogs.flatMap { catalog ->
+            catalog.products
+                .filter { product ->
+                    product.id != BLUEBERRY_CHEESECAKE_PRODUCT_ID &&
+                        product.variantId == null &&
+                        product.currency.equals("CAD", ignoreCase = true) &&
+                        product.priceMinor != null
+                }
+                .map { catalog to it }
+        }.distinctBy { (_, product) -> product.id }
+
+        println("CAD product candidates found: ${candidates.size}")
+
+        if (candidates.isEmpty()) {
+            println("No explicit CAD-priced product found in the same catalogs")
+            println("Cannot establish a CAD product comparison from these catalogs")
+            return
+        }
+
+        candidates.take(10).forEach { (catalog, product) ->
+            println(
+                "CAD candidate: name=${safe(product.name)}, " +
+                    "SKU=${safe(product.sku)}, " +
+                    "catalog=${safe(catalog.catalogName)}, " +
+                    "amount=${product.priceMinor}, " +
+                    "currency=${product.currency}"
+            )
+        }
+
+        // Verify up to five CAD candidates against the individual Product API.
+        candidates.take(5).forEach { (catalog, product) ->
+            if (!product.id.matches(Regex("[A-Za-z0-9_-]{1,150}"))) {
+                println("CAD candidate skipped: invalid product ID format")
+                return@forEach
+            }
+
+            val response = transport.get(
+                transport.productUri(config.businessId, product.id),
+                authorization
+            )
+
+            println(
+                "Product ${safe(product.name)} direct GET HTTP ${response.statusCode}"
+            )
+
+            if (response.statusCode != 200) return@forEach
+
+            val direct = parseObject(response.body, "CAD candidate product")
+                ?: return@forEach
+
+            if (primitive(direct, "id") != product.id) {
+                println("Direct product identity mismatch")
+                return@forEach
+            }
+
+            val directPrice = direct["price"]
+            val directCurrency = observedCurrency(directPrice, "\$.price")
+
+            println("Product: ${safe(product.name)}")
+            println("Catalog: ${safe(catalog.catalogName)}")
+            println("Catalog price: ${product.priceMinor} ${safe(product.currency)}")
+            println(
+                "Direct API price: ${priceAmount(directPrice) ?: "NOT_EXPOSED"} " +
+                    safe(directCurrency.value)
+            )
+
+            val result = when {
+                !directCurrency.value.equals("CAD", ignoreCase = true) ->
+                    "CURRENCY_MISMATCH"
+                priceAmount(directPrice) != product.priceMinor ->
+                    "AMOUNT_MISMATCH"
+                else -> "CAD_CONFIRMED_IN_BOTH_ENDPOINTS"
+            }
+
+            println("Comparison result: $result")
+            println("Creation method: NOT_VERIFIED_FROM_API")
+        }
     }
 
     @Test

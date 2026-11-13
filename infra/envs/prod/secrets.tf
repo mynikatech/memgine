@@ -60,6 +60,17 @@ resource "aws_secretsmanager_secret" "poynt_cloud_app" {
   tags = local.lambda_tags
 }
 
+resource "aws_secretsmanager_secret" "poynt_test_lab_cloud_app" {
+  name        = "memgine/prod/poynt-test-lab/cloud-app"
+  description = "Poynt Production Test Lab private key for Memgine PROD"
+  tags        = local.lambda_tags
+}
+
+import {
+  to = aws_secretsmanager_secret.poynt_test_lab_cloud_app
+  id = "arn:aws:secretsmanager:ca-central-1:482762107384:secret:memgine/prod/poynt-test-lab/cloud-app-a96gHC"
+}
+
 resource "aws_secretsmanager_secret" "poynt_payment_bridge_callback" {
   name        = "memgine/prod/poynt/payment-bridge-callback"
   description = "Poynt Payment Bridge callback authentication value for Memgine PROD"

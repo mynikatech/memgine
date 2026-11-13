@@ -15,6 +15,12 @@ import io.ktor.server.routing.route
 
 fun Route.demoCustomerRoutes(service: DemoCustomerService) {
     route("/platform/demo-customers") {
+        get {
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 20
+            val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+            val search = call.request.queryParameters["search"]
+            call.respond(ApiResponse.success(service.list(search, limit, offset, call.authenticatedPrincipal().userId), call.callId))
+        }
         get("/lookup") {
             val phone = call.request.queryParameters["phone"] ?: throw BadRequestException("Phone is required")
             call.respond(ApiResponse.success(service.lookup(phone, call.authenticatedPrincipal().userId), call.callId))

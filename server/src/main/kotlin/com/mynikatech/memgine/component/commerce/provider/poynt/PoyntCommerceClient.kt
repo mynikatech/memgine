@@ -178,6 +178,7 @@ class PoyntAuthenticatedCatalogClient(
     fun productUri(businessId: String, productId: String): URI = transport.productUri(businessId, productId)
     fun productsUri(businessId: String, offset: Int): URI = transport.productsUri(businessId, offset)
     fun catalogFullUri(businessId: String, catalogId: String): URI = transport.catalogFullUri(businessId, catalogId)
+    fun storeUri(businessId: String, storeId: String): URI = transport.storeUri(businessId, storeId)
 }
 
 /** Authenticated Poynt Cloud Order boundary. It does not perform Commerce orchestration or persistence. */

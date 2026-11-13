@@ -306,9 +306,7 @@ class PlatformPoyntPaymentService(
 
     /** Temporary LOCAL/DEV operational diagnostic. It never persists or returns sensitive provider data. */
     fun storesDiagnostic(integrationId: String, actorUserId: String): List<PoyntStoreDiagnosticDto> {
-        if (!diagnosticsEnabled) {
-            throw BadRequestException("Poynt stores diagnostic is disabled")
-        }
+        requirePoyntDiagnosticsEnabled("Poynt stores diagnostic is disabled")
         val row = sql.get(integrationId, actorUserId)
             ?: throw BadRequestException("Poynt payment configuration not found")
         val businessId = row.providerBusinessId?.trim()?.takeIf { it.isNotEmpty() }
@@ -341,9 +339,7 @@ class PlatformPoyntPaymentService(
         integrationId: String,
         actorUserId: String
     ): PoyntApplePayRegistrationDiagnosticDto {
-        if (!diagnosticsEnabled) {
-            throw BadRequestException("Poynt Apple Pay registration diagnostic is disabled")
-        }
+        requirePoyntDiagnosticsEnabled("Poynt Apple Pay registration diagnostic is disabled")
         val row = sql.get(integrationId, actorUserId)
             ?: throw BadRequestException("Poynt payment configuration not found")
         val businessId = row.providerBusinessId?.trim()?.takeIf { it.isNotEmpty() }
@@ -387,9 +383,7 @@ class PlatformPoyntPaymentService(
         integrationId: String,
         actorUserId: String
     ): String {
-        if (!diagnosticsEnabled) {
-            throw BadRequestException("Poynt Apple Pay domain association diagnostic is disabled")
-        }
+        requirePoyntDiagnosticsEnabled("Poynt Apple Pay domain association diagnostic is disabled")
         val row = sql.get(integrationId, actorUserId)
             ?: throw BadRequestException("Poynt payment configuration not found")
         val businessId = row.providerBusinessId?.trim()?.takeIf { it.isNotEmpty() }
@@ -431,7 +425,6 @@ class PlatformPoyntPaymentService(
         integrationId: String,
         actorUserId: String
     ): PoyntApplePayReadinessDto {
-        requireApplePayReadinessEnabled()
         return applePayReadiness(applePayContext(integrationId, actorUserId))
     }
 
@@ -440,7 +433,6 @@ class PlatformPoyntPaymentService(
      * credentials never leave the backend.
      */
     fun applePayConfiguration(integrationId: String, actorUserId: String): PoyntApplePayConfigurationDto {
-        requireApplePayReadinessEnabled()
         val context = applePayContext(integrationId, actorUserId)
         val artifact = sql.findApplePayArtifact(providerEnvironmentValue(), context.businessId, actorUserId)
         val readiness = applePayReadiness(context)
@@ -466,7 +458,6 @@ class PlatformPoyntPaymentService(
 
     /** Reuses verified private S3 evidence when present; otherwise retrieves a new immutable candidate. */
     fun retrieveOrReuseApplePayAssociation(integrationId: String, actorUserId: String): PoyntApplePayArtifactDto {
-        requireApplePayReadinessEnabled()
         val context = applePayContext(integrationId, actorUserId)
         val existing = sql.findApplePayArtifact(providerEnvironmentValue(), context.businessId, actorUserId)
         if (existing?.status == "APPROVED" &&
@@ -479,12 +470,10 @@ class PlatformPoyntPaymentService(
 
     /** Explicit Poynt GET. A changed provider response becomes a candidate and never replaces an approved artifact. */
     fun refreshApplePayAssociation(integrationId: String, actorUserId: String): PoyntApplePayArtifactDto {
-        requireApplePayReadinessEnabled()
         return fetchAndStoreApplePayAssociation(applePayContext(integrationId, actorUserId), actorUserId)
     }
 
     fun approveApplePayAssociation(integrationId: String, artifactId: String, actorUserId: String): PoyntApplePayArtifactDto {
-        requireApplePayReadinessEnabled()
         val context = applePayContext(integrationId, actorUserId)
         val artifact = sql.getApplePayArtifact(artifactId, providerEnvironmentValue(), context.businessId, actorUserId)
             ?: throw BadRequestException("No Apple Pay association artifact is available")
@@ -498,7 +487,6 @@ class PlatformPoyntPaymentService(
      * unverifiable endpoint is persisted as such and is never reported active.
      */
     fun publishAndVerifyApplePayAssociation(integrationId: String, artifactId: String, actorUserId: String): PoyntApplePayReadinessDto {
-        requireApplePayReadinessEnabled()
         val context = applePayContext(integrationId, actorUserId)
         val artifact = sql.getApplePayArtifact(artifactId, providerEnvironmentValue(), context.businessId, actorUserId)
             ?: throw BadRequestException("No approved Apple Pay association artifact is available")
@@ -515,7 +503,6 @@ class PlatformPoyntPaymentService(
     }
 
     fun setApplePayCapability(integrationId: String, enabled: Boolean, actorUserId: String): PoyntApplePayConfigurationDto {
-        requireApplePayReadinessEnabled()
         val context = applePayContext(integrationId, actorUserId)
         val readiness = applePayReadiness(context)
         if (enabled && readiness.status != "READY") {
@@ -852,16 +839,15 @@ class PlatformPoyntPaymentService(
         )
     }
 
-    private fun requireApplePayReadinessEnabled() {
-        if (!diagnosticsEnabled || environment.lowercase() !in setOf("local", "dev", "development")) {
-            throw BadRequestException("Poynt Apple Pay readiness is disabled")
+    private fun requireApplePayRegistrationEnabled() {
+        if (!applePayRegistrationEnabled) {
+            throw BadRequestException("Poynt Apple Pay registration is disabled")
         }
     }
 
-    private fun requireApplePayRegistrationEnabled() {
-        requireApplePayReadinessEnabled()
-        if (!applePayRegistrationEnabled) {
-            throw BadRequestException("Poynt Apple Pay registration is disabled")
+    private fun requirePoyntDiagnosticsEnabled(message: String) {
+        if (!diagnosticsEnabled || environment.lowercase() !in setOf("local", "dev", "development")) {
+            throw BadRequestException(message)
         }
     }
 
@@ -887,11 +873,7 @@ class PlatformPoyntPaymentService(
             storeId: String,
             actorUserId: String
         ): List<PoyntDeviceDiagnosticDto> {
-            if (!diagnosticsEnabled) {
-                throw BadRequestException(
-                    "Poynt devices diagnostic is disabled"
-                )
-            }
+            requirePoyntDiagnosticsEnabled("Poynt devices diagnostic is disabled")
 
             val row = sql.get(integrationId, actorUserId)
                 ?: throw BadRequestException(
