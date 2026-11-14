@@ -1,5 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useMemo } from "react";
 import { View } from "react-native";
+import Svg, { Path, Rect } from "react-native-svg";
 import { toQR } from "toqr";
 
 import { useTheme } from "@/src/providers";
@@ -7,8 +9,14 @@ import { useTheme } from "@/src/providers";
 import { Text } from "../Text";
 
 /**
- * Uses the existing QR presentation surface. When a value is supplied it
- * renders a scannable QR matrix; without one it preserves the legacy icon.
+ * Renders a scannable QR code using SVG.
+ *
+ * A single SVG coordinate system prevents module alignment
+ * and flex-wrap rounding differences across Web, Android
+ * and iOS.
+ *
+ * The original QR payload and generation algorithm are
+ * preserved.
  */
 type QrPlaceholderProps = {
   size?: number;
@@ -17,6 +25,8 @@ type QrPlaceholderProps = {
   testID?: string;
 };
 
+const QR_QUIET_ZONE = 4;
+
 export function QrPlaceholder({
   size = 180,
   caption,
@@ -24,14 +34,52 @@ export function QrPlaceholder({
   testID,
 }: QrPlaceholderProps) {
   const theme = useTheme();
-  const matrix = value ? toQR(value) : null;
-  const dimension = matrix ? Math.sqrt(matrix.length) : 0;
-  const quietZone = matrix ? 4 : 0;
-  const moduleSize = matrix ? size / (dimension + quietZone * 2) : 0;
+
+  const qr = useMemo(() => {
+    if (!value) {
+      return null;
+    }
+
+    const matrix = toQR(value);
+    const dimension = Math.sqrt(matrix.length);
+
+    if (!Number.isInteger(dimension) || dimension <= 0) {
+      return null;
+    }
+
+    const totalDimension = dimension + QR_QUIET_ZONE * 2;
+
+    const commands: string[] = [];
+
+    for (let row = 0; row < dimension; row++) {
+      for (let col = 0; col < dimension; col++) {
+        const index = row * dimension + col;
+
+        if (matrix[index]) {
+          const x = col + QR_QUIET_ZONE;
+          const y = row + QR_QUIET_ZONE;
+
+          commands.push(`M${x} ${y}h1v1h-1z`);
+        }
+      }
+    }
+
+    return {
+      totalDimension,
+      path: commands.join(" "),
+    };
+  }, [value]);
+
+  // Allow for the surrounding one-pixel border.
+  const renderSize = Math.max(1, size - 2);
+
   return (
     <View
       testID={testID}
-      style={{ alignItems: "center", gap: theme.spacing.sm }}
+      style={{
+        alignItems: "center",
+        gap: theme.spacing.sm,
+      }}
     >
       <View
         style={{
@@ -45,27 +93,31 @@ export function QrPlaceholder({
           justifyContent: "center",
         }}
       >
-        {matrix ? (
+        {qr ? (
           <View
+            accessible
             accessibilityLabel="Redemption QR code"
             style={{
-              width: size,
-              height: size,
-              padding: quietZone * moduleSize,
-              flexDirection: "row",
-              flexWrap: "wrap",
+              width: renderSize,
+              height: renderSize,
+              backgroundColor: "#FFFFFF",
             }}
           >
-            {Array.from(matrix).map((module, index) => (
-              <View
-                key={index}
-                style={{
-                  width: moduleSize,
-                  height: moduleSize,
-                  backgroundColor: module ? "#000000" : "#FFFFFF",
-                }}
+            <Svg
+              width={renderSize}
+              height={renderSize}
+              viewBox={`0 0 ${qr.totalDimension} ${qr.totalDimension}`}
+            >
+              <Rect
+                x={0}
+                y={0}
+                width={qr.totalDimension}
+                height={qr.totalDimension}
+                fill="#FFFFFF"
               />
-            ))}
+
+              <Path d={qr.path} fill="#000000" />
+            </Svg>
           </View>
         ) : (
           <Ionicons
@@ -75,6 +127,7 @@ export function QrPlaceholder({
           />
         )}
       </View>
+
       {caption ? (
         <Text variant="caption" color="textMuted">
           {caption}
