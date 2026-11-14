@@ -98,6 +98,11 @@ output "app_poynt_payment_bridge_callback_secret_arn" {
   sensitive = true
 }
 
+output "app_whatsapp_delivery_ack_secret_arn" {
+  value     = aws_secretsmanager_secret.whatsapp_delivery_ack.arn
+  sensitive = true
+}
+
 output "app_database_port" {
   value = module.application_host.database_port
 }

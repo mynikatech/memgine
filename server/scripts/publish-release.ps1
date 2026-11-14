@@ -206,8 +206,9 @@ try {
     $awsRegion = Terraform-Output "app_aws_region"
     $runtimeSecretArn = Terraform-Output "app_database_runtime_secret_arn"
     $otpPepperSecretArn = Terraform-Output "app_otp_pepper_secret_arn"
-    $poyntPaymentBridgeCallbackSecretArn = if ($Environment -eq "prod") {
-        Terraform-Output "app_poynt_payment_bridge_callback_secret_arn"
+    $poyntPaymentBridgeCallbackSecretArn = Terraform-Output "app_poynt_payment_bridge_callback_secret_arn"
+    $whatsappDeliveryAckSecretArn = if ($Environment -eq "prod") {
+        Terraform-Output "app_whatsapp_delivery_ack_secret_arn"
     }
     else {
         $null
@@ -248,6 +249,11 @@ try {
     if (-not [string]::IsNullOrWhiteSpace($poyntPaymentBridgeCallbackSecretArn)) {
         $deploymentProperties += "`nMEMGINE_POYNT_PAYMENT_BRIDGE_CALLBACK_SECRET_ID=$poyntPaymentBridgeCallbackSecretArn"
     }
+
+    if (-not [string]::IsNullOrWhiteSpace($whatsappDeliveryAckSecretArn)) {
+        $deploymentProperties += "`nMEMGINE_WHATSAPP_DELIVERY_ACK_SECRET_ID=$whatsappDeliveryAckSecretArn"
+    }
+
 
     if (-not [string]::IsNullOrWhiteSpace($notificationTopicArn)) {
         $deploymentProperties += "`nMEMGINE_NOTIFICATION_EVENTS_TOPIC_ARN=$notificationTopicArn"

@@ -582,6 +582,29 @@ elif [[ -n "$legacy_dev_callback_value" ]]; then
 fi
 
 #
+# Retrieve the WhatsApp delivery ACK authentication secret.
+#
+whatsapp_ack_secret_id="${MEMGINE_WHATSAPP_DELIVERY_ACK_SECRET_ID:-}"
+whatsapp_ack_value=""
+
+if [[ -n "$whatsapp_ack_secret_id" ]]; then
+  whatsapp_ack_value="$(aws secretsmanager get-secret-value \
+    --secret-id "$whatsapp_ack_secret_id" \
+    --region "$MEMGINE_AWS_REGION" \
+    --query SecretString \
+    --output text)"
+
+  if [[ ! "$whatsapp_ack_value" =~ ^[A-Za-z0-9+/=_-]{32,}$ ]] ||
+     [[ "$whatsapp_ack_value" == "None" ]]; then
+    echo "WhatsApp ACK secret is invalid or unavailable." >&2
+    exit 1
+  fi
+elif [[ "$MEMGINE_ENVIRONMENT" == "prod" ]]; then
+  echo "PROD WhatsApp ACK secret reference is missing." >&2
+  exit 1
+fi
+
+#
 # Snapshot previous runtime configuration for automatic rollback.
 #
 rm -f "$previous_backend_env" "$previous_backend_secrets"
@@ -619,16 +642,22 @@ if [[ -n "$callback_value" ]]; then
 fi
 
 #
-# Preserve the existing DEV WhatsApp ACK credential in the
+# Install the WhatsApp ACK credential in the
 # protected runtime secrets file.
 #
-if [[ "$MEMGINE_ENVIRONMENT" == "dev" ]]; then
-  printf '%s\n' "$legacy_dev_whatsapp_ack_line" \
+if [[ -n "$whatsapp_ack_value" ]]; then
+  printf 'MEMGINE_WHATSAPP_DELIVERY_ACK_SECRET=%s\n' \
+    "$whatsapp_ack_value" \
     >> "$config_root/backend-secrets.env"
 
-  unset legacy_dev_whatsapp_ack_line
+  unset whatsapp_ack_value
+
+elif [[ "$MEMGINE_ENVIRONMENT" == "dev" ]]; then
+  printf '%s\n' "$legacy_dev_whatsapp_ack_line" \
+    >> "$config_root/backend-secrets.env"
 fi
 
+unset legacy_dev_whatsapp_ack_line
 chmod 0600 "$config_root/backend-secrets.env"
 
 #

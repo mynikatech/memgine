@@ -33,6 +33,7 @@ module "application_host" {
     aws_secretsmanager_secret.poynt_cloud_app.arn,
     aws_secretsmanager_secret.poynt_test_lab_cloud_app.arn,
     aws_secretsmanager_secret.poynt_payment_bridge_callback.arn,
+    aws_secretsmanager_secret.whatsapp_delivery_ack.arn,
   ]
 
   tags = {

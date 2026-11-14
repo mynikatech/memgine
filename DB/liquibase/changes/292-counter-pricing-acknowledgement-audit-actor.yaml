@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 292-counter-pricing-acknowledgement-audit-actor
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/292-counter-pricing-acknowledgement-audit-actor.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

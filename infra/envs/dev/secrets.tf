@@ -39,3 +39,10 @@ resource "aws_secretsmanager_secret" "poynt_ote_cloud_app" {
   description = "Memgine DEV Poynt OTE Cloud Application private key"
   tags        = local.lambda_tags
 }
+
+resource "aws_secretsmanager_secret" "poynt_payment_bridge_callback" {
+  name        = "memgine/dev/poynt/payment-bridge-callback"
+  description = "Poynt Payment Bridge callback authentication value for Memgine DEV"
+
+  tags = local.lambda_tags
+}

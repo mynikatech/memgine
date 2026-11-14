@@ -77,3 +77,15 @@ resource "aws_secretsmanager_secret" "poynt_payment_bridge_callback" {
 
   tags = local.lambda_tags
 }
+
+resource "aws_secretsmanager_secret" "whatsapp_delivery_ack" {
+  name        = "memgine/prod/whatsapp-delivery-ack"
+  description = "WhatsApp delivery acknowledgement authentication secret for Memgine PROD"
+
+  tags = local.lambda_tags
+}
+
+resource "aws_secretsmanager_secret_version" "whatsapp_delivery_ack" {
+  secret_id     = aws_secretsmanager_secret.whatsapp_delivery_ack.id
+  secret_string = var.whatsapp_delivery_ack_secret
+}

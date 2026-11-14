@@ -337,3 +337,4 @@ docs/~WRL0645.tmp
 
 # Local Kotlin compiler session files - exclude from EAS uploads
 /.kotlin/
+/frontend/dist-web/

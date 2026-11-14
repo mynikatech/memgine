@@ -147,7 +147,10 @@ type PendingCounterTerminalPayment = {
   pollingWindowStartedAt: number;
 };
 
-type PurchaseFlowType = "CUSTOMER_SELF_SERVICE" | "STAFF_ASSISTED";
+type PurchaseFlowType =
+  | "CUSTOMER_SELF_SERVICE"
+  | "COUNTER_OTP"
+  | "STAFF_ASSISTED";
 
 type PendingCustomerCollectPayment = {
   organizationId: string;
@@ -377,21 +380,42 @@ function JoinFlow() {
 
     */
 
-  const purchaseFlowType: PurchaseFlowType =
-    params.purchaseFlowType === "STAFF_ASSISTED" ||
-    params.source === "STAFF_ASSISTED"
-      ? "STAFF_ASSISTED"
-      : "CUSTOMER_SELF_SERVICE";
+  /*
+   * Counter purchases support two authorization methods:
+   *
+   * COUNTER_OTP:
+   * Customer authorizes the purchase using OTP.
+   *
+   * STAFF_ASSISTED:
+   * Authorized Counter staff confirms the purchase without customer OTP.
+   *
+   * Both use the Counter checkout workflow.
+   */
 
-  const isStaffSale = purchaseFlowType === "STAFF_ASSISTED";
+  const purchaseFlowType: PurchaseFlowType =
+    params.purchaseFlowType === "COUNTER_OTP"
+      ? "COUNTER_OTP"
+      : params.purchaseFlowType === "STAFF_ASSISTED" ||
+          params.source === "STAFF_ASSISTED"
+        ? "STAFF_ASSISTED"
+        : params.source === "COUNTER"
+          ? "COUNTER_OTP"
+          : "CUSTOMER_SELF_SERVICE";
+
+  // Both Counter authorization methods use the staff-initiated
+  // checkout workflow, rather than Customer Self-Service.
+  const isStaffSale =
+    purchaseFlowType === "COUNTER_OTP" || purchaseFlowType === "STAFF_ASSISTED";
 
   const suppliedCustomerId = params.customerId ?? "";
+
   const customerId =
     suppliedCustomerId || (!isStaffSale ? (session?.userId ?? "") : "");
 
-  // Purchase OTP is not required for authorized Staff-Assisted checkout.
+  // Only explicitly selected Staff-Assisted purchases
+  // for existing customers may bypass customer OTP.
   const isStaffAssistedPurchase =
-    isStaffSale &&
+    purchaseFlowType === "STAFF_ASSISTED" &&
     Boolean(customerId) &&
     params.purchaseMode === "STAFF_ASSISTED";
 
