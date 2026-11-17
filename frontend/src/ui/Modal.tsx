@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { Modal as RNModal, Pressable, ScrollView, View } from "react-native";
+import { KeyboardAvoidingView, Modal as RNModal, Platform, Pressable, ScrollView, View } from "react-native";
 
 import { useTheme } from "@/src/providers";
 
@@ -56,14 +56,14 @@ export function Modal({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <View
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{
           flex: 1,
-          backgroundColor: theme.colors.overlay,
           justifyContent: "center",
-          padding: theme.spacing.lg,
         }}
       >
+        <View style={{ flex: 1, backgroundColor: theme.colors.overlay, justifyContent: "center", padding: theme.spacing.lg }}>
         <View
           testID={testID}
           style={[
@@ -81,14 +81,15 @@ export function Modal({
         >
           {header}
           {scrollable ? (
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {children}
             </ScrollView>
           ) : (
             children
           )}
         </View>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </RNModal>
   );
 }

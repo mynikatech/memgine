@@ -13,6 +13,10 @@ data class OtpChallengeRow(
 )
 
 data class OtpDeliveryRecipient(var userId: String = "", var email: String? = null)
+data class OtpPhoneChangeContextRow(
+    var destination: String = "", var purpose: String = "", var status: String = "",
+    var contextJson: String = "{}"
+)
 
 /** Read-only eligibility lookup for a server-validated business OTP context. */
 interface OtpOrganizationSql {
@@ -74,4 +78,8 @@ interface OtpSql {
 
     @SqlQuery("SELECT otp_user_delivery_mode(:userId)")
     fun userDeliveryMode(@Bind("userId") userId: String): String
+
+    @SqlQuery("SELECT * FROM otp_get_phone_change_context(:challengeId, :userId)")
+    @RegisterBeanMapper(OtpPhoneChangeContextRow::class)
+    fun phoneChangeContext(@Bind("challengeId") challengeId: String, @Bind("userId") userId: String): OtpPhoneChangeContextRow?
 }

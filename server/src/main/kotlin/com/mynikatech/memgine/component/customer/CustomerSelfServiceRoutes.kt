@@ -31,6 +31,35 @@ private fun ApplicationCall.userId(): String = authenticatedPrincipal().userId
 /** Customer use cases are separate from organization administration. */
 fun Route.customerSelfServiceRoutes(service: CustomerService, redemptionService: RedemptionService) {
     route("/customer") {
+        get("/profile") {
+            call.respond(ApiResponse.success(service.selfProfile(call.userId()), call.callId))
+        }
+        put("/profile") {
+            call.respond(ApiResponse.success(
+                service.saveSelfProfile(call.userId(), call.receive<CustomerService.SaveSelfProfileRequest>()), call.callId
+            ))
+        }
+        post("/profile/phone-change/current/request") {
+            call.respond(ApiResponse.success(
+                service.beginPhoneChange(
+                    call.authenticatedPrincipal(), call.receive<CustomerService.PhoneChangeStartRequest>()
+                ), call.callId
+            ))
+        }
+        post("/profile/phone-change/current/verify") {
+            call.respond(ApiResponse.success(
+                service.verifyCurrentPhoneAndRequestReplacement(
+                    call.authenticatedPrincipal(), call.receive<CustomerService.PhoneChangeOldVerifyRequest>()
+                ), call.callId
+            ))
+        }
+        post("/profile/phone-change/replacement/confirm") {
+            call.respond(ApiResponse.success(
+                service.confirmReplacementPhone(
+                    call.authenticatedPrincipal(), call.receive<CustomerService.PhoneChangeConfirmRequest>()
+                ), call.callId
+            ))
+        }
         get("/home/bootstrap") {
             call.respond(ApiResponse.success(service.homeBootstrap(call.userId()), call.callId))
         }

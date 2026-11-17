@@ -18,7 +18,11 @@ data class AuthenticatedPrincipal(
     val displayName: String,
     val expiresAt: String,
     val access: List<AuthAccessContextDto>,
-    val posContext: PosSessionContext? = null
+    val posContext: PosSessionContext? = null,
+    /** Server-resolved only; never supplied by a client. */
+    val sessionId: String? = null,
+    /** Present only when this exact persisted session was created after OTP verification. */
+    val otpAuthenticatedAt: String? = null,
 ) {
     fun has(capability: String, organizationId: String? = null): Boolean = access.any {
         it.capabilities.contains(capability) &&

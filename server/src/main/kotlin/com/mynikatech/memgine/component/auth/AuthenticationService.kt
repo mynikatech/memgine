@@ -84,7 +84,7 @@ class AuthenticationService(
         if (access.none { context -> context.capabilities.any { it in WEB_CAPABILITIES } }) {
             throw ForbiddenException("No active web workspace is available")
         }
-        return createSession(identity.userId, identity.displayName, clientIp, userAgent, access)
+        return createSession(identity.userId, identity.displayName, clientIp, userAgent, access, otpAuthenticated = true)
     }
 
     fun requestCustomerLoginOtp(request: OtpLoginRequest): OtpChallengeResponse =
@@ -104,7 +104,7 @@ class AuthenticationService(
         }
         return createSession(
             identity.userId, identity.displayName, clientIp, userAgent,
-            access(identity.userId), config.customerSessionDurationDays * 24 * 60
+            access(identity.userId), config.customerSessionDurationDays * 24 * 60, otpAuthenticated = true
         )
     }
 
@@ -120,7 +120,10 @@ class AuthenticationService(
             pos.deviceId ?: return null, pos.organizationId ?: return null,
             pos.storeId ?: return null, pos.staffId ?: return null
         ) else null
-        return AuthenticatedPrincipal(session.userId, session.displayName, session.expiresAt, access(session.userId), context)
+        return AuthenticatedPrincipal(
+            session.userId, session.displayName, session.expiresAt, access(session.userId), context,
+            session.sessionId, session.otpAuthenticatedAt
+        )
     }
 
     fun logout(token: String?, principal: AuthenticatedPrincipal): Boolean =
@@ -263,7 +266,7 @@ class AuthenticationService(
             clientIp,
             userAgent,
             emptyList(),
-            config.customerSessionDurationDays * 24 * 60
+            config.customerSessionDurationDays * 24 * 60, otpAuthenticated = true
         )
     }
 
@@ -271,18 +274,25 @@ class AuthenticationService(
     private fun createSession(
         userId: String, displayName: String, clientIp: String?, userAgent: String?,
         resolvedAccess: List<AuthAccessContextDto> = access(userId),
-        durationMinutes: Long = config.sessionDurationMinutes
+        durationMinutes: Long = config.sessionDurationMinutes,
+        otpAuthenticated: Boolean = false,
     ): CreatedAuthenticationSession {
         val tokenBytes = ByteArray(32).also(random::nextBytes)
         val token = Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes)
         val expiresAt = LocalDateTime.now(clock).plusMinutes(durationMinutes)
+        val sessionId = UUID.randomUUID().toString()
         sql.createSession(
-            UUID.randomUUID().toString(), userId, hashToken(token), expiresAt.toString(),
+            sessionId, userId, hashToken(token), expiresAt.toString(),
             clientIp?.take(64), userAgent?.take(500)
         )
+        if (otpAuthenticated) sql.markSessionOtpAuthenticated(sessionId, userId)
         return CreatedAuthenticationSession(
             token,
-            AuthenticatedPrincipal(userId, displayName, expiresAt.toString(), resolvedAccess)
+            AuthenticatedPrincipal(
+                userId, displayName, expiresAt.toString(), resolvedAccess,
+                sessionId = sessionId,
+                otpAuthenticatedAt = if (otpAuthenticated) LocalDateTime.now(clock).toString() else null,
+            )
         )
     }
 

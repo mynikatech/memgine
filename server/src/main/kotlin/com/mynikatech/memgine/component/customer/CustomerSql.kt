@@ -41,7 +41,32 @@ data class CustomerMembershipPurchaseOfferRow(
     var targetSubscriptionPlanId: String? = null,
 )
 
+data class CustomerSelfProfileRow(
+    var userId: String = "", var firstName: String = "", var middleName: String? = null,
+    var lastName: String? = null, var displayName: String? = null, var primaryEmail: String? = null,
+    var primaryPhone: String = "", var versionNo: Int = 0
+)
+
 interface CustomerSql {
+    @SqlQuery("SELECT * FROM customer_get_self_profile(:userId)")
+    @RegisterBeanMapper(CustomerSelfProfileRow::class)
+    fun selfProfile(@Bind("userId") userId: String): CustomerSelfProfileRow?
+
+    @SqlQuery("SELECT * FROM customer_save_self_profile(:userId, :firstName, :middleName, :lastName, :primaryEmail, :expectedVersion)")
+    @RegisterBeanMapper(CustomerSelfProfileRow::class)
+    fun saveSelfProfile(
+        @Bind("userId") userId: String, @Bind("firstName") firstName: String,
+        @Bind("middleName") middleName: String?, @Bind("lastName") lastName: String?,
+        @Bind("primaryEmail") primaryEmail: String?, @Bind("expectedVersion") expectedVersion: Int
+    ): CustomerSelfProfileRow?
+
+    @SqlQuery("SELECT * FROM customer_confirm_self_phone_change(:userId, :expectedOldPhone, :newPhone)")
+    @RegisterBeanMapper(CustomerSelfProfileRow::class)
+    fun confirmSelfPhoneChange(
+        @Bind("userId") userId: String, @Bind("expectedOldPhone") expectedOldPhone: String,
+        @Bind("newPhone") newPhone: String
+    ): CustomerSelfProfileRow?
+
     @SqlQuery("SELECT * FROM get_customer_discoverable_organizations()")
     fun discoverableOrganizations(): List<CustomerDiscoverableOrganizationDto>
 
@@ -53,6 +78,12 @@ interface CustomerSql {
 
     @SqlQuery("SELECT primary_phone FROM \"user\" WHERE user_id = :userId AND is_deleted = false")
     fun userPhone(@Bind("userId") userId: String): String?
+
+    @SqlQuery("SELECT EXISTS(SELECT 1 FROM \"user\" WHERE primary_phone = :phone AND NOT is_deleted AND user_id <> :userId)")
+    fun phoneAssignedToAnotherUser(
+        @Bind("phone") phone: String,
+        @Bind("userId") userId: String,
+    ): Boolean
     @SqlQuery("SELECT can_administer_organization(:organizationId, :actorUserId)")
     fun canAdminister(@Bind("organizationId") organizationId: String,
                       @Bind("actorUserId") actorUserId: String): Boolean

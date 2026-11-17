@@ -33,6 +33,10 @@ import com.mynikatech.memgine.component.organization.OrganizationService
 import com.mynikatech.memgine.component.otp.BusinessOtpService
 import com.mynikatech.memgine.component.otp.OtpPurpose
 import com.mynikatech.memgine.component.otp.OtpRequestResult
+import com.mynikatech.memgine.component.otp.OtpService
+import com.mynikatech.memgine.security.PhoneNormalizer
+import com.mynikatech.memgine.security.AuthenticatedPrincipal
+import com.mynikatech.memgine.config.AuthenticationConfig
 import com.mynikatech.memgine.component.payment.PaymentService
 import com.mynikatech.memgine.component.customerexperience.CustomerExperienceReleaseSql
 import com.mynikatech.memgine.net.dto.CustomerPurchaseOtpCompleteDto
@@ -52,6 +56,9 @@ import java.security.SecureRandom
 import com.mynikatech.memgine.component.membershipagreement.MembershipAgreementOperations
 import com.mynikatech.memgine.net.dto.AcceptMembershipAgreementDto
 import java.util.Base64
+import kotlinx.serialization.Serializable
+import java.time.Clock
+import java.time.LocalDateTime
 
 class CustomerService(
     private val sql: CustomerSql,
@@ -62,12 +69,138 @@ class CustomerService(
     private val releases: CustomerExperienceReleaseSql,
     private val devIdentityEnabled: Boolean,
     private val businessOtp: BusinessOtpService,
-    private val payments: PaymentService
+    private val payments: PaymentService,
+    private val otp: OtpService,
+    private val phoneNormalizer: PhoneNormalizer,
+    private val authenticationConfig: AuthenticationConfig,
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val membershipOfferQrRandom = SecureRandom()
     private val agreementOperations = MembershipAgreementOperations(
         sql, memberships, benefits, stores, organizations, payments
+    )
+
+    @Serializable
+    data class SelfProfileDto(
+        val userId: String, val firstName: String, val middleName: String? = null,
+        val lastName: String? = null, val displayName: String? = null,
+        val primaryEmail: String? = null, val primaryPhone: String, val versionNo: Int
+    )
+    @Serializable
+    data class SaveSelfProfileRequest(
+        val firstName: String, val middleName: String? = null, val lastName: String? = null,
+        val primaryEmail: String? = null, val versionNo: Int
+    )
+    @Serializable data class PhoneChangeStartRequest(val newPhone: String, val regionCode: String? = null)
+    @Serializable data class PhoneChangeOldVerifyRequest(val challengeId: String, val otp: String, val newPhone: String, val regionCode: String? = null)
+    @Serializable data class PhoneChangeConfirmRequest(val challengeId: String, val otp: String)
+    @Serializable data class PhoneChangeChallengeResponse(
+        val challengeId: String,
+        val expiresAt: String,
+        val resendAt: String,
+        val devCode: String? = null,
+        val requiresCurrentPhoneVerification: Boolean,
+    )
+
+    fun selfProfile(userId: String): SelfProfileDto = sql.selfProfile(userId)?.toSelfProfile()
+        ?: throw NotFoundException("Customer profile is unavailable")
+
+    fun saveSelfProfile(userId: String, request: SaveSelfProfileRequest): SelfProfileDto = try {
+        sql.saveSelfProfile(
+            userId, request.firstName.trim(), request.middleName?.trim(), request.lastName?.trim(),
+            request.primaryEmail?.trim(), request.versionNo
+        )?.toSelfProfile() ?: throw ConflictException("Customer profile was changed elsewhere; refresh and try again")
+    } catch (error: PSQLException) {
+        when (error.sqlState) {
+            "22023" -> throw BadRequestException("Invalid customer profile fields")
+            "40001" -> throw ConflictException("Customer profile was changed elsewhere; refresh and try again")
+            else -> throw error
+        }
+    }
+
+    fun beginPhoneChange(
+        principal: AuthenticatedPrincipal,
+        request: PhoneChangeStartRequest,
+    ): PhoneChangeChallengeResponse {
+        val profile = selfProfile(principal.userId)
+        val replacement = phoneNormalizer.normalize(request.newPhone, request.regionCode).e164
+        if (replacement == profile.primaryPhone) throw BadRequestException("Enter a different mobile number")
+        if (sql.phoneAssignedToAnotherUser(replacement, principal.userId)) {
+            throw ConflictException("A Memgine account already exists for this mobile number")
+        }
+
+        val requiresCurrentPhoneVerification = !hasRecentOtpAuthentication(principal)
+        val result = if (requiresCurrentPhoneVerification) {
+            otp.requestCustomerPhoneChange(
+                profile.primaryPhone, OtpPurpose.CUSTOMER_PHONE_CHANGE_OLD, principal.userId
+            )
+        } else {
+            // The current-session OTP proof is verified above; the replacement challenge still
+            // carries the current phone so final persistence remains compare-and-swap safe.
+            otp.requestCustomerPhoneChange(
+                replacement, OtpPurpose.CUSTOMER_PHONE_CHANGE_NEW, principal.userId, profile.primaryPhone
+            )
+        }
+        return PhoneChangeChallengeResponse(
+            result.challengeId, result.expiresAt, result.resendAt, result.devCode,
+            requiresCurrentPhoneVerification,
+        )
+    }
+
+    fun verifyCurrentPhoneAndRequestReplacement(
+        principal: AuthenticatedPrincipal,
+        request: PhoneChangeOldVerifyRequest,
+    ): PhoneChangeChallengeResponse {
+        val userId = principal.userId
+        val verified = otp.verifyCustomerPhoneChange(
+            request.challengeId, request.otp, OtpPurpose.CUSTOMER_PHONE_CHANGE_OLD, userId
+        )
+        val profile = selfProfile(userId)
+        if (verified.destination != profile.primaryPhone) throw BadRequestException("Mobile verification is invalid or expired")
+        val replacement = phoneNormalizer.normalize(request.newPhone, request.regionCode).e164
+        if (replacement == profile.primaryPhone) throw BadRequestException("Enter a different mobile number")
+        val result = otp.requestCustomerPhoneChange(
+            replacement, OtpPurpose.CUSTOMER_PHONE_CHANGE_NEW, userId, profile.primaryPhone
+        )
+        return PhoneChangeChallengeResponse(
+            result.challengeId, result.expiresAt, result.resendAt, result.devCode,
+            requiresCurrentPhoneVerification = false,
+        )
+    }
+
+    fun confirmReplacementPhone(principal: AuthenticatedPrincipal, request: PhoneChangeConfirmRequest): SelfProfileDto {
+        val userId = principal.userId
+        val verified = otp.verifyCustomerPhoneChange(
+            request.challengeId, request.otp, OtpPurpose.CUSTOMER_PHONE_CHANGE_NEW, userId
+        )
+        return try {
+            sql.confirmSelfPhoneChange(
+                userId,
+                verified.expectedOldPhone ?: throw BadRequestException("Mobile verification is invalid or expired"),
+                verified.destination
+            )?.toSelfProfile()
+                ?: throw ConflictException("Mobile number could not be changed; restart verification")
+        } catch (error: PSQLException) {
+            when (error.sqlState) {
+                "23505" -> throw ConflictException("A Memgine account already exists for this mobile number")
+                "40001" -> throw ConflictException("Mobile number changed; restart verification")
+                else -> throw error
+            }
+        }
+    }
+
+    private fun hasRecentOtpAuthentication(principal: AuthenticatedPrincipal): Boolean {
+        if (principal.sessionId.isNullOrBlank()) return false
+        val verifiedAt = principal.otpAuthenticatedAt?.let {
+            runCatching { LocalDateTime.parse(it.replace(' ', 'T')) }.getOrNull()
+        } ?: return false
+        val windowMinutes = authenticationConfig.recentOtpAuthenticationMinutes.coerceIn(1, 60)
+        return !verifiedAt.isBefore(LocalDateTime.now(clock).minusMinutes(windowMinutes))
+    }
+
+    private fun CustomerSelfProfileRow.toSelfProfile() = SelfProfileDto(
+        userId, firstName, middleName, lastName, displayName, primaryEmail, primaryPhone, versionNo
     )
 
     // Existing Org Admin components use this development actor until request auth is wired.

@@ -1,9 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Image, Linking, Platform, Pressable, View } from "react-native";
+import {
+  Image,
+  Linking,
+  Platform,
+  Pressable,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import type { CustomerAccountDeletionActiveSubscription } from "@/src/data/api/auth-api";
 import { CustomerSupportNotificationSettings } from "@/src/ui/domain/CustomerSupportNotificationSettings";
+import { CustomerEditProfileModal } from "@/src/ui/domain/CustomerEditProfileModal";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { Screen } from "@/src/layout";
@@ -36,6 +44,8 @@ const SUPPORT_EMAIL = "support@mynikatech.in";
 export default function Profile() {
   const router = useRouter();
   const theme = useTheme();
+  const { width } = useWindowDimensions();
+  const compactLayout = width < 640;
   const { t, locale, currency, timezone, formatDate } = useTranslation();
 
   const {
@@ -75,6 +85,8 @@ export default function Profile() {
   const [acknowledgeActiveSubscriptions, setAcknowledgeActiveSubscriptions] =
     useState(false);
   const [signOutVisible, setSignOutVisible] = useState(false);
+  const [editProfileVisible, setEditProfileVisible] = useState(false);
+  const [profileRefreshKey, setProfileRefreshKey] = useState(0);
 
   const relationships = profiles.filter((row) => row.userId === customerId);
   const customer = relationships[0];
@@ -199,6 +211,71 @@ export default function Profile() {
     }
   };
 
+  const profileActions = (
+    <View
+      style={{
+        flexDirection: "row",
+        gap: theme.spacing.sm,
+        width: compactLayout ? "100%" : undefined,
+      }}
+    >
+      <Pressable
+        testID="profile-edit"
+        accessibilityRole="button"
+        accessibilityLabel="Edit profile"
+        onPress={() => setEditProfileVisible(true)}
+        style={({ pressed }) => ({
+          flexDirection: "row",
+          flex: compactLayout ? 1 : undefined,
+          justifyContent: "center",
+          alignItems: "center",
+          gap: 4,
+          minHeight: 44,
+          paddingHorizontal: theme.spacing.sm,
+          paddingVertical: theme.spacing.sm,
+          borderWidth: 1,
+          borderColor: theme.colors.primary,
+          borderRadius: 10,
+          opacity: pressed ? theme.states.pressedOpacity : 1,
+        })}
+      >
+        <Ionicons
+          name="pencil-outline"
+          size={17}
+          color={theme.colors.primary}
+        />
+        <Text variant="caption" color="primary">
+          Edit Profile
+        </Text>
+      </Pressable>
+      <Pressable
+        testID="profile-sign-out"
+        accessibilityRole="button"
+        accessibilityLabel="Sign out of Memgine"
+        onPress={() => setSignOutVisible(true)}
+        style={({ pressed }) => ({
+          flexDirection: "row",
+          flex: compactLayout ? 1 : undefined,
+          justifyContent: "center",
+          alignItems: "center",
+          gap: 4,
+          minHeight: 44,
+          paddingHorizontal: theme.spacing.sm,
+          paddingVertical: theme.spacing.sm,
+          borderWidth: 1,
+          borderColor: theme.colors.border,
+          borderRadius: 10,
+          opacity: pressed ? theme.states.pressedOpacity : 1,
+        })}
+      >
+        <Ionicons name="log-out-outline" size={17} color={theme.colors.text} />
+        <Text variant="caption" color="text">
+          Sign Out
+        </Text>
+      </Pressable>
+    </View>
+  );
+
   return (
     <Screen
       testID="customer-profile-screen"
@@ -251,24 +328,27 @@ export default function Profile() {
               </Text>
             </View>
 
-            <View style={{ flex: 1, gap: 3 }}>
+            <View style={{ flex: 1, flexShrink: 1, gap: 3 }}>
               <Text variant="title" color="text">
                 {name || "—"}
               </Text>
-
-              {customer?.primaryEmail ? (
-                <Text variant="bodySmall" color="textMuted">
-                  {customer.primaryEmail}
-                </Text>
-              ) : null}
 
               {customer?.primaryPhone ? (
                 <Text variant="bodySmall" color="textMuted">
                   {customer.primaryPhone}
                 </Text>
               ) : null}
+
+              {customer?.primaryEmail?.trim() ? (
+                <Text variant="bodySmall" color="textMuted">
+                  {customer.primaryEmail.trim()}
+                </Text>
+              ) : null}
             </View>
+            {!compactLayout ? profileActions : null}
           </View>
+
+          {compactLayout ? profileActions : null}
 
           <View
             style={{
@@ -284,27 +364,15 @@ export default function Profile() {
         </View>
       </Card>
 
-      {/* PREFERENCES */}
-      <Section title={t("profile.preferences")} testID="profile-preferences">
-        <Card padding="md">
-          {/* <ListRow
-            label={t("profile.language")}
-            value={languageLabel}
-            icon="language-outline"
-            showChevron={false}
-            testID="profile-language"
-          />*/}
-
-          <ListRow
-            label={t("profile.region")}
-            value={regionLabel}
-            icon="globe-outline"
-            showChevron={false}
-            testID="profile-region"
-          />
-        </Card>
-      </Section>
-      <CustomerSupportNotificationSettings />
+      <CustomerEditProfileModal
+        visible={editProfileVisible}
+        onClose={() => setEditProfileVisible(false)}
+        onSaved={async () => {
+          await refreshCustomers();
+          setProfileRefreshKey((value) => value + 1);
+        }}
+      />
+      <CustomerSupportNotificationSettings refreshKey={profileRefreshKey} />
       {/* MEMGINE */}
       <Section title="Memgine" testID="profile-memgine">
         <Card padding="md">
@@ -346,13 +414,6 @@ export default function Profile() {
             icon="trash-outline"
             onPress={() => void openDeleteAccount()}
             testID="profile-delete-account"
-          />
-
-          <ListRow
-            label="Sign out"
-            icon="log-out-outline"
-            onPress={() => setSignOutVisible(true)}
-            testID="profile-sign-out"
           />
         </Card>
       </Section>

@@ -18,7 +18,8 @@ data class AuthSessionRow(
     var sessionId: String = "",
     var userId: String = "",
     var displayName: String = "",
-    var expiresAt: String = ""
+    var expiresAt: String = "",
+    var otpAuthenticatedAt: String? = null,
 )
 
 data class AuthAccessRow(
@@ -94,6 +95,12 @@ interface AuthenticationSql {
         @Bind("expiresAt") expiresAt: String,
         @Bind("clientIp") clientIp: String?,
         @Bind("userAgent") userAgent: String?
+    ): Boolean
+
+    @SqlQuery("SELECT auth_mark_session_otp_authenticated(:sessionId, :userId)")
+    fun markSessionOtpAuthenticated(
+        @Bind("sessionId") sessionId: String,
+        @Bind("userId") userId: String,
     ): Boolean
 
     @SqlQuery("SELECT * FROM auth_resolve_session(:tokenHash)")

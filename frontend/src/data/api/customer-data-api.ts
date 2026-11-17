@@ -62,6 +62,23 @@ export type CustomerHomeBootstrap = {
   relationships: CustomerProfile[];
   unreadNotificationCount?: number | null;
 };
+export type CustomerSelfProfile = {
+  userId: ID;
+  firstName: string;
+  middleName?: string | null;
+  lastName?: string | null;
+  displayName?: string | null;
+  primaryEmail?: string | null;
+  primaryPhone: string;
+  versionNo: number;
+};
+export type CustomerOtpChallenge = {
+  challengeId: string;
+  expiresAt: string;
+  resendAt: string;
+  destination: string;
+  devCode?: string | null;
+};
 export type CustomerMembershipSummary = {
   organizationId: ID;
   subscriptions: CounterSubscription[];
@@ -287,6 +304,21 @@ export type TransactionHistoryItem = {
   refundStatus?: string | null;
 };
 export class CustomerDataApi {
+  selfProfile(): Promise<ApiResult<CustomerSelfProfile>> {
+    return httpClient.get("/api/v1/customer/profile");
+  }
+  saveSelfProfile(input: Pick<CustomerSelfProfile, "firstName" | "middleName" | "lastName" | "primaryEmail" | "versionNo">): Promise<ApiResult<CustomerSelfProfile>> {
+    return httpClient.put("/api/v1/customer/profile", input);
+  }
+  requestCurrentPhoneChange(): Promise<ApiResult<CustomerOtpChallenge>> {
+    return httpClient.post("/api/v1/customer/profile/phone-change/current/request", {});
+  }
+  verifyCurrentPhoneChange(input: { challengeId: string; otp: string; newPhone: string; regionCode?: string }): Promise<ApiResult<CustomerOtpChallenge>> {
+    return httpClient.post("/api/v1/customer/profile/phone-change/current/verify", input);
+  }
+  confirmReplacementPhone(input: { challengeId: string; otp: string }): Promise<ApiResult<CustomerSelfProfile>> {
+    return httpClient.post("/api/v1/customer/profile/phone-change/replacement/confirm", input);
+  }
   transactionHistory(
     organizationId?: ID,
     options: { status?: string; transactionType?: string; search?: string; limit?: number; offset?: number } = {},
