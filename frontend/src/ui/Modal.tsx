@@ -1,5 +1,12 @@
 import { ReactNode } from "react";
-import { KeyboardAvoidingView, Modal as RNModal, Platform, Pressable, ScrollView, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Modal as RNModal,
+  Platform,
+  Pressable,
+  ScrollView,
+  View,
+} from "react-native";
 
 import { useTheme } from "@/src/providers";
 
@@ -63,31 +70,46 @@ export function Modal({
           justifyContent: "center",
         }}
       >
-        <View style={{ flex: 1, backgroundColor: theme.colors.overlay, justifyContent: "center", padding: theme.spacing.lg }}>
         <View
-          testID={testID}
-          style={[
-            {
-              backgroundColor: theme.colors.card,
-              borderRadius: theme.radius.lg,
-              padding: theme.spacing.lg,
-              maxHeight: "88%",
-              width: "100%",
-              maxWidth,
-              alignSelf: "center",
-            },
-            theme.shadows.lg,
-          ]}
+          style={{
+            flex: 1,
+            backgroundColor: theme.colors.overlay,
+            justifyContent: "center",
+            padding: theme.spacing.lg,
+          }}
         >
-          {header}
-          {scrollable ? (
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {children}
-            </ScrollView>
-          ) : (
-            children
-          )}
-        </View>
+          <View
+            testID={testID}
+            style={[
+              {
+                backgroundColor: theme.colors.card,
+                borderRadius: theme.radius.lg,
+                padding: theme.spacing.lg,
+                maxHeight: "88%",
+                width: "100%",
+                maxWidth,
+                alignSelf: "center",
+              },
+              theme.shadows.lg,
+            ]}
+          >
+            {header}
+            {scrollable ? (
+              <ScrollView
+                style={{ flexShrink: 1 }}
+                contentContainerStyle={{
+                  paddingBottom: theme.spacing.xxl,
+                }}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="none"
+              >
+                {children}
+              </ScrollView>
+            ) : (
+              children
+            )}
+          </View>
         </View>
       </KeyboardAvoidingView>
     </RNModal>

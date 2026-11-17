@@ -1,13 +1,13 @@
 import { ReactNode } from "react";
-import { ScrollView, StyleProp, View, ViewStyle } from "react-native";
+import { Platform, ScrollView, StyleProp, View, ViewStyle } from "react-native";
 import { Edge, SafeAreaView } from "react-native-safe-area-context";
 
 import { useTheme } from "@/src/providers";
 
 /**
- * Screen — cross-platform screen primitive. Themed background, safe-area aware,
- * optional sticky header region and scrollable padded body. Works for the
- * Customer (mobile-first) and Staff (desktop) shells alike.
+ * Screen — cross-platform screen primitive.
+ * Themed background, safe-area aware, optional sticky header
+ * and scrollable padded body.
  */
 type ScreenProps = {
   children: ReactNode;
@@ -17,6 +17,7 @@ type ScreenProps = {
   edges?: Edge[];
   contentStyle?: StyleProp<ViewStyle>;
   testID?: string;
+  keyboardAware?: boolean;
 };
 
 export function Screen({
@@ -27,29 +28,47 @@ export function Screen({
   edges = ["top", "bottom"],
   contentStyle,
   testID,
+  keyboardAware = false,
 }: ScreenProps) {
   const theme = useTheme();
+
   const pad = padded ? { padding: theme.spacing.lg } : undefined;
 
   const body = scroll ? (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={[pad, { gap: theme.spacing.lg }, contentStyle]}
+      contentContainerStyle={[
+        pad,
+        { gap: theme.spacing.lg },
+        contentStyle,
+        keyboardAware ? { paddingBottom: theme.spacing.xxl * 3 } : undefined,
+      ]}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="none"
+      automaticallyAdjustKeyboardInsets={false}
     >
       {children}
     </ScrollView>
   ) : (
-    <View style={[{ flex: 1, gap: theme.spacing.lg }, pad, contentStyle]}>{children}</View>
+    <View style={[{ flex: 1, gap: theme.spacing.lg }, pad, contentStyle]}>
+      {children}
+    </View>
   );
 
   return (
     <SafeAreaView
       testID={testID}
       edges={edges}
-      style={{ flex: 1, backgroundColor: theme.colors.background }}
+      style={{
+        flex: 1,
+        backgroundColor: theme.colors.background,
+      }}
     >
-      {header ? <View style={{ paddingHorizontal: theme.spacing.lg }}>{header}</View> : null}
+      {header ? (
+        <View style={{ paddingHorizontal: theme.spacing.lg }}>{header}</View>
+      ) : null}
+
       {body}
     </SafeAreaView>
   );

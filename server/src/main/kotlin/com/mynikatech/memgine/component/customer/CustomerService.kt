@@ -123,28 +123,55 @@ class CustomerService(
         principal: AuthenticatedPrincipal,
         request: PhoneChangeStartRequest,
     ): PhoneChangeChallengeResponse {
+        val sessionId = principal.sessionId
+            ?: throw ForbiddenException("Authenticated session is required")
+
         val profile = selfProfile(principal.userId)
-        val replacement = phoneNormalizer.normalize(request.newPhone, request.regionCode).e164
-        if (replacement == profile.primaryPhone) throw BadRequestException("Enter a different mobile number")
-        if (sql.phoneAssignedToAnotherUser(replacement, principal.userId)) {
-            throw ConflictException("A Memgine account already exists for this mobile number")
+
+        val replacement = phoneNormalizer.normalize(
+            request.newPhone,
+            request.regionCode
+        ).e164
+
+        if (replacement == profile.primaryPhone) {
+            throw BadRequestException("Enter a different mobile number")
         }
 
-        val requiresCurrentPhoneVerification = !hasRecentOtpAuthentication(principal)
-        val result = if (requiresCurrentPhoneVerification) {
-            otp.requestCustomerPhoneChange(
-                profile.primaryPhone, OtpPurpose.CUSTOMER_PHONE_CHANGE_OLD, principal.userId
-            )
-        } else {
-            // The current-session OTP proof is verified above; the replacement challenge still
-            // carries the current phone so final persistence remains compare-and-swap safe.
-            otp.requestCustomerPhoneChange(
-                replacement, OtpPurpose.CUSTOMER_PHONE_CHANGE_NEW, principal.userId, profile.primaryPhone
+        if (sql.phoneAssignedToAnotherUser(replacement, principal.userId)) {
+            throw ConflictException(
+                "A Memgine account already exists for this mobile number"
             )
         }
+
+        val requiresCurrentPhoneVerification =
+            !hasRecentOtpAuthentication(principal)
+
+        val result = if (requiresCurrentPhoneVerification) {
+            // Older session: verify existing mobile number first.
+            otp.requestCustomerPhoneChange(
+                profile.primaryPhone,
+                OtpPurpose.CUSTOMER_PHONE_CHANGE_OLD,
+                principal.userId,
+                sessionId
+            )
+        } else {
+            // Recently OTP-authenticated session:
+            // verify only the replacement mobile number.
+            otp.requestCustomerPhoneChange(
+                replacement,
+                OtpPurpose.CUSTOMER_PHONE_CHANGE_NEW,
+                principal.userId,
+                sessionId,
+                profile.primaryPhone
+            )
+        }
+
         return PhoneChangeChallengeResponse(
-            result.challengeId, result.expiresAt, result.resendAt, result.devCode,
-            requiresCurrentPhoneVerification,
+            result.challengeId,
+            result.expiresAt,
+            result.resendAt,
+            result.devCode,
+            requiresCurrentPhoneVerification
         )
     }
 
@@ -153,38 +180,95 @@ class CustomerService(
         request: PhoneChangeOldVerifyRequest,
     ): PhoneChangeChallengeResponse {
         val userId = principal.userId
+
+        val sessionId = principal.sessionId
+            ?: throw ForbiddenException("Authenticated session is required")
+
         val verified = otp.verifyCustomerPhoneChange(
-            request.challengeId, request.otp, OtpPurpose.CUSTOMER_PHONE_CHANGE_OLD, userId
+            request.challengeId,
+            request.otp,
+            OtpPurpose.CUSTOMER_PHONE_CHANGE_OLD,
+            userId,
+            sessionId
         )
+
         val profile = selfProfile(userId)
-        if (verified.destination != profile.primaryPhone) throw BadRequestException("Mobile verification is invalid or expired")
-        val replacement = phoneNormalizer.normalize(request.newPhone, request.regionCode).e164
-        if (replacement == profile.primaryPhone) throw BadRequestException("Enter a different mobile number")
+
+        if (verified.destination != profile.primaryPhone) {
+            throw BadRequestException(
+                "Mobile verification is invalid or expired"
+            )
+        }
+
+        val replacement = phoneNormalizer.normalize(
+            request.newPhone,
+            request.regionCode
+        ).e164
+
+        if (replacement == profile.primaryPhone) {
+            throw BadRequestException("Enter a different mobile number")
+        }
+
+        if (sql.phoneAssignedToAnotherUser(replacement, userId)) {
+            throw ConflictException(
+                "A Memgine account already exists for this mobile number"
+            )
+        }
+
         val result = otp.requestCustomerPhoneChange(
-            replacement, OtpPurpose.CUSTOMER_PHONE_CHANGE_NEW, userId, profile.primaryPhone
+            replacement,
+            OtpPurpose.CUSTOMER_PHONE_CHANGE_NEW,
+            userId,
+            sessionId,
+            profile.primaryPhone
         )
+
         return PhoneChangeChallengeResponse(
-            result.challengeId, result.expiresAt, result.resendAt, result.devCode,
-            requiresCurrentPhoneVerification = false,
+            result.challengeId,
+            result.expiresAt,
+            result.resendAt,
+            result.devCode,
+            requiresCurrentPhoneVerification = false
         )
     }
 
-    fun confirmReplacementPhone(principal: AuthenticatedPrincipal, request: PhoneChangeConfirmRequest): SelfProfileDto {
+    fun confirmReplacementPhone(
+        principal: AuthenticatedPrincipal,
+        request: PhoneChangeConfirmRequest
+    ): SelfProfileDto {
         val userId = principal.userId
+
+        val sessionId = principal.sessionId
+            ?: throw ForbiddenException("Authenticated session is required")
+
         val verified = otp.verifyCustomerPhoneChange(
-            request.challengeId, request.otp, OtpPurpose.CUSTOMER_PHONE_CHANGE_NEW, userId
+            request.challengeId,
+            request.otp,
+            OtpPurpose.CUSTOMER_PHONE_CHANGE_NEW,
+            userId,
+            sessionId
         )
+
         return try {
             sql.confirmSelfPhoneChange(
                 userId,
-                verified.expectedOldPhone ?: throw BadRequestException("Mobile verification is invalid or expired"),
+                verified.expectedOldPhone
+                    ?: throw BadRequestException(
+                        "Mobile verification is invalid or expired"
+                    ),
                 verified.destination
             )?.toSelfProfile()
-                ?: throw ConflictException("Mobile number could not be changed; restart verification")
+                ?: throw ConflictException(
+                    "Mobile number could not be changed; restart verification"
+                )
         } catch (error: PSQLException) {
             when (error.sqlState) {
-                "23505" -> throw ConflictException("A Memgine account already exists for this mobile number")
-                "40001" -> throw ConflictException("Mobile number changed; restart verification")
+                "23505" -> throw ConflictException(
+                    "A Memgine account already exists for this mobile number"
+                )
+                "40001" -> throw ConflictException(
+                    "Mobile number changed; restart verification"
+                )
                 else -> throw error
             }
         }
@@ -195,8 +279,9 @@ class CustomerService(
         val verifiedAt = principal.otpAuthenticatedAt?.let {
             runCatching { LocalDateTime.parse(it.replace(' ', 'T')) }.getOrNull()
         } ?: return false
+        val now = LocalDateTime.now(clock)
         val windowMinutes = authenticationConfig.recentOtpAuthenticationMinutes.coerceIn(1, 60)
-        return !verifiedAt.isBefore(LocalDateTime.now(clock).minusMinutes(windowMinutes))
+        return !verifiedAt.isAfter(now) && !verifiedAt.isBefore(now.minusMinutes(windowMinutes))
     }
 
     private fun CustomerSelfProfileRow.toSelfProfile() = SelfProfileDto(

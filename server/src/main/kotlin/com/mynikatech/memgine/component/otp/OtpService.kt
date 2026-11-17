@@ -19,6 +19,8 @@ import java.util.UUID
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import org.postgresql.util.PSQLException
@@ -228,36 +230,44 @@ class OtpService(
         phone: String,
         purpose: OtpPurpose,
         customerUserId: String,
+        sessionId: String,
         expectedOldPhone: String? = null,
     ): OtpRequestResult {
         if (purpose !in setOf(OtpPurpose.CUSTOMER_PHONE_CHANGE_OLD, OtpPurpose.CUSTOMER_PHONE_CHANGE_NEW)) {
             throw BadRequestException("Invalid mobile verification purpose")
         }
-        return request(
-            phone, null, purpose, OtpChannel.SMS,
-            "{\"customerUserId\":\"${customerUserId.replace("\\", "\\\\").replace("\"", "\\\"")}\"${expectedOldPhone?.let { ",\"expectedOldPhone\":\"${it.replace("\\", "\\\\").replace("\"", "\\\"")}" } ?: ""}}",
-            recipientUserId = customerUserId
-        )
+        if (sessionId.isBlank()) throw ForbiddenException("Authenticated session is required")
+        val contextJson = buildJsonObject {
+            put("customerUserId", customerUserId)
+            put("sessionId", sessionId)
+            expectedOldPhone?.let { put("expectedOldPhone", it) }
+        }.toString()
+        return request(phone, null, purpose, OtpChannel.SMS, contextJson, recipientUserId = customerUserId)
     }
 
+
     fun verifyCustomerPhoneChange(
-        challengeId: String, otp: String, purpose: OtpPurpose, customerUserId: String
+        challengeId: String,
+        otp: String,
+        purpose: OtpPurpose,
+        customerUserId: String,
+        sessionId: String,
     ): CustomerPhoneChangeVerification {
         val binding = sql.phoneChangeContext(challengeId, customerUserId)
             ?: throw BadRequestException("Mobile verification is invalid or expired")
-        val context = runCatching {
-            Json.parseToJsonElement(binding.contextJson).jsonObject
-        }.getOrNull()
-        val boundUserId = context?.get("customerUserId")?.jsonPrimitive?.content
-        if (binding.purpose != purpose.name || binding.status != "PENDING" || boundUserId != customerUserId) {
+        val context = runCatching { Json.parseToJsonElement(binding.contextJson).jsonObject }.getOrNull()
+        if (binding.purpose != purpose.name || binding.status != "PENDING" ||
+            context?.get("customerUserId")?.jsonPrimitive?.content != customerUserId ||
+            context?.get("sessionId")?.jsonPrimitive?.content != sessionId || sessionId.isBlank()) {
             throw BadRequestException("Mobile verification is invalid or expired")
         }
         val verified = verify(challengeId, otp, purpose)
         return CustomerPhoneChangeVerification(
             verified.destination,
-            context?.get("expectedOldPhone")?.jsonPrimitive?.content
+            context?.get("expectedOldPhone")?.jsonPrimitive?.content,
         )
     }
+
 
     private fun hash(
         challengeId: String, destination: String, purpose: OtpPurpose,

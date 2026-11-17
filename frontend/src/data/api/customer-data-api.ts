@@ -76,8 +76,9 @@ export type CustomerOtpChallenge = {
   challengeId: string;
   expiresAt: string;
   resendAt: string;
-  destination: string;
+  destination?: string;
   devCode?: string | null;
+  requiresCurrentPhoneVerification: boolean;
 };
 export type CustomerMembershipSummary = {
   organizationId: ID;
@@ -307,26 +308,58 @@ export class CustomerDataApi {
   selfProfile(): Promise<ApiResult<CustomerSelfProfile>> {
     return httpClient.get("/api/v1/customer/profile");
   }
-  saveSelfProfile(input: Pick<CustomerSelfProfile, "firstName" | "middleName" | "lastName" | "primaryEmail" | "versionNo">): Promise<ApiResult<CustomerSelfProfile>> {
+  saveSelfProfile(
+    input: Pick<
+      CustomerSelfProfile,
+      "firstName" | "middleName" | "lastName" | "primaryEmail" | "versionNo"
+    >,
+  ): Promise<ApiResult<CustomerSelfProfile>> {
     return httpClient.put("/api/v1/customer/profile", input);
   }
-  requestCurrentPhoneChange(): Promise<ApiResult<CustomerOtpChallenge>> {
-    return httpClient.post("/api/v1/customer/profile/phone-change/current/request", {});
+  requestCurrentPhoneChange(input: {
+    newPhone: string;
+    regionCode?: string;
+  }): Promise<ApiResult<CustomerOtpChallenge>> {
+    return httpClient.post(
+      "/api/v1/customer/profile/phone-change/current/request",
+      input,
+    );
   }
-  verifyCurrentPhoneChange(input: { challengeId: string; otp: string; newPhone: string; regionCode?: string }): Promise<ApiResult<CustomerOtpChallenge>> {
-    return httpClient.post("/api/v1/customer/profile/phone-change/current/verify", input);
+  verifyCurrentPhoneChange(input: {
+    challengeId: string;
+    otp: string;
+    newPhone: string;
+    regionCode?: string;
+  }): Promise<ApiResult<CustomerOtpChallenge>> {
+    return httpClient.post(
+      "/api/v1/customer/profile/phone-change/current/verify",
+      input,
+    );
   }
-  confirmReplacementPhone(input: { challengeId: string; otp: string }): Promise<ApiResult<CustomerSelfProfile>> {
-    return httpClient.post("/api/v1/customer/profile/phone-change/replacement/confirm", input);
+  confirmReplacementPhone(input: {
+    challengeId: string;
+    otp: string;
+  }): Promise<ApiResult<CustomerSelfProfile>> {
+    return httpClient.post(
+      "/api/v1/customer/profile/phone-change/replacement/confirm",
+      input,
+    );
   }
   transactionHistory(
     organizationId?: ID,
-    options: { status?: string; transactionType?: string; search?: string; limit?: number; offset?: number } = {},
+    options: {
+      status?: string;
+      transactionType?: string;
+      search?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
   ): Promise<ApiResult<TransactionHistoryItem[]>> {
     const params = new URLSearchParams();
     if (organizationId) params.set("organizationId", organizationId);
     if (options.status) params.set("status", options.status);
-    if (options.transactionType) params.set("transactionType", options.transactionType);
+    if (options.transactionType)
+      params.set("transactionType", options.transactionType);
     if (options.search) params.set("search", options.search);
     params.set("limit", String(options.limit ?? 25));
     params.set("offset", String(options.offset ?? 0));

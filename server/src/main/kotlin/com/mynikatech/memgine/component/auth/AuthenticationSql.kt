@@ -103,7 +103,7 @@ interface AuthenticationSql {
         @Bind("userId") userId: String,
     ): Boolean
 
-    @SqlQuery("SELECT * FROM auth_resolve_session(:tokenHash)")
+    @SqlQuery("SELECT * FROM auth_resolve_session_with_otp(:tokenHash)")
     @RegisterBeanMapper(AuthSessionRow::class)
     fun resolveSession(
         @Bind("tokenHash") tokenHash: String
