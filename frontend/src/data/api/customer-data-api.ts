@@ -168,6 +168,7 @@ export type CustomerDiscoverableOrganization = {
   displayName?: string | null;
   logoUrl?: string | null;
   tagline?: string | null;
+  heroImageUrl?: string | null;
 };
 export type CustomerCombinedOffer = {
   offerId: ID;

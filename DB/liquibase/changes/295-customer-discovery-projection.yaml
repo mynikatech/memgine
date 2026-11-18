@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - changeSet:
+      id: 295-customer-discovery-projection
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/295-customer-discovery-projection.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

@@ -94,6 +94,7 @@ export default function BusinessExperienceRoute() {
   const [reloadKey, setReloadKey] = useState(0);
   const activeOrganizationIdRef = useRef(activeOrganizationId);
   const requestIdRef = useRef(0);
+  const loadedRouteIdRef = useRef<string | null>(null);
   activeOrganizationIdRef.current = activeOrganizationId;
   const load = useCallback(
     async (isCurrent: () => boolean) => {
@@ -253,6 +254,7 @@ export default function BusinessExperienceRoute() {
             row.subscriptionStatusId,
           );
           const status = await services.status.getStatus(subscriptionStatusId);
+          if (!status) throw new Error("Membership status is unavailable.");
           const subscription = {
             id: row.id,
             subscriptionNumber: row.subscriptionNumber,
@@ -355,7 +357,9 @@ export default function BusinessExperienceRoute() {
           referralProgram: null, // Discovery does not expose published referral configuration.
           redemptionItemStatusesBySubscription,
         });
-        setSelectedSubId(subscriptionId);
+        const sameRoute = loadedRouteIdRef.current === subscriptionId;
+        loadedRouteIdRef.current = subscriptionId;
+        setSelectedSubId((previous) => sameRoute && bundles.some((item) => item.subscription.id === previous) ? previous : subscriptionId);
         setResolvedOrganizationId(orgId);
       } catch (failure) {
         if (!isCurrent()) return;
@@ -395,19 +399,19 @@ export default function BusinessExperienceRoute() {
     void load(isCurrent);
   }, [customersLoading, customersError, landing, load, reloadKey]);
   useEffect(() => {
-    if (!resolvedOrganizationId || !subscriptionId) return;
+    if (!resolvedOrganizationId || !selectedSubId) return;
     if (
       activeOrganizationId !== resolvedOrganizationId ||
-      activeSubscriptionId !== subscriptionId
+      activeSubscriptionId !== selectedSubId
     ) {
-      setActiveContext(resolvedOrganizationId, subscriptionId);
+      setActiveContext(resolvedOrganizationId, selectedSubId);
     }
   }, [
     activeOrganizationId,
     activeSubscriptionId,
     resolvedOrganizationId,
     setActiveContext,
-    subscriptionId,
+    selectedSubId,
   ]);
   const activeMemberships =
     data?.memberships.filter(

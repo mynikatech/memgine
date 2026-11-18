@@ -12,7 +12,8 @@ data class CustomerDiscoverableOrganizationDto(
     val name: String,
     val displayName: String? = null,
     val logoUrl: String? = null,
-    val tagline: String? = null
+    val tagline: String? = null,
+    val heroImageUrl: String? = null
 )
 
 /** Sanitized published experience for an unaffiliated customer. */

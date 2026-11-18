@@ -89,6 +89,9 @@ export default function CustomerLayout() {
         }}
       />
 
+      <Tabs.Screen name="memberships" options={{ href: null }} />
+      <Tabs.Screen name="businesses" options={{ href: null }} />
+
       <Tabs.Screen
         name="notifications"
         options={{

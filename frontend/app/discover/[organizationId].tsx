@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Linking, Platform, View } from "react-native";
 
@@ -10,6 +10,7 @@ import type {
   Offer,
   Redemption,
   Subscription,
+  Status as DomainStatus,
 } from "@/src/core";
 
 import { RedemptionMethod, services } from "@/src/core";
@@ -46,6 +47,8 @@ type LoadStatus = "loading" | "error" | "ready";
 
 type MembershipBundle = {
   subscription: Subscription;
+
+  subscriptionStatus: DomainStatus;
 
   product: MembershipProduct;
 
@@ -214,8 +217,10 @@ function DiscoverContent() {
     productId?: string;
   }>();
 
-  const { customerId, profiles, customersLoading, setActiveContext } =
+  const { customerId, profiles, customersLoading, setActiveContext, membershipSummary, organizationId: activeOrganizationId, subscriptionId: activeSubscriptionId } =
     useCustomerContext();
+  const activeContextRef = useRef({ activeOrganizationId, activeSubscriptionId });
+  activeContextRef.current = { activeOrganizationId, activeSubscriptionId };
 
   const { t, formatMoney } = useTranslation();
 
@@ -271,6 +276,8 @@ function DiscoverContent() {
           ])
         : null;
 
+      if (protectedReads?.[0].status === "rejected") throw protectedReads[0].reason;
+
       const subscriptions =
         protectedReads?.[0].status === "fulfilled"
           ? protectedReads[0].value
@@ -299,18 +306,26 @@ function DiscoverContent() {
         ]),
       );
 
-      const bundles = subscriptions.flatMap((row) => {
-        const product = published.membershipProducts.find((candidate) =>
-          candidate.plans.some((plan) => plan.id === row.subscriptionPlanId),
-        );
+      // A published business can have no currently discoverable products while
+      // the customer still has a historical or active subscription. Resolve
+      // that owned product from the existing customer-authorized summary.
+      const needsOwnedProducts = subscriptions.some((row) =>
+        !published.membershipProducts.some((product) => product.id === row.membershipProductId),
+      );
+      const ownedSummary = needsOwnedProducts ? await membershipSummary(organizationId) : null;
+      const bundles = await Promise.all(subscriptions.map(async (row): Promise<MembershipBundle> => {
+        const product = published.membershipProducts.find((candidate) => candidate.id === row.membershipProductId)
+          ?? ownedSummary?.membershipProducts.find((candidate) => candidate.id === row.membershipProductId);
 
         if (!product) {
-          return [];
+          throw new Error("Membership product is unavailable.");
         }
+        const subscriptionStatus = await services.status.getStatus(row.subscriptionStatusId);
+        if (!subscriptionStatus) throw new Error("Membership status is unavailable.");
 
-        return [
-          {
+        return {
             subscription: subscriptionFromProtectedRow(row),
+            subscriptionStatus,
 
             product,
 
@@ -323,9 +338,8 @@ function DiscoverContent() {
             ),
 
             redemptionItemStatuses: statusesBySubscription.get(row.id) ?? [],
-          },
-        ];
-      });
+          };
+      }));
 
       setDetail(published);
 
@@ -350,7 +364,10 @@ function DiscoverContent() {
 
       setMemberships(bundles);
 
-      setSelectedSubId(bundles[0]?.subscription.id ?? null);
+      setSelectedSubId((previous) => {
+        const activeId = activeContextRef.current.activeOrganizationId === organizationId ? activeContextRef.current.activeSubscriptionId : null;
+        return bundles.some((bundle) => bundle.subscription.id === previous) ? previous : bundles.some((bundle) => bundle.subscription.id === activeId) ? activeId : bundles[0]?.subscription.id ?? null;
+      });
 
       setDetailProduct(
         productId
@@ -370,6 +387,7 @@ function DiscoverContent() {
     productId,
     customersLoading,
     hasOrganizationRelationship,
+    membershipSummary,
   ]);
 
   useEffect(() => {
@@ -443,7 +461,13 @@ function DiscoverContent() {
     memberships.find((item) => item.subscription.id === selectedSubId) ??
     memberships[0];
 
-  const owned = new Set(memberships.map((membership) => membership.product.id));
+  // Match the subscription route: historical cancelled/expired memberships do
+  // not hide a published product that may be purchased again. Checkout still
+  // performs its own eligibility checks.
+  const repurchasableStatuses = new Set(["CANCELLED", "CANCELED", "EXPIRED"]);
+  const owned = new Set(memberships
+    .filter((membership) => !repurchasableStatuses.has(membership.subscriptionStatus.statusCode?.toUpperCase() ?? ""))
+    .map((membership) => membership.product.id));
 
   const available = detail.membershipProducts.filter(
     (product) => !owned.has(product.id),
@@ -489,6 +513,7 @@ function DiscoverContent() {
         }
         previewDefinition={detail.publishedExperience.definition}
         subscription={focused?.subscription}
+        subscriptionStatus={focused?.subscriptionStatus}
         product={focused?.product}
         benefits={focused?.benefits ?? []}
         benefitUsageRules={detail.benefitUsageRules as never}
@@ -498,7 +523,7 @@ function DiscoverContent() {
         offerUsageRules={detail.offerUsageRules as never}
         stores={detail.stores}
         redemptions={focused?.redemptions ?? []}
-        memberships={memberships.map(({ subscription, product }) => ({
+        memberships={memberships.filter((item) => item.subscriptionStatus.statusCode?.toUpperCase() === "ACTIVE").map(({ subscription, product }) => ({
           subscription,
 
           product,
