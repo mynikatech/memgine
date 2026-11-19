@@ -17,7 +17,11 @@ import { RedemptionMethod, services } from "@/src/core";
 
 import type { TemplateDefinition } from "@/src/core/template/template-definition";
 
-import { activeMembershipPlanIds, discoverableMembershipProducts, resolveOwnedMembershipProduct } from "@/src/core/domain/membership-helpers";
+import {
+  activeMembershipPlanIds,
+  discoverableMembershipProducts,
+  resolveOwnedMembershipProduct,
+} from "@/src/core/domain/membership-helpers";
 
 import type {
   CustomerCombinedOffer,
@@ -219,9 +223,19 @@ function DiscoverContent() {
     section?: string;
   }>();
 
-  const { customerId, profiles, customersLoading, setActiveContext, membershipSummary, organizationId: activeOrganizationId, subscriptionId: activeSubscriptionId } =
-    useCustomerContext();
-  const activeContextRef = useRef({ activeOrganizationId, activeSubscriptionId });
+  const {
+    customerId,
+    profiles,
+    customersLoading,
+    setActiveContext,
+    membershipSummary,
+    organizationId: activeOrganizationId,
+    subscriptionId: activeSubscriptionId,
+  } = useCustomerContext();
+  const activeContextRef = useRef({
+    activeOrganizationId,
+    activeSubscriptionId,
+  });
   activeContextRef.current = { activeOrganizationId, activeSubscriptionId };
 
   const { t } = useTranslation();
@@ -239,7 +253,9 @@ function DiscoverContent() {
   >([]);
 
   const [memberships, setMemberships] = useState<MembershipBundle[]>([]);
-  const [historyRedemptions, setHistoryRedemptions] = useState<Redemption[]>([]);
+  const [historyRedemptions, setHistoryRedemptions] = useState<Redemption[]>(
+    [],
+  );
 
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
 
@@ -276,7 +292,8 @@ function DiscoverContent() {
           ])
         : null;
 
-      if (protectedReads?.[0].status === "rejected") throw protectedReads[0].reason;
+      if (protectedReads?.[0].status === "rejected")
+        throw protectedReads[0].reason;
 
       const subscriptions =
         protectedReads?.[0].status === "fulfilled"
@@ -308,27 +325,39 @@ function DiscoverContent() {
 
       // The public catalog can omit the owned product or just its subscribed
       // plan. Use the authorized summary only when the public data is incomplete.
-      const needsOwnedProducts = subscriptions.some((row) =>
-        !published.membershipProducts.some((product) =>
-          product.id === row.membershipProductId &&
-          product.plans.some((plan) => plan.id === row.subscriptionPlanId),
-        ),
+      const needsOwnedProducts = subscriptions.some(
+        (row) =>
+          !published.membershipProducts.some(
+            (product) =>
+              product.id === row.membershipProductId &&
+              product.plans.some((plan) => plan.id === row.subscriptionPlanId),
+          ),
       );
-      const ownedSummary = needsOwnedProducts ? await membershipSummary(organizationId) : null;
-      const bundles = await Promise.all(subscriptions.map(async (row): Promise<MembershipBundle> => {
-        const product = resolveOwnedMembershipProduct(
-          published.membershipProducts.find((candidate) => candidate.id === row.membershipProductId),
-          ownedSummary?.membershipProducts.find((candidate) => candidate.id === row.membershipProductId),
-          row.subscriptionPlanId,
-        );
+      const ownedSummary = needsOwnedProducts
+        ? await membershipSummary(organizationId)
+        : null;
+      const bundles = await Promise.all(
+        subscriptions.map(async (row): Promise<MembershipBundle> => {
+          const product = resolveOwnedMembershipProduct(
+            published.membershipProducts.find(
+              (candidate) => candidate.id === row.membershipProductId,
+            ),
+            ownedSummary?.membershipProducts.find(
+              (candidate) => candidate.id === row.membershipProductId,
+            ),
+            row.subscriptionPlanId,
+          );
 
-        if (!product) {
-          throw new Error("Membership product is unavailable.");
-        }
-        const subscriptionStatus = await services.status.getStatus(row.subscriptionStatusId);
-        if (!subscriptionStatus) throw new Error("Membership status is unavailable.");
+          if (!product) {
+            throw new Error("Membership product is unavailable.");
+          }
+          const subscriptionStatus = await services.status.getStatus(
+            row.subscriptionStatusId,
+          );
+          if (!subscriptionStatus)
+            throw new Error("Membership status is unavailable.");
 
-        return {
+          return {
             subscription: subscriptionFromProtectedRow(row),
             subscriptionStatus,
 
@@ -344,7 +373,8 @@ function DiscoverContent() {
 
             redemptionItemStatuses: statusesBySubscription.get(row.id) ?? [],
           };
-      }));
+        }),
+      );
 
       setDetail(published);
 
@@ -371,15 +401,26 @@ function DiscoverContent() {
       setHistoryRedemptions(redemptions);
 
       setSelectedSubId((previous) => {
-        const { activeOrganizationId, activeSubscriptionId } = activeContextRef.current;
-        if (bundles.some((bundle) => bundle.subscription.id === previous)) return previous;
-        if (activeOrganizationId === organizationId &&
-            bundles.some((bundle) => bundle.subscription.id === activeSubscriptionId)) {
+        const { activeOrganizationId, activeSubscriptionId } =
+          activeContextRef.current;
+        if (bundles.some((bundle) => bundle.subscription.id === previous))
+          return previous;
+        if (
+          activeOrganizationId === organizationId &&
+          bundles.some(
+            (bundle) => bundle.subscription.id === activeSubscriptionId,
+          )
+        ) {
           return activeSubscriptionId;
         }
-        return bundles.find((bundle) => bundle.subscriptionStatus.statusCode.toUpperCase() === "ACTIVE")?.subscription.id
-          ?? bundles[0]?.subscription.id
-          ?? null;
+        return (
+          bundles.find(
+            (bundle) =>
+              bundle.subscriptionStatus.statusCode.toUpperCase() === "ACTIVE",
+          )?.subscription.id ??
+          bundles[0]?.subscription.id ??
+          null
+        );
       });
 
       setStatus("ready");
@@ -465,12 +506,15 @@ function DiscoverContent() {
     memberships[0];
   const selectedMembership = productId ? undefined : focused;
 
-  const activePlanIds = activeMembershipPlanIds(memberships.map(({ subscription, subscriptionStatus }) => ({
-    planId: subscription.subscriptionPlanId,
-    status: subscriptionStatus.statusCode,
-  })));
+  const activePlanIds = activeMembershipPlanIds(
+    memberships.map(({ subscription, subscriptionStatus }) => ({
+      planId: subscription.subscriptionPlanId,
+      status: subscriptionStatus.statusCode,
+    })),
+  );
   const available = discoverableMembershipProducts(
-    detail.membershipProducts, activePlanIds,
+    detail.membershipProducts,
+    activePlanIds,
   );
 
   return (
@@ -501,10 +545,18 @@ function DiscoverContent() {
         product={selectedMembership?.product}
         benefits={selectedMembership?.benefits ?? []}
         benefitUsageRules={detail.benefitUsageRules as never}
-        redemptionItemStatuses={selectedMembership?.redemptionItemStatuses ?? []}
-        offers={productId
-          ? detail.offers.filter((offer) => regularOffers.some((availableOffer) => availableOffer.id === offer.id))
-          : regularOffers}
+        redemptionItemStatuses={
+          selectedMembership?.redemptionItemStatuses ?? []
+        }
+        offers={
+          productId
+            ? detail.offers.filter((offer) =>
+                regularOffers.some(
+                  (availableOffer) => availableOffer.id === offer.id,
+                ),
+              )
+            : regularOffers
+        }
         membershipPurchaseOffers={membershipPurchaseOffers}
         offerUsageRules={detail.offerUsageRules as never}
         stores={detail.stores}
@@ -512,11 +564,16 @@ function DiscoverContent() {
         historyRedemptions={historyRedemptions}
         historyBenefits={detail.benefits}
         historyMemberships={memberships}
-        memberships={memberships.filter((item) => item.subscriptionStatus.statusCode?.toUpperCase() === "ACTIVE").map(({ subscription, product }) => ({
-          subscription,
+        memberships={memberships
+          .filter(
+            (item) =>
+              item.subscriptionStatus.statusCode?.toUpperCase() === "ACTIVE",
+          )
+          .map(({ subscription, product }) => ({
+            subscription,
 
-          product,
-        }))}
+            product,
+          }))}
         selectedSubscriptionId={selectedMembership?.subscription.id ?? ""}
         onSelectSubscription={(id) => {
           setSelectedSubId(id);
@@ -531,8 +588,6 @@ function DiscoverContent() {
         detailsCatalog={detail.membershipProducts}
         planDetailsProductId={productId}
         planDetailsPlanId={planId}
-        onExploreMembership={(id, selectedPlanId) =>
-          router.push(APP_ROUTES.discover.membership(organizationId, id, selectedPlanId) as never)}
         showAvailableMembershipsFirst={section === "memberships"}
         onJoin={joinMembership}
         onUseMembershipPurchaseOffer={joinWithMembershipOffer}

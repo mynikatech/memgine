@@ -1,4 +1,12 @@
-import { advertisedSavingsLabel, compactPotentialSavingsLabel, formatTransactionMoney, potentialSavingsAssumptions, potentialSavingsLabel, subscriptionSavingsDisplay, verifiedSavingsMoney } from "@/src/core/domain/savings-display";
+import {
+  advertisedSavingsLabel,
+  compactPotentialSavingsLabel,
+  formatTransactionMoney,
+  potentialSavingsAssumptions,
+  potentialSavingsLabel,
+  subscriptionSavingsDisplay,
+  verifiedSavingsMoney,
+} from "@/src/core/domain/savings-display";
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -17,12 +25,16 @@ import { resolveThemeExperience } from "@/src/core/theme-experience.types";
 import { ThemeHeaderDecoration } from "@/src/ui/domain/ThemeHeaderDecoration";
 
 import { ThemeFeatureSection } from "@/src/ui/domain/ThemeFeatureSection";
+import { MembershipPlanDetailsModal } from "@/src/ui/domain/MembershipPlanDetailsModal";
 import {
   RedemptionProductPicker,
   type RedemptionItemChoice,
   type RedemptionProductSelectionState,
 } from "@/src/ui/domain/RedemptionProductPicker";
-import { getSubscriptionPeriodLabel, resolveJoinPlan } from "@/src/core/domain/membership-helpers";
+import {
+  getSubscriptionPeriodLabel,
+  resolveJoinPlan,
+} from "@/src/core/domain/membership-helpers";
 import { resolveCustomerBranding } from "@/src/core/customer/resolve-customer-branding";
 import { DecorativeThemeFrame } from "@/src/ui/domain/DecorativeThemeFrame";
 import {
@@ -404,11 +416,22 @@ export function BusinessExperience({
   const template = templateOverride ?? contextTemplate;
 
   const { t, formatDate, formatMoney } = useTranslation();
-  const selectedPlan = product?.plans.find((plan) => plan.id === subscription?.subscriptionPlanId);
+  const selectedPlan = product?.plans.find(
+    (plan) => plan.id === subscription?.subscriptionPlanId,
+  );
   const selectedPlanSavings = selectedPlan?.potentialSavings;
-  const detailsProduct = detailsCatalog.find((item) => item.id === planDetailsProductId);
-  const availableDetailsProduct = availableMemberships.find((item) => item.id === planDetailsProductId);
-  const detailsPlan = resolveJoinPlan(planDetailsPlanId ? detailsProduct : availableDetailsProduct ?? detailsProduct, planDetailsPlanId);
+  const detailsProduct = detailsCatalog.find(
+    (item) => item.id === planDetailsProductId,
+  );
+  const availableDetailsProduct = availableMemberships.find(
+    (item) => item.id === planDetailsProductId,
+  );
+  const detailsPlan = resolveJoinPlan(
+    planDetailsPlanId
+      ? detailsProduct
+      : (availableDetailsProduct ?? detailsProduct),
+    planDetailsPlanId,
+  );
   const isPlanExploration = !isPreviewMode && Boolean(planDetailsProductId);
   const insets = useSafeAreaInsets();
 
@@ -651,10 +674,19 @@ export function BusinessExperience({
   const effectiveTab = activeTab ?? tab;
   const focused = useIsFocused();
   const [referralOpen, setReferralOpen] = useState(false);
+  const [selectedAvailablePlan, setSelectedAvailablePlan] = useState<{
+    membership: MembershipProduct;
+    plan: SubscriptionPlan;
+  } | null>(null);
   const [showAllHistory, setShowAllHistory] = useState(false);
-  const [historySubscriptionId, setHistorySubscriptionId] = useState<string | null>(null);
+  const [historySubscriptionId, setHistorySubscriptionId] = useState<
+    string | null
+  >(null);
   const [historyRefresh, setHistoryRefresh] = useState(0);
-  const [orders, setOrders] = useState<{ key: string; rows: TransactionHistoryItem[] }>({ key: "", rows: [] });
+  const [orders, setOrders] = useState<{
+    key: string;
+    rows: TransactionHistoryItem[];
+  }>({ key: "", rows: [] });
   const [orderOffset, setOrderOffset] = useState(0);
   const [hasMoreOrders, setHasMoreOrders] = useState(false);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -665,16 +697,30 @@ export function BusinessExperience({
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const receiptRequest = useRef(0);
   const mainScroll = useRef<ScrollView>(null);
-  const orderScope = JSON.stringify([organization.id, customerUserId, historyRefresh]);
-  const savingsScope = JSON.stringify([organization.id, customerUserId, subscription?.id]);
+  const orderScope = JSON.stringify([
+    organization.id,
+    customerUserId,
+    historyRefresh,
+  ]);
+  const savingsScope = JSON.stringify([
+    organization.id,
+    customerUserId,
+    subscription?.id,
+  ]);
   const [savingsResult, setSavingsResult] = useState<{
     key: string;
     rows?: SubscriptionActualSavings[];
     error?: boolean;
   }>();
-  const scopedRedemptions = useMemo(() => historySubscriptionId
-    ? historyRedemptions.filter((entry) => entry.subscriptionId === historySubscriptionId)
-    : historyRedemptions, [historyRedemptions, historySubscriptionId]);
+  const scopedRedemptions = useMemo(
+    () =>
+      historySubscriptionId
+        ? historyRedemptions.filter(
+            (entry) => entry.subscriptionId === historySubscriptionId,
+          )
+        : historyRedemptions,
+    [historyRedemptions, historySubscriptionId],
+  );
 
   useEffect(() => {
     setTab(initialTab);
@@ -685,7 +731,9 @@ export function BusinessExperience({
     setOrderOffset(0);
     setOrderReceipt(null);
     setReceiptError(null);
-    return () => { receiptRequest.current += 1; };
+    return () => {
+      receiptRequest.current += 1;
+    };
   }, [organization.id, customerUserId]);
 
   useEffect(() => {
@@ -696,12 +744,18 @@ export function BusinessExperience({
       setOrdersLoading(true);
       setOrdersError(null);
       try {
-        const result = await customerTransactionApi.transactionHistory(organization.id, { limit, offset: orderOffset });
+        const result = await customerTransactionApi.transactionHistory(
+          organization.id,
+          { limit, offset: orderOffset },
+        );
         if (cancelled) return;
         if (!result.success) throw new Error(result.error.message);
         setOrders((previous) => ({
           key: orderScope,
-          rows: orderOffset && previous.key === orderScope ? [...previous.rows, ...result.data] : result.data,
+          rows:
+            orderOffset && previous.key === orderScope
+              ? [...previous.rows, ...result.data]
+              : result.data,
         }));
         setHasMoreOrders(result.data.length === limit);
       } catch {
@@ -711,52 +765,97 @@ export function BusinessExperience({
       }
     };
     void loadOrders();
-    return () => { cancelled = true; };
-  }, [customerUserId, effectiveTab, isPreviewMode, orderOffset, orderScope, organization.id]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    customerUserId,
+    effectiveTab,
+    isPreviewMode,
+    orderOffset,
+    orderScope,
+    organization.id,
+  ]);
 
   useEffect(() => {
-    if (isPreviewMode || !customerUserId || !focused || !subscription?.id) return;
+    if (isPreviewMode || !customerUserId || !focused || !subscription?.id)
+      return;
     let cancelled = false;
-    void customerTransactionApi.subscriptionActualSavings(organization.id, subscription.id)
+    void customerTransactionApi
+      .subscriptionActualSavings(organization.id, subscription.id)
       .then((result) => {
-        if (!cancelled) setSavingsResult(result.success
-          ? { key: savingsScope, rows: result.data }
-          : { key: savingsScope, error: true });
+        if (!cancelled)
+          setSavingsResult(
+            result.success
+              ? { key: savingsScope, rows: result.data }
+              : { key: savingsScope, error: true },
+          );
       })
-      .catch(() => { if (!cancelled) setSavingsResult({ key: savingsScope, error: true }); });
-    return () => { cancelled = true; };
-  }, [customerUserId, focused, historyRefresh, isPreviewMode, organization.id, savingsScope, subscription?.id]);
+      .catch(() => {
+        if (!cancelled) setSavingsResult({ key: savingsScope, error: true });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    customerUserId,
+    focused,
+    historyRefresh,
+    isPreviewMode,
+    organization.id,
+    savingsScope,
+    subscription?.id,
+  ]);
 
-  const savingsForSubscription = savingsResult?.key === savingsScope ? savingsResult : undefined;
-  const savingsRows = savingsForSubscription?.rows?.filter((row) => row.subscriptionId === subscription?.id) ?? [];
+  const savingsForSubscription =
+    savingsResult?.key === savingsScope ? savingsResult : undefined;
+  const savingsRows =
+    savingsForSubscription?.rows?.filter(
+      (row) => row.subscriptionId === subscription?.id,
+    ) ?? [];
   const actualSavings = subscriptionSavingsDisplay(savingsRows);
   const actualSavingsMessage = !savingsForSubscription
     ? "Loading savings…"
-    : savingsForSubscription.error ? "Unable to load savings"
-    : actualSavings.incomplete && !actualSavings.partial.length ? "Savings history incomplete"
-    : actualSavings.complete.length || actualSavings.partial.length ? undefined
-    : savingsRows.some((row) => row.coverageState === "NO_REDEMPTION_HISTORY") ? "No completed redemptions yet"
-    : "Savings unavailable";
+    : savingsForSubscription.error
+      ? "Unable to load savings"
+      : actualSavings.incomplete && !actualSavings.partial.length
+        ? "Savings history incomplete"
+        : actualSavings.complete.length || actualSavings.partial.length
+          ? undefined
+          : savingsRows.some(
+                (row) => row.coverageState === "NO_REDEMPTION_HISTORY",
+              )
+            ? "No completed redemptions yet"
+            : "Savings unavailable";
 
   const openOrderReceipt = async (order: TransactionHistoryItem) => {
     if (!order.receiptId) return;
     const request = ++receiptRequest.current;
     setReceiptError(null);
     try {
-      const result = await customerTransactionApi.receipt(order.organizationId, order.receiptId);
+      const result = await customerTransactionApi.receipt(
+        order.organizationId,
+        order.receiptId,
+      );
       if (request !== receiptRequest.current) return;
       if (result.success) setOrderReceipt(result.data);
       else setReceiptError(result.error.message);
     } catch {
-      if (request === receiptRequest.current) setReceiptError("Unable to load receipt.");
+      if (request === receiptRequest.current)
+        setReceiptError("Unable to load receipt.");
     }
   };
-  const receiptSavings = orderReceipt?.receiptKind === "COUNTER_REDEMPTION" &&
-    orderReceipt.actualSavings?.transactionId === orderReceipt.sourceTransactionId
-    ? verifiedSavingsMoney(orderReceipt.actualSavings)
-    : undefined;
-  const historySelector = !isPreviewMode && effectiveTab === "history" && !previewSection;
-  const selectorMemberships = historySelector ? historyMemberships : memberships;
+  const receiptSavings =
+    orderReceipt?.receiptKind === "COUNTER_REDEMPTION" &&
+    orderReceipt.actualSavings?.transactionId ===
+      orderReceipt.sourceTransactionId
+      ? verifiedSavingsMoney(orderReceipt.actualSavings)
+      : undefined;
+  const historySelector =
+    !isPreviewMode && effectiveTab === "history" && !previewSection;
+  const selectorMemberships = historySelector
+    ? historyMemberships
+    : memberships;
 
   /* ------------------------------------------------------------------ */
   /* Persisted customer profile data                                   */
@@ -1033,7 +1132,10 @@ export function BusinessExperience({
     }
   };
 
-  const handleTabChange = (nextTab: ExperienceTabKey, historyId: string | null = null) => {
+  const handleTabChange = (
+    nextTab: ExperienceTabKey,
+    historyId: string | null = null,
+  ) => {
     if (nextTab === "history") {
       setHistorySubscriptionId(historyId);
       setShowAllHistory(false);
@@ -1070,7 +1172,8 @@ export function BusinessExperience({
         benefits,
         offers: regularOffers,
         stores,
-        redemptions: effectiveTab === "history" ? scopedRedemptions : redemptions,
+        redemptions:
+          effectiveTab === "history" ? scopedRedemptions : redemptions,
         formatDate,
         detailsOverride,
         benefitPresentationMode:
@@ -1724,159 +1827,252 @@ export function BusinessExperience({
     });
 
     if (offer && onUseMembershipPurchaseOffer) {
-      onUseMembershipPurchaseOffer(offer.offerId, offer.displayName, membership.id, plan.id);
+      onUseMembershipPurchaseOffer(
+        offer.offerId,
+        offer.displayName,
+        membership.id,
+        plan.id,
+      );
     } else {
       onJoin(membership.id, plan.id);
     }
   };
 
-  const detailsOffer = detailsProduct ? membershipOfferForProduct(detailsProduct.id) : undefined;
-  const detailsCanJoin = !!detailsPlan && !!availableDetailsProduct?.plans.some((plan) => plan.id === detailsPlan.id);
+  const detailsOffer = detailsProduct
+    ? membershipOfferForProduct(detailsProduct.id)
+    : undefined;
+  const detailsCanJoin =
+    !!detailsPlan &&
+    !!availableDetailsProduct?.plans.some((plan) => plan.id === detailsPlan.id);
   const planPrice = (plan: SubscriptionPlan) =>
-    formatTransactionMoney(plan.price.amountMinor, plan.price.currency) ?? "Price unavailable";
+    formatTransactionMoney(plan.price.amountMinor, plan.price.currency) ??
+    "Price unavailable";
   const overviewBenefits = isPlanExploration
-    ? historyBenefits.filter((benefit) => detailsProduct?.benefitIds.includes(benefit.id))
+    ? historyBenefits.filter((benefit) =>
+        detailsProduct?.benefitIds.includes(benefit.id),
+      )
     : exp.benefits;
-  const planOffers = isPlanExploration && detailsProduct && detailsPlan
-    ? regularOffers.filter((offer) => !offer.membershipProductId || offer.membershipProductId === detailsProduct.id)
-    : [];
-  const planPurchaseOffers = isPlanExploration && detailsProduct && detailsPlan
-    ? membershipPurchaseOffers.filter((offer) => offer.applicableMembershipProductIds.includes(detailsProduct.id))
-    : [];
+  const planOffers =
+    isPlanExploration && detailsProduct && detailsPlan
+      ? regularOffers.filter(
+          (offer) =>
+            !offer.membershipProductId ||
+            offer.membershipProductId === detailsProduct.id,
+        )
+      : [];
+  const planPurchaseOffers =
+    isPlanExploration && detailsProduct && detailsPlan
+      ? membershipPurchaseOffers.filter((offer) =>
+          offer.applicableMembershipProductIds.includes(detailsProduct.id),
+        )
+      : [];
   const participatingStores = (benefit: Benefit) => {
     const availability = benefit.storeAvailability;
-    return availability ? stores
-      .filter((store) => availability.mode === "ALL_STORES" || availability.storeIds.includes(store.id))
-      .map((store) => store.name) : undefined;
+    return availability
+      ? stores
+          .filter(
+            (store) =>
+              availability.mode === "ALL_STORES" ||
+              availability.storeIds.includes(store.id),
+          )
+          .map((store) => store.name)
+      : undefined;
   };
-  const availableMembershipsSection = !isPreviewMode && !isPlanExploration &&
+  const availableMembershipsSection =
+    !isPreviewMode &&
+    !isPlanExploration &&
     (availableMemberships.length > 0 || showAvailableMembershipsFirst) ? (
-    <Section titleColor={pageTextColor} title={t("experience.availableMemberships")}>
-      <View style={{ gap: theme.spacing.md }}>
-        {!availableMemberships.length && (
-          <Text variant="bodySmall" color="textMuted">No other published memberships are available.</Text>
-        )}
-        {availableMemberships.map((membership) => {
-          const offer = membershipOfferForProduct(membership.id);
-          const name = membership.displayName ?? membership.membershipProductName;
-          return (
-            <View key={membership.id} style={{ gap: theme.spacing.sm }}>
-              {membership.plans.map((plan) => {
-                const savings = compactPotentialSavingsLabel(plan.potentialSavings);
-                const price = planPrice(plan);
-                const duration = getSubscriptionPeriodLabel(plan);
-                return (
-                  <Card key={plan.id} testID={`experience-available-${membership.id}-${plan.id}`} padding="none">
-                    <View style={{ position: "relative" }}>
-                      <Pressable
-                        accessibilityRole="button"
-                        focusable
-                        accessibilityLabel={`${name}, ${plan.subscriptionPlanName}, ${price}, ${duration}${savings ? `, ${savings}` : ""}`}
-                        accessibilityHint="Opens membership details"
-                        testID={`experience-open-membership-${plan.id}`}
-                        onPress={() => onExploreMembership?.(membership.id, plan.id)}
-                        style={({ pressed }) => [
-                          StyleSheet.absoluteFillObject,
-                          { backgroundColor: pressed ? theme.colors.primarySoft : "transparent" },
-                        ]}
-                      />
-                      <View pointerEvents="box-none" style={{
-                        flexDirection: "row", alignItems: "center", flexWrap: "wrap",
-                        gap: theme.spacing.sm, padding: theme.spacing.lg,
-                      }}>
-                        <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
-                          style={{ flex: 1, minWidth: 140, gap: theme.spacing.xs }}>
-                          <Text variant="bodyStrong">{name} · {plan.subscriptionPlanName}</Text>
-                          {membership.description && <Text variant="bodySmall" color="textMuted">{membership.description}</Text>}
-                          <Text variant="bodySmall" color="primary">{price} · {duration}</Text>
-                          {savings && <Text variant="bodySmall">{savings}</Text>}
-                          {offer && <Text variant="label" color="primary">{offer.displayName}</Text>}
-                        </View>
-                        <View pointerEvents="auto" collapsable={false}>
-                          <Button
-                            label={offer ? "Join with Offer" : t("experience.join")}
-                            size="sm"
-                            onPress={() => joinPlan(membership, plan)}
-                            disabled={Boolean(offer && !onUseMembershipPurchaseOffer)}
-                            testID={`experience-join-${plan.id}`}
-                          />
+      <Section
+        titleColor={pageTextColor}
+        title={t("experience.availableMemberships")}
+      >
+        <View style={{ gap: theme.spacing.md }}>
+          {!availableMemberships.length && (
+            <Text variant="bodySmall" color="textMuted">
+              No other published memberships are available.
+            </Text>
+          )}
+          {availableMemberships.map((membership) => {
+            const offer = membershipOfferForProduct(membership.id);
+            const name =
+              membership.displayName ?? membership.membershipProductName;
+            return (
+              <View key={membership.id} style={{ gap: theme.spacing.sm }}>
+                {membership.plans.map((plan) => {
+                  const savings = compactPotentialSavingsLabel(
+                    plan.potentialSavings,
+                  );
+                  const price = planPrice(plan);
+                  const duration = getSubscriptionPeriodLabel(plan);
+                  return (
+                    <Card
+                      key={plan.id}
+                      testID={`experience-available-${membership.id}-${plan.id}`}
+                      padding="none"
+                    >
+                      <View style={{ position: "relative" }}>
+                        <Pressable
+                          accessibilityRole="button"
+                          focusable
+                          accessibilityLabel={`${name}, ${plan.subscriptionPlanName}, ${price}, ${duration}${savings ? `, ${savings}` : ""}`}
+                          accessibilityHint="Opens membership details"
+                          testID={`experience-open-membership-${plan.id}`}
+                          onPress={() =>
+                            setSelectedAvailablePlan({ membership, plan })
+                          }
+                          style={({ pressed }) => [
+                            StyleSheet.absoluteFillObject,
+                            {
+                              backgroundColor: pressed
+                                ? theme.colors.primarySoft
+                                : "transparent",
+                            },
+                          ]}
+                        />
+                        <View
+                          pointerEvents="box-none"
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                            gap: theme.spacing.sm,
+                            padding: theme.spacing.lg,
+                          }}
+                        >
+                          <View
+                            pointerEvents="none"
+                            accessibilityElementsHidden
+                            importantForAccessibility="no-hide-descendants"
+                            style={{
+                              flex: 1,
+                              minWidth: 140,
+                              gap: theme.spacing.xs,
+                            }}
+                          >
+                            <Text variant="bodyStrong">
+                              {name} · {plan.subscriptionPlanName}
+                            </Text>
+                            {membership.description && (
+                              <Text variant="bodySmall" color="textMuted">
+                                {membership.description}
+                              </Text>
+                            )}
+                            <Text variant="bodySmall" color="primary">
+                              {price} · {duration}
+                            </Text>
+                            {savings && (
+                              <Text variant="bodySmall">{savings}</Text>
+                            )}
+                            {offer && (
+                              <Text variant="label" color="primary">
+                                {offer.displayName}
+                              </Text>
+                            )}
+                          </View>
+                          <View pointerEvents="auto" collapsable={false}>
+                            <Button
+                              label={
+                                offer ? "Join with Offer" : t("experience.join")
+                              }
+                              size="sm"
+                              onPress={() => joinPlan(membership, plan)}
+                              disabled={Boolean(
+                                offer && !onUseMembershipPurchaseOffer,
+                              )}
+                              testID={`experience-join-${plan.id}`}
+                            />
+                          </View>
                         </View>
                       </View>
-                    </View>
-                  </Card>
-                );
-              })}
-              {offer && (
-                <View style={{ gap: theme.spacing.xs, alignItems: "flex-start" }}>
-                  <Button
-                    label={membershipOfferQrLoadingProductId === membership.id ? "Generating QR…" : "Show QR at Store"}
-                    size="sm"
-                    variant="outline"
-                    disabled={membershipOfferQrLoadingProductId !== null}
-                    onPress={() => { void issueMembershipPurchaseOfferQr(offer.offerId, membership.id); }}
-                    testID={`experience-membership-offer-${offer.offerId}-qr`}
-                  />
-                  <Text variant="caption" color="textMuted">QR expires 5 minutes after it is generated.</Text>
-                </View>
-              )}
-            </View>
-          );
-        })}
-      </View>
-    </Section>
-  ) : null;
+                    </Card>
+                  );
+                })}
+                {offer && (
+                  <View
+                    style={{ gap: theme.spacing.xs, alignItems: "flex-start" }}
+                  >
+                    <Button
+                      label={
+                        membershipOfferQrLoadingProductId === membership.id
+                          ? "Generating QR…"
+                          : "Show QR at Store"
+                      }
+                      size="sm"
+                      variant="outline"
+                      disabled={membershipOfferQrLoadingProductId !== null}
+                      onPress={() => {
+                        void issueMembershipPurchaseOfferQr(
+                          offer.offerId,
+                          membership.id,
+                        );
+                      }}
+                      testID={`experience-membership-offer-${offer.offerId}-qr`}
+                    />
+                    <Text variant="caption" color="textMuted">
+                      QR expires 5 minutes after it is generated.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      </Section>
+    ) : null;
 
-  const renderExperienceOffer = (offer: Offer, itemStatus?: ReturnType<typeof statusFor>) => (
-  <DecorativeThemeFrame
-    key={offer.id}
-    imageUrl={
-      resolvedBranding.decoration?.cardBackgroundImageUrl ??
-      null
-    }
-    primaryColor={theme.colors.primary}
-    accentColor={theme.colors.accent}
-    variant="content"
-    decoration={resolvedBranding.decoration}
-  >
-    <OfferCard
-      decorative={Boolean(
-        resolvedBranding.decoration?.cardBackgroundImageUrl &&
-        resolvedBranding.decoration?.cardTreatment ===
-          "IMAGE_OVERLAY",
-      )}
-      offerId={offer.id}
-      testID={`experience-offer-${offer.id}`}
-      title={offer.offerName}
-      description={offer.description}
-      advertisedSavings={offer.advertisedSavings}
-      imageUrl={offer.promotionImageUrl}
-      badge={offer.badgeText}
-      availabilityText={itemStatus ? offerAvailabilityText(offer) : offer.availabilityText}
-      disclaimerText={offer.disclaimerText}
-      applicableProducts={offer.products?.map(
-        (product) => product.productName || product.productCode,
-      )}
-      discountPercentage={offer.discountPercentage}
-      ctaLabel={
-        !itemStatus ? undefined : isPreviewMode
-          ? offer.ctaLabel
-          : !isHistoricalSubscription &&
-              itemStatus.status === "AVAILABLE"
-            ? selectedOfferIds.has(offer.id)
-              ? "Remove from redemption"
-              : "Add to redemption"
-            : (itemStatus.displayReason ?? "Unavailable")
-      }
-      usageRules={offerUsageRules?.filter(
-        (rule) => rule.offerId === offer.id,
-      )}
-      onPress={
-        !itemStatus || isPreviewMode || itemStatus.status !== "AVAILABLE"
-          ? undefined
-          : () => toggleOffer(offer.id)
-      }
-    />
-  </DecorativeThemeFrame>
+  const renderExperienceOffer = (
+    offer: Offer,
+    itemStatus?: ReturnType<typeof statusFor>,
+  ) => (
+    <DecorativeThemeFrame
+      key={offer.id}
+      imageUrl={resolvedBranding.decoration?.cardBackgroundImageUrl ?? null}
+      primaryColor={theme.colors.primary}
+      accentColor={theme.colors.accent}
+      variant="content"
+      decoration={resolvedBranding.decoration}
+    >
+      <OfferCard
+        decorative={Boolean(
+          resolvedBranding.decoration?.cardBackgroundImageUrl &&
+          resolvedBranding.decoration?.cardTreatment === "IMAGE_OVERLAY",
+        )}
+        offerId={offer.id}
+        testID={`experience-offer-${offer.id}`}
+        title={offer.offerName}
+        description={offer.description}
+        advertisedSavings={offer.advertisedSavings}
+        imageUrl={offer.promotionImageUrl}
+        badge={offer.badgeText}
+        availabilityText={
+          itemStatus ? offerAvailabilityText(offer) : offer.availabilityText
+        }
+        disclaimerText={offer.disclaimerText}
+        applicableProducts={offer.products?.map(
+          (product) => product.productName || product.productCode,
+        )}
+        discountPercentage={offer.discountPercentage}
+        ctaLabel={
+          !itemStatus
+            ? undefined
+            : isPreviewMode
+              ? offer.ctaLabel
+              : !isHistoricalSubscription && itemStatus.status === "AVAILABLE"
+                ? selectedOfferIds.has(offer.id)
+                  ? "Remove from redemption"
+                  : "Add to redemption"
+                : (itemStatus.displayReason ?? "Unavailable")
+        }
+        usageRules={offerUsageRules?.filter(
+          (rule) => rule.offerId === offer.id,
+        )}
+        onPress={
+          !itemStatus || isPreviewMode || itemStatus.status !== "AVAILABLE"
+            ? undefined
+            : () => toggleOffer(offer.id)
+        }
+      />
+    </DecorativeThemeFrame>
   );
 
   const CardTab = (
@@ -1914,7 +2110,8 @@ export function BusinessExperience({
 
             <Text variant="body" color="textSecondary">
               {tagline?.trim() ||
-                (isPlanExploration ? "Explore the benefits included with this membership."
+                (isPlanExploration
+                  ? "Explore the benefits included with this membership."
                   : "Enjoy your member benefits and discover what is new for you.")}
             </Text>
 
@@ -1964,12 +2161,22 @@ export function BusinessExperience({
 
       {isPlanExploration && (!detailsProduct || !detailsPlan) ? (
         <Section titleColor={pageTextColor} title="Membership Details">
-          <Text variant="bodySmall" color="textMuted">This published membership plan is no longer available.</Text>
+          <Text variant="bodySmall" color="textMuted">
+            This published membership plan is no longer available.
+          </Text>
         </Section>
-      ) : (isPlanExploration || exp.membership || (isHistoricalSubscription && subscription)) ? (
+      ) : isPlanExploration ||
+        exp.membership ||
+        (isHistoricalSubscription && subscription) ? (
         <Section
           titleColor={pageTextColor}
-          title={isPlanExploration ? "Membership Details" : isHistoricalSubscription ? "Previous Membership" : t("experience.yourMemberships")}
+          title={
+            isPlanExploration
+              ? "Membership Details"
+              : isHistoricalSubscription
+                ? "Previous Membership"
+                : t("experience.yourMemberships")
+          }
         >
           <View
             style={
@@ -1987,30 +2194,66 @@ export function BusinessExperience({
               decoration={undefined}
               decorationImageUrl={undefined}
               decorationBackgroundColor={customerBackground}
-              testID={isPlanExploration ? "experience-published-membership-card" : isHistoricalSubscription ? "experience-previous-membership" : "experience-membership-card"}
+              testID={
+                isPlanExploration
+                  ? "experience-published-membership-card"
+                  : isHistoricalSubscription
+                    ? "experience-previous-membership"
+                    : "experience-membership-card"
+              }
               showPotentialSavings={isPlanExploration || !!subscription}
-              potentialSavings={isPlanExploration ? detailsPlan?.potentialSavings : selectedPlanSavings}
-              showActualSavings={!isPlanExploration && !isPreviewMode && !!subscription}
+              potentialSavings={
+                isPlanExploration
+                  ? detailsPlan?.potentialSavings
+                  : selectedPlanSavings
+              }
+              showActualSavings={
+                !isPlanExploration && !isPreviewMode && !!subscription
+              }
               actualSavingsValues={actualSavings.complete}
               partialSavingsValues={actualSavings.partial}
-              actualSavingsMessage={customerUserId ? actualSavingsMessage : "Savings unavailable"}
-              onViewSavingsHistory={!isPlanExploration && !isPreviewMode && exp.showActivity && subscription ? () => handleTabChange("history", subscription.id) : undefined}
+              actualSavingsMessage={
+                customerUserId ? actualSavingsMessage : "Savings unavailable"
+              }
+              onViewSavingsHistory={
+                !isPlanExploration &&
+                !isPreviewMode &&
+                exp.showActivity &&
+                subscription
+                  ? () => handleTabChange("history", subscription.id)
+                  : undefined
+              }
               organizationName={exp.displayName}
-              tier={isPlanExploration && detailsProduct && detailsPlan
-                ? `${detailsProduct.displayName ?? detailsProduct.membershipProductName} · ${detailsPlan.subscriptionPlanName}`
-                : exp.membership?.tier ?? product?.displayName ?? product?.membershipProductName ?? "Membership"}
-              validUntil={exp.membership?.validUntilLabel ?? (subscription ? formatDate(subscription.endDate) : "—")}
+              tier={
+                isPlanExploration && detailsProduct && detailsPlan
+                  ? `${detailsProduct.displayName ?? detailsProduct.membershipProductName} · ${detailsPlan.subscriptionPlanName}`
+                  : (exp.membership?.tier ??
+                    product?.displayName ??
+                    product?.membershipProductName ??
+                    "Membership")
+              }
+              validUntil={
+                exp.membership?.validUntilLabel ??
+                (subscription ? formatDate(subscription.endDate) : "—")
+              }
               status={subscriptionStatus}
-              publishedPlan={isPlanExploration && detailsPlan
-                ? { price: planPrice(detailsPlan), duration: getSubscriptionPeriodLabel(detailsPlan) }
-                : undefined}
+              publishedPlan={
+                isPlanExploration && detailsPlan
+                  ? {
+                      price: planPrice(detailsPlan),
+                      duration: getSubscriptionPeriodLabel(detailsPlan),
+                    }
+                  : undefined
+              }
               cardStyle={cardStyle}
               logoUrl={
                 membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl
               }
             >
               {isPlanExploration && detailsProduct && detailsPlan && (
-                <View style={{ alignItems: "flex-start", gap: theme.spacing.sm }}>
+                <View
+                  style={{ alignItems: "flex-start", gap: theme.spacing.sm }}
+                >
                   {(detailsPlan.description || detailsProduct.description) && (
                     <Text variant="bodySmall" color="textSecondary">
                       {detailsPlan.description || detailsProduct.description}
@@ -2018,10 +2261,14 @@ export function BusinessExperience({
                   )}
                   {detailsCanJoin && (
                     <Button
-                      label={detailsOffer ? "Join with Offer" : t("experience.join")}
+                      label={
+                        detailsOffer ? "Join with Offer" : t("experience.join")
+                      }
                       size="sm"
                       onPress={() => joinPlan(detailsProduct, detailsPlan)}
-                      disabled={Boolean(detailsOffer && !onUseMembershipPurchaseOffer)}
+                      disabled={Boolean(
+                        detailsOffer && !onUseMembershipPurchaseOffer,
+                      )}
                       testID={`experience-details-join-${detailsPlan.id}`}
                     />
                   )}
@@ -2032,22 +2279,34 @@ export function BusinessExperience({
                   <Text variant="bodySmall" color="textSecondary">
                     This membership is no longer active.
                   </Text>
-                  {product && selectedPlan && availableMemberships.some((item) =>
-                    item.id === product.id && item.plans.some((plan) => plan.id === selectedPlan.id)) && (
-                    <Button
-                      label="Repurchase"
-                      size="sm"
-                      onPress={() => {
-                        const purchaseOffer = membershipOfferForProduct(product.id);
-                        if (purchaseOffer && onUseMembershipPurchaseOffer) {
-                          onUseMembershipPurchaseOffer(purchaseOffer.offerId, purchaseOffer.displayName, product.id, selectedPlan.id);
-                        } else {
-                          onJoin(product.id, selectedPlan.id);
-                        }
-                      }}
-                      testID="experience-repurchase-membership"
-                    />
-                  )}
+                  {product &&
+                    selectedPlan &&
+                    availableMemberships.some(
+                      (item) =>
+                        item.id === product.id &&
+                        item.plans.some((plan) => plan.id === selectedPlan.id),
+                    ) && (
+                      <Button
+                        label="Repurchase"
+                        size="sm"
+                        onPress={() => {
+                          const purchaseOffer = membershipOfferForProduct(
+                            product.id,
+                          );
+                          if (purchaseOffer && onUseMembershipPurchaseOffer) {
+                            onUseMembershipPurchaseOffer(
+                              purchaseOffer.offerId,
+                              purchaseOffer.displayName,
+                              product.id,
+                              selectedPlan.id,
+                            );
+                          } else {
+                            onJoin(product.id, selectedPlan.id);
+                          }
+                        }}
+                        testID="experience-repurchase-membership"
+                      />
+                    )}
                 </View>
               )}
             </MembershipCard>
@@ -2083,11 +2342,18 @@ export function BusinessExperience({
         </Section>
       ) : null}
 
-      {(isPlanExploration ? detailsPlan : !isHistoricalSubscription && (previewSection === "benefits" || exp.membership)) &&
+      {(isPlanExploration
+        ? detailsPlan
+        : !isHistoricalSubscription &&
+          (previewSection === "benefits" || exp.membership)) &&
       overviewBenefits.length ? (
         <Section
           titleColor={pageTextColor}
-          title={isPlanExploration ? "Included Benefits" : t("experience.yourBenefits")}
+          title={
+            isPlanExploration
+              ? "Included Benefits"
+              : t("experience.yourBenefits")
+          }
         >
           <Card padding="lg">
             <View style={{ gap: 18 }}>
@@ -2102,19 +2368,28 @@ export function BusinessExperience({
                   eligibleProducts={b.products?.map(
                     (product) => product.productName || product.productCode,
                   )}
-                  participatingStores={isPlanExploration ? participatingStores(b) : undefined}
-                  productStoreAvailability={isPlanExploration ? undefined : b.products?.map((eligible) => ({
-                    productId: eligible.productId,
-                    productName: eligible.productName || eligible.productCode,
-                    availability: benefitProductAvailability(
-                      b.id,
-                      eligible.productId,
-                    ),
-                  }))}
+                  participatingStores={
+                    isPlanExploration ? participatingStores(b) : undefined
+                  }
+                  productStoreAvailability={
+                    isPlanExploration
+                      ? undefined
+                      : b.products?.map((eligible) => ({
+                          productId: eligible.productId,
+                          productName:
+                            eligible.productName || eligible.productCode,
+                          availability: benefitProductAvailability(
+                            b.id,
+                            eligible.productId,
+                          ),
+                        }))
+                  }
                   icon={benefitIconForType(b.benefitTypeId)}
-                  usageRules={benefitUsageRules?.filter(
-                    (rule) => rule.benefitId === b.id,
-                  ) ?? (isPlanExploration ? [] : undefined)}
+                  usageRules={
+                    benefitUsageRules?.filter(
+                      (rule) => rule.benefitId === b.id,
+                    ) ?? (isPlanExploration ? [] : undefined)
+                  }
                 />
               ))}
             </View>
@@ -2122,20 +2397,25 @@ export function BusinessExperience({
         </Section>
       ) : null}
 
-      {isPlanExploration && (planOffers.length > 0 || planPurchaseOffers.length > 0) && (
-        <Section titleColor={pageTextColor} title={t("experience.todaysPerks")}>
-          <View style={{ gap: theme.spacing.sm }}>
-            {planPurchaseOffers.map((offer) => (
-              <Card key={offer.offerId} padding="md">
-                <Text variant="bodyStrong">{offer.displayName}</Text>
-              </Card>
-            ))}
-            {planOffers.map((offer) => renderExperienceOffer(offer))}
-          </View>
-        </Section>
-      )}
+      {isPlanExploration &&
+        (planOffers.length > 0 || planPurchaseOffers.length > 0) && (
+          <Section
+            titleColor={pageTextColor}
+            title={t("experience.todaysPerks")}
+          >
+            <View style={{ gap: theme.spacing.sm }}>
+              {planPurchaseOffers.map((offer) => (
+                <Card key={offer.offerId} padding="md">
+                  <Text variant="bodyStrong">{offer.displayName}</Text>
+                </Card>
+              ))}
+              {planOffers.map((offer) => renderExperienceOffer(offer))}
+            </View>
+          </Section>
+        )}
 
-      {!isPlanExploration && !isHistoricalSubscription &&
+      {!isPlanExploration &&
+      !isHistoricalSubscription &&
       exp.membership?.active &&
       (redeemSectionBenefits.length || redeemSectionOffers.length) ? (
         <Section
@@ -2152,7 +2432,10 @@ export function BusinessExperience({
                   {redeemSectionBenefits.map(({ benefit: b, itemStatus }) => {
                     const selectable = itemStatus.status === "AVAILABLE";
                     const selected = selectable && selectedBenefitIds.has(b.id);
-                    const savings = advertisedSavingsLabel(b.advertisedSavings, "use");
+                    const savings = advertisedSavingsLabel(
+                      b.advertisedSavings,
+                      "use",
+                    );
 
                     return (
                       <Pressable
@@ -2201,7 +2484,10 @@ export function BusinessExperience({
                             </Text>
                           ) : null}
                           {savings ? (
-                            <Text variant="caption" color={selectable ? "primary" : "textMuted"}>
+                            <Text
+                              variant="caption"
+                              color={selectable ? "primary" : "textMuted"}
+                            >
                               {savings}
                             </Text>
                           ) : null}
@@ -2362,14 +2648,24 @@ export function BusinessExperience({
         </Section>
       ) : null}
 
-      {isPreviewMode && product?.plans.some((plan) => plan.id !== selectedPlan?.id && plan.potentialSavings) ? (
+      {isPreviewMode &&
+      product?.plans.some(
+        (plan) => plan.id !== selectedPlan?.id && plan.potentialSavings,
+      ) ? (
         <View style={{ gap: theme.spacing.xs }}>
-          {product.plans.map((plan) => plan.id !== selectedPlan?.id && plan.potentialSavings ? (
-            <View key={plan.id} style={{ gap: theme.spacing.xs }}>
-              <Text variant="bodySmall">{plan.subscriptionPlanName} · {potentialSavingsLabel(plan.potentialSavings)}</Text>
-              <Text variant="caption" color="textSecondary">{potentialSavingsAssumptions(plan.potentialSavings)}</Text>
-            </View>
-          ) : null)}
+          {product.plans.map((plan) =>
+            plan.id !== selectedPlan?.id && plan.potentialSavings ? (
+              <View key={plan.id} style={{ gap: theme.spacing.xs }}>
+                <Text variant="bodySmall">
+                  {plan.subscriptionPlanName} ·{" "}
+                  {potentialSavingsLabel(plan.potentialSavings)}
+                </Text>
+                <Text variant="caption" color="textSecondary">
+                  {potentialSavingsAssumptions(plan.potentialSavings)}
+                </Text>
+              </View>
+            ) : null,
+          )}
         </View>
       ) : null}
 
@@ -2402,7 +2698,9 @@ export function BusinessExperience({
                 <Text variant="label" color="textSecondary">
                   OTHER OFFERS
                 </Text>
-                {offersTabItems.map(({ offer, itemStatus }) => renderExperienceOffer(offer, itemStatus))}
+                {offersTabItems.map(({ offer, itemStatus }) =>
+                  renderExperienceOffer(offer, itemStatus),
+                )}
               </View>
             ) : null}
 
@@ -2489,20 +2787,29 @@ export function BusinessExperience({
 
   const HistoryTab = (() => {
     const redemptions = isPreviewMode ? historyRedemptions : scopedRedemptions;
-    const redemptionsById = new Map(redemptions.map((entry) => [entry.id, entry]));
-    const historyBenefitsById = new Map(historyBenefits.map((benefit) => [benefit.id, benefit]));
+    const redemptionsById = new Map(
+      redemptions.map((entry) => [entry.id, entry]),
+    );
+    const historyBenefitsById = new Map(
+      historyBenefits.map((benefit) => [benefit.id, benefit]),
+    );
     const canPageOrders = orders.key === orderScope && hasMoreOrders;
     const orderGroups = groupCustomerOrders(
-      orders.key === orderScope ? orders.rows.filter((order) => {
-        const attributedId = order.subscriptionId ?? (
-          // Older history responses have no canonical order ID. An omitted
-          // subscription on a canonical row can mean the evidence conflicted.
-          !order.canonicalOrderId && order.actualSavings?.verificationState === "VERIFIED"
-            ? order.actualSavings.subscriptionId
-            : undefined
-        );
-        return !historySubscriptionId || attributedId === historySubscriptionId;
-      }) : [],
+      orders.key === orderScope
+        ? orders.rows.filter((order) => {
+            const attributedId =
+              order.subscriptionId ??
+              // Older history responses have no canonical order ID. An omitted
+              // subscription on a canonical row can mean the evidence conflicted.
+              (!order.canonicalOrderId &&
+              order.actualSavings?.verificationState === "VERIFIED"
+                ? order.actualSavings.subscriptionId
+                : undefined);
+            return (
+              !historySubscriptionId || attributedId === historySubscriptionId
+            );
+          })
+        : [],
     );
     const sortedActivity = [...exp.activity].sort((a, b) => {
       const redemptionA = redemptionsById.get(a.id);
@@ -2666,7 +2973,9 @@ export function BusinessExperience({
       <View style={{ gap: theme.spacing.lg }} testID="experience-tab-history">
         {renderTabPreviewLink("history")}
 
-        {subscription && subscription.id === historySubscriptionId && !isPreviewMode ? (
+        {subscription &&
+        subscription.id === historySubscriptionId &&
+        !isPreviewMode ? (
           <Section titleColor={pageTextColor} title="Membership Details">
             <Card padding="lg">
               <View style={{ gap: theme.spacing.sm }}>
@@ -2704,99 +3013,141 @@ export function BusinessExperience({
         {!isPreviewMode ? (
           <View style={{ gap: theme.spacing.md }}>
             {[
-              { title: "Current Orders", entries: orderGroups.current, empty: "No current orders." },
-              { title: "Past Orders", entries: orderGroups.past, empty: "No past orders." },
+              {
+                title: "Current Orders",
+                entries: orderGroups.current,
+                empty: "No current orders.",
+              },
+              {
+                title: "Past Orders",
+                entries: orderGroups.past,
+                empty: "No past orders.",
+              },
             ].map(({ title, entries, empty }) => (
-          <Section key={title} titleColor={pageTextColor} title={title}>
-            <View style={{ gap: theme.spacing.sm }}>
-              {!ordersLoading && !ordersError && !entries.length ? (
-                <Text variant="bodySmall" color="textMuted">
-                  {canPageOrders ? "No matching orders in the pages loaded." : empty}
-                </Text>
-              ) : null}
-              {entries.map((order) => {
-                const saved = order.transactionType === "COUNTER_REDEMPTION" &&
-                  order.status === "COMPLETED" && order.actualSavings?.transactionId === order.transactionId
-                  ? verifiedSavingsMoney(order.actualSavings)
-                  : undefined;
-                return (
-                <ProfileThemeCard
-                  key={`${order.transactionType}-${order.transactionId}`}
-                >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      gap: theme.spacing.md,
-                      alignItems: "center",
-                    }}
-                  >
-                    <View style={{ flex: 1, gap: 3 }}>
-                      <Text variant="bodyStrong">
-                        {order.itemDescription ||
-                          (order.transactionType === "REFUND"
-                            ? "Refund"
-                            : order.transactionType === "COUNTER_REDEMPTION"
-                              ? "Benefit / Offer redemption"
-                              : transactionTypeLabel(order.transactionType))}
-                      </Text>
-
-                      <Text variant="caption" color="textMuted">
-                        {[
-                          customerOrderReference(order),
-                          order.organizationName,
-                          order.storeName &&
-                          order.storeName !== order.organizationName
-                            ? order.storeName
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </Text>
-
-                      <Text variant="caption" color="textMuted">
-                        {[
-                          transactionSummary(order),
-                          new Date(order.occurredAt).toLocaleDateString(),
-                        ].join(" · ")}
-                      </Text>
-                      {saved && <Text variant="label" color="success">Saved {saved}</Text>}
-                    </View>
-                    <View style={{ alignItems: "flex-end", gap: 5 }}>
-                      <Text variant="bodyStrong">
-                        {formatTransactionMoney(order.totalMinor, order.currencyCode) ?? "Amount unavailable"}
-                      </Text>
-                      {order.receiptAvailable && order.receiptId ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          onPress={() => void openOrderReceipt(order)}
+              <Section key={title} titleColor={pageTextColor} title={title}>
+                <View style={{ gap: theme.spacing.sm }}>
+                  {!ordersLoading && !ordersError && !entries.length ? (
+                    <Text variant="bodySmall" color="textMuted">
+                      {canPageOrders
+                        ? "No matching orders in the pages loaded."
+                        : empty}
+                    </Text>
+                  ) : null}
+                  {entries.map((order) => {
+                    const saved =
+                      order.transactionType === "COUNTER_REDEMPTION" &&
+                      order.status === "COMPLETED" &&
+                      order.actualSavings?.transactionId === order.transactionId
+                        ? verifiedSavingsMoney(order.actualSavings)
+                        : undefined;
+                    return (
+                      <ProfileThemeCard
+                        key={`${order.transactionType}-${order.transactionId}`}
+                      >
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            gap: theme.spacing.md,
+                            alignItems: "center",
+                          }}
                         >
-                          <Text variant="label" color="primary">
-                            View Receipt
-                          </Text>
-                        </Pressable>
-                      ) : transactionReceiptCaption(order) ? (
-                        <Text variant="caption" color="textMuted">
-                          {transactionReceiptCaption(order)}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </View>
-                </ProfileThemeCard>
-                );
-              })}
-            </View>
-          </Section>
+                          <View style={{ flex: 1, gap: 3 }}>
+                            <Text variant="bodyStrong">
+                              {order.itemDescription ||
+                                (order.transactionType === "REFUND"
+                                  ? "Refund"
+                                  : order.transactionType ===
+                                      "COUNTER_REDEMPTION"
+                                    ? "Benefit / Offer redemption"
+                                    : transactionTypeLabel(
+                                        order.transactionType,
+                                      ))}
+                            </Text>
+
+                            <Text variant="caption" color="textMuted">
+                              {[
+                                customerOrderReference(order),
+                                order.organizationName,
+                                order.storeName &&
+                                order.storeName !== order.organizationName
+                                  ? order.storeName
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </Text>
+
+                            <Text variant="caption" color="textMuted">
+                              {[
+                                transactionSummary(order),
+                                new Date(order.occurredAt).toLocaleDateString(),
+                              ].join(" · ")}
+                            </Text>
+                            {saved && (
+                              <Text variant="label" color="success">
+                                Saved {saved}
+                              </Text>
+                            )}
+                          </View>
+                          <View style={{ alignItems: "flex-end", gap: 5 }}>
+                            <Text variant="bodyStrong">
+                              {formatTransactionMoney(
+                                order.totalMinor,
+                                order.currencyCode,
+                              ) ?? "Amount unavailable"}
+                            </Text>
+                            {order.receiptAvailable && order.receiptId ? (
+                              <Pressable
+                                accessibilityRole="button"
+                                onPress={() => void openOrderReceipt(order)}
+                              >
+                                <Text variant="label" color="primary">
+                                  View Receipt
+                                </Text>
+                              </Pressable>
+                            ) : transactionReceiptCaption(order) ? (
+                              <Text variant="caption" color="textMuted">
+                                {transactionReceiptCaption(order)}
+                              </Text>
+                            ) : null}
+                          </View>
+                        </View>
+                      </ProfileThemeCard>
+                    );
+                  })}
+                </View>
+              </Section>
             ))}
-            {ordersLoading && <Text variant="bodySmall" color="textMuted">Loading orders…</Text>}
-            {ordersError && <Text variant="bodySmall" color="danger">{ordersError}</Text>}
-            {receiptError && <Text variant="bodySmall" color="danger">{receiptError}</Text>}
+            {ordersLoading && (
+              <Text variant="bodySmall" color="textMuted">
+                Loading orders…
+              </Text>
+            )}
+            {ordersError && (
+              <Text variant="bodySmall" color="danger">
+                {ordersError}
+              </Text>
+            )}
+            {receiptError && (
+              <Text variant="bodySmall" color="danger">
+                {receiptError}
+              </Text>
+            )}
             {ordersError ? (
-              <Button label="Retry orders" variant="secondary" onPress={() => {
-                setOrderOffset(0);
-                setHistoryRefresh((current) => current + 1);
-              }} />
+              <Button
+                label="Retry orders"
+                variant="secondary"
+                onPress={() => {
+                  setOrderOffset(0);
+                  setHistoryRefresh((current) => current + 1);
+                }}
+              />
             ) : canPageOrders && !ordersLoading ? (
-              <Button label="Load older orders" variant="secondary" onPress={() => setOrderOffset((offset) => offset + 25)} />
+              <Button
+                label="Load older orders"
+                variant="secondary"
+                onPress={() => setOrderOffset((offset) => offset + 25)}
+              />
             ) : null}
           </View>
         ) : null}
@@ -3001,7 +3352,9 @@ export function BusinessExperience({
                               color="text"
                               numberOfLines={2}
                             >
-                              {benefit?.displayName ?? benefit?.benefitName ?? activity.title}
+                              {benefit?.displayName ??
+                                benefit?.benefitName ??
+                                activity.title}
                             </Text>
 
                             <Text
@@ -3588,12 +3941,19 @@ export function BusinessExperience({
                   membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl
                 }
               />
-              {product?.plans.map((plan) => plan.id !== selectedPlan?.id && plan.potentialSavings ? (
-                <View key={plan.id} style={{ gap: theme.spacing.xs }}>
-                  <Text variant="bodySmall">{plan.subscriptionPlanName} · {potentialSavingsLabel(plan.potentialSavings)}</Text>
-                  <Text variant="caption" color="textSecondary">{potentialSavingsAssumptions(plan.potentialSavings)}</Text>
-                </View>
-              ) : null)}
+              {product?.plans.map((plan) =>
+                plan.id !== selectedPlan?.id && plan.potentialSavings ? (
+                  <View key={plan.id} style={{ gap: theme.spacing.xs }}>
+                    <Text variant="bodySmall">
+                      {plan.subscriptionPlanName} ·{" "}
+                      {potentialSavingsLabel(plan.potentialSavings)}
+                    </Text>
+                    <Text variant="caption" color="textSecondary">
+                      {potentialSavingsAssumptions(plan.potentialSavings)}
+                    </Text>
+                  </View>
+                ) : null,
+              )}
             </Section>
           </View>
         );
@@ -3843,9 +4203,11 @@ export function BusinessExperience({
     }
   })();
 
-  const renderedContent = isPlanExploration ? CardTab : previewSection
-    ? individualSectionContent
-    : tabContent;
+  const renderedContent = isPlanExploration
+    ? CardTab
+    : previewSection
+      ? individualSectionContent
+      : tabContent;
 
   return (
     <BusinessThemeScope theme={customerTheme}>
@@ -3947,7 +4309,10 @@ export function BusinessExperience({
               </Text>
             </Card>
           ) : null}
-          {!isPlanExploration && (historySelector ? selectorMemberships.length > 0 : selectorMemberships.length > 1) &&
+          {!isPlanExploration &&
+          (historySelector
+            ? selectorMemberships.length > 0
+            : selectorMemberships.length > 1) &&
           effectiveTab !== "profile" &&
           previewSection !== "profile" ? (
             <ScrollView
@@ -3962,7 +4327,9 @@ export function BusinessExperience({
                 <Pressable
                   testID="experience-history-all-orders"
                   accessibilityRole="button"
-                  accessibilityState={{ selected: historySubscriptionId === null }}
+                  accessibilityState={{
+                    selected: historySubscriptionId === null,
+                  }}
                   onPress={() => {
                     setHistorySubscriptionId(null);
                     setShowAllHistory(false);
@@ -3972,15 +4339,28 @@ export function BusinessExperience({
                     paddingVertical: 8,
                     borderRadius: theme.radius.pill,
                     borderWidth: 1,
-                    borderColor: historySubscriptionId ? theme.colors.border : theme.colors.primary,
-                    backgroundColor: historySubscriptionId ? theme.colors.background : theme.colors.primarySoft,
+                    borderColor: historySubscriptionId
+                      ? theme.colors.border
+                      : theme.colors.primary,
+                    backgroundColor: historySubscriptionId
+                      ? theme.colors.background
+                      : theme.colors.primarySoft,
                   }}
                 >
-                  <Text variant="label" color={historySubscriptionId ? "textMuted" : "primary"}>All Orders</Text>
+                  <Text
+                    variant="label"
+                    color={historySubscriptionId ? "textMuted" : "primary"}
+                  >
+                    All Orders
+                  </Text>
                 </Pressable>
               )}
               {selectorMemberships.map((m) => {
-                const selected = m.subscription.id === (historySelector ? historySubscriptionId : selectedSubscriptionId);
+                const selected =
+                  m.subscription.id ===
+                  (historySelector
+                    ? historySubscriptionId
+                    : selectedSubscriptionId);
 
                 const plan = m.product.plans.find(
                   (item) => item.id === m.subscription.subscriptionPlanId,
@@ -3992,9 +4372,14 @@ export function BusinessExperience({
                 const label = plan?.subscriptionPlanName
                   ? `${productLabel} · ${plan.subscriptionPlanName}`
                   : productLabel;
-                const repeatedPlan = historySelector && selectorMemberships.some((other) =>
-                  other.subscription.id !== m.subscription.id &&
-                  other.subscription.subscriptionPlanId === m.subscription.subscriptionPlanId);
+                const repeatedPlan =
+                  historySelector &&
+                  selectorMemberships.some(
+                    (other) =>
+                      other.subscription.id !== m.subscription.id &&
+                      other.subscription.subscriptionPlanId ===
+                        m.subscription.subscriptionPlanId,
+                  );
 
                 return (
                   <Pressable
@@ -4038,7 +4423,9 @@ export function BusinessExperience({
                       variant="label"
                       color={selected ? "primary" : "textMuted"}
                     >
-                      {repeatedPlan ? `${label} · ${m.subscription.subscriptionNumber}` : label}
+                      {repeatedPlan
+                        ? `${label} · ${m.subscription.subscriptionNumber}`
+                        : label}
                     </Text>
                   </Pressable>
                 );
@@ -4114,16 +4501,39 @@ export function BusinessExperience({
           </View>
         ) : null}
 
+        {selectedAvailablePlan ? (
+          <MembershipPlanDetailsModal
+            visible
+            onClose={() => setSelectedAvailablePlan(null)}
+            organizationName={exp.displayName}
+            membership={selectedAvailablePlan.membership}
+            plan={selectedAvailablePlan.plan}
+            benefits={historyBenefits}
+            usageRules={benefitUsageRules}
+            stores={stores}
+          />
+        ) : null}
+
         <TransactionReceiptViewer
           receipt={orderReceipt}
           visible={orderReceipt !== null}
           onClose={() => setOrderReceipt(null)}
-          afterReceipt={receiptSavings ? (
-            <View style={{ borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: theme.spacing.sm }}>
-              <Text variant="bodyStrong">You Saved on This Redemption</Text>
-              <Text variant="bodySmall" color="success">{receiptSavings}</Text>
-            </View>
-          ) : undefined}
+          afterReceipt={
+            receiptSavings ? (
+              <View
+                style={{
+                  borderTopWidth: 1,
+                  borderTopColor: theme.colors.border,
+                  paddingTop: theme.spacing.sm,
+                }}
+              >
+                <Text variant="bodyStrong">You Saved on This Redemption</Text>
+                <Text variant="bodySmall" color="success">
+                  {receiptSavings}
+                </Text>
+              </View>
+            ) : undefined
+          }
         />
 
         <Modal

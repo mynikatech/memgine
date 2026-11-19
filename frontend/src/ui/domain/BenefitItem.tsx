@@ -175,7 +175,7 @@ function formatTimeZone(timeZone?: string): string {
   };
   return friendlyNames[timeZone] ?? timeZone.replace(/_/g, " ");
 }
-function formatUsage(rule: BenefitUsageRule): string {
+export function formatUsage(rule: BenefitUsageRule): string {
   if (rule.frequencyType === "ONE_TIME") {
     return `One-time benefit${
       rule.usageLimit > 1 ? ` · Up to ${rule.usageLimit} times` : ""
@@ -202,7 +202,7 @@ function formatUsage(rule: BenefitUsageRule): string {
   }
   return `Up to ${rule.usageLimit} times per ${unit}`;
 }
-function formatAvailability(rule: BenefitUsageRule): string {
+export function formatAvailability(rule: BenefitUsageRule): string {
   const parts: string[] = [];
   const days = formatShortDays(rule.applicableDays);
   if (days) parts.push(`Available ${days}`);
@@ -272,7 +272,9 @@ export function BenefitItem({
   const primaryRule = rules[0];
   const ruleSummary = primaryRule ? formatUsage(primaryRule) : "";
   const availability = primaryRule ? formatAvailability(primaryRule) : "";
-  const hasDetails = Boolean(primaryRule || savingsLabel || participatingStores?.length);
+  const hasDetails = Boolean(
+    primaryRule || savingsLabel || participatingStores?.length,
+  );
   const handlePress = () => {
     if (hasDetails) {
       setDetailsOpen(true);
@@ -358,50 +360,60 @@ export function BenefitItem({
             <Text variant="bodyStrong" color="text">
               How this benefit works
             </Text>
-            {savingsLabel && <Text variant="label" color="primary">{savingsLabel}</Text>}
-            {primaryRule ? <View style={{ gap: theme.spacing.sm }}>
-              <View>
-                <Text variant="caption" color="textMuted">
-                  Usage
-                </Text>
-                <Text variant="bodySmall" color="text">
-                  {formatUsage(primaryRule)}
-                </Text>
+            {savingsLabel && (
+              <Text variant="label" color="primary">
+                {savingsLabel}
+              </Text>
+            )}
+            {primaryRule ? (
+              <View style={{ gap: theme.spacing.sm }}>
+                <View>
+                  <Text variant="caption" color="textMuted">
+                    Usage
+                  </Text>
+                  <Text variant="bodySmall" color="text">
+                    {formatUsage(primaryRule)}
+                  </Text>
+                </View>
+                <View>
+                  <Text variant="caption" color="textMuted">
+                    Available
+                  </Text>
+                  <Text variant="bodySmall" color="text">
+                    {formatDays(primaryRule.applicableDays) || "Every day"}
+                  </Text>
+                </View>
+                <View>
+                  <Text variant="caption" color="textMuted">
+                    Time
+                  </Text>
+                  <Text variant="bodySmall" color="text">
+                    {primaryRule.windowStartTime || primaryRule.windowEndTime
+                      ? `${formatTime(primaryRule.windowStartTime) || "Any time"}–${
+                          formatTime(primaryRule.windowEndTime) || "Any time"
+                        }`
+                      : "Any time"}
+                  </Text>
+                </View>
+                <View>
+                  <Text variant="caption" color="textMuted">
+                    Time zone
+                  </Text>
+                  <Text variant="bodySmall" color="text">
+                    {formatTimeZone(primaryRule.timeZone) ||
+                      "Business local time"}
+                  </Text>
+                </View>
               </View>
-              <View>
-                <Text variant="caption" color="textMuted">
-                  Available
-                </Text>
-                <Text variant="bodySmall" color="text">
-                  {formatDays(primaryRule.applicableDays) || "Every day"}
-                </Text>
-              </View>
-              <View>
-                <Text variant="caption" color="textMuted">
-                  Time
-                </Text>
-                <Text variant="bodySmall" color="text">
-                  {primaryRule.windowStartTime || primaryRule.windowEndTime
-                    ? `${formatTime(primaryRule.windowStartTime) || "Any time"}–${
-                        formatTime(primaryRule.windowEndTime) || "Any time"
-                      }`
-                    : "Any time"}
-                </Text>
-              </View>
-              <View>
-                <Text variant="caption" color="textMuted">
-                  Time zone
-                </Text>
-                <Text variant="bodySmall" color="text">
-                  {formatTimeZone(primaryRule.timeZone) ||
-                    "Business local time"}
-                </Text>
-              </View>
-            </View> : null}
+            ) : null}
             {participatingStores?.length ? (
               <View style={{ gap: theme.spacing.xs }}>
-                <Text variant="bodyStrong" color="text">Participating Stores</Text>
-                <Text variant="bodySmall" color="text">{participatingStores.join(", ")}</Text>
+                <Text variant="bodyStrong" color="text">
+                  Participating Stores
+                </Text>
+                <Text variant="bodySmall" color="text">
+                  {participatingStores.join(", ")}
+                </Text>
               </View>
             ) : null}
             {productStoreAvailability?.length ? (
