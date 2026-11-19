@@ -15,7 +15,8 @@ data class BenefitSqlParams(
     val benefitTypeId: String, val description: String?, val disclaimerText: String?, val benefitStatusId: String,
     val productId: String?, val retailPrice: Double?, val cost: Double?,
     val effectiveDate: String, val expiryDate: String?, val actorUserId: String,
-    val create: Boolean
+    val create: Boolean,
+    val savingsMinor: Long?, val savingsCurrency: String?
 )
 
 data class RuleSqlParams(
@@ -92,12 +93,15 @@ interface BenefitSql {
     fun rules(@Bind("organizationId") organizationId: String,
               @Bind("benefitId") benefitId: String): List<BenefitUsageRuleDto>
 
+    @SqlQuery("SELECT get_advertised_savings(:organizationId, 'BENEFIT')::text")
+    fun advertisedSavings(@Bind("organizationId") organizationId: String): String
+
     @SqlQuery("""SELECT save_organization_benefit(
         :organizationId, :id, :benefitCode, :benefitName, :displayName,
         :benefitCategoryId, :benefitTypeId, :description, :disclaimerText, :benefitStatusId,
         :productId, CAST(:retailPrice AS numeric), CAST(:cost AS numeric),
         CAST(:effectiveDate AS date), CAST(:expiryDate AS date),
-        :actorUserId, :create)""")
+        :actorUserId, :create, :savingsMinor, :savingsCurrency)""")
     fun save(@BindBean params: BenefitSqlParams): Boolean
 
     @SqlQuery("""SELECT save_organization_benefit_rule(

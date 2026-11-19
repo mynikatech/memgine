@@ -1,3 +1,5 @@
+import type { AdvertisedSavings } from "@/src/core/domain/entities";
+import { advertisedSavingsLabel } from "@/src/core/domain/savings-display";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
@@ -34,6 +36,7 @@ export function benefitIconForType(benefitTypeId: string): IoniconName {
 type BenefitItemProps = {
   title: string;
   subtitle?: string;
+  advertisedSavings?: AdvertisedSavings | null;
   disclaimerText?: string;
   eligibleProducts?: string[];
   productStoreAvailability?: Array<{
@@ -41,6 +44,7 @@ type BenefitItemProps = {
     productName: string;
     availability: string;
   }>;
+  participatingStores?: string[];
   icon?: IoniconName;
   usageRules?: BenefitUsageRule[];
   testID?: string;
@@ -209,17 +213,21 @@ function formatAvailability(rule: BenefitUsageRule): string {
   }
   return parts.join(" · ");
 }
+
 export function BenefitItem({
   title,
   subtitle,
+  advertisedSavings,
   disclaimerText,
   eligibleProducts,
   productStoreAvailability,
+  participatingStores,
   icon = "gift-outline",
   usageRules: usageRulesOverride,
   testID,
 }: BenefitItemProps) {
   const theme = useTheme();
+  const savingsLabel = advertisedSavingsLabel(advertisedSavings, "use");
   const benefitId = getBenefitId(testID);
   const [rules, setRules] = useState<BenefitUsageRule[]>([]);
   const [ruleError, setRuleError] = useState<string | null>(null);
@@ -264,8 +272,9 @@ export function BenefitItem({
   const primaryRule = rules[0];
   const ruleSummary = primaryRule ? formatUsage(primaryRule) : "";
   const availability = primaryRule ? formatAvailability(primaryRule) : "";
+  const hasDetails = Boolean(primaryRule || savingsLabel || participatingStores?.length);
   const handlePress = () => {
-    if (primaryRule) {
+    if (hasDetails) {
       setDetailsOpen(true);
     }
   };
@@ -274,8 +283,8 @@ export function BenefitItem({
       <Pressable
         testID={testID}
         onPress={handlePress}
-        disabled={!primaryRule}
-        accessibilityRole={primaryRule ? "button" : undefined}
+        disabled={!hasDetails}
+        accessibilityRole={hasDetails ? "button" : undefined}
         style={({ pressed }) => ({
           flexDirection: "row",
           alignItems: "center",
@@ -329,7 +338,7 @@ export function BenefitItem({
             </Text>
           ) : null}
         </View>
-        {primaryRule ? (
+        {hasDetails ? (
           <Ionicons
             name="chevron-forward"
             size={18}
@@ -337,7 +346,7 @@ export function BenefitItem({
           />
         ) : null}
       </Pressable>
-      {primaryRule ? (
+      {hasDetails ? (
         <Modal
           visible={detailsOpen}
           onClose={() => setDetailsOpen(false)}
@@ -349,7 +358,8 @@ export function BenefitItem({
             <Text variant="bodyStrong" color="text">
               How this benefit works
             </Text>
-            <View style={{ gap: theme.spacing.sm }}>
+            {savingsLabel && <Text variant="label" color="primary">{savingsLabel}</Text>}
+            {primaryRule ? <View style={{ gap: theme.spacing.sm }}>
               <View>
                 <Text variant="caption" color="textMuted">
                   Usage
@@ -387,7 +397,13 @@ export function BenefitItem({
                     "Business local time"}
                 </Text>
               </View>
-            </View>
+            </View> : null}
+            {participatingStores?.length ? (
+              <View style={{ gap: theme.spacing.xs }}>
+                <Text variant="bodyStrong" color="text">Participating Stores</Text>
+                <Text variant="bodySmall" color="text">{participatingStores.join(", ")}</Text>
+              </View>
+            ) : null}
             {productStoreAvailability?.length ? (
               <View style={{ gap: theme.spacing.sm }}>
                 <Text variant="bodyStrong" color="text">

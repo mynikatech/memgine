@@ -229,6 +229,9 @@ export const APP_ROUTES = {
 
   discover: {
     organization: (organizationId: string) => `/discover/${organizationId}`,
+    memberships: (organizationId: string) => `/discover/${organizationId}?section=memberships`,
+    membership: (organizationId: string, productId: string, planId: string) =>
+      `/discover/${organizationId}?productId=${encodeURIComponent(productId)}&planId=${encodeURIComponent(planId)}`,
   },
 
   qr: {
@@ -243,10 +246,10 @@ export const APP_ROUTES = {
     organization: (organizationId: string) =>
       `/join?organizationId=${encodeURIComponent(organizationId)}`,
 
-    membership: (organizationId: string, productId: string) =>
+    membership: (organizationId: string, productId: string, planId?: string) =>
       `/join?organizationId=${encodeURIComponent(
         organizationId,
-      )}&productId=${encodeURIComponent(productId)}`,
+      )}&productId=${encodeURIComponent(productId)}${planId ? `&planId=${encodeURIComponent(planId)}` : ""}`,
   },
 } as const;
 

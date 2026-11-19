@@ -4,6 +4,7 @@ import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.exception.ConflictException
 import com.mynikatech.memgine.exception.NotFoundException
 import com.mynikatech.memgine.net.dto.*
+import kotlinx.serialization.json.Json
 import org.jdbi.v3.core.Jdbi
 import java.time.LocalDate
 
@@ -13,7 +14,7 @@ class BenefitService(private val jdbi: Jdbi) {
         validateId(membershipProductId)
         val sql = jdbi.onDemand(BenefitSql::class.java)
         val rows = sql.byMembershipProduct(membershipProductId)
-        return if (rows.isEmpty()) rows else withDetails(rows, sql)
+        return withDetails(rows, sql, includeSavings = false)
     }
 
     fun products(organizationId: String): List<CatalogProductDto> {
@@ -30,10 +31,10 @@ class BenefitService(private val jdbi: Jdbi) {
         return result
     }
 
-    fun list(organizationId: String): List<BenefitDto> {
+    fun list(organizationId: String, includeSavings: Boolean = true): List<BenefitDto> {
         validateId(organizationId)
         val sql = jdbi.onDemand(BenefitSql::class.java)
-        return withDetails(sql.list(organizationId), sql)
+        return withDetails(sql.list(organizationId), sql, includeSavings)
     }
 
     fun get(organizationId: String, benefitId: String): BenefitDto {
@@ -113,7 +114,8 @@ class BenefitService(private val jdbi: Jdbi) {
                 request.displayName, request.benefitCategoryId, request.benefitTypeId,
                 request.description, request.disclaimerText, request.benefitStatusId, selectedProductIds.minOrNull(),
                 request.retailPrice, request.cost, request.effectiveDate,
-                request.expiryDate, actorUserId, create
+                request.expiryDate, actorUserId, create,
+                request.advertisedSavingsOverride?.amountMinor, request.advertisedSavingsOverride?.currency
             ))
             val existingIds = existing.map { it.id }.toSet()
             request.rules.forEach { rule ->
@@ -157,11 +159,12 @@ class BenefitService(private val jdbi: Jdbi) {
         if (id.isBlank() || id.length > 64) throw BadRequestException("Invalid id")
     }
 
-    private fun withDetails(rows: List<BenefitDto>, sql: BenefitSql): List<BenefitDto> {
+    private fun withDetails(rows: List<BenefitDto>, sql: BenefitSql, includeSavings: Boolean = true): List<BenefitDto> {
         if (rows.isEmpty()) return rows
         val organizationId = rows.first().organizationId
+        val savings = if (includeSavings) Json.decodeFromString<Map<String, AdvertisedSavingsDto>>(sql.advertisedSavings(organizationId)) else emptyMap()
         return withStoreAvailability(
-            withProducts(rows, sql.canonicalProducts(organizationId)),
+            withProducts(rows.map { it.copy(advertisedSavings = savings[it.id]) }, sql.canonicalProducts(organizationId)),
             sql.storeAvailability(organizationId)
         )
     }

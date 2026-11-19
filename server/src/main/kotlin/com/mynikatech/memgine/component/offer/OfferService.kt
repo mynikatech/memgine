@@ -6,6 +6,7 @@ import com.mynikatech.memgine.exception.ConflictException
 import com.mynikatech.memgine.exception.ForbiddenException
 import com.mynikatech.memgine.exception.NotFoundException
 import com.mynikatech.memgine.net.dto.*
+import kotlinx.serialization.json.Json
 import org.jdbi.v3.core.Jdbi
 import org.postgresql.util.PSQLException
 import java.time.LocalDate
@@ -20,7 +21,8 @@ class OfferService(private val jdbi: Jdbi) {
         return withDetails(
             sql.list(organizationId, actorUserId),
             sql.canonicalProducts(organizationId),
-            sql.storeAvailability(organizationId, actorUserId)
+            sql.storeAvailability(organizationId, actorUserId),
+            sql
         )
     }
 
@@ -33,7 +35,8 @@ class OfferService(private val jdbi: Jdbi) {
         return withDetails(
             listOf(row),
             sql.canonicalProducts(organizationId),
-            sql.storeAvailability(organizationId, actorUserId)
+            sql.storeAvailability(organizationId, actorUserId),
+            sql
         ).single()
     }
 
@@ -117,7 +120,8 @@ class OfferService(private val jdbi: Jdbi) {
                     request.promotionImageUrl, request.badgeText, request.availabilityText, request.disclaimerText,
                     request.ctaLabel, request.ctaType, request.ctaTarget,
                     request.discountPercentage, request.effectiveDate, request.expiryDate,
-                    request.statusId, request.versionNo, actorUserId, create
+                    request.statusId, request.versionNo, actorUserId, create,
+                request.advertisedSavingsOverride?.amountMinor, request.advertisedSavingsOverride?.currency
                 ))
                 val oldIds = oldRules.map { it.id }.toSet()
                 request.rules.forEach { rule ->
@@ -148,7 +152,7 @@ class OfferService(private val jdbi: Jdbi) {
                     withDetails(listOf(sql.get(organizationId, request.id, actorUserId)
                         ?: throw NotFoundException("Offer not found after save")),
                         sql.canonicalProducts(organizationId),
-                        sql.storeAvailability(organizationId, actorUserId)).single(),
+                        sql.storeAvailability(organizationId, actorUserId), sql).single(),
                     sql.rules(organizationId, request.id, actorUserId)
                 )
             }
@@ -175,8 +179,13 @@ class OfferService(private val jdbi: Jdbi) {
     private fun withDetails(
         rows: List<OfferDto>,
         products: List<CanonicalProductRow>,
-        availabilityRows: List<OfferStoreAvailabilityRow>
-    ): List<OfferDto> = withStoreAvailability(withProducts(rows, products), availabilityRows)
+        availabilityRows: List<OfferStoreAvailabilityRow>,
+        sql: OfferSql
+    ): List<OfferDto> {
+        if (rows.isEmpty()) return rows
+        val savings = Json.decodeFromString<Map<String, AdvertisedSavingsDto>>(sql.advertisedSavings(rows.first().organizationId))
+        return withStoreAvailability(withProducts(rows.map { it.copy(advertisedSavings = savings[it.id]) }, products), availabilityRows)
+    }
 
     private fun withProducts(rows: List<OfferDto>, products: List<CanonicalProductRow>): List<OfferDto> {
         val byOffer = products.groupBy { it.parentId }

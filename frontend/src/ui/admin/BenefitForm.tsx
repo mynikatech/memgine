@@ -1,3 +1,4 @@
+import { AdvertisedSavingsFields, useAdvertisedSavingsOverride } from "./AdvertisedSavingsFields";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { DateInput } from "../DateInput";
@@ -1035,7 +1036,11 @@ export function BenefitForm({
     }
   };
 
+  const savingsDraft = useAdvertisedSavingsOverride(benefit.advertisedSavings, defaultCurrency);
+
   const handleSave = async () => {
+    const override = savingsDraft.validateOverride();
+    if (override === undefined) return;
     if (!validate()) {
       if (
         selectedAdjustmentType &&
@@ -1066,6 +1071,7 @@ export function BenefitForm({
       await onSave(
         {
           ...form,
+          advertisedSavings: { ...benefit.advertisedSavings, override },
           productIds: commerceProductIds,
           productId: [...commerceProductIds].sort()[0],
           storeAvailability: {
@@ -1476,6 +1482,11 @@ export function BenefitForm({
               }
             />
           </View>
+
+          <AdvertisedSavingsFields
+            savings={benefit.advertisedSavings}
+            {...savingsDraft.fields}
+          />
 
           <View style={styles.field}>
             <Input

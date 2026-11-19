@@ -24,6 +24,7 @@ import type {
 } from "@/src/core";
 import { services } from "@/src/core";
 import { BusinessExperience } from "@/src/experience";
+import { activeMembershipPlanIds, discoverableMembershipProducts, resolveOwnedMembershipProduct } from "@/src/core/domain/membership-helpers";
 import { entityStatusApi } from "@/src/data/api/entity-status-api";
 import {
   BusinessPreviewScope,
@@ -53,6 +54,8 @@ type BusinessData = {
   content: TemplateDefaultContent;
   template: TemplateDefinition;
   memberships: MembershipBundle[];
+  historyRedemptions: Redemption[];
+  historyBenefits: Benefit[];
   availableMemberships: MembershipProduct[];
   benefitUsageRules: BenefitUsageRule[];
   offers: Offer[];
@@ -244,10 +247,31 @@ export default function BusinessExperienceRoute() {
                 ),
             };
           });
+        const historyRedemptions = allRedemptions.map((item) => ({
+          id: item.id,
+          redemptionNumber: item.redemptionNumber,
+          subscriptionId: item.subscriptionId,
+          benefitId: item.benefitId,
+          storeId: item.storeId,
+          staffId: item.staffId ?? undefined,
+          redemptionDateTime: item.redemptionDateTime,
+          quantity: item.quantity,
+          redemptionStatusId: item.redemptionStatusId,
+          remarks: item.remarks ?? undefined,
+          createdAt: item.createdAt,
+          createdBy: item.createdBy,
+          updatedAt: item.updatedAt,
+          updatedBy: item.updatedBy,
+          versionNo: item.versionNo,
+          isDeleted: false,
+          // Redemption method is not recorded in the physical schema.
+        }) as Redemption);
         const bundles: MembershipBundle[] = [];
         for (const row of foundSubscriptions) {
-          const product = catalog.find(
-            (item) => item.id === row.membershipProductId,
+          const product = resolveOwnedMembershipProduct(
+            catalog.find((item) => item.id === row.membershipProductId),
+            selected.summary.membershipProducts.find((item) => item.id === row.membershipProductId),
+            row.subscriptionPlanId,
           );
           if (!product) throw new Error("Membership product is unavailable.");
           const subscriptionStatusId = await entityStatusApi.resolveStatusId(
@@ -282,50 +306,13 @@ export default function BusinessExperienceRoute() {
             benefits: allBenefits.filter((benefit) =>
               product.benefitIds.includes(benefit.id),
             ),
-            redemptions: allRedemptions
-              .filter((item) => item.subscriptionId === row.id)
-              .map(
-                (item) =>
-                  ({
-                    id: item.id,
-                    redemptionNumber: item.redemptionNumber,
-                    subscriptionId: item.subscriptionId,
-                    benefitId: item.benefitId,
-                    storeId: item.storeId,
-                    staffId: item.staffId ?? undefined,
-                    redemptionDateTime: item.redemptionDateTime,
-                    quantity: item.quantity,
-                    redemptionStatusId: item.redemptionStatusId,
-                    remarks: item.remarks ?? undefined,
-                    createdAt: item.createdAt,
-                    createdBy: item.createdBy,
-                    updatedAt: item.updatedAt,
-                    updatedBy: item.updatedBy,
-                    versionNo: item.versionNo,
-                    isDeleted: false,
-                    // Redemption method is not recorded in the physical schema.
-                  }) as Redemption,
-              ),
+            redemptions: historyRedemptions.filter((item) => item.subscriptionId === row.id),
           });
         }
-        // An active subscription prevents another purchase of the same product.
-        // A cancelled or expired subscription is historical, not active ownership.
-        // Other and unresolved statuses remain blocked from automatic repurchase.
-        const repurchasableStatuses = new Set([
-          "CANCELLED",
-          "CANCELED",
-          "EXPIRED",
-        ]);
-        const owned = new Set(
-          bundles
-            .filter(
-              (item) =>
-                !repurchasableStatuses.has(
-                  item.subscriptionStatus?.statusCode?.toUpperCase() ?? "",
-                ),
-            )
-            .map((item) => item.product.id),
-        );
+        const activePlanIds = activeMembershipPlanIds(bundles.map(({ subscription, subscriptionStatus }) => ({
+          planId: subscription.subscriptionPlanId,
+          status: subscriptionStatus?.statusCode,
+        })));
         const redemptionItemStatusesBySubscription = Object.fromEntries(
           foundSubscriptions.map((row, index) => [row.id, statusLists[index]]),
         );
@@ -341,9 +328,9 @@ export default function BusinessExperienceRoute() {
           template: templateItem.template,
           configuration: experience.configuration,
           memberships: bundles,
-          availableMemberships: joinCatalog.filter(
-            (item) => !owned.has(item.id),
-          ),
+          historyRedemptions,
+          historyBenefits: allBenefits,
+          availableMemberships: discoverableMembershipProducts(joinCatalog, activePlanIds),
           offers: publishedOffers.filter((offer) =>
             combinedOffers.some(
               (entry) =>
@@ -442,6 +429,9 @@ export default function BusinessExperienceRoute() {
             ] ?? []
           }
           redemptions={current.redemptions}
+          historyRedemptions={data.historyRedemptions}
+          historyBenefits={data.historyBenefits}
+          historyMemberships={data.memberships}
           memberships={activeMemberships.map((item) => ({
             subscription: item.subscription,
             product: item.product,
@@ -452,14 +442,16 @@ export default function BusinessExperienceRoute() {
             setActiveSubscription(id);
           }}
           availableMemberships={data.availableMemberships}
-          onJoin={(productId) =>
+          onExploreMembership={(productId, planId) =>
+            router.push(APP_ROUTES.discover.membership(orgId, productId, planId) as never)}
+          onJoin={(productId, planId) =>
             router.push(
-              `${APP_ROUTES.join.membership(orgId, productId)}&customerId=${encodeURIComponent(customerId)}` as never,
+              `${APP_ROUTES.join.membership(orgId, productId, planId)}&customerId=${encodeURIComponent(customerId)}` as never,
             )
           }
-          onUseMembershipPurchaseOffer={(offerId, displayName, productId) =>
+          onUseMembershipPurchaseOffer={(offerId, displayName, productId, planId) =>
             router.push(
-              `${APP_ROUTES.join.membership(orgId, productId)}&customerId=${encodeURIComponent(customerId)}&explicitOfferId=${encodeURIComponent(offerId)}&explicitOfferName=${encodeURIComponent(displayName)}` as never,
+              `${APP_ROUTES.join.membership(orgId, productId, planId)}&customerId=${encodeURIComponent(customerId)}&explicitOfferId=${encodeURIComponent(offerId)}&explicitOfferName=${encodeURIComponent(displayName)}` as never,
             )
           }
           onExit={() => router.replace(APP_ROUTES.customer.cards)}

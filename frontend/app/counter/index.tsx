@@ -43,6 +43,7 @@ import {
 import { useAuth, useBusiness, useTranslation } from "@/src/providers";
 import { COLORS, RADIUS, SPACING } from "@/src/theme/colors";
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
+import { formatTransactionMoney } from "@/src/core/domain/savings-display";
 import { storage } from "@/src/utils/storage";
 import { httpClient } from "@/src/data/api/http-client";
 import {
@@ -70,6 +71,33 @@ const normalizePhone = (value: string): string =>
 
 const normalizeOtp = (value: string): string =>
   value.replace(/\D/g, "").slice(0, OTP_LENGTH);
+
+function RedemptionSavingsRow({
+  amountMinor,
+  currency,
+}: {
+  amountMinor?: number | null;
+  currency?: string | null;
+}) {
+  const estimate = amountMinor != null && amountMinor >= 0
+    ? formatTransactionMoney(amountMinor, currency)
+    : undefined;
+
+  return (
+    <View testID="counter-redemption-estimated-savings" style={[styles.ctxRow, {
+      gap: SPACING.sm,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: COLORS.border,
+      marginTop: SPACING.xs,
+      paddingTop: SPACING.sm,
+    }]}>
+      <Text style={[styles.ctxLabel, { flex: 1 }]}>Estimated Savings on This Redemption</Text>
+      <Text style={[styles.ctxValue, { flexShrink: 1, textAlign: "right" }]}>
+        {estimate ?? "Savings estimate unavailable"}
+      </Text>
+    </View>
+  );
+}
 
 type CounterResult = RedemptionResult | OfferRedemptionResult;
 
@@ -4653,6 +4681,10 @@ export default function StaffCounter() {
               {(preOtpReview.totalMinor / 100).toFixed(2)}
             </Text>
           </View>
+          <RedemptionSavingsRow
+            amountMinor={preOtpReview.adjustmentTotalMinor}
+            currency={preOtpReview.currencyCode}
+          />
           <Text style={styles.muted}>
             Estimated from current POS prices. The server will revalidate
             eligibility and pricing after OTP.
@@ -4804,6 +4836,10 @@ export default function StaffCounter() {
               {(redemptionReview.payableTotalMinor / 100).toFixed(2)}
             </Text>
           </View>
+          <RedemptionSavingsRow
+            amountMinor={redemptionReview.adjustmentTotalMinor}
+            currency={redemptionReview.currencyCode}
+          />
           <Text style={styles.muted}>
             This is an estimate. Final provider-order totals are confirmed
             before payment is sent.
@@ -4898,6 +4934,16 @@ export default function StaffCounter() {
               </View>
             </>
           ) : null}
+
+          <RedemptionSavingsRow
+            amountMinor={
+              redemptionCheckoutStage === "preparing" ||
+              (redemptionCheckout.pricingReconciliationRequired && !redemptionCheckout.pricingAcknowledged)
+                ? undefined
+                : redemptionCheckout.adjustmentTotalMinor
+            }
+            currency={redemptionCheckout.currencyCode}
+          />
 
           {redemptionCheckout.pricingReconciliationRequired &&
           !redemptionCheckout.pricingAcknowledged ? (

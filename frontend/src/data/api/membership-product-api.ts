@@ -62,6 +62,7 @@ export class MembershipProductApi {
           subscriptionPeriodUnit: plan.subscriptionPeriodUnit,
           price: plan.price.amountMinor / 100,
           currencyId: plan.currencyId,
+          potentialSavingsOverride: plan.potentialSavingsOverride ?? null,
           subscriptionPlanStatusId: await entityStatusApi.resolveEntityStatusId(
             "SUBSCRIPTION_PLAN", plan.subscriptionPlanStatusId,
           ),

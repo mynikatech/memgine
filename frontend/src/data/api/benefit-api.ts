@@ -203,6 +203,7 @@ export class BenefitApi {
         benefitTypeId: benefit.benefitTypeId,
         description: benefit.description,
         disclaimerText: benefit.disclaimerText,
+        advertisedSavingsOverride: benefit.advertisedSavings?.override ?? null,
         benefitStatusId: await entityStatusApi.resolveEntityStatusId(
           "BENEFIT",
           benefit.benefitStatusId,

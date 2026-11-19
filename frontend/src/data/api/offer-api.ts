@@ -69,6 +69,7 @@ export class OfferApi {
         storeAvailability: offer.storeAvailability,
         badgeText: offer.badgeText, availabilityText: offer.availabilityText,
         disclaimerText: offer.disclaimerText,
+        advertisedSavingsOverride: offer.advertisedSavings?.override ?? null,
         ctaLabel: offer.ctaLabel, ctaType: offer.ctaType, ctaTarget: offer.ctaTarget,
         discountPercentage: offer.discountPercentage, effectiveDate: offer.effectiveDate,
         expiryDate: offer.expiryDate,

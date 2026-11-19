@@ -49,6 +49,7 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonArray
 import org.postgresql.util.PSQLException
 import com.mynikatech.memgine.net.dto.CustomerMembershipPurchaseOfferQrDto
 import java.security.MessageDigest
@@ -538,11 +539,25 @@ class CustomerService(
     }
 
 
+    private fun publishedSavingsRows(organizationId: String, field: String) =
+        releases.getPublished(organizationId)?.let { release ->
+            json.parseToJsonElement(release.snapshotJson).jsonObject[field]?.jsonArray.orEmpty()
+                .associateBy { json.decodeFromJsonElement<String>(it.jsonObject.getValue("id")) }
+        }.orEmpty()
+
     fun memberships(organizationId: String, userId: String?): List<MembershipProductDto> {
         if (userId != null) authorizeCustomer(organizationId, userId)
         else if (organizationId.isBlank() || organizationId.length > 40)
             throw BadRequestException("Invalid organization id")
-        val rows = memberships.list(organizationId)
+        val published = publishedSavingsRows(organizationId, "membershipProducts")
+        val rows = memberships.list(organizationId, includeSavings = false).map { product ->
+            val plans = published[product.id]?.jsonObject?.get("plans")?.jsonArray.orEmpty()
+                .associateBy { it.jsonObject["id"]?.toString() }
+            product.copy(plans = product.plans.map { plan ->
+                val saved = plans[Json.encodeToString(plan.id)]?.jsonObject?.get("potentialSavings")
+                plan.copy(potentialSavings = saved?.let { json.decodeFromJsonElement<com.mynikatech.memgine.net.dto.MembershipPotentialSavingsDto?>(it) })
+            })
+        }
         if (userId != null) return rows
         val ids = sql.joinMembershipIds(organizationId).toSet()
         val planIds = sql.joinPlanIds(organizationId).toSet()
@@ -555,7 +570,11 @@ class CustomerService(
         if (userId != null) authorizeCustomer(organizationId, userId)
         else if (organizationId.isBlank() || organizationId.length > 40)
             throw BadRequestException("Invalid organization id")
-        val rows = benefits.list(organizationId)
+        val published = publishedSavingsRows(organizationId, "benefits")
+        val rows = benefits.list(organizationId, includeSavings = false).map { benefit ->
+            val saved = published[benefit.id]?.jsonObject?.get("advertisedSavings")
+            benefit.copy(advertisedSavings = saved?.let { json.decodeFromJsonElement<com.mynikatech.memgine.net.dto.AdvertisedSavingsDto?>(it) })
+        }
         if (userId != null) return rows.map { it.copy(cost = null) }
         val ids = sql.joinBenefitIds(organizationId).toSet()
         return rows.filter { it.id in ids }.map { it.copy(cost = null) }
@@ -564,9 +583,14 @@ class CustomerService(
     private fun withOfferProducts(organizationId: String, rows: List<OfferDto>): List<OfferDto> {
         if (rows.isEmpty()) return rows
         val products = sql.offerProducts(organizationId).groupBy { it.parentId }
+        val published = publishedSavingsRows(organizationId, "offers")
         return rows.map { offer ->
             val choices = products[offer.id].orEmpty().map { it.product() }
-            offer.copy(productIds = choices.map { it.productId }, products = choices)
+            val saved = published[offer.id]?.jsonObject?.get("advertisedSavings")
+            offer.copy(
+                productIds = choices.map { it.productId }, products = choices,
+                advertisedSavings = saved?.let { json.decodeFromJsonElement<com.mynikatech.memgine.net.dto.AdvertisedSavingsDto?>(it) },
+            )
         }
     }
 

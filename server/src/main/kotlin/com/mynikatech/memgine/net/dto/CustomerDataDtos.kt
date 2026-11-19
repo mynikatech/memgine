@@ -62,6 +62,7 @@ data class CustomerDiscoveryMembershipProductDto(
 
 @Serializable
 data class CustomerDiscoverySubscriptionPlanDto(
+    val potentialSavings: MembershipPotentialSavingsDto? = null,
     val id: String,
     val subscriptionPlanName: String,
     val subscriptionPlanCode: String? = null,
@@ -73,6 +74,7 @@ data class CustomerDiscoverySubscriptionPlanDto(
 
 @Serializable
 data class CustomerDiscoveryBenefitDto(
+    val advertisedSavings: AdvertisedSavingsDto? = null,
     val id: String,
     val benefitName: String,
     val displayName: String? = null,
@@ -83,6 +85,7 @@ data class CustomerDiscoveryBenefitDto(
 
 @Serializable
 data class CustomerDiscoveryOfferDto(
+    val advertisedSavings: AdvertisedSavingsDto? = null,
     val id: String,
     val offerName: String,
     val description: String? = null,

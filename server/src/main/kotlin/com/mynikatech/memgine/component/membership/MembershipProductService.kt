@@ -5,16 +5,18 @@ import com.mynikatech.memgine.exception.ConflictException
 import com.mynikatech.memgine.exception.ForbiddenException
 import com.mynikatech.memgine.exception.NotFoundException
 import com.mynikatech.memgine.net.dto.*
+import kotlinx.serialization.json.Json
 import org.jdbi.v3.core.Jdbi
 import org.postgresql.util.PSQLException
 import java.time.LocalDate
 
 class MembershipProductService(private val jdbi: Jdbi) {
 
-    fun list(organizationId: String): List<MembershipProductDto> {
+    fun list(organizationId: String, includeSavings: Boolean = true): List<MembershipProductDto> {
         validateId(organizationId, 64)
         val sql = jdbi.onDemand(MembershipProductSql::class.java)
-        return sql.list(organizationId).map { assemble(sql, it) }
+        val savings = if (includeSavings) potentialSavings(sql, organizationId) else emptyMap()
+        return sql.list(organizationId).map { assemble(sql, it, savings) }
     }
 
     fun get(organizationId: String, productId: String): MembershipProductDto {
@@ -22,7 +24,7 @@ class MembershipProductService(private val jdbi: Jdbi) {
         validateId(productId, 64)
         val sql = jdbi.onDemand(MembershipProductSql::class.java)
         return assemble(sql, sql.get(organizationId, productId)
-            ?: throw NotFoundException("Membership product not found"))
+            ?: throw NotFoundException("Membership product not found"), potentialSavings(sql, organizationId))
     }
 
     fun save(organizationId: String, request: MembershipProductWriteDto,
@@ -109,7 +111,9 @@ class MembershipProductService(private val jdbi: Jdbi) {
                     plan.subscriptionPlanName, plan.description, plan.subscriptionPeriod,
                     plan.subscriptionPeriodUnit, plan.price, plan.currencyId,
                     plan.subscriptionPlanStatusId, plan.effectiveDate, plan.expiryDate,
-                    plan.versionNo, actorUserId, old == null
+                    plan.versionNo, actorUserId, old == null,
+                    plan.potentialSavingsOverride?.amountMinor, plan.potentialSavingsOverride?.currency,
+                    plan.potentialSavingsOverride?.decimalPlaces
                 ))
             }
             oldPlans.filter { old -> request.plans.none { it.id == old.id } }
@@ -120,7 +124,7 @@ class MembershipProductService(private val jdbi: Jdbi) {
             oldBenefits.filter { it !in request.benefitIds }
                 .forEach { sql.deleteBenefit(organizationId, request.id, it, actorUserId) }
             assemble(sql, sql.get(organizationId, request.id)
-                ?: throw NotFoundException("Membership product not found after save"))
+                ?: throw NotFoundException("Membership product not found after save"), potentialSavings(sql, organizationId))
         } } catch (error: Exception) { translateDatabaseError(error) }
     }
 
@@ -136,14 +140,17 @@ class MembershipProductService(private val jdbi: Jdbi) {
         return DeleteMembershipProductDto(productId, true)
     }
 
-    private fun assemble(sql: MembershipProductSql, row: MembershipProductRowDto) =
+    private fun potentialSavings(sql: MembershipProductSql, organizationId: String) =
+        Json.decodeFromString<Map<String, MembershipPotentialSavingsDto>>(sql.potentialSavings(organizationId))
+
+    private fun assemble(sql: MembershipProductSql, row: MembershipProductRowDto, savings: Map<String, MembershipPotentialSavingsDto> = emptyMap()) =
         MembershipProductDto(
             row.id, row.organizationId, row.membershipProductCode,
             row.membershipProductName, row.displayName, row.productCategoryId,
             row.productTypeId, row.tier, row.tierSequence, row.description,
             row.productStatusId, row.effectiveDate, row.expiryDate,
             sql.benefitIds(row.organizationId, row.id),
-            sql.plans(row.organizationId, row.id), row.createdAt, row.createdBy,
+            sql.plans(row.organizationId, row.id).map { it.copy(potentialSavings = savings[it.id]) }, row.createdAt, row.createdBy,
             row.updatedAt, row.updatedBy, row.isDeleted, row.versionNo
         )
 

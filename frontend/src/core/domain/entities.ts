@@ -542,7 +542,30 @@ export interface OrganizationUser {
  * Membership Product
  * ------------------------------------------------------------------ */
 
+export type AdvertisedSavingsMoney = { amountMinor: number; currency: string; decimalPlaces: number };
+
+export type AdvertisedSavings = {
+  calculated?: AdvertisedSavingsMoney | null;
+  override?: AdvertisedSavingsMoney | null;
+  effective?: AdvertisedSavingsMoney | null;
+  source?: "CALCULATED" | "OVERRIDE";
+  basis?: string;
+};
+
+export type MembershipPotentialSavings = AdvertisedSavingsMoney & {
+  period: number;
+  periodUnit: string;
+  complete: boolean;
+  calculatedAmountMinor?: number | null;
+  overrideAmountMinor?: number | null;
+  source?: "CALCULATED" | "OVERRIDE";
+  assumptions: string;
+  breakdown: { benefitId: string; uses: number | null; amountMinor: number | null }[];
+};
+
 export interface SubscriptionPlan {
+  potentialSavings?: MembershipPotentialSavings | null;
+  potentialSavingsOverride?: AdvertisedSavingsMoney | null;
   id: ID;
   membershipProductId: ID;
 
@@ -671,6 +694,7 @@ export interface BenefitValidity {
 }
 
 export interface Benefit {
+  advertisedSavings?: AdvertisedSavings | null;
   id: ID;
   organizationId: ID;
 
@@ -763,6 +787,7 @@ export enum OfferCtaType {
 }
 
 export interface Offer {
+  advertisedSavings?: AdvertisedSavings | null;
   id: ID;
   organizationId: ID;
 

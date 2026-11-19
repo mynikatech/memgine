@@ -1,0 +1,124 @@
+import type { AdvertisedSavingsMoney, AdvertisedSavings, MembershipPotentialSavings } from "./entities";
+
+export function formatSavingsAmount(value?: AdvertisedSavingsMoney | null): string | undefined {
+  if (!value || !/^[A-Z]{3}$/.test(value.currency) ||
+      !Number.isSafeInteger(value.amountMinor) || value.amountMinor < 0 ||
+      !Number.isInteger(value.decimalPlaces) || value.decimalPlaces < 0 || value.decimalPlaces > 20) {
+    return undefined;
+  }
+  const digits = String(value.amountMinor).padStart(value.decimalPlaces + 1, "0");
+  return value.decimalPlaces === 0
+    ? digits
+    : digits.slice(0, -value.decimalPlaces) + "." + digits.slice(-value.decimalPlaces);
+}
+
+export function formatSavingsMoney(value?: AdvertisedSavingsMoney | null): string | undefined {
+  const amount = formatSavingsAmount(value);
+  return value && amount !== undefined ? value.currency + " " + amount : undefined;
+}
+
+/** S2 and Counter supply the transaction currency but no precision field. */
+export function formatTransactionMoney(amountMinor?: number | null, currency?: string | null): string | undefined {
+  if (amountMinor == null || !Number.isSafeInteger(amountMinor) || !currency || !/^[A-Z]{3}$/.test(currency)) {
+    return undefined;
+  }
+  const { maximumFractionDigits } = new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency,
+  }).resolvedOptions();
+  if (maximumFractionDigits === undefined) return undefined;
+  const amount = formatSavingsMoney({ amountMinor: Math.abs(amountMinor), currency, decimalPlaces: maximumFractionDigits });
+  return amount && amountMinor < 0 ? `−${amount}` : amount;
+}
+
+export function verifiedSavingsMoney(savings?: {
+  verificationState: string;
+  netSavingsMinor?: number | null;
+  currencyCode?: string | null;
+} | null): string | undefined {
+  if (savings?.verificationState !== "VERIFIED" || savings.netSavingsMinor == null || savings.netSavingsMinor < 0) {
+    return undefined;
+  }
+  return formatTransactionMoney(savings.netSavingsMinor, savings.currencyCode);
+}
+
+export function subscriptionSavingsDisplay(rows: readonly {
+  coverageState: string;
+  currencyCode?: string | null;
+  netSavingsMinor?: number | null;
+  verifiedNetSavingsMinor?: number | null;
+  verifiedRedemptionCount?: number;
+}[]) {
+  const completeAmounts = new Set<string>();
+  const partialAmounts = new Set<string>();
+  let incomplete = false;
+  for (const row of rows) {
+    if (row.coverageState !== "COMPLETE" && row.coverageState !== "NO_REDEMPTION_HISTORY") incomplete = true;
+    const amountMinor = row.coverageState === "COMPLETE" ? row.netSavingsMinor
+      : row.coverageState === "PARTIAL" && (row.verifiedRedemptionCount ?? 0) > 0 ? row.verifiedNetSavingsMinor
+      : undefined;
+    if (amountMinor == null || amountMinor < 0) continue;
+    const formatted = formatTransactionMoney(amountMinor, row.currencyCode);
+    if (formatted) (row.coverageState === "COMPLETE" ? completeAmounts : partialAmounts).add(formatted);
+  }
+  return { complete: [...completeAmounts], partial: [...partialAmounts], incomplete };
+}
+
+export function advertisedSavingsLabel(savings: AdvertisedSavings | null | undefined, usage: "use" | "redemption"): string | undefined {
+  const amount = formatSavingsMoney(savings?.effective);
+  return amount ? `Potential saving per ${usage}: up to ${amount}` : undefined;
+}
+
+export function potentialSavingsDisplay(savings?: MembershipPotentialSavings | null) {
+  if (!savings || !Number.isSafeInteger(savings.period) || savings.period <= 0 ||
+      typeof savings.periodUnit !== "string" || !/^(day|week|month|year)$/i.test(savings.periodUnit)) {
+    return undefined;
+  }
+  const amount = formatSavingsMoney(savings);
+  if (!amount) return undefined;
+  const unit = savings.periodUnit.toLowerCase() + (savings.period === 1 ? "" : "s");
+  const grouped = amount.replace(/\d+(?=\.|$)/, (whole) => whole.replace(/\B(?=(\d{3})+(?!\d))/g, ","));
+  return { amount: `Up to ${grouped}`, period: `${savings.period} ${unit}` };
+}
+
+export function potentialSavingsValue(savings?: MembershipPotentialSavings | null): string | undefined {
+  const display = potentialSavingsDisplay(savings);
+  return display ? `${display.amount} over ${display.period}` : undefined;
+}
+
+export function potentialSavingsLabel(savings: MembershipPotentialSavings): string | undefined {
+  const value = potentialSavingsValue(savings);
+  if (!value) return undefined;
+  const coverage = savings.source === "OVERRIDE" || savings.complete ? "Potential savings" : "Partial potential savings";
+  return coverage + ": " + value.charAt(0).toLowerCase() + value.slice(1);
+}
+
+export function compactPotentialSavingsLabel(savings?: MembershipPotentialSavings | null): string | undefined {
+  const display = potentialSavingsDisplay(savings);
+  if (!display || !savings) return undefined;
+  const label = savings.source === "OVERRIDE" || savings.complete ? "Potential savings" : "Partial potential savings";
+  return `${label}: ${display.amount} over ${display.period}`;
+}
+
+export function potentialSavingsAssumptions(savings: MembershipPotentialSavings): string | undefined {
+  if (!potentialSavingsValue(savings)) return undefined;
+  if (savings.source === "OVERRIDE") return "Business-provided estimate for a new membership term.";
+  const assumptions = savings.assumptions?.trim().replace(/\.+$/, "");
+  return assumptions ? "Estimated for a new membership term. " + assumptions + "." : "Estimated for a new membership term.";
+}
+
+export function readSavingsOverride(amount: string, currency: string, savings?: AdvertisedSavings | null) {
+  if (!amount.trim()) return null;
+  const code = currency.trim().toUpperCase() || savings?.calculated?.currency;
+  if (!code || !/^[A-Z]{3}$/.test(code) || !/^\d+(?:[.,]\d+)?$/.test(amount.trim())) return undefined;
+  const decimalPlaces = savings?.calculated?.currency === code
+    ? savings.calculated.decimalPlaces
+    : savings?.override?.currency === code ? savings.override.decimalPlaces
+    : new Intl.NumberFormat(undefined, { style: "currency", currency: code }).resolvedOptions().maximumFractionDigits;
+  if (decimalPlaces === undefined || !Number.isInteger(decimalPlaces) || decimalPlaces < 0 || decimalPlaces > 20) return undefined;
+  const [whole, fraction = ""] = amount.trim().split(/[.,]/);
+  if (fraction.length > decimalPlaces) return undefined;
+  const amountMinor = Number(whole + fraction.padEnd(decimalPlaces, "0"));
+  return Number.isSafeInteger(amountMinor) ? { amountMinor, currency: code, decimalPlaces } : undefined;
+}
+

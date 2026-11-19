@@ -1,10 +1,12 @@
-import { ReactNode } from "react";
+import { ReactNode, useCallback, useEffect, useRef } from "react";
 import {
   KeyboardAvoidingView,
+  Keyboard,
   Modal as RNModal,
   Platform,
   Pressable,
   ScrollView,
+  TextInput,
   View,
 } from "react-native";
 
@@ -21,6 +23,7 @@ type ModalProps = {
   scrollable?: boolean;
   testID?: string;
   maxWidth?: number;
+  scrollFocusedInput?: boolean;
 };
 
 /** Dialog foundation — themed sheet with backdrop; optional scrollable body. */
@@ -32,8 +35,33 @@ export function Modal({
   scrollable = false,
   testID,
   maxWidth = 520,
+  scrollFocusedInput = false,
 }: ModalProps) {
   const theme = useTheme();
+  const scroll = useRef<ScrollView>(null);
+  const scrollFrame = useRef<number | undefined>(undefined);
+
+  const revealFocusedInput = useCallback(() => {
+    if (!visible || !scrollable || !scrollFocusedInput || Platform.OS === "web") return;
+    if (scrollFrame.current !== undefined) cancelAnimationFrame(scrollFrame.current);
+    scrollFrame.current = requestAnimationFrame(() => {
+      scrollFrame.current = undefined;
+      const input = TextInput.State.currentlyFocusedInput();
+      if (input) scroll.current?.scrollResponderScrollNativeHandleToKeyboard(input, theme.spacing.md, true);
+    });
+  }, [visible, scrollable, scrollFocusedInput, theme.spacing.md]);
+
+  useEffect(() => {
+    if (!visible || !scrollable || !scrollFocusedInput || Platform.OS === "web") return;
+    const listener = Keyboard.addListener("keyboardDidShow", revealFocusedInput);
+    return () => {
+      listener.remove();
+      if (scrollFrame.current !== undefined) {
+        cancelAnimationFrame(scrollFrame.current);
+        scrollFrame.current = undefined;
+      }
+    };
+  }, [visible, scrollable, scrollFocusedInput, revealFocusedInput]);
 
   const header = (
     <View
@@ -96,6 +124,10 @@ export function Modal({
             {header}
             {scrollable ? (
               <ScrollView
+                ref={scroll}
+                onFocus={scrollFocusedInput && Platform.OS !== "web" ? () => {
+                  if (Keyboard.isVisible()) revealFocusedInput();
+                } : undefined}
                 style={{ flexShrink: 1 }}
                 contentContainerStyle={{
                   paddingBottom: theme.spacing.xxl,

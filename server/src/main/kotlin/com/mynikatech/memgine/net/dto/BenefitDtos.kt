@@ -27,7 +27,8 @@ data class BenefitDto(
     val updatedAt: String,
     val updatedBy: String,
     val isDeleted: Boolean,
-    val versionNo: Int
+    val versionNo: Int,
+    val advertisedSavings: AdvertisedSavingsDto? = null,
 )
 
 @Serializable
@@ -89,6 +90,7 @@ data class CatalogProductDto(
 
 @Serializable
 data class BenefitWriteDto(
+    val advertisedSavingsOverride: AdvertisedSavingsMoneyDto? = null,
     val id: String,
     val benefitCode: String,
     val benefitName: String,

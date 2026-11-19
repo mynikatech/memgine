@@ -16,7 +16,8 @@ data class OfferDto(
     val discountPercentage: Double? = null, val effectiveDate: String,
     val expiryDate: String? = null, val statusId: String,
     val createdAt: String, val createdBy: String, val updatedAt: String,
-    val updatedBy: String, val isDeleted: Boolean, val versionNo: Int
+    val updatedBy: String, val isDeleted: Boolean, val versionNo: Int,
+    val advertisedSavings: AdvertisedSavingsDto? = null,
 )
 
 @Serializable
@@ -51,6 +52,7 @@ data class OfferUsageRuleDto(
 
 @Serializable
 data class OfferWriteDto(
+    val advertisedSavingsOverride: AdvertisedSavingsMoneyDto? = null,
     val id: String, val offerCode: String, val offerName: String,
     val description: String? = null, val membershipProductId: String? = null,
     val productIds: List<String>? = null,

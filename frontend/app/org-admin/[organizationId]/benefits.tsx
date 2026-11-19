@@ -1336,10 +1336,12 @@ export default function OrgAdminBenefits() {
             : "Add Benefit"
         }
         scrollable
+        scrollFocusedInput
         testID="benefit-form-modal"
       >
         {editingBenefit ? (
           <BenefitForm
+            key={editingBenefit.id}
             benefit={editingBenefit}
             isNew={
               !committedBenefits.some((item) => item.id === editingBenefit.id)

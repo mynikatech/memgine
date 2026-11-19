@@ -3,6 +3,7 @@ package com.mynikatech.memgine.component.customerexperience
 import com.mynikatech.memgine.model.common.ApiResponse
 import com.mynikatech.memgine.net.dto.PublishCustomerExperienceReleaseRequest
 import com.mynikatech.memgine.net.dto.PublishedCustomerExperienceReleaseResponse
+import com.mynikatech.memgine.security.authenticatedPrincipal
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.request.receive
@@ -45,6 +46,8 @@ fun Route.customerExperienceReleaseRoutes(
                         "Organization id is required",
                     )
 
+            val actor = call.authenticatedPrincipal()
+            actor.require("ORG_ADMIN_ACCESS", organizationId)
             val request =
                 call.receive<PublishCustomerExperienceReleaseRequest>()
 
@@ -58,7 +61,7 @@ fun Route.customerExperienceReleaseRoutes(
                 service.publish(
                     organizationId = organizationId,
                     snapshotJson = snapshotJson,
-                    publishedBy = request.publishedBy,
+                    publishedBy = actor.userId,
                 )
 
             call.respond(

@@ -1,3 +1,5 @@
+import type { AdvertisedSavings } from "@/src/core/domain/entities";
+import { advertisedSavingsLabel } from "@/src/core/domain/savings-display";
 import { Image, Pressable, View } from "react-native";
 
 import { resolveAssetUrl } from "@/src/data/api/asset-url";
@@ -24,6 +26,7 @@ type OfferCardProps = {
   title: string;
 
   description?: string;
+  advertisedSavings?: AdvertisedSavings | null;
 
   imageUrl?: string;
 
@@ -189,6 +192,7 @@ export function OfferCard({
   title,
 
   description,
+  advertisedSavings,
 
   imageUrl,
 
@@ -213,6 +217,7 @@ export function OfferCard({
   const resolvedImageUrl = resolveAssetUrl(imageUrl);
 
   const theme = useTheme();
+  const savingsLabel = advertisedSavingsLabel(advertisedSavings, "redemption");
 
   const [usageRules, setUsageRules] = useState<OfferUsageRule[]>([]);
 
@@ -363,6 +368,7 @@ export function OfferCard({
             </Text>
           ) : null}
 
+          {savingsLabel && <Text variant="label" color="primary">{savingsLabel}</Text>}
           {availabilityText ? (
             <Text variant="caption" color="textMuted">
               {availabilityText}

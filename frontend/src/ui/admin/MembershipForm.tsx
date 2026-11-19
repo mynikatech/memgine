@@ -1,3 +1,4 @@
+import { formatSavingsAmount, formatSavingsMoney, readSavingsOverride } from "@/src/core/domain/savings-display";
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
 import { DateInput } from "../DateInput";
@@ -59,9 +60,11 @@ export function MembershipForm({
   const [draft, setDraft] = useState<MembershipProduct>(product);
   const [saving, setSaving] = useState(false);
   const [priceInputs, setPriceInputs] = useState<Record<string, string>>({});
+  const [savingsInputs, setSavingsInputs] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setDraft(product);
+    setSavingsInputs({});
     setPriceInputs(
       Object.fromEntries(
         product.plans.map((plan) => [
@@ -266,6 +269,10 @@ export function MembershipForm({
         return "A plan's Expiry Date cannot be before its Effective Date.";
       }
 
+      if (parseOverride(plan) === undefined) {
+        return "Enter a nonnegative savings override in the plan currency with the correct decimal precision.";
+      }
+
       const priceText = priceInputs[plan.id] ?? "0";
       const amount = Number(priceText);
 
@@ -276,6 +283,18 @@ export function MembershipForm({
 
     return null;
   };
+
+  const overrideInput = (plan: PlanDraft) => {
+    const saved = plan.potentialSavingsOverride !== undefined
+      ? plan.potentialSavingsOverride
+      : plan.potentialSavings?.overrideAmountMinor != null
+        ? { ...plan.potentialSavings, amountMinor: plan.potentialSavings.overrideAmountMinor }
+        : null;
+    return savingsInputs[plan.id] ?? formatSavingsAmount(saved) ?? "";
+  };
+
+  const parseOverride = (plan: PlanDraft) =>
+    readSavingsOverride(overrideInput(plan), plan.price.currency, { calculated: plan.potentialSavings });
 
   const handleSave = async () => {
     const validationError = validate();
@@ -306,6 +325,7 @@ export function MembershipForm({
           return {
             ...plan,
             membershipProductId: draft.id,
+            potentialSavingsOverride: parseOverride(plan) ?? null,
             subscriptionPlanCode: plan.subscriptionPlanCode.trim(),
             subscriptionPlanName: plan.subscriptionPlanName.trim(),
             description: plan.description?.trim() || undefined,
@@ -689,6 +709,9 @@ export function MembershipForm({
                       (item) => item.id === value,
                     );
 
+                    if (currency && currency.code !== plan.price.currency) {
+                      setSavingsInputs((current) => ({ ...current, [plan.id]: "" }));
+                    }
                     updatePlan(plan.id, "currencyId", value);
                     updatePlan(plan.id, "price", {
                       ...plan.price,
@@ -699,6 +722,25 @@ export function MembershipForm({
                 />
               </View>
             </View>
+
+            <Input
+              label={`Potential savings override (${plan.price.currency})`}
+              placeholder="Optional"
+              value={overrideInput(plan)}
+              onChangeText={(value) => setSavingsInputs((current) => ({ ...current, [plan.id]: value }))}
+              keyboardType="decimal-pad"
+              editable={!readOnly}
+            />
+            {plan.potentialSavings && (
+              <Text variant="caption" color="textSecondary">
+                Calculated: {formatSavingsMoney({
+                  ...plan.potentialSavings,
+                  amountMinor: plan.potentialSavings.calculatedAmountMinor ??
+                    (plan.potentialSavings.source === "OVERRIDE" ? Number.NaN : plan.potentialSavings.amountMinor),
+                }) ?? "Unavailable"}
+                {!plan.potentialSavings.complete ? " · Calculation incomplete" : ""}
+              </Text>
+            )}
 
             <ReferenceSelect
               label="Plan Status"

@@ -17,7 +17,7 @@ import { RedemptionMethod, services } from "@/src/core";
 
 import type { TemplateDefinition } from "@/src/core/template/template-definition";
 
-import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
+import { activeMembershipPlanIds, discoverableMembershipProducts, resolveOwnedMembershipProduct } from "@/src/core/domain/membership-helpers";
 
 import type {
   CustomerCombinedOffer,
@@ -41,7 +41,7 @@ import {
   useTranslation,
 } from "@/src/providers";
 
-import { Badge, Button, Modal, StateView, Text } from "@/src/ui";
+import { Button, StateView, Text } from "@/src/ui";
 
 type LoadStatus = "loading" | "error" | "ready";
 
@@ -211,10 +211,12 @@ export default function DiscoverGateway() {
 function DiscoverContent() {
   const router = useRouter();
 
-  const { organizationId, productId } = useLocalSearchParams<{
+  const { organizationId, productId, planId, section } = useLocalSearchParams<{
     organizationId: string;
 
     productId?: string;
+    planId?: string;
+    section?: string;
   }>();
 
   const { customerId, profiles, customersLoading, setActiveContext, membershipSummary, organizationId: activeOrganizationId, subscriptionId: activeSubscriptionId } =
@@ -222,7 +224,7 @@ function DiscoverContent() {
   const activeContextRef = useRef({ activeOrganizationId, activeSubscriptionId });
   activeContextRef.current = { activeOrganizationId, activeSubscriptionId };
 
-  const { t, formatMoney } = useTranslation();
+  const { t } = useTranslation();
 
   const theme = useTheme();
 
@@ -237,12 +239,10 @@ function DiscoverContent() {
   >([]);
 
   const [memberships, setMemberships] = useState<MembershipBundle[]>([]);
+  const [historyRedemptions, setHistoryRedemptions] = useState<Redemption[]>([]);
 
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
 
-  const [detailProduct, setDetailProduct] = useState<MembershipProduct | null>(
-    null,
-  );
   const hasOrganizationRelationship = profiles.some(
     (relationship) =>
       relationship.userId === customerId &&
@@ -306,16 +306,21 @@ function DiscoverContent() {
         ]),
       );
 
-      // A published business can have no currently discoverable products while
-      // the customer still has a historical or active subscription. Resolve
-      // that owned product from the existing customer-authorized summary.
+      // The public catalog can omit the owned product or just its subscribed
+      // plan. Use the authorized summary only when the public data is incomplete.
       const needsOwnedProducts = subscriptions.some((row) =>
-        !published.membershipProducts.some((product) => product.id === row.membershipProductId),
+        !published.membershipProducts.some((product) =>
+          product.id === row.membershipProductId &&
+          product.plans.some((plan) => plan.id === row.subscriptionPlanId),
+        ),
       );
       const ownedSummary = needsOwnedProducts ? await membershipSummary(organizationId) : null;
       const bundles = await Promise.all(subscriptions.map(async (row): Promise<MembershipBundle> => {
-        const product = published.membershipProducts.find((candidate) => candidate.id === row.membershipProductId)
-          ?? ownedSummary?.membershipProducts.find((candidate) => candidate.id === row.membershipProductId);
+        const product = resolveOwnedMembershipProduct(
+          published.membershipProducts.find((candidate) => candidate.id === row.membershipProductId),
+          ownedSummary?.membershipProducts.find((candidate) => candidate.id === row.membershipProductId),
+          row.subscriptionPlanId,
+        );
 
         if (!product) {
           throw new Error("Membership product is unavailable.");
@@ -363,19 +368,19 @@ function DiscoverContent() {
       );
 
       setMemberships(bundles);
+      setHistoryRedemptions(redemptions);
 
       setSelectedSubId((previous) => {
-        const activeId = activeContextRef.current.activeOrganizationId === organizationId ? activeContextRef.current.activeSubscriptionId : null;
-        return bundles.some((bundle) => bundle.subscription.id === previous) ? previous : bundles.some((bundle) => bundle.subscription.id === activeId) ? activeId : bundles[0]?.subscription.id ?? null;
+        const { activeOrganizationId, activeSubscriptionId } = activeContextRef.current;
+        if (bundles.some((bundle) => bundle.subscription.id === previous)) return previous;
+        if (activeOrganizationId === organizationId &&
+            bundles.some((bundle) => bundle.subscription.id === activeSubscriptionId)) {
+          return activeSubscriptionId;
+        }
+        return bundles.find((bundle) => bundle.subscriptionStatus.statusCode.toUpperCase() === "ACTIVE")?.subscription.id
+          ?? bundles[0]?.subscription.id
+          ?? null;
       });
-
-      setDetailProduct(
-        productId
-          ? (published.membershipProducts.find(
-              (product) => product.id === productId,
-            ) ?? null)
-          : null,
-      );
 
       setStatus("ready");
     } catch {
@@ -384,7 +389,6 @@ function DiscoverContent() {
   }, [
     customerId,
     organizationId,
-    productId,
     customersLoading,
     hasOrganizationRelationship,
     membershipSummary,
@@ -399,14 +403,13 @@ function DiscoverContent() {
       ? router.back()
       : router.replace(APP_ROUTES.customer.cards);
 
-  const joinMembership = (id: string) => {
-    setDetailProduct(null);
-
+  const joinMembership = (id: string, selectedPlanId?: string) => {
     router.push(
       APP_ROUTES.join.membership(
         organizationId,
 
         id,
+        selectedPlanId,
       ) as never,
     );
   };
@@ -415,11 +418,11 @@ function DiscoverContent() {
     offerId: string,
 
     displayName: string,
+    id: string,
+    selectedPlanId?: string,
   ) => {
     router.push(
-      `${APP_ROUTES.join.organization(
-        organizationId,
-      )}&explicitOfferId=${encodeURIComponent(
+      `${APP_ROUTES.join.membership(organizationId, id, selectedPlanId)}&explicitOfferId=${encodeURIComponent(
         offerId,
       )}&explicitOfferName=${encodeURIComponent(displayName)}` as never,
     );
@@ -460,34 +463,15 @@ function DiscoverContent() {
   const focused =
     memberships.find((item) => item.subscription.id === selectedSubId) ??
     memberships[0];
+  const selectedMembership = productId ? undefined : focused;
 
-  // Match the subscription route: historical cancelled/expired memberships do
-  // not hide a published product that may be purchased again. Checkout still
-  // performs its own eligibility checks.
-  const repurchasableStatuses = new Set(["CANCELLED", "CANCELED", "EXPIRED"]);
-  const owned = new Set(memberships
-    .filter((membership) => !repurchasableStatuses.has(membership.subscriptionStatus.statusCode?.toUpperCase() ?? ""))
-    .map((membership) => membership.product.id));
-
-  const available = detail.membershipProducts.filter(
-    (product) => !owned.has(product.id),
+  const activePlanIds = activeMembershipPlanIds(memberships.map(({ subscription, subscriptionStatus }) => ({
+    planId: subscription.subscriptionPlanId,
+    status: subscriptionStatus.statusCode,
+  })));
+  const available = discoverableMembershipProducts(
+    detail.membershipProducts, activePlanIds,
   );
-
-  const productBenefits = detailProduct
-    ? detail.benefits.filter((benefit) =>
-        detailProduct.benefitIds.includes(benefit.id),
-      )
-    : [];
-
-  const priceLabel = (product: MembershipProduct) => {
-    const plan = product.plans[0];
-
-    return plan
-      ? `${formatMoney(
-          plan.price.amountMinor,
-        )} · ${getSubscriptionPeriodLabel(plan)}`
-      : "";
-  };
 
   return (
     <View style={{ flex: 1 }}>
@@ -512,23 +496,28 @@ function DiscoverContent() {
           undefined
         }
         previewDefinition={detail.publishedExperience.definition}
-        subscription={focused?.subscription}
-        subscriptionStatus={focused?.subscriptionStatus}
-        product={focused?.product}
-        benefits={focused?.benefits ?? []}
+        subscription={selectedMembership?.subscription}
+        subscriptionStatus={selectedMembership?.subscriptionStatus}
+        product={selectedMembership?.product}
+        benefits={selectedMembership?.benefits ?? []}
         benefitUsageRules={detail.benefitUsageRules as never}
-        redemptionItemStatuses={focused?.redemptionItemStatuses ?? []}
-        offers={regularOffers}
+        redemptionItemStatuses={selectedMembership?.redemptionItemStatuses ?? []}
+        offers={productId
+          ? detail.offers.filter((offer) => regularOffers.some((availableOffer) => availableOffer.id === offer.id))
+          : regularOffers}
         membershipPurchaseOffers={membershipPurchaseOffers}
         offerUsageRules={detail.offerUsageRules as never}
         stores={detail.stores}
-        redemptions={focused?.redemptions ?? []}
+        redemptions={selectedMembership?.redemptions ?? []}
+        historyRedemptions={historyRedemptions}
+        historyBenefits={detail.benefits}
+        historyMemberships={memberships}
         memberships={memberships.filter((item) => item.subscriptionStatus.statusCode?.toUpperCase() === "ACTIVE").map(({ subscription, product }) => ({
           subscription,
 
           product,
         }))}
-        selectedSubscriptionId={focused?.subscription.id ?? ""}
+        selectedSubscriptionId={selectedMembership?.subscription.id ?? ""}
         onSelectSubscription={(id) => {
           setSelectedSubId(id);
 
@@ -539,6 +528,12 @@ function DiscoverContent() {
           );
         }}
         availableMemberships={available}
+        detailsCatalog={detail.membershipProducts}
+        planDetailsProductId={productId}
+        planDetailsPlanId={planId}
+        onExploreMembership={(id, selectedPlanId) =>
+          router.push(APP_ROUTES.discover.membership(organizationId, id, selectedPlanId) as never)}
+        showAvailableMembershipsFirst={section === "memberships"}
         onJoin={joinMembership}
         onUseMembershipPurchaseOffer={joinWithMembershipOffer}
         onExit={exit}
@@ -547,47 +542,6 @@ function DiscoverContent() {
       />
 
       <AppInstallSection />
-
-      <Modal
-        visible={!!detailProduct}
-        onClose={() => setDetailProduct(null)}
-        title={detailProduct?.membershipProductName ?? ""}
-        testID="discover-product-detail"
-      >
-        {detailProduct ? (
-          <View
-            style={{
-              gap: theme.spacing.md,
-            }}
-          >
-            {detailProduct.displayName ? (
-              <Badge label={detailProduct.displayName} tone="brand" />
-            ) : null}
-
-            {detailProduct.description ? (
-              <Text variant="body" color="textSecondary">
-                {detailProduct.description}
-              </Text>
-            ) : null}
-
-            <Text variant="title" color="primary">
-              {priceLabel(detailProduct)}
-            </Text>
-
-            {productBenefits.map((benefit) => (
-              <Text key={benefit.id} variant="bodySmall" color="text">
-                • {benefit.displayName ?? benefit.benefitName}
-              </Text>
-            ))}
-
-            <Button
-              label={t("experience.join")}
-              onPress={() => joinMembership(detailProduct.id)}
-              testID="discover-join"
-            />
-          </View>
-        ) : null}
-      </Modal>
     </View>
   );
 }

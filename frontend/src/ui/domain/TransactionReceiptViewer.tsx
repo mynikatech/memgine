@@ -174,10 +174,12 @@ export function TransactionReceiptViewer({
   receipt,
   visible,
   onClose,
+  afterReceipt,
 }: {
   receipt: TransactionReceipt | null;
   visible: boolean;
   onClose: () => void;
+  afterReceipt?: React.ReactNode;
 }) {
   const [documentAction, setDocumentAction] = useState<"print" | "pdf" | null>(
     null,
@@ -390,6 +392,7 @@ export function TransactionReceiptViewer({
             {documentError}
           </Text>
         ) : null}
+        {afterReceipt}
         <View style={styles.actions}>
           <Button label="Close" variant="secondary" onPress={onClose} />
           <Button

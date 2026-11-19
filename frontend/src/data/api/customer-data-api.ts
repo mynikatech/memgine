@@ -266,6 +266,27 @@ export type CustomerRedemptionItemStatus = {
     | "INACTIVE";
   displayReason?: string | null;
 };
+export type TransactionActualSavings = {
+  transactionId: ID;
+  subscriptionId?: ID | null;
+  redemptionTransactionId?: ID | null;
+  currencyCode?: string | null;
+  originalDiscountMinor?: number | null;
+  reversalMinor?: number | null;
+  netSavingsMinor?: number | null;
+  verificationState: string;
+  completedAt?: string | null;
+};
+
+export type SubscriptionActualSavings = {
+  subscriptionId: ID;
+  currencyCode?: string | null;
+  netSavingsMinor?: number | null;
+  verifiedNetSavingsMinor?: number | null;
+  verifiedRedemptionCount?: number;
+  coverageState: string;
+};
+
 /** Immutable server-issued receipt. Amounts are minor units from the receipt snapshot. */
 export type TransactionReceipt = {
   transactionReceiptId: ID;
@@ -285,6 +306,7 @@ export type TransactionReceipt = {
   /** Server snapshot; clients render but never recompute its financial facts. */
   receiptSnapshot: string;
   issuedAt: string;
+  actualSavings?: TransactionActualSavings | null;
 };
 export type TransactionHistoryItem = {
   transactionId: ID;
@@ -304,6 +326,10 @@ export type TransactionHistoryItem = {
   receiptNumber?: string | null;
   receiptAvailable: boolean;
   refundStatus?: string | null;
+  actualSavings?: TransactionActualSavings | null;
+  subscriptionId?: ID | null;
+  itemDescription?: string | null;
+  canonicalOrderId?: ID | null;
 };
 export class CustomerDataApi {
   selfProfile(): Promise<ApiResult<CustomerSelfProfile>> {
@@ -373,6 +399,14 @@ export class CustomerDataApi {
   ): Promise<ApiResult<TransactionReceipt[]>> {
     return httpClient.get(
       `${base(organizationId)}/transactions?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`,
+    );
+  }
+  subscriptionActualSavings(
+    organizationId: ID,
+    subscriptionId: ID,
+  ): Promise<ApiResult<SubscriptionActualSavings[]>> {
+    return httpClient.get(
+      `${base(organizationId)}/subscriptions/${encodeURIComponent(subscriptionId)}/actual-savings`,
     );
   }
   receipt(

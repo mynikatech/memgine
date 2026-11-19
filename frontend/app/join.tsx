@@ -1,3 +1,5 @@
+import { potentialSavingsAssumptions, potentialSavingsLabel } from "@/src/core/domain/savings-display";
+import { resolveJoinPlan } from "@/src/core/domain/membership-helpers";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -339,6 +341,7 @@ function JoinFlow() {
     organizationId?: string;
 
     productId?: string;
+    planId?: string;
 
     customerId?: string;
 
@@ -857,6 +860,9 @@ function JoinFlow() {
         if (!prod) {
           throw new Error(`Membership product not found: ${pid}`);
         }
+        if (params.planId && !resolveJoinPlan(prod, params.planId)) {
+          throw new Error("This membership plan is no longer available.");
+        }
 
         /*
 
@@ -1062,6 +1068,7 @@ function JoinFlow() {
     };
   }, [
     params.productId,
+    params.planId,
 
     params.source,
 
@@ -1076,7 +1083,7 @@ function JoinFlow() {
     suppliedCustomerId,
   ]);
 
-  const plan = product?.plans[0];
+  const plan = resolveJoinPlan(product, params.planId);
 
   useEffect(() => {
     currentCollectCheckout.current = {
@@ -1168,7 +1175,7 @@ function JoinFlow() {
     .join(" - ");
 
   const priceText = plan
-    ? `${formatMoney(plan.price.amountMinor)} · ${intervalLabel}`
+    ? [`${formatMoney(plan.price.amountMinor)} · ${intervalLabel}`, plan.potentialSavings && potentialSavingsLabel(plan.potentialSavings)].filter(Boolean).join("\n")
     : "";
 
   /*
@@ -4275,6 +4282,7 @@ function JoinFlow() {
                     key={benefit.id}
                     title={benefit.displayName ?? benefit.benefitName}
                     subtitle={benefit.description}
+                    advertisedSavings={benefit.advertisedSavings}
                     icon={benefitIconForType(benefit.benefitTypeId)}
                   />
                 ))}
@@ -4645,6 +4653,13 @@ function JoinFlow() {
             {t("join.reviewTitle")}
           </Text>
 
+          {plan?.potentialSavings && (
+            <View style={{ gap: theme.spacing.xs }}>
+              <Text variant="bodyStrong">{potentialSavingsLabel(plan.potentialSavings)}</Text>
+              <Text variant="caption" color="textSecondary">{potentialSavingsAssumptions(plan.potentialSavings)}</Text>
+            </View>
+          )}
+
           <ReceiptSummary
             testID="join-review-summary"
             meta={[
@@ -4790,6 +4805,7 @@ function JoinFlow() {
                     key={benefit.id}
                     title={benefit.displayName ?? benefit.benefitName}
                     subtitle={benefit.description}
+                    advertisedSavings={benefit.advertisedSavings}
                     icon={benefitIconForType(benefit.benefitTypeId)}
                   />
                 ))}
@@ -4961,6 +4977,12 @@ function JoinFlow() {
                   {product?.displayName ?? product?.membershipProductName} ·{" "}
                   {intervalLabel}
                 </Text>
+                {plan?.potentialSavings && (
+                  <>
+                    <Text variant="bodySmall">{potentialSavingsLabel(plan.potentialSavings)}</Text>
+                    <Text variant="caption" color="textSecondary">{potentialSavingsAssumptions(plan.potentialSavings)}</Text>
+                  </>
+                )}
                 <ReceiptSummary
                   title={t("join.receiptTitle")}
                   meta={[
@@ -5346,6 +5368,12 @@ function JoinFlow() {
             )}
 
             <Badge label={t("membership.active")} tone="success" />
+            {plan?.potentialSavings && (
+              <>
+                <Text variant="bodyStrong">{potentialSavingsLabel(plan.potentialSavings)}</Text>
+                <Text variant="caption" color="textSecondary">{potentialSavingsAssumptions(plan.potentialSavings)}</Text>
+              </>
+            )}
           </View>
 
           <ReceiptSummary

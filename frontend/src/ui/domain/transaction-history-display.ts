@@ -9,6 +9,8 @@ const readableTypes: Record<string, string> = {
   COUNTER_REDEMPTION: "Redemption",
   CUSTOMER_MEMBERSHIP: "Membership purchase",
   COUNTER_MEMBERSHIP: "Membership purchase",
+  COUNTER: "Membership purchase",
+  CUSTOMER: "Membership purchase",
   MEMBERSHIP_PURCHASE: "Membership purchase",
   REFUND: "Refund",
 };
@@ -22,6 +24,10 @@ const readableStatuses: Record<string, string> = {
   FULFILLED: "Completed",
   PROCESSING: "Payment processing",
   PROVIDER_IN_PROGRESS: "Payment processing",
+  FULFILLMENT_PENDING: "Awaiting fulfillment",
+  READY_FOR_PROVIDER: "Awaiting payment",
+  AWAITING_PAYMENT: "Awaiting payment",
+  DRAFT: "Order started",
   PENDING: "Payment pending",
   PAYMENT_PENDING: "Payment pending",
   ORDER_CREATED: "Checkout started",
@@ -38,6 +44,8 @@ const readableStatuses: Record<string, string> = {
   REQUESTED: "Refund requested",
   APPROVED: "Refund approved",
   REJECTED: "Refund declined",
+  UNKNOWN_REQUIRES_RECONCILIATION: "Payment status needs verification",
+  UNSUPPORTED_REQUIRES_MANUAL: "Awaiting manual review",
 };
 
 const paymentMethods: Record<string, string> = {
@@ -71,10 +79,36 @@ const finalStatuses = new Set([
 ]);
 const pendingStatuses = new Set([
   "PENDING", "PAYMENT_PENDING", "PROCESSING", "PROVIDER_IN_PROGRESS",
-  "ORDER_CREATED", "CREATED", "INITIATED",
+  "ORDER_CREATED", "CREATED", "INITIATED", "DRAFT", "READY_FOR_PROVIDER", "PROVIDER_SUCCEEDED",
+  "AWAITING_PAYMENT", "FULFILLMENT_PENDING", "NOT_EXECUTED", "READY",
+  "REQUESTED", "APPROVED", "UNKNOWN_REQUIRES_RECONCILIATION",
+  "UNSUPPORTED_REQUIRES_MANUAL",
 ]);
 
 const normalized = (value?: string | null) => (value ?? "").trim().toUpperCase();
+
+export function groupCustomerOrders(rows: TransactionHistoryItem[]) {
+  const byOrder = new Map<string, TransactionHistoryItem>();
+  const receiptPriority = (row: TransactionHistoryItem) =>
+    (row.receiptAvailable && row.receiptId ? 2 : 0) +
+    (row.transactionId === row.canonicalOrderId ? 1 : 0);
+  for (const row of rows) {
+    const key = row.canonicalOrderId ?? row.transactionId;
+    const existing = byOrder.get(key);
+    if (!existing || receiptPriority(row) > receiptPriority(existing)) byOrder.set(key, row);
+  }
+  const orders = [...byOrder.values()].sort((a, b) =>
+    Date.parse(b.occurredAt) - Date.parse(a.occurredAt) || b.occurredAt.localeCompare(a.occurredAt));
+  const current: TransactionHistoryItem[] = [];
+  const past: TransactionHistoryItem[] = [];
+  const seenReceipts = new Set<string>();
+  for (const order of orders) {
+    if (order.receiptId && seenReceipts.has(order.receiptId)) continue;
+    if (order.receiptId) seenReceipts.add(order.receiptId);
+    (pendingStatuses.has(normalized(order.status)) ? current : past).push(order);
+  }
+  return { current, past };
+}
 
 export function transactionTypeLabel(value?: string | null): string {
   return readableTypes[normalized(value)] ?? "Transaction";

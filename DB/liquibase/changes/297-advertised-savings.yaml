@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - changeSet:
+      id: 297-advertised-savings
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/297-advertised-savings.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

@@ -1445,10 +1445,12 @@ export default function OrgAdminOffers() {
               : "Add Offer"
         }
         scrollable
+        scrollFocusedInput
         testID="offer-form-modal"
       >
         {editingOffer ? (
           <OfferForm
+            key={editingOffer.id}
             offer={editingOffer}
             membershipProducts={products}
             stores={stores}

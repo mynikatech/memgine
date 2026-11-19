@@ -26,11 +26,7 @@ export function MembershipAgreementHistoryLink({
         </Text>
       </Pressable>
 
-      <Modal
-        visible={open}
-        animationType="slide"
-        onRequestClose={() => setOpen(false)}
-      >
+      <Modal visible={open} animationType="slide" onRequestClose={() => setOpen(false)}>
         <MembershipAgreementDocumentView
           agreementText={agreementText}
           onClose={() => setOpen(false)}

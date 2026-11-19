@@ -15,7 +15,8 @@ data class OfferSqlParams(
     val availabilityText: String?, val disclaimerText: String?, val ctaLabel: String, val ctaType: String,
     val ctaTarget: String?, val discountPercentage: Double?, val effectiveDate: String,
     val expiryDate: String?, val statusId: String, val versionNo: Int,
-    val actorUserId: String, val create: Boolean
+    val actorUserId: String, val create: Boolean,
+    val savingsMinor: Long?, val savingsCurrency: String?
 )
 
 data class OfferRuleSqlParams(
@@ -75,12 +76,15 @@ interface OfferSql {
               @Bind("offerId") offerId: String,
               @Bind("actorUserId") actorUserId: String): List<OfferUsageRuleDto>
 
+    @SqlQuery("SELECT get_advertised_savings(:organizationId, 'OFFER')::text")
+    fun advertisedSavings(@Bind("organizationId") organizationId: String): String
+
     @SqlQuery("""SELECT save_organization_offer(
         :organizationId, :id, :offerCode, :offerName, :description,
         :membershipProductId, :storeId, :promotionImageUrl, :badgeText,
         :availabilityText, :disclaimerText, :ctaLabel, :ctaType, :ctaTarget,
         CAST(:discountPercentage AS numeric), CAST(:effectiveDate AS date),
-        CAST(:expiryDate AS date), :statusId, :versionNo, :actorUserId, :create)""")
+        CAST(:expiryDate AS date), :statusId, :versionNo, :actorUserId, :create, :savingsMinor, :savingsCurrency)""")
     fun save(@BindBean params: OfferSqlParams): Boolean
 
     @SqlQuery("""SELECT save_organization_offer_rule(

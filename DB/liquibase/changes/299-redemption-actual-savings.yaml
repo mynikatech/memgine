@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - changeSet:
+      id: 299-redemption-actual-savings
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/299-redemption-actual-savings.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

@@ -1,3 +1,4 @@
+import { AdvertisedSavingsFields, useAdvertisedSavingsOverride } from "./AdvertisedSavingsFields";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -1185,7 +1186,12 @@ export function OfferForm({
     return null;
   };
 
+  const savingsDraft = useAdvertisedSavingsOverride(offer.advertisedSavings, defaultCurrency);
+
   const handleSave = async () => {
+    if (readOnly) return;
+    const override = savingsDraft.validateOverride();
+    if (override === undefined) return;
     if (readOnly) {
       return;
     }
@@ -1206,6 +1212,7 @@ export function OfferForm({
 
       const normalizedOffer: Offer = {
         ...draft,
+        advertisedSavings: { ...offer.advertisedSavings, override },
         offerCode: draft.offerCode.trim(),
         offerName: draft.offerName.trim(),
         description: draft.description?.trim() || undefined,
@@ -1311,6 +1318,11 @@ export function OfferForm({
           editable={false}
         />
 
+        <AdvertisedSavingsFields
+          savings={offer.advertisedSavings}
+          {...savingsDraft.fields}
+          readOnly={readOnly}
+        />
         <Input
           label="Offer Name"
           required

@@ -35,7 +35,8 @@ data class TransactionReceiptRow(
     var paymentMethod: String? = null,
     var providerReference: String? = null,
     var receiptSnapshot: String = "{}",
-    var issuedAt: String = ""
+    var issuedAt: String = "",
+    var actualSavings: TransactionActualSavings? = null
 )
 
 /** A ledger row is intentionally available even when no immutable receipt exists. */
@@ -58,10 +59,54 @@ data class TransactionHistoryRow(
     var receiptId: String? = null,
     var receiptNumber: String? = null,
     var receiptAvailable: Boolean = false,
-    var refundStatus: String? = null
+    var refundStatus: String? = null,
+    var actualSavings: TransactionActualSavings? = null,
+    var subscriptionId: String? = null,
+    var itemDescription: String? = null,
+    var canonicalOrderId: String? = null
+)
+
+@Serializable
+data class TransactionActualSavings(
+    var transactionId: String = "",
+    var subscriptionId: String? = null,
+    var redemptionTransactionId: String? = null,
+    var currencyCode: String? = null,
+    var originalDiscountMinor: Long? = null,
+    var reversalMinor: Long? = null,
+    var netSavingsMinor: Long? = null,
+    var verificationState: String = "",
+    var completedAt: String? = null
+)
+
+@Serializable
+data class SubscriptionActualSavings(
+    var subscriptionId: String = "",
+    var currencyCode: String? = null,
+    var netSavingsMinor: Long? = null,
+    var verifiedNetSavingsMinor: Long? = null,
+    var verifiedRedemptionCount: Long = 0,
+    var unverifiedRedemptionCount: Long = 0,
+    var unattributedHistoryCount: Long = 0,
+    var coverageState: String = ""
 )
 
 interface TransactionReceiptSql {
+    @SqlQuery("SELECT * FROM get_customer_transaction_actual_savings(:customerUserId, :transactionIds)")
+    @RegisterBeanMapper(TransactionActualSavings::class)
+    fun customerActualSavings(
+        @Bind("customerUserId") customerUserId: String,
+        @Bind("transactionIds") transactionIds: Array<String>
+    ): List<TransactionActualSavings>
+
+    @SqlQuery("SELECT * FROM get_customer_subscription_actual_savings(:customerUserId, :organizationId, :subscriptionId)")
+    @RegisterBeanMapper(SubscriptionActualSavings::class)
+    fun subscriptionActualSavings(
+        @Bind("customerUserId") customerUserId: String,
+        @Bind("organizationId") organizationId: String,
+        @Bind("subscriptionId") subscriptionId: String
+    ): List<SubscriptionActualSavings>
+
     @SqlQuery("""
       SELECT * FROM receipt_customer_transaction_history(:customerUserId, :organizationId, :status, :transactionType, :search, :limit, :offset)
     """)
@@ -132,30 +177,67 @@ interface TransactionReceiptSql {
                        @Bind("receiptId") receiptId: String): TransactionReceiptRow?
 }
 
+private fun TransactionReceiptSql.savingsByTransaction(
+    customerUserId: String,
+    transactionIds: List<String>
+): Map<String, TransactionActualSavings> =
+    if (transactionIds.isEmpty()) emptyMap()
+    else customerActualSavings(customerUserId, transactionIds.distinct().toTypedArray()).associateBy { it.transactionId }
+
+private fun TransactionHistoryRow.isCompletedRedemption(): Boolean =
+    transactionType == "COUNTER_REDEMPTION" && status == "COMPLETED"
+
 fun Route.transactionReceiptRoutes(sql: TransactionReceiptSql) {
     get("/customer/transactions") {
         val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, 100) ?: 25
         val offset = call.request.queryParameters["offset"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
-        call.respond(ApiResponse.success(sql.customerTransactionHistory(
-            call.authenticatedPrincipal().userId,
+        val customerId = call.authenticatedPrincipal().userId
+        val history = sql.customerTransactionHistory(
+            customerId,
             call.request.queryParameters["organizationId"], call.request.queryParameters["status"],
             call.request.queryParameters["transactionType"], call.request.queryParameters["search"], limit, offset
-        ), call.callId))
+        )
+        // A checkout can complete between the history query and the batch
+        // lookup. Do not attach savings to a history row read as pending.
+        val savings = sql.savingsByTransaction(
+            customerId, history.filter { it.isCompletedRedemption() }.map { it.transactionId }
+        )
+        call.respond(ApiResponse.success(history.map { row ->
+            if (row.isCompletedRedemption()) row.copy(actualSavings = savings[row.transactionId]) else row
+        }, call.callId))
     }
     route("/customer/organizations/{organizationId}") {
         get("/transactions") {
             val organizationId = call.parameters["organizationId"] ?: throw NotFoundException("Organization was not found")
             val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, 100) ?: 25
             val offset = call.request.queryParameters["offset"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
-            call.respond(ApiResponse.success(sql.customerReceipts(organizationId, call.authenticatedPrincipal().userId, limit, offset), call.callId))
+            val customerId = call.authenticatedPrincipal().userId
+            val receipts = sql.customerReceipts(organizationId, customerId, limit, offset)
+            val savings = sql.savingsByTransaction(customerId, receipts.mapNotNull {
+                it.sourceTransactionId.takeIf { _ -> it.receiptKind == "COUNTER_REDEMPTION" }
+            })
+            call.respond(ApiResponse.success(receipts.map {
+                it.copy(actualSavings = savings[it.sourceTransactionId].takeIf { _ -> it.receiptKind == "COUNTER_REDEMPTION" })
+            }, call.callId))
         }
         get("/receipts/{receiptId}") {
+            val customerId = call.authenticatedPrincipal().userId
             val receipt = sql.customerReceipt(
                 call.parameters["organizationId"] ?: throw NotFoundException("Organization was not found"),
-                call.authenticatedPrincipal().userId,
+                customerId,
                 call.parameters["receiptId"] ?: throw NotFoundException("Receipt was not found")
             ) ?: throw NotFoundException("Receipt was not found")
+            if (receipt.receiptKind == "COUNTER_REDEMPTION") {
+                receipt.actualSavings = sql.customerActualSavings(customerId, arrayOf(receipt.sourceTransactionId)).singleOrNull()
+            }
             call.respond(ApiResponse.success(receipt, call.callId))
+        }
+        get("/subscriptions/{subscriptionId}/actual-savings") {
+            val organizationId = call.parameters["organizationId"] ?: throw NotFoundException("Organization was not found")
+            val subscriptionId = call.parameters["subscriptionId"] ?: throw NotFoundException("Subscription was not found")
+            val savings = sql.subscriptionActualSavings(call.authenticatedPrincipal().userId, organizationId, subscriptionId)
+            if (savings.isEmpty()) throw NotFoundException("Subscription was not found")
+            call.respond(ApiResponse.success(savings, call.callId))
         }
     }
     route("/organizations/{organizationId}/counter") {

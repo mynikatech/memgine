@@ -24,10 +24,14 @@ data class SubscriptionPlanSqlParams(
     val price: Double, val currencyId: String,
     val subscriptionPlanStatusId: String, val effectiveDate: String,
     val expiryDate: String?, val versionNo: Int,
-    val actorUserId: String, val create: Boolean
+    val actorUserId: String, val create: Boolean,
+    val overrideMinor: Long?, val overrideCurrency: String?, val overrideDecimalPlaces: Int?,
 )
 
 interface MembershipProductSql {
+    @SqlQuery("SELECT get_membership_potential_savings(:organizationId, get_advertised_savings(:organizationId, 'BENEFIT'))::text")
+    fun potentialSavings(@Bind("organizationId") organizationId: String): String
+
     @SqlQuery("SELECT EXISTS(SELECT 1 FROM product_categories WHERE product_category_id = :id AND is_active = true)")
     fun categoryExists(@Bind("id") id: String): Boolean
 
@@ -84,7 +88,8 @@ interface MembershipProductSql {
         :subscriptionPlanName, :description, :subscriptionPeriod,
         :subscriptionPeriodUnit, CAST(:price AS numeric), :currencyId,
         :subscriptionPlanStatusId, CAST(:effectiveDate AS date),
-        CAST(:expiryDate AS date), :versionNo, :actorUserId, :create)""")
+        CAST(:expiryDate AS date), :versionNo, :actorUserId, :create,
+        :overrideMinor, :overrideCurrency, :overrideDecimalPlaces)""")
     fun savePlan(@BindBean params: SubscriptionPlanSqlParams): Boolean
 
     @SqlQuery("SELECT delete_organization_subscription_plan(:organizationId, :productId, :planId, :actorUserId)")

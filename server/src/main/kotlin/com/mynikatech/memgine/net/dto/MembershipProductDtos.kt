@@ -24,7 +24,8 @@ data class SubscriptionPlanDto(
     val subscriptionPlanStatusId: String, val effectiveDate: String,
     val expiryDate: String? = null, val createdAt: String, val createdBy: String,
     val updatedAt: String, val updatedBy: String, val isDeleted: Boolean,
-    val versionNo: Int
+    val versionNo: Int,
+    val potentialSavings: MembershipPotentialSavingsDto? = null,
 )
 
 @Serializable
@@ -47,7 +48,8 @@ data class SubscriptionPlanWriteDto(
     val subscriptionPeriod: Int, val subscriptionPeriodUnit: String,
     val price: Double, val currencyId: String,
     val subscriptionPlanStatusId: String, val effectiveDate: String,
-    val expiryDate: String? = null, val versionNo: Int = 1
+    val expiryDate: String? = null, val versionNo: Int = 1,
+    val potentialSavingsOverride: AdvertisedSavingsMoneyDto? = null,
 )
 
 @Serializable

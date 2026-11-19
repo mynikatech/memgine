@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 300-customer-order-history-metadata
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/300-customer-order-history-metadata.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8
