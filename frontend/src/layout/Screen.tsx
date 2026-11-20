@@ -45,8 +45,8 @@ export function Screen({
       ]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="none"
-      automaticallyAdjustKeyboardInsets={false}
+      keyboardDismissMode={keyboardAware ? "on-drag" : "none"}
+      automaticallyAdjustKeyboardInsets={keyboardAware && Platform.OS === "ios"}
     >
       {children}
     </ScrollView>

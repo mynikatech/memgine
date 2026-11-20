@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 305-zero-payable-membership-activation
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/305-zero-payable-membership-activation.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

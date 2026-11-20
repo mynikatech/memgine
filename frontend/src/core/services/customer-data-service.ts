@@ -383,6 +383,26 @@ export class CustomerDataService {
     return result.data;
   }
 
+  async activateFreeMembership(
+    organizationId: ID,
+    planId: ID,
+    idempotencyKey: string,
+    explicitOfferId?: ID,
+  ): Promise<CounterPurchaseResult> {
+    const result = await this.api.activateFreeMembership(
+      organizationId,
+      planId,
+      idempotencyKey,
+      explicitOfferId,
+    );
+
+    if (!result.success) {
+      throw new Error(result.error.message);
+    }
+
+    return result.data;
+  }
+
   async purchaseQuote(
     organizationId: ID,
 

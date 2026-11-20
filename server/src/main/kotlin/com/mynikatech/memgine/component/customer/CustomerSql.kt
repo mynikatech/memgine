@@ -181,6 +181,25 @@ interface CustomerSql {
     fun purchaseAuthenticated(@Bind("organizationId") organizationId: String,
                               @Bind("planId") planId: String,
                               @Bind("customerUserId") customerUserId: String): CounterPurchaseResult?
+                                  
+    @SqlQuery("""
+        SELECT * FROM customer_activate_zero_total_membership(
+            :organizationId,
+            :customerUserId,
+            :planId,
+            :explicitOfferId,
+            :idempotencyKey,
+            :actorUserId
+        )
+    """)
+    fun activateZeroTotalMembership(
+        @Bind("organizationId") organizationId: String,
+        @Bind("customerUserId") customerUserId: String,
+        @Bind("planId") planId: String,
+        @Bind("explicitOfferId") explicitOfferId: String?,
+        @Bind("idempotencyKey") idempotencyKey: String,
+        @Bind("actorUserId") actorUserId: String,
+    ): CounterPurchaseResult?
 
     @SqlQuery("SELECT get_customer_preference_value(:userId, :code)")
     fun preference(@Bind("userId") userId: String, @Bind("code") code: String): String?

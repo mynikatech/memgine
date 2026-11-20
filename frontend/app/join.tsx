@@ -1170,15 +1170,33 @@ function JoinFlow() {
       // Ignore an older request if the code, plan, or customer changed.
       if (verificationVersion !== corporateVerifyVersion.current) return;
 
-      if (!result.success || !result.data.verified) {
+      if (!result.success) {
+        setCorporateVerified(false);
+
+        if (result.error.code === "CORPORATE_CODE_RATE_LIMITED") {
+          setCorporateVerifyError(
+            "Too many incorrect attempts. Please try again when the " +
+              "15-minute verification window expires.",
+          );
+        } else {
+          setCorporateVerifyError(
+            "Unable to verify the Corporate access code. Please try again.",
+          );
+        }
+
+        return;
+      }
+
+      if (!result.data.verified) {
         setCorporateVerified(false);
         setCorporateVerifyError(
-          "Invalid Corporate access code or too many attempts. Check the code and try again.",
+          "Incorrect Corporate access code. Please check the code and try again.",
         );
         return;
       }
 
       setCorporateVerified(true);
+      setCorporateVerifyError("");
     } catch {
       if (verificationVersion !== corporateVerifyVersion.current) return;
       setCorporateVerified(false);
@@ -3525,8 +3543,13 @@ function JoinFlow() {
         await requestCounterPurchaseOtp();
         return;
       }
-      if (isCorporateMembership && !corporateVerified) {
-        setOtpError("Verify your Corporate membership code before payment.");
+      if (
+        isCorporateMembership &&
+        (!corporateVerified || corporateVerifyBusy)
+      ) {
+        setOtpError(
+          "Verify your Corporate membership access code before continuing.",
+        );
         return;
       }
 
@@ -3710,6 +3733,124 @@ function JoinFlow() {
           );
         }
         setPurchaseQuote(latestQuote);
+        // Zero-payable membership:
+        // No payment intent, card, Apple Pay, Google Pay or provider checkout.
+        // The backend revalidates the current offer, tax and payable amount.
+        if (Math.round(latestQuote.totalAmount * 100) === 0) {
+          const customerUserId = session?.userId;
+
+          if (!customerUserId) {
+            throw new Error("Sign in to activate this membership.");
+          }
+
+          if (
+            !agreementAccepted ||
+            !agreementPreview ||
+            agreementLoading ||
+            !!agreementError ||
+            agreementPreview.planId !== plan.id ||
+            agreementPreview.membershipProductId !== product.id
+          ) {
+            throw new Error(
+              "Read and accept the Membership Agreement before activation.",
+            );
+          }
+
+          const freeStorageKey = `customer-free-activation:${orgId}:${customerUserId}:${product.id}`;
+
+          const offerId = explicitOfferId || "";
+
+          type FreeActivationAttempt = {
+            key: string;
+            planId: string;
+            offerId: string;
+          };
+
+          // Persist the key before submitting the request so a network
+          // timeout cannot cause an ambiguous second activation.
+          let freeAttempt = await storage.getItem<FreeActivationAttempt | null>(
+            freeStorageKey,
+            null,
+          );
+
+          if (
+            freeAttempt &&
+            (typeof freeAttempt.key !== "string" ||
+              !freeAttempt.key ||
+              freeAttempt.planId !== plan.id ||
+              freeAttempt.offerId !== offerId)
+          ) {
+            throw new Error(
+              "An earlier free membership activation has different terms. " +
+                "Please resolve that attempt before starting another.",
+            );
+          }
+
+          if (!freeAttempt) {
+            const randomKey =
+              typeof globalThis.crypto?.randomUUID === "function"
+                ? globalThis.crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+
+            freeAttempt = {
+              key: `customer-free-${randomKey}`,
+              planId: plan.id,
+              offerId,
+            };
+
+            const saved = await storage.setItem(freeStorageKey, freeAttempt);
+
+            if (!saved) {
+              throw new Error(
+                "Unable to save this activation request safely. " +
+                  "Please try again.",
+              );
+            }
+          }
+
+          const consent = await agreementApi.accept(orgId, {
+            planId: plan.id,
+            idempotencyKey: freeAttempt.key,
+            agreementSha256: agreementPreview.agreementSha256,
+            explicitOfferId: explicitOfferId || undefined,
+            acceptanceChannel:
+              Platform.OS === "web" ? "CUSTOMER_WEB" : "CUSTOMER_MOBILE",
+          });
+
+          if (!consent.success) {
+            throw new Error(consent.error.message);
+          }
+
+          const activated = await services.customerData.activateFreeMembership(
+            orgId,
+            plan.id,
+            freeAttempt.key,
+            explicitOfferId || undefined,
+          );
+
+          if (
+            activated.subscriptionPlanId !== plan.id ||
+            Math.round(activated.totalAmount * 100) !== 0
+          ) {
+            throw new Error(
+              "Membership activation returned inconsistent details.",
+            );
+          }
+
+          // Delete the retry key only after confirmed activation.
+          const cleared = await storage.removeItem(freeStorageKey);
+          if (!cleared) {
+            console.warn(
+              "Free membership activated; retry key could not be cleared.",
+            );
+          }
+
+          setOtpError(undefined);
+
+          finishSubscription(activated, `FREE:${activated.subscriptionId}`);
+
+          return;
+        }
 
         if (!customerPaymentStartStorageKey) {
           throw new Error(
@@ -4428,6 +4569,10 @@ function JoinFlow() {
       },
     });
   };
+  const isFreeActivation =
+    !isStaffSale &&
+    reference.startsWith("FREE:") &&
+    subscription?.totalAmount.amountMinor === 0;
 
   const headerRight =
     step === "success" && !isStaffSale ? null : (
@@ -4454,6 +4599,7 @@ function JoinFlow() {
       <Screen
         testID="join-screen"
         edges={["top"]}
+        keyboardAware
         header={<BusinessHeader right={headerRight} />}
       >
         <StateView
@@ -5093,11 +5239,13 @@ function JoinFlow() {
                   Corporate Membership Access
                 </Text>
                 <Text variant="bodySmall" color="textMuted">
-                  Enter the six-digit code shared by your organization. This is
-                  separate from any customer verification OTP.
+                  A Corporate Membership access code is required to activate
+                  this membership. Enter the six-digit code provided by your
+                  organization and tap Verify Code.
                 </Text>
                 <Input
                   label="Corporate Access Code"
+                  required
                   value={corporateCode}
                   onChangeText={(value) => {
                     corporateVerifyVersion.current += 1;
@@ -5246,7 +5394,13 @@ function JoinFlow() {
             </View>
           ) : (
             <Button
-              label={t("join.payAndSubscribe")}
+              label={
+                purchaseQuote &&
+                Number.isFinite(purchaseQuote.totalAmount) &&
+                Math.round(purchaseQuote.totalAmount * 100) === 0
+                  ? "Activate Membership"
+                  : t("join.payAndSubscribe")
+              }
               fullWidth
               disabled={
                 !agreementAccepted ||
@@ -5254,6 +5408,11 @@ function JoinFlow() {
                 agreementLoading ||
                 !!agreementError ||
                 !session?.userId ||
+                (isCorporateMembership && !corporateVerified) ||
+                corporateVerifyBusy ||
+                !purchaseQuote ||
+                !!purchaseQuoteError ||
+                !Number.isFinite(purchaseQuote?.totalAmount) ||
                 restoringCustomerCollectPayment ||
                 pendingCustomerCollectPayment !== null ||
                 customerPaymentRecoveryBlocked
@@ -5707,11 +5866,15 @@ function JoinFlow() {
             ) : (
               <>
                 <Text variant="h1" color="text">
-                  Payment Successful!
+                  {isFreeActivation
+                    ? "Membership Activated!"
+                    : "Payment Successful!"}
                 </Text>
 
                 <Text variant="bodyStrong" color="text">
-                  Thank you for your purchase!
+                  {isFreeActivation
+                    ? "Your membership is ready!"
+                    : "Thank you for your purchase!"}
                 </Text>
 
                 <Text
@@ -5740,7 +5903,11 @@ function JoinFlow() {
 
           <ReceiptSummary
             testID="join-receipt"
-            title={t("join.receiptTitle")}
+            title={
+              isFreeActivation
+                ? "Membership activation summary"
+                : t("join.receiptTitle")
+            }
             meta={[
               {
                 label: t("join.business"),
@@ -5759,10 +5926,14 @@ function JoinFlow() {
                 label: t("join.plan"),
                 value: membershipPlanDisplayName,
               },
-              {
-                label: "Payment method",
-                value: paymentMethodDisplay(receiptPaymentMethod),
-              },
+              ...(!isFreeActivation
+                ? [
+                    {
+                      label: "Payment method",
+                      value: paymentMethodDisplay(receiptPaymentMethod),
+                    },
+                  ]
+                : []),
               {
                 label: t("join.date"),
 
@@ -5771,14 +5942,13 @@ function JoinFlow() {
 
               {
                 label: t("join.reference"),
-
-                value: reference,
+                value: isFreeActivation
+                  ? subscription.subscriptionNumber
+                  : reference,
               },
-
               {
                 label: t("join.status"),
-
-                value: t("join.paid"),
+                value: isFreeActivation ? "Active" : t("join.paid"),
               },
             ]}
             lines={[

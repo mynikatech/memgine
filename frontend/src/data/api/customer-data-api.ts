@@ -543,6 +543,19 @@ export class CustomerDataApi {
       },
     );
   }
+
+  activateFreeMembership(
+    organizationId: ID,
+    planId: ID,
+    idempotencyKey: string,
+    explicitOfferId?: ID,
+  ): Promise<ApiResult<CounterPurchaseResult>> {
+    return httpClient.post(`${base(organizationId)}/purchases/activate-free`, {
+      planId,
+      idempotencyKey,
+      explicitOfferId,
+    });
+  }
   purchaseQuote(
     organizationId: ID,
     planId: ID,

@@ -95,6 +95,13 @@ class CustomerService(
         val firstName: String, val middleName: String? = null, val lastName: String? = null,
         val primaryEmail: String? = null, val versionNo: Int
     )
+    
+    @Serializable
+    data class FreeMembershipActivationRequest(
+        val planId: String,
+        val idempotencyKey: String,
+        val explicitOfferId: String? = null,
+    )
     @Serializable data class PhoneChangeStartRequest(val newPhone: String, val regionCode: String? = null)
     @Serializable data class PhoneChangeOldVerifyRequest(val challengeId: String, val otp: String, val newPhone: String, val regionCode: String? = null)
     @Serializable data class PhoneChangeConfirmRequest(val challengeId: String, val otp: String)
@@ -794,6 +801,49 @@ class CustomerService(
             request.explicitOfferId
         )
     }
+    
+    
+    fun activateFreeMembership(
+        organizationId: String,
+        customerUserId: String,
+        request: FreeMembershipActivationRequest
+    ): CounterPurchaseResult {
+        if (
+            request.planId.isBlank() ||
+            request.planId.length > 64 ||
+            request.idempotencyKey.isBlank() ||
+            request.idempotencyKey.length > 128 ||
+            (request.explicitOfferId != null &&
+                (request.explicitOfferId.isBlank() ||
+                    request.explicitOfferId.length > 64))
+        ) {
+            throw BadRequestException("Invalid membership activation request")
+        }
+
+        // The current agreement, plan, offer and idempotency key
+        // must match the customer's saved acceptance.
+        agreementOperations.requireAccepted(
+            organizationId,
+            customerUserId,
+            request.planId,
+            request.idempotencyKey,
+            request.explicitOfferId
+        )
+
+        // The database transaction independently verifies:
+        // zero payable, eligibility, Corporate access and duplicates.
+        return sql.activateZeroTotalMembership(
+            organizationId = organizationId,
+            customerUserId = customerUserId,
+            planId = request.planId,
+            explicitOfferId = request.explicitOfferId,
+            idempotencyKey = request.idempotencyKey,
+            actorUserId = customerUserId,
+        ) ?: throw ConflictException(
+            "Membership could not be activated. Please try again."
+        )
+    }
+
 
     fun purchaseQuote(organizationId: String, customerUserId: String, planId: String, explicitOfferId: String?) =
         payments.quoteCustomerMembership(organizationId, planId, customerUserId, explicitOfferId)

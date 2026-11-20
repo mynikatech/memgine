@@ -10,6 +10,9 @@ import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import com.mynikatech.memgine.exception.ApiException
+import io.ktor.http.HttpStatusCode
+import org.postgresql.util.PSQLException
 
 /** Corporate code handling is deliberately kept outside public membership DTOs. */
 class CorporateMembershipAccess(private val jdbi: Jdbi) {
@@ -119,13 +122,55 @@ class CorporateMembershipAccess(private val jdbi: Jdbi) {
         }
 
     /** Customer identity must come from the authenticated principal or validated counter context. */
-    fun verify(org: String, product: String, customerUserId: String, code: String): Boolean {
-        if (!Regex("^[0-9]{6}$").matches(code)) return false
-        return jdbi.withHandle<Boolean, Exception> { handle ->
-            handle.createQuery("SELECT corporate_membership_verify_code(:org,:product,:customer,:code)")
-                .bind("org", org).bind("product", product)
-                .bind("customer", customerUserId).bind("code", verifier(org, product, code))
-                .mapTo(Boolean::class.java).one()
+
+    /** Verify a Corporate code with a clear response when rate limited. */
+    fun verify(
+        org: String,
+        product: String,
+        customerUserId: String,
+        code: String
+    ): Boolean {
+        if (!Regex("^[0-9]{6}$").matches(code)) {
+            return false
+        }
+
+        try {
+            return jdbi.withHandle<Boolean, Exception> { handle ->
+                handle.createQuery(
+                    "SELECT corporate_membership_verify_code(:org,:product,:customer,:code)"
+                )
+                    .bind("org", org)
+                    .bind("product", product)
+                    .bind("customer", customerUserId)
+                    .bind("code", verifier(org, product, code))
+                    .mapTo(Boolean::class.java)
+                    .one()
+            }
+        } catch (error: Exception) {
+            // JDBI can wrap a PostgreSQL exception. Inspect the cause
+            // chain, but recognize ONLY this explicit SQL lockout.
+            val rateLimited = generateSequence(
+                error as Throwable?
+            ) { it.cause }
+                .filterIsInstance<PSQLException>()
+                .any { sqlError ->
+                    sqlError.sqlState == "42501" &&
+                        sqlError.serverErrorMessage?.message ==
+                            "Too many Corporate code attempts"
+                }
+
+            if (rateLimited) {
+                throw ApiException(
+                    HttpStatusCode.TooManyRequests,
+                    "CORPORATE_CODE_RATE_LIMITED",
+                    "Too many incorrect Corporate access code attempts. " +
+                        "Please try again when the 15-minute verification window expires."
+                )
+            }
+
+            // Preserve all other existing exception behavior.
+            throw error
         }
     }
+
 }

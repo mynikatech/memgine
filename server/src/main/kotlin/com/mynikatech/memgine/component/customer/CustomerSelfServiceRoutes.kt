@@ -274,6 +274,18 @@ fun Route.customerSelfServiceRoutes(service: CustomerService, redemptionService:
                     call.callId
                 ))
             }
+            post("/purchases/activate-free") {
+                call.respond(
+                    ApiResponse.success(
+                        service.activateFreeMembership(
+                            call.organizationId(),
+                            call.authenticatedPrincipal().userId,
+                            call.receive<CustomerService.FreeMembershipActivationRequest>()
+                        ),
+                        call.callId
+                    )
+                )
+            }
             post("/purchases/payment/start-authenticated") {
                 call.respond(ApiResponse.success(
                     service.startAuthenticatedPurchasePayment(
