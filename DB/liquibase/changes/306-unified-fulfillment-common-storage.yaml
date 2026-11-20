@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 306-unified-fulfillment-common-storage
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/306-unified-fulfillment-common-storage.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8
