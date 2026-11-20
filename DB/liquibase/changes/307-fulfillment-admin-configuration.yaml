@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 307-fulfillment-admin-configuration
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/307-fulfillment-admin-configuration.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

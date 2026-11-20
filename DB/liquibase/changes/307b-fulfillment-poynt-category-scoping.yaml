@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 307b-fulfillment-poynt-category-scoping
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/307b-fulfillment-poynt-category-scoping.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

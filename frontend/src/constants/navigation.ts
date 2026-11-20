@@ -169,6 +169,8 @@ export const APP_ROUTES = {
     settings: {
       root: (organizationId: string) =>
         `/org-admin/${encodeURIComponent(organizationId)}/settings`,
+      fulfillment: (organizationId: string) =>
+        `/org-admin/${encodeURIComponent(organizationId)}/settings/fulfillment`,
 
       fixedPos: (organizationId: string) =>
         `/org-admin/${encodeURIComponent(organizationId)}/settings/fixed-pos`,
@@ -229,7 +231,8 @@ export const APP_ROUTES = {
 
   discover: {
     organization: (organizationId: string) => `/discover/${organizationId}`,
-    memberships: (organizationId: string) => `/discover/${organizationId}?section=memberships`,
+    memberships: (organizationId: string) =>
+      `/discover/${organizationId}?section=memberships`,
     membership: (organizationId: string, productId: string, planId: string) =>
       `/discover/${organizationId}?productId=${encodeURIComponent(productId)}&planId=${encodeURIComponent(planId)}`,
   },
@@ -493,7 +496,13 @@ export const createOrgAdminRoutes = (organizationId: string): AdminRoute[] => [
 
         icon: "desktop-outline",
       },
+      {
+        title: "Fulfillment",
 
+        href: APP_ROUTES.orgAdmin.settings.fulfillment(organizationId),
+
+        icon: "calendar-outline",
+      },
       {
         title: "Notifications",
 

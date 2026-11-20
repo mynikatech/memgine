@@ -63,6 +63,9 @@ import com.mynikatech.memgine.component.commerce.CommerceSql
 import com.mynikatech.memgine.component.commerce.commerceRoutes
 import com.mynikatech.memgine.component.commerce.CommerceCatalogSyncService
 import com.mynikatech.memgine.component.commerce.commerceCatalogSyncRoutes
+import com.mynikatech.memgine.component.fulfillmentconfig.FulfillmentConfigurationSql
+import com.mynikatech.memgine.component.fulfillmentconfig.FulfillmentConfigurationService
+import com.mynikatech.memgine.component.fulfillmentconfig.fulfillmentConfigurationRoutes
 import com.mynikatech.memgine.component.commerce.poyntPaymentBridgeCallbackRoutes
 import com.mynikatech.memgine.component.commerce.CommerceProviderRegistry
 import com.mynikatech.memgine.component.commerce.CommercePaymentProviderPolicy
@@ -175,9 +178,15 @@ fun Application.configureRouting(
         database.jdbi.onDemand(PoyntTerminalSql::class.java), posAuthenticationService
     )
     installAuthenticationGate(authenticationService, config.authentication)
+
     val organizationService =
         OrganizationService(
             database.jdbi.onDemand(OrganizationSql::class.java), phoneNormalizer
+        )
+
+    val fulfillmentConfigurationService =
+        FulfillmentConfigurationService(
+            database.jdbi.onDemand(FulfillmentConfigurationSql::class.java)
         )
 
     val organizationUserService =
@@ -371,6 +380,7 @@ fun Application.configureRouting(
             poyntTerminalRoutes(poyntTerminalService)
             rbacRoutes(rbacService, customerDevIdentityEnabled)
             organizationRoutes(organizationService)
+            fulfillmentConfigurationRoutes(fulfillmentConfigurationService)
             organizationUserRoutes(organizationUserService)
             organizationAccessRoutes(organizationAccessService)
             organizationMaintenanceRoutes(organizationMaintenanceService)

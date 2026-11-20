@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 307a-fulfillment-workflow-rules
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/307a-fulfillment-workflow-rules.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8
