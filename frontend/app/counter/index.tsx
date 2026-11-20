@@ -3,6 +3,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -79,19 +80,28 @@ function RedemptionSavingsRow({
   amountMinor?: number | null;
   currency?: string | null;
 }) {
-  const estimate = amountMinor != null && amountMinor >= 0
-    ? formatTransactionMoney(amountMinor, currency)
-    : undefined;
+  const estimate =
+    amountMinor != null && amountMinor >= 0
+      ? formatTransactionMoney(amountMinor, currency)
+      : undefined;
 
   return (
-    <View testID="counter-redemption-estimated-savings" style={[styles.ctxRow, {
-      gap: SPACING.sm,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: COLORS.border,
-      marginTop: SPACING.xs,
-      paddingTop: SPACING.sm,
-    }]}>
-      <Text style={[styles.ctxLabel, { flex: 1 }]}>Estimated Savings on This Redemption</Text>
+    <View
+      testID="counter-redemption-estimated-savings"
+      style={[
+        styles.ctxRow,
+        {
+          gap: SPACING.sm,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: COLORS.border,
+          marginTop: SPACING.xs,
+          paddingTop: SPACING.sm,
+        },
+      ]}
+    >
+      <Text style={[styles.ctxLabel, { flex: 1 }]}>
+        Estimated Savings on This Redemption
+      </Text>
       <Text style={[styles.ctxValue, { flexShrink: 1, textAlign: "right" }]}>
         {estimate ?? "Savings estimate unavailable"}
       </Text>
@@ -264,6 +274,35 @@ const RESULT_STYLE: Record<CounterResult["kind"], { fg: string; bg: string }> =
   };
 
 export default function StaffCounter() {
+  // Keep Counter input fields visible above the mobile keyboard.
+  const counterScrollRef = useRef<ScrollView>(null);
+
+  const revealCounterFocusedInput = useCallback(() => {
+    if (Platform.OS === "web") return;
+
+    requestAnimationFrame(() => {
+      const focusedInput = TextInput.State.currentlyFocusedInput();
+
+      if (!focusedInput) return;
+
+      counterScrollRef.current?.scrollResponderScrollNativeHandleToKeyboard(
+        focusedInput,
+        24,
+        true,
+      );
+    });
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+
+    const listener = Keyboard.addListener(
+      "keyboardDidShow",
+      revealCounterFocusedInput,
+    );
+
+    return () => listener.remove();
+  }, [revealCounterFocusedInput]);
   const { organization } = useBusiness();
   const { session, hasCapability } = useAuth();
 
@@ -3341,7 +3380,10 @@ export default function StaffCounter() {
                       otpVerifying ||
                       normalizeOtp(otpCode).length !== OTP_LENGTH
                     }
-                    onPress={verifyRedemptionOtp}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      void verifyRedemptionOtp();
+                    }}
                     style={[
                       styles.primaryBtn,
                       (otpVerifying ||
@@ -3475,9 +3517,10 @@ export default function StaffCounter() {
               <Pressable
                 testID="counter-use-membership-offer-qr"
                 disabled={!membershipOfferQrText.trim() || busy}
-                onPress={() =>
-                  void resolveMembershipOfferQr(membershipOfferQrText)
-                }
+                onPress={() => {
+                  Keyboard.dismiss();
+                  void resolveMembershipOfferQr(membershipOfferQrText);
+                }}
                 style={[
                   styles.secondaryBtn,
                   (!membershipOfferQrText.trim() || busy) && styles.btnDisabled,
@@ -3645,9 +3688,18 @@ export default function StaffCounter() {
 
   return (
     <ScrollView
+      ref={counterScrollRef}
       testID="staff-counter-screen"
       style={styles.screen}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: 96 }]}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+      onFocus={() => {
+        if (Keyboard.isVisible()) {
+          revealCounterFocusedInput();
+        }
+      }}
     >
       <Text style={styles.h1}>Counter</Text>
 
@@ -4376,7 +4428,10 @@ export default function StaffCounter() {
               <Pressable
                 testID="counter-redeem-qr"
                 disabled={!tokenText.trim() || busy}
-                onPress={() => void resolveRedemptionQr(tokenText)}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  void resolveRedemptionQr(tokenText);
+                }}
                 style={[
                   styles.secondaryBtn,
                   (!tokenText.trim() || busy) && styles.btnDisabled,
@@ -4426,7 +4481,10 @@ export default function StaffCounter() {
               <Pressable
                 testID="counter-find-phone"
                 disabled={normalizePhone(phone).length !== MAX_PHONE_DIGITS}
-                onPress={findCustomerByPhone}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  void findCustomerByPhone();
+                }}
                 style={[
                   styles.primaryBtn,
                   normalizePhone(phone).length !== MAX_PHONE_DIGITS &&
@@ -4471,7 +4529,10 @@ export default function StaffCounter() {
 
             <Pressable
               testID="counter-search"
-              onPress={runSearch}
+              onPress={() => {
+                Keyboard.dismiss();
+                void runSearch();
+              }}
               style={styles.primaryBtnInline}
             >
               <Text style={styles.primaryBtnText}>Search</Text>
@@ -4739,7 +4800,10 @@ export default function StaffCounter() {
                 disabled={
                   otpVerifying || normalizeOtp(otpCode).length !== OTP_LENGTH
                 }
-                onPress={() => void verifyRedemptionOtp()}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  void verifyRedemptionOtp();
+                }}
                 style={[
                   styles.primaryBtn,
                   (otpVerifying ||
@@ -4938,7 +5002,8 @@ export default function StaffCounter() {
           <RedemptionSavingsRow
             amountMinor={
               redemptionCheckoutStage === "preparing" ||
-              (redemptionCheckout.pricingReconciliationRequired && !redemptionCheckout.pricingAcknowledged)
+              (redemptionCheckout.pricingReconciliationRequired &&
+                !redemptionCheckout.pricingAcknowledged)
                 ? undefined
                 : redemptionCheckout.adjustmentTotalMinor
             }
