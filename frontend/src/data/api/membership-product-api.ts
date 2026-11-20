@@ -42,34 +42,40 @@ export class MembershipProductApi {
       displayName: product.displayName,
       productCategoryId: product.productCategoryId,
       productTypeId: product.productTypeId,
+      corporateAccessCode: product.corporateAccessCode,
       tier: product.tier,
       tierSequence: product.tierSequence,
       description: product.description,
       productStatusId: await entityStatusApi.resolveEntityStatusId(
-        "MEMBERSHIP_PRODUCT", product.productStatusId,
+        "MEMBERSHIP_PRODUCT",
+        product.productStatusId,
       ),
       effectiveDate: product.effectiveDate,
       expiryDate: product.expiryDate,
       versionNo: product.versionNo,
       benefitIds: product.benefitIds,
       plans: await Promise.all(
-        product.plans.filter((plan) => !plan.isDeleted).map(async (plan) => ({
-          id: plan.id,
-          subscriptionPlanCode: plan.subscriptionPlanCode,
-          subscriptionPlanName: plan.subscriptionPlanName,
-          description: plan.description,
-          subscriptionPeriod: plan.subscriptionPeriod,
-          subscriptionPeriodUnit: plan.subscriptionPeriodUnit,
-          price: plan.price.amountMinor / 100,
-          currencyId: plan.currencyId,
-          potentialSavingsOverride: plan.potentialSavingsOverride ?? null,
-          subscriptionPlanStatusId: await entityStatusApi.resolveEntityStatusId(
-            "SUBSCRIPTION_PLAN", plan.subscriptionPlanStatusId,
-          ),
-          effectiveDate: plan.effectiveDate,
-          expiryDate: plan.expiryDate,
-          versionNo: plan.versionNo,
-        })),
+        product.plans
+          .filter((plan) => !plan.isDeleted)
+          .map(async (plan) => ({
+            id: plan.id,
+            subscriptionPlanCode: plan.subscriptionPlanCode,
+            subscriptionPlanName: plan.subscriptionPlanName,
+            description: plan.description,
+            subscriptionPeriod: plan.subscriptionPeriod,
+            subscriptionPeriodUnit: plan.subscriptionPeriodUnit,
+            price: plan.price.amountMinor / 100,
+            currencyId: plan.currencyId,
+            potentialSavingsOverride: plan.potentialSavingsOverride ?? null,
+            subscriptionPlanStatusId:
+              await entityStatusApi.resolveEntityStatusId(
+                "SUBSCRIPTION_PLAN",
+                plan.subscriptionPlanStatusId,
+              ),
+            effectiveDate: plan.effectiveDate,
+            expiryDate: plan.expiryDate,
+            versionNo: plan.versionNo,
+          })),
       ),
     };
   }
@@ -80,27 +86,41 @@ export class MembershipProductApi {
         `/api/v1/organizations/${organizationId}/membership-products`,
       );
       if (!result.success) return result;
-      return apiSuccess(await Promise.all(result.data.map((item) => this.fromServer(item))));
+      return apiSuccess(
+        await Promise.all(result.data.map((item) => this.fromServer(item))),
+      );
     } catch (error) {
-      return apiFailure("MEMBERSHIP_PRODUCT_LIST_FAILED",
-        error instanceof Error ? error.message : "Unable to list memberships.");
+      return apiFailure(
+        "MEMBERSHIP_PRODUCT_LIST_FAILED",
+        error instanceof Error ? error.message : "Unable to list memberships.",
+      );
     }
   }
 
-  async listForCustomer(organizationId: ID, userId?: ID): Promise<ApiResult<MembershipProduct[]>> {
+  async listForCustomer(
+    organizationId: ID,
+    userId?: ID,
+  ): Promise<ApiResult<MembershipProduct[]>> {
     try {
       const result = await httpClient.get<ServerProduct[]>(
         `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/membership-products`,
       );
       if (!result.success) return result;
-      return apiSuccess(await Promise.all(result.data.map((item) => this.fromServer(item))));
+      return apiSuccess(
+        await Promise.all(result.data.map((item) => this.fromServer(item))),
+      );
     } catch (error) {
-      return apiFailure("CUSTOMER_MEMBERSHIP_LIST_FAILED",
-        error instanceof Error ? error.message : "Unable to load memberships.");
+      return apiFailure(
+        "CUSTOMER_MEMBERSHIP_LIST_FAILED",
+        error instanceof Error ? error.message : "Unable to load memberships.",
+      );
     }
   }
 
-  async get(organizationId: ID, productId: ID): Promise<ApiResult<MembershipProduct>> {
+  async get(
+    organizationId: ID,
+    productId: ID,
+  ): Promise<ApiResult<MembershipProduct>> {
     try {
       const result = await httpClient.get<ServerProduct>(
         `/api/v1/organizations/${organizationId}/membership-products/${productId}`,
@@ -108,12 +128,17 @@ export class MembershipProductApi {
       if (!result.success) return result;
       return apiSuccess(await this.fromServer(result.data));
     } catch (error) {
-      return apiFailure("MEMBERSHIP_PRODUCT_LOAD_FAILED",
-        error instanceof Error ? error.message : "Unable to load membership.");
+      return apiFailure(
+        "MEMBERSHIP_PRODUCT_LOAD_FAILED",
+        error instanceof Error ? error.message : "Unable to load membership.",
+      );
     }
   }
 
-  async create(organizationId: ID, product: MembershipProduct): Promise<ApiResult<MembershipProduct>> {
+  async create(
+    organizationId: ID,
+    product: MembershipProduct,
+  ): Promise<ApiResult<MembershipProduct>> {
     try {
       const result = await httpClient.post<unknown, ServerProduct>(
         `/api/v1/organizations/${organizationId}/membership-products`,
@@ -122,12 +147,17 @@ export class MembershipProductApi {
       if (!result.success) return result;
       return apiSuccess(await this.fromServer(result.data));
     } catch (error) {
-      return apiFailure("MEMBERSHIP_PRODUCT_CREATE_FAILED",
-        error instanceof Error ? error.message : "Unable to create membership.");
+      return apiFailure(
+        "MEMBERSHIP_PRODUCT_CREATE_FAILED",
+        error instanceof Error ? error.message : "Unable to create membership.",
+      );
     }
   }
 
-  async update(organizationId: ID, product: MembershipProduct): Promise<ApiResult<MembershipProduct>> {
+  async update(
+    organizationId: ID,
+    product: MembershipProduct,
+  ): Promise<ApiResult<MembershipProduct>> {
     try {
       const result = await httpClient.put<unknown, ServerProduct>(
         `/api/v1/organizations/${organizationId}/membership-products/${product.id}`,
@@ -136,19 +166,45 @@ export class MembershipProductApi {
       if (!result.success) return result;
       return apiSuccess(await this.fromServer(result.data));
     } catch (error) {
-      return apiFailure("MEMBERSHIP_PRODUCT_UPDATE_FAILED",
-        error instanceof Error ? error.message : "Unable to update membership.");
+      return apiFailure(
+        "MEMBERSHIP_PRODUCT_UPDATE_FAILED",
+        error instanceof Error ? error.message : "Unable to update membership.",
+      );
     }
   }
 
   async delete(organizationId: ID, productId: ID): Promise<ApiResult<void>> {
-    const result = await httpClient.delete<{ membershipProductId: ID; deleted: boolean }>(
+    const result = await httpClient.delete<{
+      membershipProductId: ID;
+      deleted: boolean;
+    }>(
       `/api/v1/organizations/${organizationId}/membership-products/${productId}`,
     );
     if (!result.success) return result;
     if (!result.data.deleted) {
-      return apiFailure("MEMBERSHIP_PRODUCT_DELETE_FAILED", "Membership was not deleted.");
+      return apiFailure(
+        "MEMBERSHIP_PRODUCT_DELETE_FAILED",
+        "Membership was not deleted.",
+      );
     }
     return apiSuccess(undefined);
+  }
+
+  generateCorporateCode(
+    organizationId: ID,
+  ): Promise<ApiResult<{ code: string }>> {
+    return httpClient.post(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/membership-products/corporate-code/generate`,
+      {},
+    );
+  }
+
+  getCorporateCode(
+    organizationId: ID,
+    productId: ID,
+  ): Promise<ApiResult<{ code: string | null }>> {
+    return httpClient.get(
+      `/api/v1/organizations/${encodeURIComponent(organizationId)}/membership-products/${encodeURIComponent(productId)}/corporate-code`,
+    );
   }
 }

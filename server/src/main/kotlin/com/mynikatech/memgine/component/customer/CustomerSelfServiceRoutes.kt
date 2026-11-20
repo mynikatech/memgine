@@ -4,6 +4,7 @@ import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.model.common.ApiResponse
 import com.mynikatech.memgine.net.dto.CustomerPurchaseRequestDto
 import com.mynikatech.memgine.net.dto.CustomerPreferenceValueDto
+import com.mynikatech.memgine.net.dto.CorporateCodeVerifyDto
 import com.mynikatech.memgine.net.dto.AuthenticatedMembershipPaymentStartDto
 import com.mynikatech.memgine.net.dto.PaymentStartRequestDto
 import com.mynikatech.memgine.net.dto.CustomerCreateRedemptionTransactionRequest
@@ -228,6 +229,21 @@ fun Route.customerSelfServiceRoutes(service: CustomerService, redemptionService:
             }
             post("/purchases") {
                 throw BadRequestException("Membership purchase requires verified payment confirmation")
+            }
+            post("/corporate-access/verify") {
+                val request: CorporateCodeVerifyDto =
+                    call.receive<CorporateCodeVerifyDto>()
+
+                call.respond(
+                    ApiResponse.success(
+                        service.verifyCorporateCode(
+                            call.organizationId(),
+                            call.userId(),
+                            request
+                        ),
+                        call.callId
+                    )
+                )
             }
             get("/purchases/quote") {
                 val planId = call.request.queryParameters["planId"]

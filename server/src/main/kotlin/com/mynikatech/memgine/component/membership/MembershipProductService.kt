@@ -11,6 +11,17 @@ import org.postgresql.util.PSQLException
 import java.time.LocalDate
 
 class MembershipProductService(private val jdbi: Jdbi) {
+    
+    private val corporateAccess = CorporateMembershipAccess(jdbi)
+
+    fun generateCorporateCode(org: String, actor: String): CorporateCodeDto =
+        CorporateCodeDto(corporateAccess.generate(org, actor))
+
+    fun corporateCode(org: String, product: String, actor: String): CorporateCodeDto =
+        CorporateCodeDto(corporateAccess.view(org, product, actor))
+
+    fun verifyCorporateCode(org: String, product: String, customer: String, code: String): Boolean =
+        corporateAccess.verify(org, product, customer, code)
 
     fun list(organizationId: String, includeSavings: Boolean = true): List<MembershipProductDto> {
         validateId(organizationId, 64)
@@ -57,6 +68,18 @@ class MembershipProductService(private val jdbi: Jdbi) {
         if (lookup.codeInUse(request.membershipProductCode, request.id)) {
             throw ConflictException("Membership product code already exists")
         }
+        val isCorporate = corporateAccess.isCorporateType(request.productTypeId)
+        if (!isCorporate && request.corporateAccessCode != null) {
+            throw BadRequestException("Only Corporate memberships accept an access code")
+        }
+        if (request.corporateAccessCode != null &&
+            !Regex("^[0-9]{6}$").matches(request.corporateAccessCode)) {
+            throw BadRequestException("Corporate access code must contain exactly six digits")
+        }
+        if (isCorporate && request.corporateAccessCode == null &&
+            (create || !corporateAccess.hasCode(organizationId, request.id))) {
+            throw BadRequestException("Generate a Corporate access code before saving")
+        }
         request.benefitIds.forEach { benefitId ->
             validateId(benefitId, 64)
             if (!lookup.activeBenefitExists(organizationId, benefitId)) {
@@ -100,6 +123,17 @@ class MembershipProductService(private val jdbi: Jdbi) {
                 request.effectiveDate, request.expiryDate, request.versionNo,
                 actorUserId, create
             ))
+            // Save or regenerate the Corporate Membership access code
+            // within the same database transaction.
+            if (isCorporate && request.corporateAccessCode != null) {
+                corporateAccess.saveOnProductTransaction(
+                    handle,
+                    organizationId,
+                    request.id,
+                    actorUserId,
+                    request.corporateAccessCode
+                )
+            }
             val oldPlansById = oldPlans.associateBy { it.id }
             request.plans.forEach { plan ->
                 val old = oldPlansById[plan.id]

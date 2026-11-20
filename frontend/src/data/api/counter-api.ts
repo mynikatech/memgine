@@ -524,6 +524,24 @@ export class CounterApi {
   private query(ctx: CounterContext, suffix: string) {
     return `${this.path(ctx, suffix)}?storeId=${encodeURIComponent(ctx.storeId)}&staffId=${encodeURIComponent(ctx.staffId)}`;
   }
+  verifyCorporateCode(
+    ctx: CounterContext,
+    reference: string,
+    staffAssisted: boolean,
+    productId: ID,
+    code: string,
+  ): Promise<ApiResult<{ verified: boolean }>> {
+    return httpClient.post(
+      this.path(ctx, "purchases/corporate-access/verify"),
+      {
+        ...(staffAssisted
+          ? { counterPurchaseId: reference }
+          : { challengeId: reference }),
+        productId,
+        code,
+      },
+    );
+  }
 
   simulateRedemptionPoyntPayment(
     ctx: CounterContext,

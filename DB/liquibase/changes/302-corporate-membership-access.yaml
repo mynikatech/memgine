@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 302-corporate-membership-access
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/302-corporate-membership-access.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

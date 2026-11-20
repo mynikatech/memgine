@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 304-safe-customer-payment-cancellation
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/304-safe-customer-payment-cancellation.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

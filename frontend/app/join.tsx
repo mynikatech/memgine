@@ -1,4 +1,7 @@
-import { potentialSavingsAssumptions, potentialSavingsLabel } from "@/src/core/domain/savings-display";
+import {
+  potentialSavingsAssumptions,
+  potentialSavingsLabel,
+} from "@/src/core/domain/savings-display";
 import { resolveJoinPlan } from "@/src/core/domain/membership-helpers";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -6,6 +9,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CustomerDataApi } from "@/src/data/api/customer-data-api";
+import { CounterApi } from "@/src/data/api/counter-api";
 
 import { Modal, Platform, Pressable, View } from "react-native";
 
@@ -333,6 +338,8 @@ export default function JoinRoute() {
 }
 
 const agreementApi = new MembershipAgreementApi();
+const corporateCustomerApi = new CustomerDataApi();
+const corporateCounterApi = new CounterApi();
 
 function JoinFlow() {
   const router = useRouter();
@@ -484,6 +491,14 @@ function JoinFlow() {
 
   const [otpError, setOtpError] = useState<string | undefined>();
 
+  // Corporate access is separate from customer/login/purchase OTP.
+  // Store only in component memory, never durable payment recovery storage.
+  const [corporateCode, setCorporateCode] = useState("");
+  const [corporateVerified, setCorporateVerified] = useState(false);
+  const [corporateVerifyBusy, setCorporateVerifyBusy] = useState(false);
+  const [corporateVerifyError, setCorporateVerifyError] = useState("");
+  const corporateVerifyVersion = useRef(0);
+
   // Counter purchase verification is separate from normal customer login/registration OTP.
 
   // counterPurchaseId is the stable logical checkout; the OTP challenge may change on resend.
@@ -591,8 +606,8 @@ function JoinFlow() {
   }>({ productId: null, planId: null });
   const customerPaymentStartInFlight = useRef(false);
   const customerPaymentStartStorageKey =
-    !isStaffSale && session?.userId
-      ? `${CUSTOMER_PAYMENT_START_STORAGE_PREFIX}:${orgId}:${session.userId}`
+    !isStaffSale && session?.userId && product?.id
+      ? `${CUSTOMER_PAYMENT_START_STORAGE_PREFIX}:${orgId}:${session.userId}:${product.id}`
       : "";
   const collectPollingIntentIds = useRef(new Set<string>());
   const collectOperationVersion = useRef(0);
@@ -695,8 +710,8 @@ function JoinFlow() {
   }, [counterTerminalPaymentStorageKey]);
 
   const customerCollectPaymentStorageKey =
-    !isStaffSale && session?.userId
-      ? `${CUSTOMER_COLLECT_PAYMENT_STORAGE_PREFIX}:${orgId}:${session.userId}`
+    !isStaffSale && session?.userId && product?.id
+      ? `${CUSTOMER_COLLECT_PAYMENT_STORAGE_PREFIX}:${orgId}:${session.userId}:${product.id}`
       : "";
 
   const clearPendingCustomerCollectPayment = useCallback(() => {
@@ -1084,6 +1099,109 @@ function JoinFlow() {
   ]);
 
   const plan = resolveJoinPlan(product, params.planId);
+  const isCorporateMembership =
+    product?.productTypeId === "product-type-corporate";
+
+  // A verification grant belongs to a specific organization, product,
+  // customer and (for Counter) verified purchase context.
+  useEffect(() => {
+    corporateVerifyVersion.current += 1;
+    setCorporateCode("");
+    setCorporateVerified(false);
+    setCorporateVerifyError("");
+  }, [
+    orgId,
+    product?.id,
+    customerId,
+    session?.userId,
+    purchaseOtpChallengeId,
+    counterPurchaseId,
+  ]);
+
+  const verifyCorporateAccess = useCallback(async () => {
+    if (
+      !product ||
+      !isCorporateMembership ||
+      !/^[0-9]{6}$/.test(corporateCode)
+    ) {
+      setCorporateVerifyError("Enter your six-digit Corporate code.");
+      return;
+    }
+
+    const reference = isStaffAssistedPurchase
+      ? counterPurchaseId
+      : purchaseOtpChallengeId;
+
+    if (isStaffSale && !reference) {
+      setCorporateVerifyError(
+        "Complete the Counter customer verification before verifying the Corporate code.",
+      );
+      return;
+    }
+
+    if (isStaffSale && (!params.storeId || !params.staffId)) {
+      setCorporateVerifyError("The Counter staff and store are required.");
+      return;
+    }
+
+    const verificationVersion = ++corporateVerifyVersion.current;
+    setCorporateVerifyBusy(true);
+    setCorporateVerifyError("");
+
+    try {
+      const result = isStaffSale
+        ? await corporateCounterApi.verifyCorporateCode(
+            {
+              organizationId: orgId,
+              storeId: params.storeId!,
+              staffId: params.staffId!,
+            },
+            reference!,
+            isStaffAssistedPurchase,
+            product.id,
+            corporateCode,
+          )
+        : await corporateCustomerApi.verifyCorporateCode(
+            orgId,
+            product.id,
+            corporateCode,
+          );
+
+      // Ignore an older request if the code, plan, or customer changed.
+      if (verificationVersion !== corporateVerifyVersion.current) return;
+
+      if (!result.success || !result.data.verified) {
+        setCorporateVerified(false);
+        setCorporateVerifyError(
+          "Invalid Corporate access code or too many attempts. Check the code and try again.",
+        );
+        return;
+      }
+
+      setCorporateVerified(true);
+    } catch {
+      if (verificationVersion !== corporateVerifyVersion.current) return;
+      setCorporateVerified(false);
+      setCorporateVerifyError(
+        "Unable to verify the Corporate code. Please try again.",
+      );
+    } finally {
+      if (verificationVersion === corporateVerifyVersion.current) {
+        setCorporateVerifyBusy(false);
+      }
+    }
+  }, [
+    product,
+    isCorporateMembership,
+    corporateCode,
+    isStaffSale,
+    isStaffAssistedPurchase,
+    counterPurchaseId,
+    purchaseOtpChallengeId,
+    orgId,
+    params.storeId,
+    params.staffId,
+  ]);
 
   useEffect(() => {
     currentCollectCheckout.current = {
@@ -1175,7 +1293,12 @@ function JoinFlow() {
     .join(" - ");
 
   const priceText = plan
-    ? [`${formatMoney(plan.price.amountMinor)} · ${intervalLabel}`, plan.potentialSavings && potentialSavingsLabel(plan.potentialSavings)].filter(Boolean).join("\n")
+    ? [
+        `${formatMoney(plan.price.amountMinor)} · ${intervalLabel}`,
+        plan.potentialSavings && potentialSavingsLabel(plan.potentialSavings),
+      ]
+        .filter(Boolean)
+        .join("\n")
     : "";
 
   /*
@@ -2859,16 +2982,88 @@ function JoinFlow() {
       let savedCollect: PendingCustomerCollectPayment | null;
       let savedStart: PendingCustomerPaymentStart | null;
       try {
-        [savedCollect, savedStart] = await Promise.all([
-          storage.getItem<PendingCustomerCollectPayment | null>(
-            customerCollectPaymentStorageKey,
-            null,
-          ),
-          storage.getItem<PendingCustomerPaymentStart | null>(
-            customerPaymentStartStorageKey,
-            null,
-          ),
-        ]);
+        const legacyCollectKey = `${CUSTOMER_COLLECT_PAYMENT_STORAGE_PREFIX}:${orgId}:${session.userId}`;
+        const legacyStartKey = `${CUSTOMER_PAYMENT_START_STORAGE_PREFIX}:${orgId}:${session.userId}`;
+
+        const [scopedCollect, scopedStart, legacyCollect, legacyStart] =
+          await Promise.all([
+            storage.getItem<PendingCustomerCollectPayment | null>(
+              customerCollectPaymentStorageKey,
+              null,
+            ),
+            storage.getItem<PendingCustomerPaymentStart | null>(
+              customerPaymentStartStorageKey,
+              null,
+            ),
+            storage.getItem<PendingCustomerCollectPayment | null>(
+              legacyCollectKey,
+              null,
+            ),
+            storage.getItem<PendingCustomerPaymentStart | null>(
+              legacyStartKey,
+              null,
+            ),
+          ]);
+
+        savedCollect = scopedCollect;
+        savedStart = scopedStart;
+
+        // Migrate a previous checkout only when it belongs to this exact plan.
+        // Never import another membership's recovery record.
+        if (scopedCollect === null && scopedStart === null) {
+          const legacyMatches =
+            (legacyCollect === null ||
+              (isPendingCustomerCollectPayment(legacyCollect) &&
+                legacyCollect.organizationId === orgId &&
+                legacyCollect.customerUserId === session.userId &&
+                legacyCollect.membershipProductId === product.id &&
+                legacyCollect.subscriptionPlanId === plan.id)) &&
+            (legacyStart === null ||
+              (isPendingCustomerPaymentStart(legacyStart) &&
+                legacyStart.planId === plan.id));
+
+          if (
+            legacyMatches &&
+            (legacyCollect !== null || legacyStart !== null)
+          ) {
+            const writes: Promise<boolean>[] = [];
+
+            if (legacyCollect !== null) {
+              writes.push(
+                storage.setItem(
+                  customerCollectPaymentStorageKey,
+                  legacyCollect,
+                ),
+              );
+            }
+            if (legacyStart !== null) {
+              writes.push(
+                storage.setItem(customerPaymentStartStorageKey, legacyStart),
+              );
+            }
+
+            const results = await Promise.all(writes);
+
+            if (results.every(Boolean)) {
+              savedCollect = legacyCollect;
+              savedStart = legacyStart;
+
+              // Delete legacy keys only after successful migration.
+              await Promise.all([
+                legacyCollect !== null
+                  ? storage.removeItem(legacyCollectKey)
+                  : Promise.resolve(),
+                legacyStart !== null
+                  ? storage.removeItem(legacyStartKey)
+                  : Promise.resolve(),
+              ]);
+            } else {
+              throw new Error(
+                "Checkout recovery migration could not be saved.",
+              );
+            }
+          }
+        }
       } catch {
         if (!active) return;
         setCollectPayment(null);
@@ -3330,6 +3525,11 @@ function JoinFlow() {
         await requestCounterPurchaseOtp();
         return;
       }
+      if (isCorporateMembership && !corporateVerified) {
+        setOtpError("Verify your Corporate membership code before payment.");
+        return;
+      }
+
       if (
         isStaffSale &&
         (!agreementAccepted ||
@@ -3871,6 +4071,8 @@ function JoinFlow() {
     purchaseOtpVerified,
     requiresPurchaseOtp,
     isStaffAssistedPurchase,
+    isCorporateMembership,
+    corporateVerified,
 
     requestCounterPurchaseOtp,
 
@@ -3935,6 +4137,11 @@ function JoinFlow() {
       await requestCounterPurchaseOtp();
       return;
     }
+    if (isCorporateMembership && !corporateVerified) {
+      setOtpError("Verify your Corporate membership code before payment.");
+      return;
+    }
+
     const paymentReference = isStaffAssistedPurchase
       ? counterPurchaseId
       : purchaseOtpChallengeId;
@@ -4001,6 +4208,8 @@ function JoinFlow() {
     requiresPurchaseOtp,
 
     purchaseOtpVerified,
+    isCorporateMembership,
+    corporateVerified,
 
     requestCounterPurchaseOtp,
 
@@ -4063,11 +4272,82 @@ function JoinFlow() {
 
     */
 
-  const close = () => {
-    if (step === "collectCard" && collectPayment && !isStaffSale) {
-      void cancelUnusedCollectPayment(collectPayment.paymentIntentId);
-      return;
+  const leaveCustomerCheckout = async () => {
+    const intentId =
+      collectPayment?.paymentIntentId ??
+      collectPendingIntentId ??
+      pendingCustomerCollectPayment?.paymentIntentId ??
+      volatileCustomerPaymentIntentId ??
+      keyOnlyCustomerPaymentStart?.paymentIntentId;
+
+    // Once card/wallet confirmation is in flight, leaving the screen
+    // must not cancel an operation that may already have charged.
+    const paymentSubmissionInFlight =
+      collectConfirmationInFlight.current !== null;
+
+    if (
+      intentId &&
+      !paymentSubmissionInFlight &&
+      !collectCancellationInFlight.current
+    ) {
+      try {
+        const status = await services.customerData.paymentStatus(
+          orgId,
+          intentId,
+        );
+
+        // PENDING means the payment has not been claimed for processing.
+        // The backend must independently enforce that it is safe to cancel.
+        if (status.payment.status === "PENDING") {
+          const cancelled = await services.customerData.cancelPayment(
+            orgId,
+            intentId,
+          );
+
+          if (
+            cancelled.status === "CANCELED" ||
+            cancelled.status === "CANCELLED"
+          ) {
+            // First clear persisted recovery data. Do not rely solely on
+            // the existing fire-and-forget removeItem calls.
+            await Promise.all([
+              customerCollectPaymentStorageKey
+                ? storage.removeItem(customerCollectPaymentStorageKey)
+                : Promise.resolve(),
+              customerPaymentStartStorageKey
+                ? storage.removeItem(customerPaymentStartStorageKey)
+                : Promise.resolve(),
+              session?.userId
+                ? storage.removeItem(
+                    `${CUSTOMER_COLLECT_PAYMENT_RETURN_STORAGE_PREFIX}:${session.userId}`,
+                  )
+                : Promise.resolve(),
+            ]);
+
+            clearPendingCustomerCollectPayment();
+            setCollectPayment(null);
+          }
+        }
+      } catch (error) {
+        // The request may be in progress or cancellation may be denied.
+        // Preserve recovery records rather than assuming no charge occurred.
+        console.warn(
+          "Checkout could not be safely cancelled; recovery retained.",
+          error,
+        );
+      }
     }
+
+    // The user may leave even when a payment is unresolved.
+    // This does not change its financial status.
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace(APP_ROUTES.customer.cards as never);
+    }
+  };
+
+  const close = () => {
     if (step === "success") {
       if (isStaffSale) {
         goToCounter();
@@ -4079,13 +4359,18 @@ function JoinFlow() {
 
     if (isStaffSale) {
       setCounterPurchaseId("");
+
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        goToCounter();
+      }
+      return;
     }
 
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace(APP_ROUTES.customer.cards as never);
-    }
+    // Customer self-service:
+    // Both the header X and bottom Cancel use this path.
+    void leaveCustomerCheckout();
   };
 
   /*
@@ -4655,8 +4940,12 @@ function JoinFlow() {
 
           {plan?.potentialSavings && (
             <View style={{ gap: theme.spacing.xs }}>
-              <Text variant="bodyStrong">{potentialSavingsLabel(plan.potentialSavings)}</Text>
-              <Text variant="caption" color="textSecondary">{potentialSavingsAssumptions(plan.potentialSavings)}</Text>
+              <Text variant="bodyStrong">
+                {potentialSavingsLabel(plan.potentialSavings)}
+              </Text>
+              <Text variant="caption" color="textSecondary">
+                {potentialSavingsAssumptions(plan.potentialSavings)}
+              </Text>
             </View>
           )}
 
@@ -4795,6 +5084,71 @@ function JoinFlow() {
             <Text variant="bodySmall" color="danger">
               {purchaseQuoteError}
             </Text>
+          ) : null}
+
+          {isCorporateMembership ? (
+            <Card padding="md">
+              <View style={{ gap: theme.spacing.sm }}>
+                <Text variant="bodyStrong" color="text">
+                  Corporate Membership Access
+                </Text>
+                <Text variant="bodySmall" color="textMuted">
+                  Enter the six-digit code shared by your organization. This is
+                  separate from any customer verification OTP.
+                </Text>
+                <Input
+                  label="Corporate Access Code"
+                  value={corporateCode}
+                  onChangeText={(value) => {
+                    corporateVerifyVersion.current += 1;
+                    setCorporateVerifyBusy(false);
+                    setCorporateCode(value.replace(/\D/g, "").slice(0, 6));
+                    setCorporateVerified(false);
+                    setCorporateVerifyError("");
+                  }}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  secureTextEntry
+                  testID="join-corporate-code"
+                />
+                {corporateVerifyError ? (
+                  <Text variant="caption" color="danger">
+                    {corporateVerifyError}
+                  </Text>
+                ) : null}
+                {corporateVerified ? (
+                  <Text variant="bodySmall" color="success">
+                    Corporate access code verified.
+                  </Text>
+                ) : (
+                  <Button
+                    label={
+                      corporateVerifyBusy ? "Verifying Code…" : "Verify Code"
+                    }
+                    size="sm"
+                    onPress={() => void verifyCorporateAccess()}
+                    disabled={
+                      corporateVerifyBusy ||
+                      corporateCode.length !== 6 ||
+                      (isStaffSale &&
+                        !(isStaffAssistedPurchase
+                          ? counterPurchaseId
+                          : purchaseOtpVerified && purchaseOtpChallengeId))
+                    }
+                    testID="join-corporate-verify"
+                  />
+                )}
+                {isStaffSale &&
+                !corporateVerified &&
+                !(isStaffAssistedPurchase
+                  ? counterPurchaseId
+                  : purchaseOtpVerified && purchaseOtpChallengeId) ? (
+                  <Text variant="caption" color="textMuted">
+                    Complete Counter purchase verification first.
+                  </Text>
+                ) : null}
+              </View>
+            </Card>
           ) : null}
 
           <Section title={t("join.includedBenefits")}>
@@ -4979,8 +5333,12 @@ function JoinFlow() {
                 </Text>
                 {plan?.potentialSavings && (
                   <>
-                    <Text variant="bodySmall">{potentialSavingsLabel(plan.potentialSavings)}</Text>
-                    <Text variant="caption" color="textSecondary">{potentialSavingsAssumptions(plan.potentialSavings)}</Text>
+                    <Text variant="bodySmall">
+                      {potentialSavingsLabel(plan.potentialSavings)}
+                    </Text>
+                    <Text variant="caption" color="textSecondary">
+                      {potentialSavingsAssumptions(plan.potentialSavings)}
+                    </Text>
                   </>
                 )}
                 <ReceiptSummary
@@ -5370,8 +5728,12 @@ function JoinFlow() {
             <Badge label={t("membership.active")} tone="success" />
             {plan?.potentialSavings && (
               <>
-                <Text variant="bodyStrong">{potentialSavingsLabel(plan.potentialSavings)}</Text>
-                <Text variant="caption" color="textSecondary">{potentialSavingsAssumptions(plan.potentialSavings)}</Text>
+                <Text variant="bodyStrong">
+                  {potentialSavingsLabel(plan.potentialSavings)}
+                </Text>
+                <Text variant="caption" color="textSecondary">
+                  {potentialSavingsAssumptions(plan.potentialSavings)}
+                </Text>
               </>
             )}
           </View>

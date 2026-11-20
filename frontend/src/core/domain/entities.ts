@@ -542,7 +542,11 @@ export interface OrganizationUser {
  * Membership Product
  * ------------------------------------------------------------------ */
 
-export type AdvertisedSavingsMoney = { amountMinor: number; currency: string; decimalPlaces: number };
+export type AdvertisedSavingsMoney = {
+  amountMinor: number;
+  currency: string;
+  decimalPlaces: number;
+};
 
 export type AdvertisedSavings = {
   calculated?: AdvertisedSavingsMoney | null;
@@ -560,7 +564,11 @@ export type MembershipPotentialSavings = AdvertisedSavingsMoney & {
   overrideAmountMinor?: number | null;
   source?: "CALCULATED" | "OVERRIDE";
   assumptions: string;
-  breakdown: { benefitId: string; uses: number | null; amountMinor: number | null }[];
+  breakdown: {
+    benefitId: string;
+    uses: number | null;
+    amountMinor: number | null;
+  }[];
 };
 
 export interface SubscriptionPlan {
@@ -604,6 +612,7 @@ export interface MembershipProduct {
 
   productCategoryId: ID;
   productTypeId: ID;
+  corporateAccessCode?: string;
 
   tier?: string;
   tierSequence?: number;

@@ -71,6 +71,32 @@ class CounterService(
         authorize(org, store, staff, principal)
         return sql().subscriptions(org, principal.userId)
     }
+    
+    fun verifyCorporateCode(
+        org: String,
+        request: CounterCorporateCodeVerifyDto,
+        principal: AuthenticatedPrincipal
+    ): CorporateCodeVerificationDto {
+        val purchase = resolveCounterPurchase(
+            org, request.challengeId, request.counterPurchaseId, principal
+        )
+        val customer = purchase.customerUserId
+            ?: throw BadRequestException("Complete customer verification before entering Corporate code")
+        val matchesPlan = jdbi.withHandle<Boolean, Exception> { handle ->
+            handle.createQuery("""SELECT EXISTS (
+                SELECT 1 FROM subscription_plans sp
+                JOIN membership_products mp ON mp.membership_product_id=sp.membership_product_id
+                WHERE sp.subscription_plan_id=:plan AND mp.membership_product_id=:product
+                  AND mp.organization_id=:org AND NOT sp.is_deleted AND NOT mp.is_deleted
+            )""")
+                .bind("plan", purchase.planId).bind("product", request.productId)
+                .bind("org", org).mapTo(Boolean::class.java).one()
+        }
+        if (!matchesPlan) throw BadRequestException("Corporate plan does not match this purchase")
+        return customerService.verifyCorporateCode(
+            org, customer, CorporateCodeVerifyDto(request.productId, request.code)
+        )
+    }
 
     fun subscriptionsForCustomer(
         org: String,

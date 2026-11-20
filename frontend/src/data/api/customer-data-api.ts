@@ -363,6 +363,16 @@ export class CustomerDataApi {
       input,
     );
   }
+  verifyCorporateCode(
+    organizationId: ID,
+    productId: ID,
+    code: string,
+  ): Promise<ApiResult<{ verified: boolean }>> {
+    return httpClient.post(`${base(organizationId)}/corporate-access/verify`, {
+      productId,
+      code,
+    });
+  }
   confirmReplacementPhone(input: {
     challengeId: string;
     otp: string;

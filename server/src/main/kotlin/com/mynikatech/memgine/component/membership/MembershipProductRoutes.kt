@@ -17,6 +17,17 @@ fun Route.membershipProductRoutes(service: MembershipProductService) {
             val organizationId = required(call.parameters["organizationId"])
             call.respond(ApiResponse.success(service.list(organizationId), call.callId))
         }
+        post("/corporate-code/generate") {
+            val org = required(call.parameters["organizationId"])
+            val actor = call.authenticatedPrincipal().userId
+            call.respond(ApiResponse.success(service.generateCorporateCode(org, actor), call.callId))
+        }
+        get("/{productId}/corporate-code") {
+            val org = required(call.parameters["organizationId"])
+            val product = required(call.parameters["productId"])
+            val actor = call.authenticatedPrincipal().userId
+            call.respond(ApiResponse.success(service.corporateCode(org, product, actor), call.callId))
+        }
         get("/{productId}") {
             val organizationId = required(call.parameters["organizationId"])
             val productId = required(call.parameters["productId"])

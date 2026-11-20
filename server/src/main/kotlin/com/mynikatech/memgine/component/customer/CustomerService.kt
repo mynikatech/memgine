@@ -42,6 +42,8 @@ import com.mynikatech.memgine.component.customerexperience.CustomerExperienceRel
 import com.mynikatech.memgine.net.dto.CustomerPurchaseOtpCompleteDto
 import com.mynikatech.memgine.net.dto.CustomerPurchaseOtpRequestDto
 import com.mynikatech.memgine.net.dto.AuthenticatedMembershipPaymentStartDto
+import com.mynikatech.memgine.net.dto.CorporateCodeVerifyDto
+import com.mynikatech.memgine.net.dto.CorporateCodeVerificationDto
 import com.mynikatech.memgine.net.dto.PaymentIntentDto
 import com.mynikatech.memgine.net.dto.PaymentStartRequestDto
 import kotlinx.serialization.encodeToString
@@ -232,6 +234,8 @@ class CustomerService(
             requiresCurrentPhoneVerification = false
         )
     }
+    fun verifyCorporateCode(org: String, user: String, request: CorporateCodeVerifyDto): CorporateCodeVerificationDto =
+        CorporateCodeVerificationDto(memberships.verifyCorporateCode(org, request.productId, user, request.code))
 
     fun confirmReplacementPhone(
         principal: AuthenticatedPrincipal,

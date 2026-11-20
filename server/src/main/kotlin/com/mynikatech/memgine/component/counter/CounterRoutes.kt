@@ -210,6 +210,16 @@ fun Route.counterRoutes(service: CounterService, commercePaymentService: Counter
                 call.callId
             ))
         }
+        
+        post("/purchases/corporate-access/verify") {
+            val org = call.parameters["organizationId"]
+                ?: throw BadRequestException("Organization id is required")
+            call.respond(ApiResponse.success(
+                service.verifyCorporateCode(
+                    org, call.receive<CounterCorporateCodeVerifyDto>(), call.authenticatedPrincipal()
+                ), call.callId
+            ))
+        }
         post("/purchases/payment/start") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             call.respond(ApiResponse.success(

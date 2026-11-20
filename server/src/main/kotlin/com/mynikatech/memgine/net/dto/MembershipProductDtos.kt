@@ -61,8 +61,27 @@ data class MembershipProductWriteDto(
     val description: String? = null, val productStatusId: String,
     val effectiveDate: String, val expiryDate: String? = null,
     val versionNo: Int = 1, val benefitIds: List<String>,
-    val plans: List<SubscriptionPlanWriteDto>
+    val plans: List<SubscriptionPlanWriteDto>,
+    val corporateAccessCode: String? = null
 )
 
 @Serializable
 data class DeleteMembershipProductDto(val membershipProductId: String, val deleted: Boolean)
+
+// Administrative code reads are intentionally separate from public membership DTOs.
+@Serializable
+data class CorporateCodeDto(val code: String?)
+
+@Serializable
+data class CorporateCodeVerifyDto(val productId: String, val code: String)
+
+@Serializable
+data class CorporateCodeVerificationDto(val verified: Boolean)
+
+@Serializable
+data class CounterCorporateCodeVerifyDto(
+    val productId: String,
+    val code: String,
+    val challengeId: String? = null,
+    val counterPurchaseId: String? = null
+)
