@@ -27,6 +27,7 @@ export type InputProps = {
   autoCapitalize?: TextInputProps["autoCapitalize"];
   autoCorrect?: boolean;
   returnKeyType?: TextInputProps["returnKeyType"];
+  onSubmitEditing?: TextInputProps["onSubmitEditing"];
   onFocus?: () => void;
   onBlur?: () => void;
 };
@@ -46,6 +47,7 @@ export function Input({
   autoCapitalize,
   autoCorrect,
   returnKeyType,
+  onSubmitEditing,
   onFocus,
   onBlur,
 }: InputProps) {
@@ -75,6 +77,7 @@ export function Input({
         autoCapitalize={autoCapitalize}
         autoCorrect={autoCorrect}
         returnKeyType={returnKeyType}
+        onSubmitEditing={onSubmitEditing}
         onFocus={() => {
           setFocused(true);
           onFocus?.();

@@ -15,11 +15,17 @@ import com.mynikatech.memgine.net.dto.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import com.mynikatech.memgine.security.AuthenticatedPrincipal
 import com.mynikatech.memgine.security.PhoneNormalizer
 import com.mynikatech.memgine.component.customer.CustomerService
 import org.jdbi.v3.core.Jdbi
 import org.postgresql.util.PSQLException
+import java.time.LocalDate
+import java.time.format.DateTimeParseException
 
 class CounterService(
     private val jdbi: Jdbi,
@@ -48,6 +54,48 @@ class CounterService(
         if (!sql().canOperate(organizationId, storeId, staffId, principal.userId)) {
             throw ForbiddenException("Staff is not active at this store")
         }
+    }
+
+    fun orderStores(org: String, principal: AuthenticatedPrincipal): JsonArray {
+        id(org, "organization id")
+        val fixed = principal.posContext
+        if (fixed != null && fixed.organizationId != org) throw ForbiddenException("Fixed POS context does not match this business")
+        return Json.parseToJsonElement(sql().orderStores(org, principal.userId, fixed?.staffId, fixed?.storeId)).jsonArray
+    }
+
+    fun orders(org: String, store: String, staff: String, status: String?, search: String?, pickupDay: String?,
+        limit: Int?, offset: Int?, principal: AuthenticatedPrincipal
+    ): JsonObject {
+        val filter = status ?: "ACTIVE"
+        if (filter !in setOf("ACTIVE", "ALL", "PLACED", "PREPARING", "READY", "FULFILLED", "CANCEL_REQUESTED", "CANCELLED")) {
+            throw BadRequestException("Invalid order status")
+        }
+        val reference = search?.trim()?.takeIf { it.isNotEmpty() }
+        if (reference != null && (reference.length > 64 || reference.any { it.isISOControl() })) {
+            throw BadRequestException("Invalid order reference")
+        }
+        val pickup = pickupDay?.let {
+            val date = try { LocalDate.parse(it) } catch (_: DateTimeParseException) { throw BadRequestException("Invalid pickup date") }
+            if (date.year !in 1..9999) throw BadRequestException("Invalid pickup date")
+            date
+        }
+        return readOrders(org, store, staff, principal, null, filter.takeUnless { it == "ALL" }, reference, pickup,
+            (limit ?: 25).coerceIn(1, 50), (offset ?: 0).coerceIn(0, 5000))
+    }
+
+    fun order(org: String, store: String, staff: String, orderId: String, principal: AuthenticatedPrincipal): JsonObject {
+        if (orderId.isBlank() || orderId.length > 64) throw BadRequestException("Invalid order id")
+        return readOrders(org, store, staff, principal, orderId, null, null, null, 1, 0)
+            .getValue("orders").jsonArray.firstOrNull()?.jsonObject ?: throw NotFoundException("Order not found at this Store")
+    }
+
+    private fun readOrders(org: String, store: String, staff: String, principal: AuthenticatedPrincipal, order: String?,
+        status: String?, search: String?, pickup: LocalDate?, limit: Int, offset: Int
+    ): JsonObject {
+        authorize(org, store, staff, principal)
+        val data = sql().orders(org, store, staff, principal.userId, order, status, search, pickup, limit, offset)
+            ?: throw ForbiddenException("Order access is unavailable for this Store")
+        return Json.parseToJsonElement(data).jsonObject
     }
 
     fun customers(org: String, store: String, staff: String, principal: AuthenticatedPrincipal): List<OrgAdminCustomerDto> {

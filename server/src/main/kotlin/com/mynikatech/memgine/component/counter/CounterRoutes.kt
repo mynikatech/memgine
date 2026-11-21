@@ -17,6 +17,27 @@ import io.ktor.server.routing.route
 
 fun Route.counterRoutes(service: CounterService, commercePaymentService: CounterCommercePaymentService) {
     route("/organizations/{organizationId}/counter") {
+        route("/orders") {
+            get("/stores") {
+                val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+                call.respond(ApiResponse.success(service.orderStores(org, call.authenticatedPrincipal()), call.callId))
+            }
+            get {
+                val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+                val query = call.request.queryParameters
+                val store = query["storeId"] ?: throw BadRequestException("Store id is required")
+                val staff = query["staffId"] ?: throw BadRequestException("Staff id is required")
+                call.respond(ApiResponse.success(service.orders(org, store, staff, query["status"], query["search"], query["pickupDate"],
+                    query["limit"]?.toIntOrNull(), query["offset"]?.toIntOrNull(), call.authenticatedPrincipal()), call.callId))
+            }
+            get("/{orderId}") {
+                val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+                val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
+                val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
+                val order = call.parameters["orderId"] ?: throw BadRequestException("Order id is required")
+                call.respond(ApiResponse.success(service.order(org, store, staff, order, call.authenticatedPrincipal()), call.callId))
+            }
+        }
         post("/customers/lookup") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
             val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")

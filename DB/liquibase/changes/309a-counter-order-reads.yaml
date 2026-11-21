@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 309a-counter-order-reads
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/309a-counter-order-reads.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

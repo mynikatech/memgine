@@ -198,6 +198,8 @@ export const APP_ROUTES = {
     organizationCustomers: (organizationId: string) =>
       `/counter/customers?organizationId=${encodeURIComponent(organizationId)}`,
 
+    orders: "/counter/orders",
+
     pendingTransactions: "/counter/pending-transactions",
 
     transactions: "/counter/transactions",
@@ -295,6 +297,12 @@ export const COUNTER_ROUTES: CounterRoute[] = [
     href: APP_ROUTES.counter.root,
 
     icon: "storefront-outline",
+  },
+  {
+    name: "orders",
+    title: "Orders",
+    href: APP_ROUTES.counter.orders,
+    icon: "receipt-outline",
   },
 
   {

@@ -20,6 +20,15 @@ data class StaffAssistedPurchaseRow(
 )
 
 interface CounterSql {
+    @SqlQuery("SELECT get_counter_order_stores(:org,:actor,:staff,:store)")
+    fun orderStores(@Bind("org") org: String, @Bind("actor") actor: String,
+        @Bind("staff") staff: String?, @Bind("store") store: String?): String
+
+    @SqlQuery("SELECT get_counter_fulfillment_orders(:org,:store,:staff,:actor,:orderId,:status,:search,:pickup,:limit,:offset)")
+    fun orders(@Bind("org") org: String, @Bind("store") store: String, @Bind("staff") staff: String,
+        @Bind("actor") actor: String, @Bind("orderId") orderId: String?, @Bind("status") status: String?,
+        @Bind("search") search: String?, @Bind("pickup") pickup: java.time.LocalDate?,
+        @Bind("limit") limit: Int, @Bind("offset") offset: Int): String?
     @SqlQuery("""SELECT counter_prepare_purchase_identity(
         :counterPurchaseId, :organizationId, :storeId, :staffId,
         :customerUserId, :planId, :actorUserId)""")

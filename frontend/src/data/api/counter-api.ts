@@ -25,6 +25,23 @@ export type CounterContext = {
   staffId: ID;
 };
 
+export type CounterOrderStatus = "PLACED" | "PREPARING" | "READY" | "FULFILLED" | "CANCEL_REQUESTED" | "CANCELLED";
+export type CounterOrderFilter = CounterOrderStatus | "ACTIVE" | "ALL";
+export type CounterOrderStore = { id: ID; name: string; staffId: ID };
+export type CounterOrderItem = {
+  id: ID; name: string; quantity: number;
+  unitPriceMinor?: number | null; subtotalMinor?: number | null; discountMinor?: number | null;
+};
+export type CounterOrder = {
+  id: ID; reference: string; status: CounterOrderStatus; storeId: ID; storeName: string; timezone: string;
+  placedAt: string; pickupAt?: string | null; currencyCode?: string | null; totalMinor?: number | null;
+  paymentState: string; paymentMethod?: string | null; customerName?: string | null;
+  subtotalMinor?: number | null; discountMinor?: number | null; taxMinor?: number | null;
+  items: CounterOrderItem[]; timeline: { id: ID; type: string; at: string }[];
+};
+export type CounterOrderPage = { orders: CounterOrder[]; total: number; statusCounts: Partial<Record<CounterOrderStatus, number>> };
+export type CounterOrderFilters = { status: CounterOrderFilter; search: string; pickupDate?: string; offset: number };
+
 export type CounterSubscription = OrgAdminSubscription & {
   userId: ID;
 
@@ -484,6 +501,21 @@ export type CounterPurchaseOtpChallenge = CounterOtpChallenge & {
 export class CounterApi {
   private path(ctx: CounterContext, suffix: string) {
     return `/api/v1/organizations/${encodeURIComponent(ctx.organizationId)}/counter/${suffix}`;
+  }
+
+  orderStores(organizationId: ID): Promise<ApiResult<CounterOrderStore[]>> {
+    return httpClient.get(`/api/v1/organizations/${encodeURIComponent(organizationId)}/counter/orders/stores`);
+  }
+
+  orders(ctx: CounterContext, filters: CounterOrderFilters): Promise<ApiResult<CounterOrderPage>> {
+    const params = new URLSearchParams({ status: filters.status, offset: String(filters.offset), limit: "25" });
+    if (filters.search.trim()) params.set("search", filters.search.trim());
+    if (filters.pickupDate) params.set("pickupDate", filters.pickupDate);
+    return httpClient.get(`${this.query(ctx, "orders")}&${params}`);
+  }
+
+  order(ctx: CounterContext, orderId: ID): Promise<ApiResult<CounterOrder>> {
+    return httpClient.get(this.query(ctx, `orders/${encodeURIComponent(orderId)}`));
   }
 
   transactions(
