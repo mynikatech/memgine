@@ -103,7 +103,8 @@ class PoyntCommerceProvider(
             request.transactionId,
             request.redemptionTransactionId,
             request.storeId,
-            request.counterStaffId
+            request.counterStaffId,
+            request.customerQuoteSubscriptionId
         )
         val body = client.get(config, client.productUri(config.businessId, request.externalProductId))
         val product = parseProduct(Json.parseToJsonElement(body).jsonObject)
@@ -251,7 +252,8 @@ class PoyntCommerceProvider(
         transactionId: String? = null,
         redemptionTransactionId: String? = null,
         storeId: String? = null,
-        counterStaffId: String? = null
+        counterStaffId: String? = null,
+        customerQuoteSubscriptionId: String? = null
     ): PoyntCatalogConfiguration {
         val row = when {
             !redemptionTransactionId.isNullOrBlank() ->
@@ -268,6 +270,8 @@ class PoyntCommerceProvider(
                 sql.counterRedemptionQuoteCatalogConfiguration(
                     org, storeId, counterStaffId, actor, integration
                 )
+            !storeId.isNullOrBlank() && !customerQuoteSubscriptionId.isNullOrBlank() ->
+                sql.customerFulfillmentQuoteCatalogConfiguration(org, storeId, customerQuoteSubscriptionId, actor, integration)
             transactionId.isNullOrBlank() ->
             sql.catalogConfiguration(org, integration, actor)
             else ->
@@ -614,5 +618,12 @@ fun counterRedemptionQuoteCatalogConfiguration(
     @Bind("staffId") staffId: String,
     @Bind("actorUserId") actorUserId: String,
     @Bind("integrationId") integrationId: String
+): PoyntCatalogConfigurationRow?
+
+@SqlQuery("SELECT * FROM get_customer_fulfillment_quote_catalog(:org,:store,:subscription,:actor,:integration)")
+@RegisterBeanMapper(PoyntCatalogConfigurationRow::class)
+fun customerFulfillmentQuoteCatalogConfiguration(
+    @Bind("org") org: String, @Bind("store") store: String, @Bind("subscription") subscription: String,
+    @Bind("actor") actor: String, @Bind("integration") integration: String
 ): PoyntCatalogConfigurationRow?
 }

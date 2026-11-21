@@ -64,6 +64,8 @@ import com.mynikatech.memgine.component.commerce.commerceRoutes
 import com.mynikatech.memgine.component.commerce.CommerceCatalogSyncService
 import com.mynikatech.memgine.component.commerce.commerceCatalogSyncRoutes
 import com.mynikatech.memgine.component.fulfillmentconfig.FulfillmentConfigurationSql
+import com.mynikatech.memgine.component.fulfillmentconfig.CustomerFulfillmentService
+import com.mynikatech.memgine.component.fulfillmentconfig.customerFulfillmentRoutes
 import com.mynikatech.memgine.component.fulfillmentconfig.FulfillmentConfigurationService
 import com.mynikatech.memgine.component.fulfillmentconfig.fulfillmentConfigurationRoutes
 import com.mynikatech.memgine.component.commerce.poyntPaymentBridgeCallbackRoutes
@@ -404,6 +406,11 @@ fun Application.configureRouting(
             redemptionResolutionRoutes(redemptionResolutionService)
             customerRoutes(customerService)
             customerSelfServiceRoutes(customerService, redemptionService)
+            customerFulfillmentRoutes(CustomerFulfillmentService(
+                database.jdbi,
+                counterCommercePaymentService,
+                paymentService
+            ))
             transactionReceiptRoutes(transactionReceiptSql)
             counterRoutes(counterService, counterCommercePaymentService)
             counterRedemptionCheckoutRoutes(counterCommercePaymentService)

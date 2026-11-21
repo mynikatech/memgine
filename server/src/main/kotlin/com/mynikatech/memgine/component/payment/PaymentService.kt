@@ -12,6 +12,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.booleanOrNull
+import com.mynikatech.memgine.net.dto.FulfillmentCheckoutContextDto
 import com.mynikatech.memgine.config.PaymentConfig
 import com.mynikatech.memgine.component.commerce.provider.poynt.PoyntCatalogConfiguration
 import com.mynikatech.memgine.net.dto.CounterPurchaseResult
@@ -69,6 +71,58 @@ class PaymentService(
     private val paymentExceptionSupportLinkService by lazy { PaymentExceptionSupportLinkService(jdbi) }
     private val checkoutRandom = SecureRandom()
     private val browserCheckoutTtlMinutes = 10L
+
+    fun fulfillmentCollectAvailable(): Boolean =
+        collectProvider?.isAvailable == true &&
+            collectSdkUrl in setOf("https://collect.commerce.godaddy.com/sdk.js", "https://collect.commerce.ote-godaddy.com/sdk.js") &&
+            runCatching { checkoutBaseUrl() }.isSuccess
+
+    fun reconcileFulfillmentCollect(org: String, intentId: String, actor: String): PaymentIntentDto {
+        val payment = get(org, intentId, actor)
+        if (payment.membershipPlanId != null || payment.providerCode != "POYNT_COLLECT") {
+            throw NotFoundException("Fulfillment payment is unavailable")
+        }
+        if (payment.status == "PROCESSING") {
+            if (translate { collectCaptureSql().hasVerifiedCapture(org, intentId, actor) }) {
+                finalizeVerifiedFulfillmentCollect(org, intentId, actor)
+            } else {
+                reconcileCollectPayment(org, intentId, actor, payment)
+                if (get(org, intentId, actor).status == "PROCESSING" &&
+                    !translate { collectCaptureSql().hasVerifiedCapture(org, intentId, actor) }
+                ) {
+                    try {
+                        translate { sql().openFulfillmentCollectReview(org, intentId, actor) }?.let(::linkFulfillmentPaymentReview)
+                    } catch (error: Exception) {
+                        logger.warn("Fulfillment payment outcome still needs confirmation; paymentIntentId={}", intentId, error)
+                    }
+                }
+            }
+        }
+        return get(org, intentId, actor)
+    }
+
+    /** Capture evidence has already committed; a failed acceptance opens a separate durable case. */
+    private fun finalizeVerifiedFulfillmentCollect(org: String, intentId: String, actor: String): Boolean {
+        try {
+            if (translate { sql().finalizeFulfillmentCollect(org, intentId, actor) } != null) return true
+        } catch (error: Exception) {
+            logger.warn("Verified fulfillment capture requires reconciliation; paymentIntentId={}", intentId, error)
+        }
+        if (get(org, intentId, actor).status == "SUCCEEDED") return true
+        val caseId = translate { collectExceptionSql().openCapturedUnfulfilledCase(org, intentId, actor) }
+        linkFulfillmentPaymentReview(caseId)
+        return false
+    }
+
+    private fun linkFulfillmentPaymentReview(caseId: String) {
+        if (collectExceptionSqlOverride == null) {
+            try {
+                paymentExceptionSupportLinkService.processVerifiedException(caseId)
+            } catch (_: Exception) {
+                logger.warn("Fulfillment financial-exception support linkage failed; exceptionId={}", caseId)
+            }
+        }
+    }
 
     private fun recoverCollectFulfillmentAsCustomer(
         organizationId: String,
@@ -306,7 +360,20 @@ class PaymentService(
     }
 
     fun get(org: String, intentId: String, actorUserId: String): PaymentIntentDto = translate {
-        sql().get(org, intentId, actorUserId) ?: throw NotFoundException("Payment was not found")
+        val payment = sql().get(org, intentId, actorUserId) ?: throw NotFoundException("Payment was not found")
+        if (payment.membershipPlanId != null) return@translate payment
+        val context = sql().fulfillmentCheckoutContext(org, intentId, actorUserId)
+            ?.let { Json.parseToJsonElement(it).jsonObject } ?: return@translate payment
+        val subscriptionId = context["subscriptionId"]?.jsonPrimitive?.contentOrNull ?: return@translate payment
+        payment.copy(
+            fulfillmentCustomerLabel = context["customerLabel"]?.jsonPrimitive?.contentOrNull,
+            fulfillmentCheckout = FulfillmentCheckoutContextDto(
+                organizationId = org,
+                subscriptionId = subscriptionId,
+                fulfillmentId = context["fulfillmentId"]?.jsonPrimitive?.contentOrNull,
+                verifiedCapture = context["verifiedCapture"]?.jsonPrimitive?.booleanOrNull == true
+            )
+        )
     }
     
     /**
@@ -492,7 +559,6 @@ class PaymentService(
         MessageDigest.isEqual(left.toByteArray(Charsets.UTF_8), right.toByteArray(Charsets.UTF_8))
 
     fun getConfirmation(org: String, intentId: String, actorUserId: String): Pair<PaymentIntentDto, CounterPurchaseResult?> {
-        val current = get(org, intentId, actorUserId)
         val payment = get(org, intentId, actorUserId)
         val subscription = if (payment.finalizedSubscriptionId == null) null else translate {
             sql().finalizedMembership(org, intentId, actorUserId)
@@ -515,6 +581,17 @@ class PaymentService(
         val initial = get(org, intentId, actorUserId)
         if (initial.providerCode != "POYNT_COLLECT") {
             throw BadRequestException("Payment is not a Poynt Collect payment")
+        }
+        if (initial.membershipPlanId == null) {
+            val payment = reconcileFulfillmentCollect(org, intentId, actorUserId)
+            val outcome = when {
+                payment.status == "SUCCEEDED" -> "FULFILLED"
+                payment.status == "FAILED" || payment.status == "CANCELED" -> "PAYMENT_FAILED"
+                payment.status == "PENDING" -> "PAYMENT_PENDING"
+                translate { collectCaptureSql().hasVerifiedCapture(org, intentId, actorUserId) } -> "CAPTURED_UNFULFILLED"
+                else -> "OUTCOME_UNKNOWN"
+            }
+            return com.mynikatech.memgine.net.dto.PoyntCollectRecoveryDto(outcome, payment, null)
         }
         if (initial.status == "PROCESSING") {
             reconcileCollectPayment(org, intentId, actorUserId, initial)
@@ -562,6 +639,12 @@ class PaymentService(
         val current = get(org, intentId, actorUserId)
         if (current.providerCode != "POYNT_COLLECT") {
             throw BadRequestException("Payment is not a Poynt Collect payment")
+        }
+        if (current.membershipPlanId == null) {
+            if (current.status == "PROCESSING" && translate { collectCaptureSql().hasVerifiedCapture(org, intentId, actorUserId) }) {
+                finalizeVerifiedFulfillmentCollect(org, intentId, actorUserId)
+            }
+            return getConfirmation(org, intentId, actorUserId)
         }
         if (current.finalizedSubscriptionId != null) {
             return getConfirmation(org, intentId, actorUserId)
@@ -656,6 +739,10 @@ class PaymentService(
                 false
             }
             if (!recordedCapture) return
+            if (current.membershipPlanId == null) {
+                finalizeVerifiedFulfillmentCollect(org, intentId, actorUserId)
+                return
+            }
             val finalized = try {
                 translate {
                     sql().confirmProviderSuccess(
@@ -678,13 +765,13 @@ class PaymentService(
             } catch (_: Exception) {
                 false
             }
-            if (recorded) syncCommercePaymentResult(org, intentId, actorUserId)
+            if (recorded && current.membershipPlanId != null) syncCommercePaymentResult(org, intentId, actorUserId)
         }
     }
 
     fun cancel(org: String, intentId: String, actorUserId: String): PaymentIntentDto {
         if (!translate { sql().cancel(org, intentId, actorUserId) }) throw ConflictException("Payment cannot be canceled")
-        syncCommercePaymentResult(org, intentId, actorUserId)
+        if (get(org, intentId, actorUserId).membershipPlanId != null) syncCommercePaymentResult(org, intentId, actorUserId)
         return get(org, intentId, actorUserId)
     }
 
@@ -695,6 +782,7 @@ class PaymentService(
         result: TestPaymentConfirmationDto
     ): Pair<PaymentIntentDto, CounterPurchaseResult?> {
         val current = get(org, intentId, actorUserId)
+        if (current.membershipPlanId == null) throw BadRequestException("Test confirmation is unavailable for fulfillment")
         val status = result.status.trim().uppercase()
         if (!testProvider.canConfirm(status)) throw BadRequestException("Test payment confirmation is unavailable")
         if (result.failureMessage != null && result.failureMessage.length > 500) throw BadRequestException("Payment failure message is too long")
@@ -818,6 +906,8 @@ class PaymentService(
         if (current.providerCode != provider.code) throw BadRequestException("Payment is not a Collect payment")
         if (current.status == "SUCCEEDED") return getConfirmation(org, intentId, actorUserId)
         if (current.status != "PENDING") throw ConflictException("Payment is already in progress or closed")
+        val fulfillmentPayment = current.membershipPlanId == null
+        if (fulfillmentPayment && !fulfillmentCollectAvailable()) throw ConflictException("Fulfillment payment is unavailable")
         if (nonce.isBlank() || nonce.length > 4096) throw BadRequestException("Payment nonce is invalid")
         val row = translate { sql().collectConfiguration(org, intentId, actorUserId) }
             ?: throw BadRequestException("Poynt Collect configuration is unavailable")
@@ -834,7 +924,12 @@ class PaymentService(
         // Card tokenization is non-charging and stays before the claim.
         // A wallet nonce is single-use charge material: ALWAYS claim first.
         val paymentToken = if (walletPayment) null else provider.tokenize(configuration, nonce, token)
-        if (!translate { sql().claimCollectCharge(org, intentId, actorUserId) }) {
+        if (!translate {
+                if (fulfillmentPayment) sql().claimFulfillmentCollect(
+                    org, intentId, actorUserId, configuration.businessId, configuration.providerStoreId
+                )
+                else sql().claimCollectCharge(org, intentId, actorUserId)
+            }) {
             throw ConflictException("Payment is already in progress or closed")
         }
         val checkoutMethod = when (request.method) {
@@ -881,6 +976,10 @@ class PaymentService(
             if (!recordedCapture) {
                 throw ConflictException("Collect capture evidence is unavailable; reconciliation required")
             }
+            if (fulfillmentPayment) {
+                finalizeVerifiedFulfillmentCollect(org, intentId, actorUserId)
+                return getConfirmation(org, intentId, actorUserId)
+            }
             translate {
                 sql().confirmProviderSuccess(
                     intentId, org, provider.code, result.transactionId,
@@ -893,7 +992,7 @@ class PaymentService(
                     intentId, org, provider.code, result.transactionId, "FAILED", "POYNT_COLLECT_DECLINED"
                 )
             }
-            syncCommercePaymentResult(org, intentId, actorUserId)
+            if (!fulfillmentPayment) syncCommercePaymentResult(org, intentId, actorUserId)
             throw BadRequestException("Poynt Collect payment was declined")
         }
         if (!result.approved) {
@@ -1060,7 +1159,13 @@ class PaymentService(
                 }
             when (postgres?.sqlState) {
                 "42501" -> throw ForbiddenException("Payment operation is not permitted")
-                "23505", "40001" -> throw ConflictException("Payment state changed; retry the request")
+                "23505", "40001" -> {
+                    val message = postgres.serverErrorMessage?.message
+                    if (postgres.sqlState == "23505" && message == "Finish the existing Counter redemption or wait for the QR to expire") {
+                        throw ConflictException(message, "ACTIVE_COUNTER_REDEMPTION")
+                    }
+                    throw ConflictException("Payment state changed; retry the request")
+                }
                 "22001", "22003", "22023", "23502", "23503", "23514", "P0002" -> {
                     val databaseMessage: String? = postgres?.serverErrorMessage?.message
                     val safeMessage: String? = when (databaseMessage) {

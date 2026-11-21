@@ -33,6 +33,7 @@ type OfferCardProps = {
   badge?: string;
 
   availabilityText?: string;
+  ctaDisabled?: boolean;
 
   disclaimerText?: string;
 
@@ -199,6 +200,7 @@ export function OfferCard({
   badge,
 
   availabilityText,
+  ctaDisabled,
 
   disclaimerText,
 
@@ -433,10 +435,10 @@ export function OfferCard({
 
                   borderRadius: theme.radius.pill,
 
-                  backgroundColor: theme.colors.primarySoft,
+                  backgroundColor: ctaDisabled ? theme.colors.surfaceAlt : theme.colors.primarySoft,
                 }}
               >
-                <Text variant="label" color="primary">
+                <Text variant="label" color={ctaDisabled ? "textMuted" : "primary"}>
                   {ctaLabel}
                 </Text>
               </View>

@@ -56,14 +56,24 @@ data class PaymentIntentDto(
     val providerReferenceId: String? = null,
     val failureCode: String? = null,
     val failureMessage: String? = null,
-    val membershipPlanId: String,
+    val membershipPlanId: String?,
     val customerUserId: String? = null,
     val finalizedSubscriptionId: String? = null,
     val createdAt: String,
     val checkoutUrl: String? = null,
     val monerisHostedTokenizationProfileId: String? = null,
     val monerisHostedTokenizationUrl: String? = null,
-    val commerceTransactionId: String? = null
+    val commerceTransactionId: String? = null,
+    val fulfillmentCustomerLabel: String? = null,
+    val fulfillmentCheckout: FulfillmentCheckoutContextDto? = null
+)
+
+@Serializable
+data class FulfillmentCheckoutContextDto(
+    val organizationId: String,
+    val subscriptionId: String,
+    val fulfillmentId: String? = null,
+    val verifiedCapture: Boolean = false
 )
 
 @Serializable

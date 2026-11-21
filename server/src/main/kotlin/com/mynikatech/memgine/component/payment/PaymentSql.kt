@@ -9,6 +9,21 @@ import org.jdbi.v3.sqlobject.statement.SqlQuery
 
 @RegisterBeanMapper(CounterPaymentFinalizationRow::class)
 interface PaymentSql {
+    @SqlQuery("SELECT claim_customer_fulfillment_collect(:org,:intent,:actor,:business,:store)")
+    fun claimFulfillmentCollect(
+        @Bind("org") org: String, @Bind("intent") intent: String, @Bind("actor") actor: String,
+        @Bind("business") business: String, @Bind("store") store: String?
+    ): Boolean
+
+    @SqlQuery("SELECT finalize_customer_fulfillment_collect(:org,:intent,:actor)")
+    fun finalizeFulfillmentCollect(@Bind("org") org: String, @Bind("intent") intent: String, @Bind("actor") actor: String): String?
+
+    @SqlQuery("SELECT get_customer_fulfillment_payment(:org,:actor,:intent,NULL,NULL)")
+    fun fulfillmentCheckoutContext(@Bind("org") org: String, @Bind("intent") intent: String, @Bind("actor") actor: String): String?
+
+    @SqlQuery("SELECT payment_open_collect_financial_exception(:org,:intent,:actor)")
+    fun openFulfillmentCollectReview(@Bind("org") org: String, @Bind("intent") intent: String, @Bind("actor") actor: String): String?
+
     @SqlQuery("SELECT payment_create_poynt_collect_checkout_session(:sessionId, :tokenHash, :organizationId, :intentId, :actorUserId, :expiresAt)")
     fun createCollectCheckoutSession(
         @Bind("sessionId") sessionId: String,

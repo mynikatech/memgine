@@ -8,6 +8,15 @@
 
 const activeReturns = new Map<string, symbol>();
 
+export const fulfillmentCollectReturnKey = (userId: string) => `customer-fulfillment-collect-return:${userId}`;
+
+export type FulfillmentCollectReturn = {
+  customerUserId: string;
+  organizationId: string;
+  subscriptionId: string;
+  paymentIntentId: string;
+};
+
 export function beginNativeCollectReturn(userId: string): () => void {
   const token = Symbol("native-collect-return");
   activeReturns.set(userId, token);

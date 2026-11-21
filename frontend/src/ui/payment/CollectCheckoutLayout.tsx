@@ -12,6 +12,7 @@ type Props = {
     accentColor?: string | null;
   } | null;
   heading?: string;
+  checkoutTitle?: string;
   subtitle?: string;
   payment: ReactNode;
   summary: ReactNode;
@@ -25,6 +26,7 @@ export function CollectCheckoutLayout({
   merchantName,
   branding,
   heading = "Complete your payment",
+  checkoutTitle = "Secure membership checkout",
   subtitle = "Enter your details to complete your membership purchase.",
   payment,
   summary,
@@ -91,7 +93,7 @@ export function CollectCheckoutLayout({
             {merchantName}
           </Text>
         ) : null}
-        <Text variant="h2" color="primary">Secure membership checkout</Text>
+        <Text variant="h2" color="primary">{checkoutTitle}</Text>
         <Text variant="bodySmall" color="textMuted">
           {subtitle}
         </Text>

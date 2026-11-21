@@ -31,7 +31,8 @@ data class CommerceCatalogProductRequest(
     val transactionId: String? = null,
     /** Pending Counter redemption context used only for read-only catalog GETs. */
     val redemptionTransactionId: String? = null,
-    val counterStaffId: String? = null
+    val counterStaffId: String? = null,
+    val customerQuoteSubscriptionId: String? = null
 )
 
 data class CommerceCatalogSyncRequest(

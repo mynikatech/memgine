@@ -1,7 +1,7 @@
 import { Redirect, useRouter } from "expo-router";
 import { Pressable, StyleSheet, View } from "react-native";
 
-import { authWorkspaces, unauthenticatedLanding } from "@/src/core/auth/auth-navigation";
+import { authWorkspaces, isCustomerOnlySession, unauthenticatedLanding } from "@/src/core/auth/auth-navigation";
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { Button, Text } from "@/src/ui";
@@ -21,6 +21,7 @@ export default function WorkspacesScreen() {
   if (!auth.session) {
     return <Redirect href={unauthenticatedLanding() as never} />;
   }
+  if (isCustomerOnlySession(auth.session)) return <Redirect href={APP_ROUTES.customer.cards as never} />;
 
   const workspaces = authWorkspaces(auth.session);
 

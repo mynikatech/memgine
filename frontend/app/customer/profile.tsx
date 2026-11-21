@@ -123,12 +123,15 @@ export default function Profile() {
   const confirmSignOut = async () => {
     setSignOutVisible(false);
     clearActiveContext();
+
     await logout();
-    router.replace(
-      (Platform.OS === "web"
-        ? APP_ROUTES.customerLogin
-        : APP_ROUTES.mobileEntry) as never,
-    );
+
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.location.replace(APP_ROUTES.customerLogin);
+      return;
+    }
+
+    router.replace(APP_ROUTES.mobileEntry as never);
   };
 
   const closeDeleteAccount = () => {

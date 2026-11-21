@@ -38,8 +38,13 @@ export function authWorkspaces(session: AuthSession): AuthWorkspace[] {
 }
 
 export function landingFor(session: AuthSession): string {
+  if (isCustomerOnlySession(session)) return APP_ROUTES.customer.cards;
   const choices = authWorkspaces(session);
   return choices.length === 1 ? choices[0].href : APP_ROUTES.workspaces;
+}
+
+export function isCustomerOnlySession(session: AuthSession): boolean {
+  return !session.posContext && authWorkspaces(session).length === 0;
 }
 
 /** Keep native sign-out and unauthenticated guards in the neutral entry flow. */

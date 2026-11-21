@@ -175,6 +175,8 @@ data class AppConfig(
                     ).toInt(),
                     enforceHttps = enforceHttps,
                     environment = environment,
+                    customerAdvanceFulfillmentEnabled =
+                        System.getenv("MEMGINE_CUSTOMER_ADVANCE_FULFILLMENT_ENABLED")?.toBooleanStrictOrNull() ?: false,
                     corsAllowedHosts = (
                         System.getenv("MEMGINE_ALLOWED_ORIGINS")
                             ?: if (useLocalProperties) localProperties.getProperty("MEMGINE_ALLOWED_ORIGINS") else null
@@ -427,7 +429,8 @@ data class ServerConfig(
     val port: Int,
     val enforceHttps: Boolean,
     val environment: String,
-    val corsAllowedHosts: Set<String>
+    val corsAllowedHosts: Set<String>,
+    val customerAdvanceFulfillmentEnabled: Boolean = false
 )
 
 data class AuthenticationConfig(

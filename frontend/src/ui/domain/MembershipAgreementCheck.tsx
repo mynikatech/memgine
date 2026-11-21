@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
+import { useTheme } from "@/src/providers";
 import { MembershipAgreementDocumentView } from "./MembershipAgreementDocumentView";
 
 /** Presentational control only; backend must independently enforce acceptance. */
@@ -13,6 +14,7 @@ export function MembershipAgreementCheck({
   onAcceptedChange: (accepted: boolean) => void;
 }) {
   const [visible, setVisible] = useState(false);
+  const theme = useTheme();
   const ready = agreementText.trim().length > 0;
 
   return (
@@ -44,7 +46,7 @@ export function MembershipAgreementCheck({
       >
         <Text style={{ fontSize: 21 }}>{accepted ? "☑" : "☐"}</Text>
         <Text style={{ flex: 1, color: "#111827" }}>
-          I have read and agree to this Membership Agreement.
+          I have read and agree to this Membership Agreement. <Text style={{ color: theme.colors.danger, fontSize: 17, fontWeight: "700" }}>*</Text>
         </Text>
       </Pressable>
 

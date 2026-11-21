@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 308f-customer-fulfillment-pickup-and-counter-recovery
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/308f-customer-fulfillment-pickup-and-counter-recovery.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

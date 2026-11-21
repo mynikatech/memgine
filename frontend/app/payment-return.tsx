@@ -1,12 +1,17 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { View } from "react-native";
+import { Text } from "@/src/ui";
 
 import { useAuth } from "@/src/providers";
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { services } from "@/src/core";
 import { storage } from "@/src/utils/storage";
-import { hasActiveNativeCollectReturn } from "@/src/core/services/native-collect-return";
+import { fulfillmentCollectReturnKey, hasActiveNativeCollectReturn, type FulfillmentCollectReturn } from "@/src/core/services/native-collect-return";
+import { CustomerDataApi } from "@/src/data/api/customer-data-api";
+import { fulfillmentRoute, verifiedFulfillmentDestination } from "@/src/core/services/fulfillment-collect-navigation";
+
+const api = new CustomerDataApi();
 
 type PendingCheckout = {
   organizationId: string;
@@ -23,17 +28,28 @@ type PendingCheckout = {
  * obtain its authoritative status from the backend.
  */
 export default function PaymentReturn() {
-  const { session } = useAuth();
+  const { session, loading } = useAuth();
   const router = useRouter();
-  const { cancelPayment } = useLocalSearchParams<{
+  const { cancelPayment, fulfillmentPayment, org, subscription, intent, view, counterConflict } = useLocalSearchParams<{
     cancelPayment?: string | string[];
+    fulfillmentPayment?: string;
+    org?: string; subscription?: string; intent?: string; view?: string; counterConflict?: string;
   }>();
   const cancellationRequested =
     (Array.isArray(cancelPayment) ? cancelPayment[0] : cancelPayment) === "1";
 
   useEffect(() => {
+    if (loading) return;
     if (!session?.userId) {
-      router.replace(APP_ROUTES.mobileEntry as never);
+      if (fulfillmentPayment === "1") {
+        const params = new URLSearchParams({ fulfillmentPayment: "1" });
+        if (typeof org === "string") params.set("org", org);
+        if (typeof subscription === "string") params.set("subscription", subscription);
+        if (typeof intent === "string") params.set("intent", intent);
+        if (view === "details") params.set("view", view);
+        if (counterConflict === "1") params.set("counterConflict", "1");
+        router.replace({ pathname: APP_ROUTES.customerLogin, params: { returnTo: `${APP_ROUTES.paymentReturn}?${params}` } });
+      } else router.replace(APP_ROUTES.mobileEntry as never);
       return;
     }
 
@@ -41,6 +57,41 @@ export default function PaymentReturn() {
 
     const restoreCheckout = async () => {
       try {
+        if (fulfillmentPayment === "1") {
+          const checkout = await storage.getItem<FulfillmentCollectReturn | null>(
+            fulfillmentCollectReturnKey(session.userId), null,
+          );
+          if (!active) return;
+          const saved = checkout?.customerUserId === session.userId && checkout.organizationId && checkout.subscriptionId && checkout.paymentIntentId
+            ? checkout : undefined;
+          const proposed = typeof org === "string" && typeof intent === "string" && typeof subscription === "string" && org && intent && subscription
+            ? { organizationId: org, paymentIntentId: intent, subscriptionId: subscription } : undefined;
+          const context = proposed ?? saved;
+          if (!context) {
+            router.replace(APP_ROUTES.customer.cards as never);
+            return;
+          }
+          const sameCheckout = saved?.paymentIntentId === context.paymentIntentId && saved.organizationId === context.organizationId;
+          if (sameCheckout && hasActiveNativeCollectReturn(`fulfillment:${session.userId}`) && router.canGoBack()) {
+            router.back();
+            return;
+          }
+          // The URL identifies an intent to look up. Only the authenticated response can identify an accepted fulfillment.
+          let destination;
+          try {
+            const result = await api.reconcileFulfillmentPayment(context.organizationId, context.paymentIntentId);
+            if (result.success) destination = verifiedFulfillmentDestination(result.data, context.organizationId,
+              context.paymentIntentId, view === "details" ? "details" : "confirmation", true);
+          } catch {
+            // Leave the exact intent available for recovery after a transient failure.
+          }
+          if (active) {
+            const route = destination ?? fulfillmentRoute(context.organizationId, context.subscriptionId, "payment", context.paymentIntentId);
+            router.replace(counterConflict === "1" && route.params.view === "payment"
+              ? { ...route, params: { ...route.params, counterConflict: "1" } } : route);
+          }
+          return;
+        }
         const pending = await storage.getItem<PendingCheckout | null>(
           `customer-collect-payment-return:${session.userId}`,
           null,
@@ -153,7 +204,11 @@ export default function PaymentReturn() {
     return () => {
       active = false;
     };
-  }, [cancellationRequested, router, session?.userId]);
+  }, [cancellationRequested, counterConflict, fulfillmentPayment, intent, loading, org, router, session?.userId, subscription, view]);
 
-  return <View />;
+  return fulfillmentPayment === "1" ? (
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <Text accessibilityLiveRegion="polite">Checking payment status…</Text>
+    </View>
+  ) : <View />;
 }

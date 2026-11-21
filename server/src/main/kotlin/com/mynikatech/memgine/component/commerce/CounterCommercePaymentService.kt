@@ -65,7 +65,7 @@ class CounterCommercePaymentService(
     private val remotePaymentConfiguration: CommerceRemotePaymentConfiguration,
     private val terminalBindingResolver: PoyntTerminalBindingResolver,
     private val activityAudit: ActivityAuditService,
-    private val testProviderEnabled: Boolean = false
+    internal val testProviderEnabled: Boolean = false
 ) {
     private val logger = LoggerFactory.getLogger(CounterCommercePaymentService::class.java)
 
@@ -683,45 +683,72 @@ class CounterCommercePaymentService(
             request.benefitIds.toTypedArray(), request.offerIds.toTypedArray(),
             Json.encodeToString(request.productSelections), actorUserId
         )
+        priceRedemptionQuote(organizationId, request.storeId, request.staffId, request.subscriptionId, actorUserId, rows)
+    }
+
+    internal fun priceCustomerRedemptionQuote(
+        organizationId: String, storeId: String, subscriptionId: String, actorUserId: String,
+        rows: List<CounterRedemptionQuoteRow>
+    ): CounterRedemptionQuoteDto = translate {
+        priceRedemptionQuote(organizationId, storeId, null, subscriptionId, actorUserId, rows)
+    }
+
+    private fun priceRedemptionQuote(
+        organizationId: String, storeId: String, staffId: String?, subscriptionId: String, actorUserId: String,
+        rows: List<CounterRedemptionQuoteRow>
+    ): CounterRedemptionQuoteDto {
         if (rows.isEmpty()) throw BadRequestException("Counter redemption quote has no selected products")
         val first = rows.first()
         if (rows.any { it.providerCode != first.providerCode || it.integrationConfigurationId != first.integrationConfigurationId }) {
             throw ConflictException("Counter redemption quote is inconsistent")
         }
         val lines = rows.map { row ->
-            val price = when (row.providerCode.uppercase()) {
-                "POYNT" -> {
+            val localPrice = row.providerCode == "MEMGINE"
+            val price = when {
+                localPrice -> {
+                    if (!testProviderEnabled) throw ForbiddenException("TEST payment provider is unavailable in this environment")
+                    Triple(row.snapshotProductName, row.snapshotUnitPriceMinor, row.snapshotCurrencyCode.uppercase())
+                }
+                else -> {
                     val integrationId = row.integrationConfigurationId?.takeIf { it.isNotBlank() }
-                        ?: throw BadRequestException("Poynt Commerce integration is unavailable")
-                    val product = providers.catalogProvider("POYNT")?.getProduct(
+                        ?: throw BadRequestException("Store catalog integration is unavailable")
+                    val externalProductId = row.externalProductId?.takeIf { it.isNotBlank() }
+                        ?: throw BadRequestException("Store product mapping is unavailable")
+                    val product = providers.catalogProvider(row.providerCode)?.getProduct(
                         CommerceCatalogProductRequest(
                             organizationId = organizationId, integrationConfigurationId = integrationId,
-                            storeId = request.storeId, externalProductId = row.externalProductId,
+                            storeId = storeId, externalProductId = externalProductId,
                             externalVariantId = row.externalVariantId, actorUserId = actorUserId,
-                            counterStaffId = request.staffId
+                            counterStaffId = staffId,
+                            customerQuoteSubscriptionId = subscriptionId.takeIf { staffId == null }
                         )
                     ) ?: throw BadRequestException("Current POS product is unavailable")
                     if (!product.active || product.integrationConfigurationId != integrationId ||
-                        product.externalProductId != row.externalProductId ||
+                        product.externalProductId != externalProductId ||
                         product.externalVariantId != row.externalVariantId ||
                         product.unitPriceMinorSnapshot < 0 || !product.currencyCode.uppercase().matches(CURRENCY_CODE)) {
                         throw BadRequestException("Current POS product is invalid")
                     }
                     Triple(product.productName, product.unitPriceMinorSnapshot, product.currencyCode.uppercase())
                 }
-                "TEST" -> Triple(row.snapshotProductName, row.snapshotUnitPriceMinor, row.snapshotCurrencyCode.uppercase())
-                else -> throw BadRequestException("Configured Counter redemption provider is not supported")
             }
             if (price.second < 0 || !price.third.matches(CURRENCY_CODE)) {
                 throw BadRequestException("Counter redemption product price is invalid")
             }
+            if (row.adjustmentType in setOf("PRODUCT_FIXED_OFF", "PRODUCT_SPECIAL_PRICE") &&
+                row.adjustmentCurrencyCode?.uppercase() != price.third
+            ) {
+                throw BadRequestException("Product discount currency must match the Store price currency")
+            }
             CommerceTransactionLineDto(
                 lineId = "${row.itemType}:${row.itemId}", transactionId = "QUOTE",
-                lineType = "EXTERNAL_PRODUCT", sourceEntityType = row.itemType, sourceEntityId = row.itemId,
+                lineType = if (localPrice) "CUSTOM_ITEM" else "EXTERNAL_PRODUCT",
+                sourceEntityType = row.itemType, sourceEntityId = row.itemId,
                 productMappingId = row.commerceProductMappingId, externalProductId = row.externalProductId,
                 externalVariantId = row.externalVariantId, description = price.first, quantity = 1,
                 unitPriceMinorSnapshot = row.snapshotUnitPriceMinor, unitPriceMinorAuthoritative = price.second,
-                lineSubtotalMinor = price.second, currencyCode = price.third, priceSource = "PROVIDER_READ_ONLY",
+                lineSubtotalMinor = price.second, currencyCode = price.third,
+                priceSource = if (localPrice) "MEMGINE_PRODUCT" else "PROVIDER_READ_ONLY",
                 versionNo = row.mappingVersionNo
             )
         }
@@ -753,7 +780,7 @@ class CounterCommercePaymentService(
             )
         }
         val hash = sha256(Json.encodeToString(CounterRedemptionQuoteHashInput(
-            organizationId, request.storeId, request.staffId, request.subscriptionId, first.providerCode,
+            organizationId, storeId, staffId.orEmpty(), subscriptionId, first.providerCode,
             first.integrationConfigurationId, currency, subtotal, discount, tax, subtotal - discount + tax,
             rows.sortedBy { "${it.itemType}:${it.itemId}" }.map { row ->
                 val line = quoteLines.first { it.itemType == row.itemType && it.itemId == row.itemId }
@@ -762,7 +789,7 @@ class CounterCommercePaymentService(
                     row.adjustmentVersionNo, line.unitPriceMinor, line.discountMinor, currency)
             }
         )))
-        CounterRedemptionQuoteDto(currency, quoteLines, subtotal, discount, tax, subtotal - discount + tax, "ESTIMATED", hash)
+        return CounterRedemptionQuoteDto(currency, quoteLines, subtotal, discount, tax, subtotal - discount + tax, "ESTIMATED", hash)
     }
 
     /** Read-only recovery discovery.  Starting a charge remains a separate POST. */
@@ -2412,9 +2439,9 @@ class CounterRedemptionQuoteRow {
     var benefitId: String? = null
     var offerId: String? = null
     var canonicalProductId: String = ""
-    var commerceProductMappingId: String = ""
+    var commerceProductMappingId: String? = null
     var mappingVersionNo: Int = 0
-    var externalProductId: String = ""
+    var externalProductId: String? = null
     var externalVariantId: String? = null
     var snapshotProductName: String = ""
     var snapshotUnitPriceMinor: Long = 0
@@ -2471,7 +2498,7 @@ private data class CounterRedemptionQuoteHashLine(
     val itemType: String,
     val itemId: String,
     val productId: String,
-    val mappingId: String,
+    val mappingId: String?,
     val mappingVersionNo: Int,
     val adjustmentId: String,
     val adjustmentVersionNo: Int,

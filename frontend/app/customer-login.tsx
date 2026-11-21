@@ -19,6 +19,7 @@ import {
 } from "react-native";
 
 import { APP_ROUTES } from "@/src/constants/navigation";
+import { customerFulfillmentReturnPath } from "@/src/core/services/fulfillment-collect-navigation";
 import { services, type CountryReference } from "@/src/core";
 import { AuthRequestError, useAuth } from "@/src/providers";
 import { Button, Input, PhoneField, Text, type PhoneValue } from "@/src/ui";
@@ -95,11 +96,11 @@ export default function CustomerLoginScreen() {
   const requestedReturnTo = Array.isArray(params.returnTo)
     ? params.returnTo[0]
     : params.returnTo;
-  const returnTo =
+  const returnTo = customerFulfillmentReturnPath(requestedReturnTo) ?? (
     requestedReturnTo?.startsWith("/join") ||
     requestedReturnTo?.startsWith("/discover/")
       ? requestedReturnTo
-      : APP_ROUTES.customer.cards;
+      : APP_ROUTES.customer.cards);
   if (!auth.loading && auth.session) {
     if (Platform.OS !== "web" && auth.mobileSessionMode === "business") {
       return (

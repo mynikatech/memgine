@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 308-customer-fulfillment
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/308-customer-fulfillment.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

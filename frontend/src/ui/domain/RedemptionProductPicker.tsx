@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
 export type RedemptionProductStore = {
@@ -66,6 +66,8 @@ export function RedemptionProductPicker({
   onChange,
   storeNamesById = {},
   showStoreAvailability = true,
+  initialSelections,
+  renderChoice,
 }: {
   subscriptionId: string;
   items: RedemptionItemChoice[];
@@ -75,6 +77,8 @@ export function RedemptionProductPicker({
   onChange: (state: RedemptionProductSelectionState) => void;
   storeNamesById?: Record<string, string>;
   showStoreAvailability?: boolean;
+  initialSelections?: Record<string, string>;
+  renderChoice?: (label: string, selected: boolean, onPress: () => void, item: RedemptionItemChoice) => ReactNode;
 }) {
   const [options, setOptions] = useState<
     Record<string, RedemptionProductChoice[]>
@@ -84,8 +88,10 @@ export function RedemptionProductPicker({
   const [failure, setFailure] = useState<string | null>(null);
   const latestLoad = useRef(loadChoices);
   const latestChange = useRef(onChange);
+  const initial = useRef(initialSelections);
   latestLoad.current = loadChoices;
   latestChange.current = onChange;
+  initial.current = initialSelections;
 
   const signature = items.map(productChoiceKey).join("|");
 
@@ -105,7 +111,9 @@ export function RedemptionProductPicker({
           const key = productChoiceKey(item);
           const choices = lists[index];
           nextOptions[key] = choices;
-          if (choices.length === 1) nextSelections[key] = choices[0].productId;
+          const requested = initial.current?.[key];
+          if (requested && choices.some((choice) => choice.productId === requested)) nextSelections[key] = requested;
+          else if (choices.length === 1) nextSelections[key] = choices[0].productId;
         });
         setOptions(nextOptions);
         setSelections(nextSelections);
@@ -168,6 +176,9 @@ export function RedemptionProductPicker({
                   const availability = showStoreAvailability
                     ? storeAvailabilityLabel(choice, storeNamesById)
                     : null;
+                  if (renderChoice) {
+                    return <View key={choice.productId}>{renderChoice(choice.productName, selected, () => choose(key, choice.productId), item)}</View>;
+                  }
                   return (
                     <Pressable
                       key={choice.productId}

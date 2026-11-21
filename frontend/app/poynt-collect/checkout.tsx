@@ -16,6 +16,7 @@ import {
 } from "@/src/data/api/customer-data-api";
 
 import type { PaymentConfirmation } from "@/src/data/api/counter-api";
+import { collectCompletion, collectRecoveryUrl, collectReloadUrl, collectReturnUrl, collectStatusMatchesIntent } from "@/src/core/services/fulfillment-collect-navigation";
 
 const money = (minor: number, currency: string) =>
   new Intl.NumberFormat(undefined, {
@@ -26,16 +27,6 @@ const money = (minor: number, currency: string) =>
 const STATUS_POLL_INTERVAL_MS = 2_000;
 const STATUS_POLL_TIMEOUT_MS = 60_000;
 
-function returnToMemgine(cancellationRequested = false) {
-  if (typeof window !== "undefined") {
-    window.location.assign(
-      cancellationRequested
-        ? "memgine://payment-return?cancelPayment=1"
-        : "memgine://payment-return",
-    );
-  }
-}
-
 type Phase = "ready" | "processing" | "uncertain";
 type StatusCheckOutcome = "terminal" | "processing" | "failed";
 
@@ -43,7 +34,13 @@ const isTerminalPaymentStatus = (status: string) =>
   ["SUCCEEDED", "FAILED", "CANCELED", "CANCELLED"].includes(status);
 
 export default function PoyntCollectCheckoutScreen() {
-  const { session } = useLocalSearchParams<{ session?: string }>();
+  const { session, fulfillmentReturn, intent, org, subscription } = useLocalSearchParams<{
+    session?: string; fulfillmentReturn?: string; intent?: string; org?: string; subscription?: string;
+  }>();
+  const returnPlatform = useRef<"web" | "native" | undefined>(
+    fulfillmentReturn === "web" || fulfillmentReturn === "native" ? fulfillmentReturn : undefined,
+  );
+  const checkoutIntent = useRef(typeof intent === "string" ? intent : undefined);
 
   const [checkout, setCheckout] = useState<PoyntCollectBrowserCheckout | null>(
     null,
@@ -60,6 +57,7 @@ export default function PoyntCollectCheckoutScreen() {
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [phase, setPhase] = useState<Phase>("ready");
+  const [counterConflict, setCounterConflict] = useState(false);
 
   // Never send two charge requests from this browser session.
   const submitted = useRef(false);
@@ -93,6 +91,9 @@ export default function PoyntCollectCheckoutScreen() {
     try {
       const result = await poyntCollectBrowserApi.status();
       if (!mounted.current) return "processing";
+      if (checkoutIntent.current && !collectStatusMatchesIntent(result, checkoutIntent.current)) {
+        throw new Error("This checkout session has changed.");
+      }
 
       setError(undefined);
       setConfirmation(result);
@@ -161,7 +162,7 @@ export default function PoyntCollectCheckoutScreen() {
   }, [checkStatus, startStatusPolling]);
 
   useEffect(() => {
-    if (Platform.OS !== "web" || !session) {
+    if (Platform.OS !== "web") {
       setError("This secure checkout must be opened in a browser.");
       setLoading(false);
       return;
@@ -171,13 +172,33 @@ export default function PoyntCollectCheckoutScreen() {
 
     void (async () => {
       try {
+        if (!session) {
+          if (!returnPlatform.current || !checkoutIntent.current) throw new Error("This secure checkout has expired. Return to Memgine to continue.");
+          const existing = await poyntCollectBrowserApi.status();
+          if (!existing.payment.fulfillmentCheckout || !collectStatusMatchesIntent(existing, checkoutIntent.current)) {
+            throw new Error("This checkout session has changed. Resume your payment in Memgine.");
+          }
+          if (active) setConfirmation(existing);
+          return;
+        }
         const redeemed = await poyntCollectBrowserApi.redeem(session);
+        if (!active) return;
+        if (!redeemed.payment.fulfillmentCheckout && !redeemed.payment.membershipPlanId) {
+          throw new Error("Could not identify this checkout. Return to Memgine to recover your payment.");
+        }
+        setCheckout(redeemed);
+        checkoutIntent.current = redeemed.payment.paymentIntentId;
 
         window.history.replaceState(
-          {},
+          window.history.state,
           document.title,
-          "/poynt-collect/checkout",
+          collectReloadUrl(returnPlatform.current, redeemed.payment),
         );
+        if (redeemed.payment.fulfillmentCheckout && redeemed.payment.status !== "PENDING") {
+          setPhase("processing");
+          startStatusPolling();
+          return;
+        }
 
         const config = await poyntCollectBrowserApi.bootstrap();
 
@@ -226,9 +247,14 @@ export default function PoyntCollectCheckoutScreen() {
           method,
         );
 
+        if (!collectStatusMatchesIntent(result, checkout.payment.paymentIntentId)) {
+          startStatusPolling();
+          return true;
+        }
+
         setConfirmation(result);
 
-        if (result.payment.status === "SUCCEEDED" && result.subscription) {
+        if (collectCompletion(result)) {
           setPhase("ready");
           return true;
         }
@@ -242,7 +268,12 @@ export default function PoyntCollectCheckoutScreen() {
 
         startStatusPolling();
         return true;
-      } catch {
+      } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ACTIVE_COUNTER_REDEMPTION") {
+          setCounterConflict(true);
+          setPhase("ready");
+          return false;
+        }
         // A lost response may mean the provider received the charge.
         // Never automatically send the nonce again.
         startStatusPolling();
@@ -252,19 +283,32 @@ export default function PoyntCollectCheckoutScreen() {
     [checkout, startStatusPolling],
   );
 
-  const status = confirmation?.payment.status ?? checkout?.payment.status;
+  const payment = confirmation?.payment ?? checkout?.payment;
+  const status = payment?.status;
+  const fulfillmentPayment = !!payment?.fulfillmentCheckout;
+  const checkoutLabel = payment?.fulfillmentCustomerLabel ?? "Order";
+  const backToApp = (cancel = false) => {
+    if (typeof window === "undefined") return;
+    const mode = returnPlatform.current ?? "native";
+    const recovery = !payment && returnPlatform.current && typeof org === "string" && typeof subscription === "string"
+      ? collectRecoveryUrl(mode, org, subscription, checkoutIntent.current) : undefined;
+    if (mode === "web") window.location.replace(fulfillmentPayment ? collectReturnUrl(mode, payment, cancel, counterConflict) : recovery ?? "/customer/cards");
+    else window.location.assign(recovery ?? collectReturnUrl(mode, payment, cancel, counterConflict));
+  };
 
-  const success = status === "SUCCEEDED" && !!confirmation?.subscription;
+  const success = !!collectCompletion(confirmation);
+  const fulfillmentPending = fulfillmentPayment && !success &&
+    (status === "SUCCEEDED" || !!payment.fulfillmentCheckout?.verifiedCapture);
 
   const activationPending =
-    status === "SUCCEEDED" && !confirmation?.subscription;
+    status === "SUCCEEDED" && !fulfillmentPayment && !confirmation?.subscription;
 
   const failed = ["FAILED", "CANCELED", "CANCELLED"].includes(status ?? "");
 
   const processing = phase === "processing";
 
   const unresolved =
-    phase === "uncertain" || status === "PROCESSING" || activationPending;
+    phase === "uncertain" || status === "PROCESSING" || activationPending || fulfillmentPending;
 
   const canPay = !!(
     checkout &&
@@ -276,10 +320,10 @@ export default function PoyntCollectCheckoutScreen() {
     !unresolved
   );
 
-  const amountMinor = checkout ? Math.round(checkout.payment.amount * 100) : 0;
+  const amountMinor = payment ? Math.round(payment.amount * 100) : 0;
 
-  const amountText = checkout
-    ? money(amountMinor, checkout.payment.currencyCode)
+  const amountText = payment
+    ? money(amountMinor, payment.currencyCode)
     : "—";
 
   const merchantName = bootstrap?.wallet?.merchantName ?? "Memgine";
@@ -299,7 +343,7 @@ export default function PoyntCollectCheckoutScreen() {
       style={{
         flex: 1,
         width: "100%",
-        backgroundColor: checkoutTheme.colors.primarySoft,
+        backgroundColor: fulfillmentPayment ? checkoutTheme.colors.surfaceAlt : checkoutTheme.colors.primarySoft,
       }}
       contentContainerStyle={{
         flexGrow: 1,
@@ -312,6 +356,8 @@ export default function PoyntCollectCheckoutScreen() {
       <CollectCheckoutLayout
         branding={bootstrap?.branding}
         merchantName={merchantName}
+        checkoutTitle={fulfillmentPayment ? `Secure ${checkoutLabel.toLowerCase()} checkout` : undefined}
+        subtitle={fulfillmentPayment ? `Complete payment for your ${checkoutLabel.toLowerCase()}.` : undefined}
         payment={
           <View style={{ gap: 16, minWidth: 0 }}>
             {loading ? (
@@ -335,25 +381,35 @@ export default function PoyntCollectCheckoutScreen() {
                 }}
               >
                 <Text variant="h2" color="primary">
-                  Payment Successful
+                  {fulfillmentPayment ? `${checkoutLabel} confirmed` : "Payment Successful"}
                 </Text>
 
-                <Text variant="bodyStrong">Your membership is active.</Text>
+                {fulfillmentPayment ? null : <Text variant="bodyStrong">Your membership is active.</Text>}
 
-                <Text variant="body">
-                  We confirmed your payment and activated your membership.
-                </Text>
+                <Text variant="body">{fulfillmentPayment ? "Your payment is verified." : "We confirmed your payment and activated your membership."}</Text>
 
                 <Text variant="bodySmall">Amount paid: {amountText}</Text>
-                <Text variant="bodySmall">
+                {fulfillmentPayment ? null : <Text variant="bodySmall">
                   Membership status: {membershipStatus}
-                </Text>
+                </Text>}
 
                 <Button
-                  label="View My Membership"
+                  label={fulfillmentPayment ? `View ${checkoutLabel}` : "View My Membership"}
                   fullWidth
-                  onPress={returnToMemgine}
+                  onPress={() => backToApp()}
                 />
+              </View>
+            ) : counterConflict ? (
+              <View style={{ gap: 12 }}>
+                <Text variant="h2">A Counter redemption is already in progress</Text>
+                <Text>Finish the existing Counter redemption before continuing. Open payment recovery to find its QR.</Text>
+                <Button label="Open payment recovery" onPress={() => backToApp()} />
+              </View>
+            ) : fulfillmentPending ? (
+              <View style={{ gap: 12 }}>
+                <Text variant="h2">Payment received</Text>
+                <Text>Your {checkoutLabel.toLowerCase()} is awaiting confirmation. Check its status before paying again.</Text>
+                <Button label="Open payment recovery" onPress={() => backToApp()} />
               </View>
             ) : activationPending ? (
               /* PAYMENT SUCCEEDED, MEMBERSHIP STILL PENDING */
@@ -376,7 +432,7 @@ export default function PoyntCollectCheckoutScreen() {
                 <Button
                   label="Return to Memgine"
                   variant="secondary"
-                  onPress={returnToMemgine}
+                  onPress={() => backToApp()}
                 />
               </View>
             ) : failed ? (
@@ -385,14 +441,13 @@ export default function PoyntCollectCheckoutScreen() {
                 <Text variant="h2">Payment Not Completed</Text>
 
                 <Text variant="body">
-                  This payment was declined or canceled. No membership was
-                  created for this attempt.
+                  {fulfillmentPayment ? "This payment was declined or canceled." : "This payment was declined or canceled. No membership was created for this attempt."}
                 </Text>
 
                 <Button
                   label="Return to Memgine"
                   fullWidth
-                  onPress={returnToMemgine}
+                  onPress={() => backToApp()}
                 />
               </View>
             ) : processing || unresolved ? (
@@ -424,7 +479,7 @@ export default function PoyntCollectCheckoutScreen() {
                 <Button
                   label="Return to Memgine"
                   variant="secondary"
-                  onPress={returnToMemgine}
+                  onPress={() => backToApp()}
                 />
               </View>
             ) : (
@@ -435,7 +490,7 @@ export default function PoyntCollectCheckoutScreen() {
                     key={checkout.payment.paymentIntentId}
                     configuration={bootstrap}
                     merchantName={merchantName}
-                    membershipName="Memgine membership"
+                    membershipName={fulfillmentPayment ? checkoutLabel : "Memgine membership"}
                     amountText={amountText}
                     onAuthorize={(nonce, method) => confirm(nonce, method)}
                   />
@@ -451,8 +506,8 @@ export default function PoyntCollectCheckoutScreen() {
                       onNonce={async (nonce) => {
                         await confirm(nonce, "card");
                       }}
-                      onBack={() => returnToMemgine(true)}
-                      payLabel={`Pay ${amountText} & Subscribe`}
+                      onBack={() => backToApp(true)}
+                      payLabel={fulfillmentPayment ? `Pay ${amountText}` : `Pay ${amountText} & Subscribe`}
                     />
                   </View>
                 ) : null}
@@ -467,18 +522,18 @@ export default function PoyntCollectCheckoutScreen() {
               </>
             )}
 
-            {!checkout && !loading ? (
+            {!checkout && !loading && !success && !fulfillmentPending && !failed && !processing && !unresolved ? (
               <Button
-                label="Return to Memgine"
+                label={fulfillmentPayment ? "Resume in Memgine" : "Return to Memgine"}
                 variant="secondary"
-                onPress={returnToMemgine}
+                onPress={() => backToApp()}
               />
             ) : null}
           </View>
         }
         summary={
           <View style={{ gap: 14 }}>
-            <Text variant="bodyStrong">Memgine Membership</Text>
+            <Text variant="bodyStrong">{fulfillmentPayment ? checkoutLabel : "Memgine Membership"}</Text>
 
             <Text variant="bodySmall" color="textMuted">
               Your confirmed payment amount
@@ -494,7 +549,7 @@ export default function PoyntCollectCheckoutScreen() {
                 alignItems: "center",
               }}
             >
-              <Text variant="bodyStrong">Total Due</Text>
+              <Text variant="bodyStrong">{fulfillmentPayment && success ? "Amount paid" : "Total Due"}</Text>
 
               <Text variant="h2">{amountText}</Text>
             </View>
