@@ -6,6 +6,7 @@ import com.mynikatech.memgine.model.common.ApiResponse
 import com.mynikatech.memgine.net.dto.*
 import com.mynikatech.memgine.security.authenticatedPrincipal
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
 import io.ktor.server.plugins.callid.callId
 import io.ktor.server.request.receive
@@ -14,10 +15,36 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import kotlin.coroutines.cancellation.CancellationException
+
+private suspend inline fun <reified T : Any> ApplicationCall.receivePickupLookup(): T = try {
+    receive<T>()
+} catch (error: CancellationException) {
+    throw error
+} catch (_: Exception) {
+    // Malformed JSON exceptions can include part of the credential.
+    throw BadRequestException("Invalid pickup lookup request")
+}
 
 fun Route.counterRoutes(service: CounterService, commercePaymentService: CounterCommercePaymentService) {
     route("/organizations/{organizationId}/counter") {
         route("/orders") {
+            post("/pickup/verify") {
+                val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+                val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
+                val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
+                val principal = call.authenticatedPrincipal()
+                val request = call.receivePickupLookup<CounterPickupQrRequest>()
+                call.respond(ApiResponse.success(service.verifyPickup(org, store, staff, request.credential, principal), call.callId))
+            }
+            post("/pickup/reference") {
+                val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+                val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
+                val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
+                val principal = call.authenticatedPrincipal()
+                val request = call.receivePickupLookup<CounterPickupReferenceRequest>()
+                call.respond(ApiResponse.success(service.pickupOrderReference(org, store, staff, request.reference, principal), call.callId))
+            }
             get("/stores") {
                 val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
                 call.respond(ApiResponse.success(service.orderStores(org, call.authenticatedPrincipal()), call.callId))

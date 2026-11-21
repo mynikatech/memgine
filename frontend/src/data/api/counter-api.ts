@@ -41,6 +41,10 @@ export type CounterOrder = {
 };
 export type CounterOrderPage = { orders: CounterOrder[]; total: number; statusCounts: Partial<Record<CounterOrderStatus, number>> };
 export type CounterOrderFilters = { status: CounterOrderFilter; search: string; pickupDate?: string; offset: number };
+export type CounterPickupVerification = { code: "VERIFIED"; orderId: ID } | {
+  code: "INVALID" | "WRONG_STORE" | "EXPIRED" | "REVOKED" | "USED" | "ORDER_UNAVAILABLE";
+};
+export type CounterPickupReferenceLookup = { code: "LOCATED"; orderId: ID } | { code: "NOT_FOUND" };
 
 export type CounterSubscription = OrgAdminSubscription & {
   userId: ID;
@@ -516,6 +520,14 @@ export class CounterApi {
 
   order(ctx: CounterContext, orderId: ID): Promise<ApiResult<CounterOrder>> {
     return httpClient.get(this.query(ctx, `orders/${encodeURIComponent(orderId)}`));
+  }
+
+  verifyPickupQr(ctx: CounterContext, credential: string): Promise<ApiResult<CounterPickupVerification>> {
+    return httpClient.post(this.query(ctx, "orders/pickup/verify"), { credential });
+  }
+
+  lookupPickupOrderReference(ctx: CounterContext, reference: string): Promise<ApiResult<CounterPickupReferenceLookup>> {
+    return httpClient.post(this.query(ctx, "orders/pickup/reference"), { reference });
   }
 
   transactions(

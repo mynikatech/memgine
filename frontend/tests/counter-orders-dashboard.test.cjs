@@ -22,10 +22,15 @@ function load(path, dependencies = {}) {
 }
 
 const model = load("frontend/src/ui/domain/counter-orders-model.ts");
+const pickup = load("frontend/src/ui/domain/counter-pickup-model.ts");
 const calls = [];
+const posts = [];
 const { CounterApi } = load("frontend/src/data/api/counter-api.ts", {
   "./entity-status-api": {}, "./result": {},
-  "./http-client": { httpClient: { get: (url) => { calls.push(url); return Promise.resolve({ success: true }); } } },
+  "./http-client": { httpClient: {
+    get: (url) => { calls.push(url); return Promise.resolve({ success: true }); },
+    post: (url, body) => { posts.push({ url, body }); return Promise.resolve({ success: true }); },
+  } },
 });
 const el = React.createElement;
 const host = (tag) => ({ children, testID, accessibilityState, style }) => el(tag, {
@@ -43,6 +48,7 @@ const { CounterOrdersPanels, CounterOrderQueue, CounterOrderDetails } = load("fr
     StateView: ({ kind, title, message, testID }) => el("aside", { "data-state": kind, "data-testid": testID }, title, message),
   },
   "./counter-orders-model": model,
+  "./CounterPickupLookup": { CounterPickupLookup: () => null },
 });
 const first = { id: "FUL_1", reference: "ORDER-100", storeId: "OSC", storeName: "OSC Store", timezone: "America/Toronto",
   status: "READY", paymentState: "PAYMENT_UNCONFIRMED", totalMinor: 932, taxMinor: 107,
@@ -82,9 +88,11 @@ test("selection updates the detail and highlight without changing filters and su
 
 test("stores and filters use only authorized scope and serialize status, search, pickup date and pagination", async () => {
   const allowed = [{ id: "OSC", name: "OSC Store", staffId: "S1" }, { id: "AJX", name: "Ajax Store", staffId: "S1" }];
-  assert.equal(model.counterOrderStore(allowed, "forged"), allowed[0]);
-  assert.equal(model.counterOrderStore([], "OSC"), undefined);
-  const selected = model.counterOrderStore(allowed, "AJX");
+  const workspace = { organizationId: "ORG", storeId: "AJX", staffId: "S1" };
+  assert.equal(model.counterOrderStore(allowed, { ...workspace, storeId: "forged" }), undefined);
+  assert.equal(model.counterOrderStore(allowed, { ...workspace, staffId: "unknown" }), undefined);
+  assert.equal(model.counterOrderStore([], workspace), undefined);
+  const selected = model.counterOrderStore(allowed, workspace);
   const filters = model.changeCounterOrderFilters({ status: "ACTIVE", search: "", offset: 25 },
     { status: "READY", search: " order-200 ", pickupDate: "2026-11-22" });
   const api = new CounterApi();
@@ -100,6 +108,84 @@ test("stores and filters use only authorized scope and serialize status, search,
   assert.equal(order.pathname, "/api/v1/organizations/ORG/counter/orders/FUL_2");
   assert.deepEqual(Object.fromEntries(order.searchParams), { storeId: "AJX", staffId: "S1" });
   assert.equal(model.counterOrderSelection("org:other-store:staff", { scope: "org:store:staff", id: second.id }, [first], true), first.id);
+});
+
+test("Orders inherit the active Store and staff and remount on context changes", () => {
+  const workspace = { organizationId: "ORG", storeId: "AJX", staffId: "S1" };
+  const fixed = { organizationId: "ORG", storeId: "OSC", staffId: "S2" };
+  assert.equal(model.counterOrdersContext("ORG", workspace), workspace);
+  assert.equal(model.counterOrdersContext("ORG", workspace, fixed), fixed);
+  assert.equal(model.counterOrdersContext("ORG", workspace, { ...fixed, organizationId: "other" }), undefined);
+  assert.equal(model.counterOrdersContext("ORG", null), undefined);
+  const route = source("frontend/app/counter/orders.tsx");
+  assert.match(route, /key=\{JSON.stringify\(\[session\?\.userId, scope\.organizationId, scope\.storeId, scope\.staffId\]/);
+  assert.match(route, /Open Counter workspace/);
+  assert.doesNotMatch(source("frontend/src/ui/domain/CounterOrdersDashboard.tsx"), /ReferenceSelect label="Store"/);
+});
+
+test("native permissions and unavailable web cameras preserve a manual fallback", async () => {
+  let requests = 0;
+  const grant = async () => { requests++; return { granted: true }; };
+  assert.equal(await pickup.requestPickupCameraAccess(false, false, null, grant), "granted");
+  assert.equal(await pickup.requestPickupCameraAccess(false, false, { granted: false, canAskAgain: false }, grant), "denied");
+  assert.equal(await pickup.requestPickupCameraAccess(true, false, null, grant), "unavailable");
+  assert.equal(requests, 1);
+  assert.equal(await pickup.requestPickupCameraAccess(true, true, null, async () => { throw new Error("blocked"); }), "unavailable");
+  assert.equal(await pickup.requestPickupCameraAccess(true, true, null, async () => ({ granted: false })), "denied");
+  const scanner = source("frontend/src/ui/domain/CounterPickupLookup.tsx");
+  assert.match(scanner, /onBarcodeScanned=\{\(\{ data \}\).*submit\("qr", data, "camera"\)/);
+  assert.match(scanner, /onMountError=.*[\s\S]*Use a keyboard scanner or enter the QR reference/);
+  assert.match(scanner, /presentationStyle="fullScreen"/);
+  assert.match(scanner, /onSubmitEditing=.*submit\("qr", qrInput\)/);
+});
+
+test("repeated camera frames and keyboard submissions are suppressed with explicit rearming", () => {
+  const gate = pickup.createPickupAttemptGate();
+  assert.equal(gate.begin("camera"), false);
+  gate.armCamera();
+  assert.equal(gate.begin("camera"), true);
+  assert.equal(gate.begin("camera"), false);
+  assert.equal(gate.begin("manual"), false);
+  gate.finish();
+  assert.equal(gate.begin("camera"), false);
+  assert.equal(gate.begin("manual"), true);
+  gate.finish();
+  gate.armCamera();
+  assert.equal(gate.begin("camera"), true);
+});
+
+test("keyboard QR input and exact order lookup use distinct body-only requests", async () => {
+  const token = `MEMGINE_PICKUP:${"A".repeat(43)}`;
+  const context = { organizationId: "ORG", storeId: "AJX", staffId: "S1" };
+  assert.equal(pickup.pickupQrReference(` ${token}\r\n`), token);
+  assert.equal(pickup.pickupQrReference("123456"), undefined);
+  assert.equal(pickup.pickupQrReference(`MEMGINE_REDEMPTION:${"A".repeat(43)}`), undefined);
+  assert.equal(pickup.pickupOrderReference(token), undefined);
+  assert.equal(pickup.pickupOrderReference(" #RTX_00000091 "), "RTX_00000091");
+  const api = new CounterApi();
+  await api.verifyPickupQr(context, token);
+  await api.lookupPickupOrderReference(context, "RTX_00000091");
+  const [verify, find] = posts.splice(0);
+  assert.equal(verify.url, "/api/v1/organizations/ORG/counter/orders/pickup/verify?storeId=AJX&staffId=S1");
+  assert.deepEqual(verify.body, { credential: token });
+  assert.equal(find.url, "/api/v1/organizations/ORG/counter/orders/pickup/reference?storeId=AJX&staffId=S1");
+  assert.deepEqual(find.body, { reference: "RTX_00000091" });
+});
+
+test("lookup statuses give distinct recovery guidance without customer details", () => {
+  for (const [code, message] of [["EXPIRED", /expired/], ["REVOKED", /revoked/], ["USED", /already been used/],
+    ["WRONG_STORE", /another Store/], ["INVALID", /invalid/], ["FORBIDDEN", /current Counter access/], ["NOT_FOUND", /available at this Store/]]) {
+    assert.match(pickup.pickupLookupMessage(code), message);
+  }
+});
+
+test("out-of-filter matched order has an independent detail and reference is identification only", () => {
+  const selected = model.counterOrderSelection("scope", { scope: "scope", id: second.id }, [first], true);
+  assert.equal(selected, second.id);
+  const showMatch = (kind) => renderToStaticMarkup(el(CounterOrderDetails, { state: { kind: "ready", data: second },
+    pickupMatch: { kind, orderId: second.id }, outsideQueue: true, onRetry: noop }));
+  assert.match(showMatch("verified"), /Pickup QR verified.*Collection has not been completed.*outside the current queue/s);
+  assert.match(showMatch("reference"), /Order located by reference.*does not verify pickup/);
 });
 
 test("loading, empty and authorization errors render without exposing stale orders", () => {

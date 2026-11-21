@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 309b-counter-pickup-lookup
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/309b-counter-pickup-lookup.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

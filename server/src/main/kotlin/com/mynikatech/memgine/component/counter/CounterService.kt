@@ -1,5 +1,6 @@
 package com.mynikatech.memgine.component.counter
 
+import com.mynikatech.memgine.exception.ApiException
 import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.exception.ConflictException
 import com.mynikatech.memgine.exception.ForbiddenException
@@ -19,6 +20,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import io.ktor.http.HttpStatusCode
 import com.mynikatech.memgine.security.AuthenticatedPrincipal
 import com.mynikatech.memgine.security.PhoneNormalizer
 import com.mynikatech.memgine.component.customer.CustomerService
@@ -61,6 +64,31 @@ class CounterService(
         val fixed = principal.posContext
         if (fixed != null && fixed.organizationId != org) throw ForbiddenException("Fixed POS context does not match this business")
         return Json.parseToJsonElement(sql().orderStores(org, principal.userId, fixed?.staffId, fixed?.storeId)).jsonArray
+    }
+
+    fun verifyPickup(org: String, store: String, staff: String, credential: String, principal: AuthenticatedPrincipal): CounterPickupLookupResult {
+        authorize(org, store, staff, principal)
+        val hash = counterPickupDigest(credential) ?: return CounterPickupLookupResult("INVALID")
+        val result = try {
+            sql().verifyPickup(org, store, staff, principal.userId, hash)
+        } catch (_: Exception) {
+            // Driver exceptions can include bound parameters. Do not attach the cause to the public error or logs.
+            throw ApiException(HttpStatusCode.ServiceUnavailable, "PICKUP_VERIFICATION_UNAVAILABLE", "Pickup verification is temporarily unavailable")
+        }
+        return pickupLookupResult(result, "VERIFIED")
+    }
+
+    fun pickupOrderReference(org: String, store: String, staff: String, reference: String, principal: AuthenticatedPrincipal): CounterPickupLookupResult {
+        authorize(org, store, staff, principal)
+        val validReference = counterPickupOrderReference(reference) ?: throw BadRequestException("Enter an order reference")
+        return pickupLookupResult(sql().pickupOrderReference(org, store, staff, principal.userId, validReference), "LOCATED")
+    }
+
+    private fun pickupLookupResult(raw: String, successCode: String): CounterPickupLookupResult {
+        val result = Json.parseToJsonElement(raw).jsonObject
+        val code = result.getValue("code").jsonPrimitive.content
+        if (code == "FORBIDDEN") throw ForbiddenException("Order access is unavailable for this Store")
+        return CounterPickupLookupResult(code, if (code == successCode) result.getValue("orderId").jsonPrimitive.content else null)
     }
 
     fun orders(org: String, store: String, staff: String, status: String?, search: String?, pickupDay: String?,

@@ -20,6 +20,14 @@ data class StaffAssistedPurchaseRow(
 )
 
 interface CounterSql {
+    @SqlQuery("SELECT verify_counter_pickup_qr(:org,:store,:staff,:actor,:hash)")
+    fun verifyPickup(@Bind("org") org: String, @Bind("store") store: String, @Bind("staff") staff: String,
+        @Bind("actor") actor: String, @Bind("hash") hash: String): String
+
+    @SqlQuery("SELECT lookup_counter_pickup_order_reference(:org,:store,:staff,:actor,:reference)")
+    fun pickupOrderReference(@Bind("org") org: String, @Bind("store") store: String, @Bind("staff") staff: String,
+        @Bind("actor") actor: String, @Bind("reference") reference: String): String
+
     @SqlQuery("SELECT get_counter_order_stores(:org,:actor,:staff,:store)")
     fun orderStores(@Bind("org") org: String, @Bind("actor") actor: String,
         @Bind("staff") staff: String?, @Bind("store") store: String?): String

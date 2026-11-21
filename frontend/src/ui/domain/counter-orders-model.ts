@@ -1,4 +1,4 @@
-import type { CounterOrder, CounterOrderFilters, CounterOrderStore } from "@/src/data/api/counter-api";
+import type { CounterContext, CounterOrder, CounterOrderFilters, CounterOrderStore } from "@/src/data/api/counter-api";
 
 export const counterOrderPageSize = 25;
 export const counterOrderMaxOffset = 5000;
@@ -9,8 +9,13 @@ export function counterOrdersLayout(viewport: number, content: number) {
   return { split: false, queueFlex: 1, detailFlex: 1, padding: 16 };
 }
 
-export function counterOrderStore(stores: readonly CounterOrderStore[], preferredId?: string) {
-  return stores.find(({ id }) => id === preferredId) ?? stores[0];
+export function counterOrdersContext(organizationId: string, workspace?: CounterContext | null, fixedPos?: CounterContext | null) {
+  const context = fixedPos ?? workspace;
+  return context?.organizationId === organizationId && context.storeId && context.staffId ? context : undefined;
+}
+
+export function counterOrderStore(stores: readonly CounterOrderStore[], scope: CounterContext) {
+  return stores.find(({ id, staffId }) => id === scope.storeId && staffId === scope.staffId);
 }
 
 export function changeCounterOrderFilters(current: CounterOrderFilters, patch: Partial<Omit<CounterOrderFilters, "offset">>) {

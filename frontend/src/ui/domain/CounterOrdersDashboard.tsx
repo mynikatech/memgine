@@ -1,9 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentRef, type ReactNode } from "react";
 import { Platform, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 
 import { formatTransactionMoney } from "@/src/core/domain/savings-display";
-import { CounterApi, type CounterOrder, type CounterOrderFilter, type CounterOrderFilters, type CounterOrderPage } from "@/src/data/api/counter-api";
+import { CounterApi, type CounterContext, type CounterOrder, type CounterOrderFilter, type CounterOrderFilters, type CounterOrderPage } from "@/src/data/api/counter-api";
 import type { ApiResult } from "@/src/data/api/result";
 import { useTheme } from "@/src/providers";
 import { Badge, Button, Card, DateInput, Input, ReferenceSelect, StateView, Text } from "@/src/ui";
@@ -11,6 +11,7 @@ import {
   changeCounterOrderFilters, counterOrderDate, counterOrderKeyboardTarget, counterOrderMaxOffset, counterOrderPageSize,
   counterOrderSelection, counterOrderStore, counterOrdersLayout,
 } from "./counter-orders-model";
+import { CounterPickupLookup, type CounterPickupMatch } from "./CounterPickupLookup";
 
 const api = new CounterApi();
 const statusLabels = {
@@ -47,36 +48,44 @@ function useOrdersRead<T>(key: string | undefined, load: () => Promise<ApiResult
   return result && key === result.key ? result.state : { kind: "loading" };
 }
 
-export function CounterOrdersDashboard({ organizationId, preferredStoreId }: { organizationId: string; preferredStoreId?: string }) {
+export function CounterOrdersDashboard({ context, onOpenWorkspace }: { context: CounterContext; onOpenWorkspace: () => void }) {
+  const { organizationId } = context;
   const theme = useTheme();
   const { width } = useWindowDimensions();
   const [contentWidth, setContentWidth] = useState(0);
   const layout = counterOrdersLayout(width, contentWidth || width);
-  const [storeId, setStoreId] = useState<string>();
   const [storeRevision, setStoreRevision] = useState(0);
   const [filters, setFilters] = useState<CounterOrderFilters>({ status: "ACTIVE", search: "", offset: 0 });
   const [searchDraft, setSearchDraft] = useState("");
   const [selection, setSelection] = useState<{ scope: string; id: string }>();
   const [revision, setRevision] = useState(0);
   const [detailRevision, setDetailRevision] = useState(0);
+  const [pickupMode, setPickupMode] = useState<"scan" | "manual">();
+  const [pickupMatch, setPickupMatch] = useState<CounterPickupMatch>();
 
   const loadStores = useCallback(() => api.orderStores(organizationId), [organizationId]);
-  const stores = useOrdersRead(JSON.stringify([organizationId, storeRevision]), loadStores);
-  const store = stores.kind === "ready" ? counterOrderStore(stores.data, storeId ?? preferredStoreId) : undefined;
-  const context = useMemo(() => store ? { organizationId, storeId: store.id, staffId: store.staffId } : undefined,
-    [organizationId, store]);
-  const scope = context ? JSON.stringify(context) : undefined;
-  const loadQueue = useCallback(() => api.orders(context!, filters), [context, filters]);
+  const stores = useOrdersRead(JSON.stringify([organizationId, context.storeId, context.staffId, storeRevision]), loadStores);
+  const store = stores.kind === "ready" ? counterOrderStore(stores.data, context) : undefined;
+  const scope = store ? JSON.stringify([organizationId, context.storeId, context.staffId]) : undefined;
+  const loadQueue = useCallback(() => api.orders(context, filters), [context, filters]);
   const queue = useOrdersRead(scope && JSON.stringify([scope, filters, revision]), loadQueue);
   const rows = queue.kind === "ready" ? queue.data.orders : [];
   const selectedId = counterOrderSelection(isAccessDenied(queue) ? undefined : scope, selection, rows, layout.split);
-  const loadDetail = useCallback(() => api.order(context!, selectedId!), [context, selectedId]);
+  const loadDetail = useCallback(() => api.order(context, selectedId!), [context, selectedId]);
   const detail = useOrdersRead(scope && selectedId ? JSON.stringify([scope, selectedId, revision, detailRevision]) : undefined, loadDetail);
 
   const patchFilters = (patch: Partial<Omit<CounterOrderFilters, "offset">>) => setFilters((current) => changeCounterOrderFilters(current, patch));
   const refresh = () => setRevision((current) => current + 1);
   const search = () => patchFilters({ search: searchDraft.trim() });
   const chooseOrder = (id: string) => { if (scope) setSelection({ scope, id }); };
+  const openPickupMatch = (match: CounterPickupMatch) => {
+    chooseOrder(match.orderId);
+    setPickupMatch(match);
+    setPickupMode(undefined);
+    setDetailRevision((value) => value + 1);
+  };
+  const matchForDetail = pickupMatch?.orderId === selectedId ? pickupMatch : undefined;
+  const outsideQueue = !!matchForDetail && queue.kind === "ready" && !rows.some(({ id }) => id === selectedId);
   const mobileDetail = !layout.split && !!selectedId;
   const counts = queue.kind === "ready" ? queue.data.statusCounts : undefined;
   const activeCount = counts ? (counts.PLACED ?? 0) + (counts.PREPARING ?? 0) + (counts.READY ?? 0) + (counts.CANCEL_REQUESTED ?? 0) : undefined;
@@ -95,32 +104,41 @@ export function CounterOrdersDashboard({ organizationId, preferredStoreId }: { o
         <View style={{ padding: layout.padding }}>
           <Text variant="title">Orders</Text>
           {stores.kind === "loading" ? <StateView kind="loading" title="Loading authorized Stores" /> : stores.kind === "error" ? (
-            <StateView kind="error" title="Could not load Stores" message={stores.message} actionLabel="Retry" onAction={() => setStoreRevision((value) => value + 1)} />
-          ) : <StateView kind="empty" title="No authorized Stores" message="An active Counter Operator profile and Store assignment are required." />}
+            <StateView kind="error" title="Could not load the Counter Store" message={stores.message}
+              actionLabel={isAccessDenied(stores) ? "Open Counter workspace" : "Retry"}
+              onAction={isAccessDenied(stores) ? onOpenWorkspace : () => setStoreRevision((value) => value + 1)} />
+          ) : <StateView kind="empty" title="Active Store unavailable" message="Check your Store and staff assignment in Counter."
+            actionLabel="Open Counter workspace" onAction={onOpenWorkspace} />}
         </View>
       ) : mobileDetail ? (
         <View testID="counter-orders-mobile-detail" style={{ flex: 1, paddingHorizontal: layout.padding, paddingTop: 12, minHeight: 0 }}>
-          <View style={{ alignItems: "flex-start", marginBottom: 10 }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", marginBottom: 10 }}>
             <Button variant="ghost" label="Back to orders" onPress={() => {
               setSelection(undefined);
               if (isAccessDenied(detail)) refresh();
             }} />
+            {isAccessDenied(detail) ? <Button variant="outline" label="Open Counter workspace" onPress={onOpenWorkspace} /> : null}
           </View>
-          <CounterOrderDetails state={detail} onRetry={() => setDetailRevision((value) => value + 1)} />
+          <CounterOrderDetails state={detail} pickupMatch={matchForDetail} outsideQueue={outsideQueue} onRetry={() => setDetailRevision((value) => value + 1)} />
         </View>
       ) : (
         <Workspace style={{ flex: 1, minHeight: 0, ...(layout.split ? content : undefined) }}
           {...(!layout.split ? { contentContainerStyle: content, keyboardShouldPersistTaps: "handled" as const } : {})}>
           <View style={{ gap: 10 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-              <Text variant="title" accessibilityRole="header">Orders</Text>
-              <Button variant="outline" size="sm" label="Refresh" onPress={refresh} />
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+              <View>
+                <Text variant="title" accessibilityRole="header">Orders</Text>
+                <Text variant="bodySmall" color="textMuted" testID="counter-orders-active-store">Store · {store.name}</Text>
+              </View>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                {isAccessDenied(queue) || isAccessDenied(detail) ? <Button variant="outline" size="sm" label="Open Counter workspace" onPress={onOpenWorkspace} /> : <>
+                  <Button size="sm" label="Scan Pickup QR" onPress={() => setPickupMode("scan")} />
+                  <Button size="sm" variant="outline" label="Enter Pickup Code" onPress={() => setPickupMode("manual")} />
+                </>}
+                <Button variant="outline" size="sm" label="Refresh" onPress={refresh} />
+              </View>
             </View>
             <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "flex-end", gap: 8 }}>
-              <View style={{ flex: 1, minWidth: layout.split ? 112 : 130 }}>
-                <ReferenceSelect label="Store" value={store.id} items={stores.data} disabled={stores.data.length === 1}
-                  onChange={(id) => { setStoreId(id); setSelection(undefined); patchFilters({}); }} />
-              </View>
               <View style={{ flex: 1, minWidth: layout.split ? 112 : 130 }}>
                 <ReferenceSelect label="Status" value={filters.status} items={statusOptions} onChange={(status) => patchFilters({ status: status as CounterOrderFilter })} />
               </View>
@@ -152,9 +170,12 @@ export function CounterOrdersDashboard({ organizationId, preferredStoreId }: { o
           <CounterOrdersPanels layout={layout} queue={
             <CounterOrderQueue independent={layout.split} state={queue} selectedId={selectedId} onSelect={chooseOrder} offset={filters.offset} onRetry={refresh}
               onPage={(offset) => setFilters((current) => ({ ...current, offset }))} />
-          } details={<CounterOrderDetails state={selectedId ? detail : undefined} onRetry={() => setDetailRevision((value) => value + 1)} />} />
+          } details={<CounterOrderDetails state={selectedId ? detail : undefined} pickupMatch={matchForDetail}
+            outsideQueue={outsideQueue} onRetry={() => setDetailRevision((value) => value + 1)} />} />
         </Workspace>
       )}
+      {store && pickupMode && !isAccessDenied(queue) && !isAccessDenied(detail) ? <CounterPickupLookup key={pickupMode} mode={pickupMode} storeName={store.name}
+        context={context} onClose={() => setPickupMode(undefined)} onMatch={openPickupMatch} /> : null}
     </View>
   );
 }
@@ -236,7 +257,9 @@ function readableCode(value: string) {
 
 const methodLabels: Record<string, string> = { GOOGLE_PAY: "Google Pay", APPLE_PAY: "Apple Pay", POYNT_COLLECT: "Poynt Collect", PAYMENT_METHOD_NOT_RECORDED: "Unavailable" };
 
-export function CounterOrderDetails({ state, onRetry }: { state?: Remote<CounterOrder>; onRetry: () => void }) {
+export function CounterOrderDetails({ state, pickupMatch, outsideQueue, onRetry }: {
+  state?: Remote<CounterOrder>; pickupMatch?: CounterPickupMatch; outsideQueue?: boolean; onRetry: () => void;
+}) {
   const theme = useTheme();
   const order = state?.kind === "ready" ? state.data : undefined;
   const money = (value: number | null | undefined) => formatTransactionMoney(value, order?.currencyCode);
@@ -248,6 +271,12 @@ export function CounterOrderDetails({ state, onRetry }: { state?: Remote<Counter
       <ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ padding: 12, gap: 12 }}>
         {!state ? <StateView kind="empty" title="Select an order" /> : state.kind === "loading" ? <StateView kind="loading" title="Loading order details" /> :
           state.kind === "error" ? <StateView kind="error" title="Could not load order details" message={state.message} actionLabel="Retry" onAction={onRetry} /> : order && <>
+            {pickupMatch?.orderId === order.id ? <Card padding="sm" elevation="none" style={{ gap: 4 }} testID="counter-pickup-match">
+              <Text variant="bodyStrong" accessibilityLiveRegion="polite">{pickupMatch.kind === "verified" ? "Pickup QR verified" : "Order located by reference"}</Text>
+              <Text variant="bodySmall" color="textMuted">{pickupMatch.kind === "verified" ?
+                "Review the order and payment status. Collection has not been completed." : "The order reference does not verify pickup. Ask for the pickup QR."}</Text>
+              {outsideQueue ? <Text variant="caption" color="textMuted">This order is outside the current queue filters or page.</Text> : null}
+            </Card> : null}
             <View style={{ alignItems: "flex-start", gap: 4 }}>
               <Badge label={statusLabels[order.status] ?? order.status} tone={order.status === "READY" ? "success" : "neutral"} />
               <Text variant="bodyStrong">{order.customerName ?? "Customer name unavailable"}</Text>
