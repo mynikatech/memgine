@@ -638,29 +638,6 @@ export function CounterOrdersDashboard({
             }}
           />
         ) : null}
-        {isCounterDesk &&
-        lifecycle.canAuthorizeCollection &&
-        !lifecycle.verificationMethod ? (
-          <>
-            <Button
-              label="Verify Pickup QR"
-              disabled={actionBusy}
-              onPress={() => openScan("scan", selectedOrder.id)}
-            />
-            <Button
-              label="Verify by Phone OTP"
-              variant="outline"
-              disabled={actionBusy}
-              onPress={() => setVerificationMode("phone")}
-            />
-            <Button
-              label="Staff-Assisted Verification"
-              variant="outline"
-              disabled={actionBusy}
-              onPress={() => setVerificationMode("assisted")}
-            />
-          </>
-        ) : null}
         {isCounterDesk && lifecycle.canStartCash ? (
           <Button
             label="Take Cash Payment"

@@ -298,6 +298,22 @@ export function FulfillmentPickupCard({ organizationId, item, active }: { organi
     const timer = setTimeout(() => setCredential(undefined), Math.max(0, Date.parse(credential.expiresAt) - Date.now()));
     return () => clearTimeout(timer);
   }, [credential]);
+  // Ready pickup presents QR and six-digit code together. Both belong to one order.
+  useEffect(() => {
+    if (!allowed || !active || item.status !== "READY") {
+      setPickupCode(undefined);
+      return;
+    }
+    let live = true;
+    setPickupCode(undefined);
+    setCodeError(undefined);
+    setCodeBusy(true);
+    void read(api.fulfillmentPickupCode(organizationId, item.id))
+      .then((result) => { if (live) setPickupCode(result); })
+      .catch(() => { if (live) setCodeError("Could not load Pickup Code. Refresh pickup credentials."); })
+      .finally(() => { if (live) setCodeBusy(false); });
+    return () => { live = false; };
+  }, [active, allowed, attempt, item.id, item.status, organizationId]);
   useEffect(() => {
     if (!pickupCode) return;
     const ms = Math.max(0, Date.parse(pickupCode.expiresAt) - Date.now());
@@ -313,9 +329,9 @@ export function FulfillmentPickupCard({ organizationId, item, active }: { organi
     {active && !busy && credential && Date.parse(credential.expiresAt) > Date.now() ? <>
       <QrPlaceholder value={credential.reference} />
       <Text variant="caption" color="textMuted">Expires {localTime(credential.expiresAt, item.timezone)}</Text>
-      <Button variant="ghost" size="sm" label="Refresh pickup QR" onPress={() => setAttempt((value) => value + 1)} />
+      <Button variant="ghost" size="sm" label="Refresh QR and Pickup Code" onPress={() => setAttempt((value) => value + 1)} />
     </> : <Button variant={item.status === "READY" ? "primary" : "outline"} disabled={busy}
-      label={busy ? "Loading pickup QR…" : "Get a new pickup QR"} onPress={() => setAttempt((value) => value + 1)} />}
+      label={busy ? "Loading pickup QR…" : "Get pickup QR and code"} onPress={() => setAttempt((value) => value + 1)} />}
     {item.status === "READY" && active ? <View style={{ width: "100%", gap: 8, alignItems: "center" }}>
       <Text variant="bodyStrong">Or use a six-digit Pickup Code</Text>
       {pickupCode && Date.parse(pickupCode.expiresAt) > Date.now() ? <>
@@ -323,11 +339,8 @@ export function FulfillmentPickupCard({ organizationId, item, active }: { organi
         <Text variant="caption" color="textMuted">Expires {localTime(pickupCode.expiresAt, item.timezone)}</Text>
       </> : null}
       {codeError ? <Text variant="caption" color="danger">{codeError}</Text> : null}
-      <Button variant="outline" label={codeBusy ? "Generating…" : "Generate new Pickup Code"} disabled={codeBusy}
-        onPress={() => { setCodeBusy(true); setCodeError(undefined); setPickupCode(undefined);
-          void read(api.fulfillmentPickupCode(organizationId, item.id)).then(setPickupCode)
-            .catch(() => setCodeError("Could not generate a Pickup Code. Try again."))
-            .finally(() => setCodeBusy(false)); }} />
+      {codeBusy ? <Text variant="caption" color="textMuted">Generating Pickup Code…</Text> : null}
+      <Text variant="caption" color="textMuted">Present the QR or code at Counter. Handover is completed separately in Orders.</Text>
     </View> : null}
     {failure ? <Text variant="caption" color="textMuted">{failure}</Text> : null}
   </Card>;

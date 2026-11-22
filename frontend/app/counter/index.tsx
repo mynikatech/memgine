@@ -60,7 +60,7 @@ import type {
   CounterRedemptionTransactionValidation,
 } from "@/src/data/api/counter-api";
 import type { CounterRedemptionSelection } from "@/src/data/api/counter-api";
-import { CounterApi } from "@/src/data/api/counter-api";
+import { CounterApi, type CounterOrder } from "@/src/data/api/counter-api";
 
 const existingOrderApi = new CounterApi();
 
@@ -480,6 +480,17 @@ export default function StaffCounter() {
    * QR
    */
   const [tokenText, setTokenText] = useState("");
+
+  // 309F: Verified pre-order on the existing Counter screen.
+  const [pickupOrder, setPickupOrder] = useState<CounterOrder | null>(null);
+
+  const [pickupCashConfirm, setPickupCashConfirm] = useState(false);
+
+  const [pickupRecoveryConfirm, setPickupRecoveryConfirm] = useState(false);
+
+  const [pickupError, setPickupError] = useState("");
+
+  const pickupPaymentInFlight = useRef(false);
   const [scannerActive, setScannerActive] = useState(false);
   const [qrDiagnosticsVisible, setQrDiagnosticsVisible] = useState(false);
   const [qrDiagnostics, setQrDiagnostics] = useState({
@@ -658,6 +669,12 @@ export default function StaffCounter() {
 
   const resetIdentity = useCallback(() => {
     counterCheckout.clear();
+
+    setPickupOrder(null);
+    setPickupError("");
+    setPickupCashConfirm(false);
+    setPickupRecoveryConfirm(false);
+
     setTokenText("");
     setScannerActive(false);
     setDynamicRedemptionStage("scan");
@@ -1519,6 +1536,11 @@ export default function StaffCounter() {
   };
 
   const resetDynamicRedemption = () => {
+    setPickupOrder(null);
+    setPickupError("");
+    setPickupCashConfirm(false);
+    setPickupRecoveryConfirm(false);
+
     setTokenText("");
     setScannerActive(false);
     setDynamicRedemptionStage("scan");
@@ -1541,6 +1563,108 @@ export default function StaffCounter() {
     qrExecutionInFlight.current = false;
   };
 
+  // 309F: A verified pre-order remains on the existing Counter screen.
+  const refreshPickupOrder = async (orderId: string) => {
+    const response = await existingOrderApi.order(counterContext(), orderId);
+
+    if (!response.success) {
+      throw new Error(response.error.message);
+    }
+
+    setPickupOrder(response.data);
+    return response.data;
+  };
+
+  const runPickupPayment = async (
+    operation:
+      | "start-cash"
+      | "confirm-cash"
+      | "start-terminal"
+      | "recover-terminal",
+  ) => {
+    const order = pickupOrder;
+    const lifecycle = order?.lifecycle;
+
+    if (!order || !lifecycle || pickupPaymentInFlight.current) {
+      return;
+    }
+
+    if (
+      operation === "confirm-cash" &&
+      (!pickupCashConfirm || !lifecycle.canConfirmCash)
+    ) {
+      return;
+    }
+
+    if (
+      operation === "recover-terminal" &&
+      (!pickupRecoveryConfirm || !lifecycle.terminalRecoveryAttemptId)
+    ) {
+      return;
+    }
+
+    if (operation === "start-cash" && !lifecycle.canStartCash) {
+      return;
+    }
+
+    if (operation === "start-terminal" && !lifecycle.canStartTerminal) {
+      return;
+    }
+
+    pickupPaymentInFlight.current = true;
+    setBusy(true);
+    setPickupError("");
+
+    try {
+      const context = counterContext();
+
+      const response =
+        operation === "start-terminal"
+          ? await existingOrderApi.startOrderTerminal(
+              context,
+              order.id,
+              lifecycle.version,
+            )
+          : operation === "recover-terminal"
+            ? await existingOrderApi.recoverOrderTerminal(
+                context,
+                order.id,
+                lifecycle.version,
+                lifecycle.terminalRecoveryAttemptId!,
+              )
+            : await existingOrderApi.transitionOrder(
+                context,
+                order.id,
+                operation,
+                lifecycle.version,
+              );
+
+      if (!response.success) {
+        setPickupError(response.error.message);
+      } else {
+        setPickupCashConfirm(false);
+        setPickupRecoveryConfirm(false);
+
+        setPickupError(
+          operation === "start-terminal"
+            ? "Terminal requested. Check the physical terminal and refresh payment status. Do not repeat an uncertain charge."
+            : operation === "recover-terminal"
+              ? "Terminal check recorded. Refresh payment status before taking cash."
+              : "Payment action recorded. Refresh the order if the status has not updated.",
+        );
+      }
+
+      await refreshPickupOrder(order.id);
+    } catch {
+      setPickupError(
+        "Payment outcome is unknown. Check the existing payment/terminal and refresh; do not retry blindly.",
+      );
+    } finally {
+      pickupPaymentInFlight.current = false;
+      setBusy(false);
+    }
+  };
+
   const resolveRedemptionQr = async (rawReference: string) => {
     const qrReference = rawReference.trim();
     if (!qrReference) {
@@ -1560,6 +1684,33 @@ export default function StaffCounter() {
       const context = counterContext();
       // The existing Counter scanner accepts both secure Pickup QRs and redemption QRs.
       // Pickup QR verification and payment belong here, not in Orders.
+      // Six-digit Pickup Code for an existing pre-order.
+      if (/^[0-9]{6}$/.test(qrReference)) {
+        const result = await existingOrderApi.authorizePickupCode(
+          context,
+          qrReference,
+        );
+
+        if (!result.success) {
+          throw new Error(result.error.message);
+        }
+
+        if (result.data.code !== "VERIFIED" || !result.data.orderId) {
+          throw new Error(
+            result.data.code === "RATE_LIMITED"
+              ? "Too many attempts. Try again later."
+              : "Invalid, expired, or already verified Pickup Code. Ask the customer to refresh credentials.",
+          );
+        }
+
+        await refreshPickupOrder(result.data.orderId);
+
+        setTokenText("");
+        qrScanInFlight.current = false;
+        return;
+      }
+
+      // Existing secure Pickup QR.
       if (qrReference.startsWith("MEMGINE_PICKUP:")) {
         const lookup = await existingOrderApi.verifyPickupQr(
           context,
@@ -1592,11 +1743,10 @@ export default function StaffCounter() {
             "This order cannot be verified for collection. Review its latest status.",
           );
         }
+        await refreshPickupOrder(orderId);
+
         setTokenText("");
-        router.push({
-          pathname: "/counter/order-service",
-          params: { orderId },
-        } as never);
+        qrScanInFlight.current = false;
         return;
       }
       const transaction = await services.counter.resolveRedemptionTransactionQr(
@@ -3777,15 +3927,6 @@ export default function StaffCounter() {
       <Text style={styles.muted}>
         Redeem member benefits — QR or staff-assisted.
       </Text>
-      <Pressable
-        testID="counter-existing-order-verify-pay"
-        style={styles.secondaryBtn}
-        onPress={() => router.push("/counter/order-service" as never)}
-      >
-        <Text style={styles.secondaryBtnText}>
-          Existing Pre-Order · Verify & Pay
-        </Text>
-      </Pressable>
 
       {/* Fixed staff context */}
       <View style={styles.card}>
@@ -4374,10 +4515,11 @@ export default function StaffCounter() {
             </>
           ) : (
             <>
-              <Text style={styles.cardTitle}>Scan Redemption QR</Text>
+              <Text style={styles.cardTitle}>Scan Redemption / Pickup QR</Text>
               <Text style={styles.muted}>
-                Scan the customer&apos;s secure redemption QR. Its contents are
-                verified by Memgine before any redemption is shown.
+                Scan the customer&apos;s Redemption or Pickup QR. For a
+                pre-order, verification and payment happen here; Orders handles
+                handover.
               </Text>
               {scannerActive ? (
                 <View style={styles.cameraFrame}>
@@ -4497,15 +4639,18 @@ export default function StaffCounter() {
                 style={[styles.primaryBtn, busy && styles.btnDisabled]}
               >
                 <Text style={styles.primaryBtnText}>
-                  {busy ? "Resolving..." : "Scan Redemption QR"}
+                  {busy ? "Resolving..." : "Scan Redemption / Pickup QR"}
                 </Text>
               </Pressable>
-              <Text style={styles.label}>Enter QR reference</Text>
+              <Text style={styles.label}>
+                Enter 6-digit Pickup Code / Redemption QR reference
+              </Text>
               <TextInput
                 testID="counter-qr-input"
+                editable={!pickupOrder}
                 value={tokenText}
                 onChangeText={setTokenText}
-                placeholder="Redemption QR reference"
+                placeholder="6-digit Pickup Code or QR reference"
                 placeholderTextColor={COLORS.textMuted}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -4513,7 +4658,7 @@ export default function StaffCounter() {
               />
               <Pressable
                 testID="counter-redeem-qr"
-                disabled={!tokenText.trim() || busy}
+                disabled={!tokenText.trim() || busy || !!pickupOrder}
                 onPress={() => {
                   Keyboard.dismiss();
                   void resolveRedemptionQr(tokenText);
@@ -4523,8 +4668,181 @@ export default function StaffCounter() {
                   (!tokenText.trim() || busy) && styles.btnDisabled,
                 ]}
               >
-                <Text style={styles.secondaryBtnText}>Use QR Reference</Text>
+                <Text style={styles.secondaryBtnText}>
+                  Verify Code / Use QR Reference
+                </Text>
               </Pressable>
+
+              {pickupOrder ? (
+                <View style={styles.card} testID="counter-309f-pickup-order">
+                  <Text style={styles.cardTitle}>
+                    Pre-order Verified at Counter
+                  </Text>
+
+                  <Text style={styles.muted}>
+                    Order: {pickupOrder.reference}
+                  </Text>
+
+                  <Text style={styles.muted}>
+                    Customer: {pickupOrder.customerName ?? "Customer verified"}
+                  </Text>
+
+                  <Text style={styles.muted}>
+                    Store: {pickupOrder.storeName}
+                  </Text>
+
+                  <Text style={styles.muted}>
+                    Order status: {pickupOrder.status}
+                  </Text>
+
+                  <Text style={styles.muted}>
+                    Verification:{" "}
+                    {pickupOrder.lifecycle?.verificationMethod ?? "Pending"}
+                  </Text>
+
+                  <Text style={styles.muted}>
+                    Payment: {pickupOrder.lifecycle?.payment ?? "Unconfirmed"}
+                  </Text>
+
+                  {pickupOrder.lifecycle?.outstandingMinor != null ? (
+                    <Text style={styles.muted}>
+                      Outstanding:{" "}
+                      {formatTransactionMoney(
+                        pickupOrder.lifecycle.outstandingMinor,
+                        pickupOrder.currencyCode,
+                      )}
+                    </Text>
+                  ) : null}
+
+                  {pickupOrder.lifecycle?.payment === "NO_PAYMENT_REQUIRED" ||
+                  pickupOrder.lifecycle?.payment === "VERIFIED_ONLINE" ||
+                  pickupOrder.lifecycle?.payment === "VERIFIED_AT_COUNTER" ? (
+                    <Text style={styles.muted}>
+                      No further payment required. Complete handover in Orders.
+                    </Text>
+                  ) : null}
+
+                  {pickupOrder.lifecycle?.canStartTerminal ? (
+                    <Pressable
+                      disabled={busy}
+                      onPress={() => void runPickupPayment("start-terminal")}
+                      style={[styles.primaryBtn, busy && styles.btnDisabled]}
+                    >
+                      <Text style={styles.primaryBtnText}>
+                        Take Terminal Payment
+                      </Text>
+                    </Pressable>
+                  ) : null}
+
+                  {pickupOrder.lifecycle?.canStartCash ? (
+                    <Pressable
+                      disabled={busy}
+                      onPress={() => void runPickupPayment("start-cash")}
+                      style={[styles.secondaryBtn, busy && styles.btnDisabled]}
+                    >
+                      <Text style={styles.secondaryBtnText}>
+                        Take Cash Payment
+                      </Text>
+                    </Pressable>
+                  ) : null}
+
+                  {pickupOrder.lifecycle?.canConfirmCash ? (
+                    <>
+                      <Pressable
+                        onPress={() => setPickupCashConfirm((v) => !v)}
+                        style={styles.secondaryBtn}
+                      >
+                        <Text style={styles.secondaryBtnText}>
+                          {pickupCashConfirm ? "✓ " : "○ "}I received the
+                          displayed cash amount
+                        </Text>
+                      </Pressable>
+
+                      <Pressable
+                        disabled={busy || !pickupCashConfirm}
+                        onPress={() => void runPickupPayment("confirm-cash")}
+                        style={[
+                          styles.primaryBtn,
+                          (busy || !pickupCashConfirm) && styles.btnDisabled,
+                        ]}
+                      >
+                        <Text style={styles.primaryBtnText}>
+                          Confirm Cash Received
+                        </Text>
+                      </Pressable>
+                    </>
+                  ) : null}
+
+                  {pickupOrder.lifecycle?.terminalRecoveryAttemptId ? (
+                    <>
+                      <Text style={styles.muted}>
+                        Payment unconfirmed. Inspect the physical terminal
+                        before taking cash.
+                      </Text>
+
+                      <Pressable
+                        onPress={() => setPickupRecoveryConfirm((v) => !v)}
+                        style={styles.secondaryBtn}
+                      >
+                        <Text style={styles.secondaryBtnText}>
+                          {pickupRecoveryConfirm ? "✓ " : "○ "}I confirmed no
+                          successful terminal charge
+                        </Text>
+                      </Pressable>
+
+                      <Pressable
+                        disabled={busy || !pickupRecoveryConfirm}
+                        onPress={() =>
+                          void runPickupPayment("recover-terminal")
+                        }
+                        style={[
+                          styles.secondaryBtn,
+                          (busy || !pickupRecoveryConfirm) &&
+                            styles.btnDisabled,
+                        ]}
+                      >
+                        <Text style={styles.secondaryBtnText}>
+                          Check Terminal and Take Cash
+                        </Text>
+                      </Pressable>
+                    </>
+                  ) : null}
+
+                  {pickupError ? (
+                    <Text style={styles.errorText}>{pickupError}</Text>
+                  ) : null}
+
+                  <Pressable
+                    disabled={busy}
+                    onPress={() =>
+                      void refreshPickupOrder(pickupOrder.id).catch(() =>
+                        setPickupError("Refresh failed. Check order status."),
+                      )
+                    }
+                    style={[styles.secondaryBtn, busy && styles.btnDisabled]}
+                  >
+                    <Text style={styles.secondaryBtnText}>
+                      Refresh Payment / Verification Status
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    disabled={busy}
+                    onPress={resetDynamicRedemption}
+                    style={[styles.secondaryBtn, busy && styles.btnDisabled]}
+                  >
+                    <Text style={styles.secondaryBtnText}>
+                      Done / Verify Next Customer
+                    </Text>
+                  </Pressable>
+
+                  <Text style={styles.muted}>
+                    Order preparation, final handover and benefit consumption
+                    remain in Orders.
+                  </Text>
+                </View>
+              ) : null}
+
               {error ? (
                 <Pressable
                   testID="counter-redemption-scan-again"
