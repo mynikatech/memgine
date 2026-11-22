@@ -104,6 +104,7 @@ const verificationLabels = {
   QR: "Pickup QR",
   PHONE_OTP: "Phone OTP",
   STAFF_ASSISTED: "Staff-Assisted",
+  PICKUP_CODE: "Six-digit Pickup Code",
 };
 type Remote<T> =
   | { kind: "loading" }
@@ -302,6 +303,10 @@ export function CounterOrdersDashboard({
   ) => {
     chooseOrder(match.orderId);
     setPickupMatch(match);
+    if (match.kind === "authorized") {
+      setActionNotice({ orderId: match.orderId,
+        message: "Pickup Code verified. Customer is authorized at Counter; complete handover from Orders." });
+    }
     setPickupMode(undefined);
     if (
       isCounterDesk &&
@@ -1292,9 +1297,7 @@ function CounterOrderSupportForm({
 
   useEffect(() => {
     void findCases("");
-    return () => {
-      requestId.current++;
-    };
+    return () => { requestId.current++; };
   }, [order.id]);
 
   const submit = async () => {
@@ -1306,11 +1309,7 @@ function CounterOrderSupportForm({
     setError(undefined);
     try {
       const result = await api.updateOrderSupport(
-        context,
-        order.id,
-        action,
-        order.lifecycle.version,
-        candidate.ticketNumber,
+        context, order.id, action, order.lifecycle.version, candidate.ticketNumber,
       );
       if (result.success) onUpdated();
       else setError(result.error.message);
@@ -1327,7 +1326,7 @@ function CounterOrderSupportForm({
       <View style={{ gap: 10 }}>
         <Text variant="bodyStrong">{order.reference}</Text>
         <Text variant="caption" color="textMuted">
-          Showing eligible open cases for this customer&apos;s order.
+          Showing eligible open cases for this customer's order.
         </Text>
         <Input
           label="Search by ticket number or subject"
@@ -1353,15 +1352,11 @@ function CounterOrderSupportForm({
               padding: 12,
               borderWidth: 1,
               borderRadius: 8,
-              borderColor:
-                selected === item.id
-                  ? theme.colors.primary
-                  : theme.colors.border,
+              borderColor: selected === item.id ? theme.colors.primary : theme.colors.border,
             }}
           >
             <Text variant="bodyStrong">
-              {selected === item.id ? "✓ " : ""}
-              {item.ticketNumber} · {item.subject}
+              {selected === item.id ? "✓ " : ""}{item.ticketNumber} · {item.subject}
             </Text>
             <Text variant="caption" color="textMuted">
               {item.category} · {item.status}
@@ -1369,15 +1364,9 @@ function CounterOrderSupportForm({
           </Pressable>
         ))}
         {!loading && !cases.length && !error ? (
-          <Text variant="caption" color="textMuted">
-            No eligible open Support cases found.
-          </Text>
+          <Text variant="caption" color="textMuted">No eligible open Support cases found.</Text>
         ) : null}
-        {error ? (
-          <Text color="danger" accessibilityLiveRegion="polite">
-            {error}
-          </Text>
-        ) : null}
+        {error ? <Text color="danger" accessibilityLiveRegion="polite">{error}</Text> : null}
         <Button
           label="Link Selected Case"
           disabled={busy || loading || !selected}
@@ -1405,23 +1394,16 @@ function CounterOrderNoShowForm({
   const inFlight = useRef(false);
 
   const submit = async () => {
-    if (!order.lifecycle || inFlight.current || reason.trim().length < 5)
-      return;
+    if (!order.lifecycle || inFlight.current || reason.trim().length < 5) return;
     inFlight.current = true;
     setBusy(true);
     setError(undefined);
     try {
       const result = await api.reportOrderNoShow(
-        context,
-        order.id,
-        order.lifecycle.version,
-        reason.trim(),
+        context, order.id, order.lifecycle.version, reason.trim(),
       );
-      if (
-        result.success &&
-        (result.data.code === "NO_SHOW_RECORDED" ||
-          result.data.code === "ALREADY_RECORDED")
-      ) {
+      if (result.success &&
+          (result.data.code === "NO_SHOW_RECORDED" || result.data.code === "ALREADY_RECORDED")) {
         onReported(result.data.ticketNumber);
       } else if (!result.success) {
         setError(result.error.message);
@@ -1429,9 +1411,7 @@ function CounterOrderNoShowForm({
         setError("No-show outcome was not confirmed. Refresh the order.");
       }
     } catch {
-      setError(
-        "No-show outcome is unknown. Refresh the order before retrying.",
-      );
+      setError("No-show outcome is unknown. Refresh the order before retrying.");
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -1443,8 +1423,8 @@ function CounterOrderNoShowForm({
       <View style={{ gap: 10 }}>
         <Text variant="bodyStrong">{order.reference}</Text>
         <Text variant="caption" color="textMuted">
-          A new Support request will be created and linked automatically. The
-          order will not be cancelled or refunded.
+          A new Support request will be created and linked automatically.
+          The order will not be cancelled or refunded.
         </Text>
         <Input
           label="Reason"
@@ -1453,11 +1433,7 @@ function CounterOrderNoShowForm({
           maxLength={500}
           editable={!busy}
         />
-        {error ? (
-          <Text color="danger" accessibilityLiveRegion="polite">
-            {error}
-          </Text>
-        ) : null}
+        {error ? <Text color="danger" accessibilityLiveRegion="polite">{error}</Text> : null}
         <Button
           label="Confirm No-Show"
           disabled={busy || reason.trim().length < 5}

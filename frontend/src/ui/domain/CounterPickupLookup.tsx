@@ -9,7 +9,7 @@ import { createPickupAttemptGate, pickupLookupMessage, pickupOrderReference, pic
 
 const api = new CounterApi();
 
-export type CounterPickupMatch = { orderId: string; kind: "verified" | "reference" };
+export type CounterPickupMatch = { orderId: string; kind: "verified" | "reference" | "authorized" };
 
 export function CounterPickupLookup({ mode, context, storeName, expectedOrderId, onClose, onMatch }: {
   mode: "scan" | "manual"; context: CounterContext; storeName: string; expectedOrderId?: string; onClose: () => void;
@@ -27,6 +27,7 @@ export function CounterPickupLookup({ mode, context, storeName, expectedOrderId,
   const [error, setError] = useState<string>();
   const [qrInput, setQrInput] = useState("");
   const [orderInput, setOrderInput] = useState("");
+  const [pickupCode, setPickupCode] = useState("");
   const live = useRef(false);
   const awaitingPermission = useRef(false);
 
@@ -88,6 +89,30 @@ export function CounterPickupLookup({ mode, context, storeName, expectedOrderId,
     }
   };
 
+  const submitPickupCode = async () => {
+    if (!/^[0-9]{6}$/.test(pickupCode) || !gate.begin("manual")) return;
+    setBusy(true); setError(undefined);
+    try {
+      const result = await api.authorizePickupCode(context, pickupCode, expectedOrderId);
+      if (!live.current) return;
+      if (!result.success) { setError(result.error.message); return; }
+      if (result.data.code === "VERIFIED" && result.data.orderId) {
+        if (expectedOrderId && expectedOrderId !== result.data.orderId) {
+          setError("Pickup Code verified for another order. Refresh the order list before proceeding.");
+        } else {
+          onMatch({ orderId: result.data.orderId, kind: "authorized" });
+        }
+        setPickupCode("");
+      } else {
+        setError(result.data.code === "RATE_LIMITED"
+          ? "Too many incorrect attempts. Try again later."
+          : result.data.code === "ALREADY_VERIFIED" ? "Order is already verified. Refresh its details."
+          : "Invalid or expired Pickup Code. Ask the customer for a new code.");
+      }
+    } catch { if (live.current) setError("Pickup Code verification could not be confirmed. Refresh the order."); }
+    finally { gate.finish(); if (live.current) setBusy(false); }
+  };
+
   const title = mode === "scan" ? "Scan Pickup QR" : "Enter Pickup Code";
   const content = <View style={{ gap: 12 }}>
     <Text variant="bodySmall" color="textMuted">Store · {storeName}</Text>
@@ -105,7 +130,14 @@ export function CounterPickupLookup({ mode, context, storeName, expectedOrderId,
         </View>
         <Button label="Stop camera" variant="ghost" onPress={() => { gate.disarmCamera(); setCamera(false); }} />
       </> : <Button label={permissionPending ? "Requesting camera access…" : "Use camera"} disabled={busy || permissionPending} onPress={() => void startCamera()} />}
-    </> : <Text>Customers receive a pickup QR. Paste its reference to verify it, or use the order reference to find the order.</Text>}
+    </> : <Text>Enter the six-digit code displayed beside the customer’s pickup QR, or use another verification method.</Text>}
+    {mode === "manual" ? <Card padding="md" elevation="none" style={{ gap: 8 }}>
+      <Input label="Six-digit Pickup Code" value={pickupCode} onChangeText={(value) => setPickupCode(value.replace(/\D/g, "").slice(0, 6))}
+        keyboardType="number-pad" maxLength={6} editable={!busy} secureTextEntry returnKeyType="go"
+        onSubmitEditing={() => void submitPickupCode()} />
+      <Button label="Verify Pickup Code" disabled={busy || pickupCode.length !== 6} onPress={() => void submitPickupCode()} />
+      <Text variant="caption" color="textMuted">Code verification authorizes the matching order for 15 minutes. Orders handles final handover.</Text>
+    </Card> : null}
     {notice ? <Text accessibilityLiveRegion="polite" variant="bodySmall" color="textMuted">{notice}</Text> : null}
     {error ? <Text accessibilityLiveRegion="polite" variant="bodySmall" color="danger">{error}</Text> : null}
     {busy ? <Text accessibilityLiveRegion="polite" variant="bodySmall">Checking pickup…</Text> : null}

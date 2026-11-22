@@ -8,6 +8,9 @@ import java.util.Base64
 class CounterPickupQrRequest(val credential: String)
 
 @Serializable
+class CounterPickupCodeRequest(val code: String, val expectedOrderId: String? = null)
+
+@Serializable
 class CounterPickupReferenceRequest(val reference: String)
 
 @Serializable

@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 309f-six-digit-pickup-code
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/309f-six-digit-pickup-code.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

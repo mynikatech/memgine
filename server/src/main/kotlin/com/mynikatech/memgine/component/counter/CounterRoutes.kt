@@ -37,6 +37,14 @@ fun Route.counterRoutes(service: CounterService, commercePaymentService: Counter
                 val request = call.receivePickupLookup<CounterPickupQrRequest>()
                 call.respond(ApiResponse.success(service.verifyPickup(org, store, staff, request.credential, principal), call.callId))
             }
+            post("/pickup/code") {
+                val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+                val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
+                val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
+                val request = call.receivePickupLookup<CounterPickupCodeRequest>()
+                call.respond(ApiResponse.success(service.authorizePickupCode(org, store, staff, request.code, request.expectedOrderId,
+                    call.authenticatedPrincipal()), call.callId))
+            }
             post("/pickup/reference") {
                 val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
                 val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")

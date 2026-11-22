@@ -1,6 +1,7 @@
 package com.mynikatech.memgine.component.fulfillmentconfig
 
 import com.mynikatech.memgine.component.commerce.CounterCommercePaymentService
+import com.mynikatech.memgine.component.counter.PickupCodeSecurity
 import com.mynikatech.memgine.component.commerce.CounterRedemptionQuoteRow
 import com.mynikatech.memgine.component.payment.PaymentService
 import com.mynikatech.memgine.exception.BadRequestException
@@ -94,6 +95,12 @@ data class CustomerFulfillmentChange(val version: Int, val collectionLocalTime: 
 
 @Serializable
 data class CustomerFulfillmentPickup(val reference: String, val expiresAt: String)
+
+@Serializable
+data class CustomerFulfillmentPickupCode(
+    val code: String,
+    val expiresAt: String
+)
 
 @Serializable
 data class CustomerCounterQrLookup(val selection: CustomerFulfillmentSelection, val transactionId: String? = null, val paymentIntentId: String? = null)
@@ -249,6 +256,39 @@ class CustomerFulfillmentService(
     fun pickup(org: String, actor: String, id: String): CustomerFulfillmentPickup = database {
         val token = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32).also(pickupRandom::nextBytes))
         CustomerFulfillmentPickup("MEMGINE_PICKUP:$token", sql.issuePickup(org, actor, id, digest(token)))
+    }
+ fun pickupCode(org: String, actor: String, id: String): CustomerFulfillmentPickupCode = database {
+        // Ownership and READY are checked in the SECURITY DEFINER lookup and again at issue time.
+        val store = sql.pickupCodeStore(org, actor, id)
+            ?: throw NotFoundException("Pickup Code is unavailable for this order")
+
+        repeat(12) {
+            val code = PickupCodeSecurity.newCode()
+
+            val value = sql.issuePickupCode(
+                org,
+                actor,
+                id,
+                PickupCodeSecurity.digest(org, store, code),
+                PickupCodeSecurity.scopeDigest(org, store, code)
+            )
+
+            if (value == "UNAVAILABLE") {
+                throw NotFoundException("Pickup Code is unavailable")
+            }
+
+            if (value == "INVALID") {
+                throw BadRequestException("Invalid Pickup Code")
+            }
+
+            if (value != "COLLISION") {
+                return@database CustomerFulfillmentPickupCode(code, value)
+            }
+        }
+
+        throw ConflictException(
+            "Could not allocate a unique Pickup Code. Please try again."
+        )
     }
 
     fun requestChange(org: String, actor: String, id: String, request: CustomerFulfillmentChange): JsonObject = database {
@@ -423,6 +463,19 @@ fun Route.customerFulfillmentRoutes(service: CustomerFulfillmentService) {
         post("/requests/{fulfillmentId}/pickup") {
             call.respond(ApiResponse.success(service.pickup(call.fulfillmentOrg(), call.authenticatedPrincipal().userId, call.fulfillmentId()), call.callId))
         }
+        
+        post("/requests/{fulfillmentId}/pickup-code") {
+            call.respond(
+                ApiResponse.success(
+                    service.pickupCode(
+                        call.fulfillmentOrg(),
+                        call.authenticatedPrincipal().userId,
+                        call.fulfillmentId()
+                    ),
+                    call.callId
+                )
+            )
+        }
     }
 }
 
@@ -477,6 +530,27 @@ interface CustomerFulfillmentSql {
     fun requestChange(@Bind("org") org: String, @Bind("actor") actor: String, @Bind("order") order: String,
         @Bind("version") version: Int, @Bind("collection") collection: String?): Boolean
 
+ @SqlQuery("SELECT customer_fulfillment_pickup_code_store(:org,:actor,:order)")
+    fun pickupCodeStore(
+        @Bind("org") org: String,
+        @Bind("actor") actor: String,
+        @Bind("order") order: String
+    ): String?
+
+    @SqlQuery("SELECT issue_customer_fulfillment_pickup_code(:org,:actor,:order,:hash,:scopeHash)")
+    fun issuePickupCode(
+        @Bind("org") org: String,
+        @Bind("actor") actor: String,
+        @Bind("order") order: String,
+        @Bind("hash") hash: String,
+        @Bind("scopeHash") scopeHash: String
+    ): String
+
     @SqlQuery("SELECT issue_customer_fulfillment_pickup(:org,:actor,:order,:hash)")
-    fun issuePickup(@Bind("org") org: String, @Bind("actor") actor: String, @Bind("order") order: String, @Bind("hash") hash: String): String
+    fun issuePickup(
+        @Bind("org") org: String,
+        @Bind("actor") actor: String,
+        @Bind("order") order: String,
+        @Bind("hash") hash: String
+    ): String
 }

@@ -52,6 +52,11 @@ interface CounterSql {
         @Bind("staff") staff: String, @Bind("actor") actor: String, @Bind("order") order: String,
         @Bind("version") version: Int, @Bind("reason") reason: String): String
 
+    @SqlQuery("SELECT counter_authorize_pickup_code(:org,:store,:staff,:actor,:hash,:previous,:expected)")
+    fun authorizePickupCode(@Bind("org") org: String, @Bind("store") store: String, @Bind("staff") staff: String,
+        @Bind("actor") actor: String, @Bind("hash") hash: String, @Bind("previous") previous: String,
+        @Bind("expected") expected: String?): String
+
     @SqlQuery("SELECT verify_counter_pickup_qr(:org,:store,:staff,:actor,:hash)")
     fun verifyPickup(@Bind("org") org: String, @Bind("store") store: String, @Bind("staff") staff: String,
         @Bind("actor") actor: String, @Bind("hash") hash: String): String

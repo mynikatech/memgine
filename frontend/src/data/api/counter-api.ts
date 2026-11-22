@@ -25,65 +25,31 @@ export type CounterContext = {
   staffId: ID;
 };
 
-export type CounterOrderStatus =
-  | "PLACED"
-  | "PREPARING"
-  | "READY"
-  | "FULFILLED"
-  | "CANCEL_REQUESTED"
-  | "CANCELLED";
+export type CounterOrderStatus = "PLACED" | "PREPARING" | "READY" | "FULFILLED" | "CANCEL_REQUESTED" | "CANCELLED";
 export type CounterOrderFilter = CounterOrderStatus | "ACTIVE" | "ALL";
 export type CounterOrderStore = { id: ID; name: string; staffId: ID };
 export type CounterOrderItem = {
-  id: ID;
-  name: string;
-  quantity: number;
-  unitPriceMinor?: number | null;
-  subtotalMinor?: number | null;
-  discountMinor?: number | null;
+  id: ID; name: string; quantity: number;
+  unitPriceMinor?: number | null; subtotalMinor?: number | null; discountMinor?: number | null;
 };
 export type CounterOrder = {
-  id: ID;
-  reference: string;
-  status: CounterOrderStatus;
-  storeId: ID;
-  storeName: string;
-  timezone: string;
-  placedAt: string;
-  pickupAt?: string | null;
-  currencyCode?: string | null;
-  totalMinor?: number | null;
-  paymentState: string;
-  paymentMethod?: string | null;
-  customerName?: string | null;
-  subtotalMinor?: number | null;
-  discountMinor?: number | null;
-  taxMinor?: number | null;
-  items: CounterOrderItem[];
-  timeline: { id: ID; type: string; at: string }[];
+  id: ID; reference: string; status: CounterOrderStatus; storeId: ID; storeName: string; timezone: string;
+  placedAt: string; pickupAt?: string | null; currencyCode?: string | null; totalMinor?: number | null;
+  paymentState: string; paymentMethod?: string | null; customerName?: string | null;
+  subtotalMinor?: number | null; discountMinor?: number | null; taxMinor?: number | null;
+  items: CounterOrderItem[]; timeline: { id: ID; type: string; at: string }[];
   lifecycle?: CounterOrderLifecycle;
 };
 export type CounterOrderLifecycle = {
   version: number;
-  payment:
-    | "NO_PAYMENT_REQUIRED"
-    | "VERIFIED_ONLINE"
-    | "VERIFIED_AT_COUNTER"
-    | "PAYMENT_REQUIRED"
-    | "PAYMENT_UNRESOLVED"
-    | "FINANCIAL_EXCEPTION"
-    | "REFUND_CONFLICT"
-    | "CASH_CONFIRMATION_REQUIRED"
-    | "CASH_RECOVERY_READY";
+  payment: "NO_PAYMENT_REQUIRED" | "VERIFIED_ONLINE" | "VERIFIED_AT_COUNTER" | "PAYMENT_REQUIRED" |
+    "PAYMENT_UNRESOLVED" | "FINANCIAL_EXCEPTION" | "REFUND_CONFLICT" | "CASH_CONFIRMATION_REQUIRED" | "CASH_RECOVERY_READY";
   outstandingMinor?: number | null;
   collectedAt?: string | null;
   canStartPreparing: boolean;
   canMarkReady: boolean;
   canCompleteCollection: boolean;
-  journey?:
-    | "IMMEDIATE_PAY_AT_COUNTER"
-    | "ADVANCE_PAY_AT_COUNTER"
-    | "ADVANCE_PAY_NOW";
+  journey?: "IMMEDIATE_PAY_AT_COUNTER" | "ADVANCE_PAY_AT_COUNTER" | "ADVANCE_PAY_NOW";
   canAuthorizeCollection?: boolean;
   canStartCash?: boolean;
   canConfirmCash?: boolean;
@@ -94,52 +60,18 @@ export type CounterOrderLifecycle = {
   canLinkSupport?: boolean;
   canRequestCancellation?: boolean;
   canReportNoShow?: boolean;
-  verificationMethod?: "QR" | "PHONE_OTP" | "STAFF_ASSISTED" | null;
+  verificationMethod?: "QR" | "PHONE_OTP" | "STAFF_ASSISTED" | "PICKUP_CODE" | null;
 };
-export type CounterOrderTransition =
-  | "start-preparing"
-  | "mark-ready"
-  | "start-cash"
-  | "confirm-cash";
+export type CounterOrderTransition = "start-preparing" | "mark-ready" | "start-cash" | "confirm-cash";
 export type CounterOrderSupportAction = "link-support";
-export type CounterSupportCandidate = {
-  id: ID;
-  ticketNumber: string;
-  subject: string;
-  category: string;
-  status: string;
-  createdAt: string;
+export type CounterSupportCandidate = { id: ID; ticketNumber: string; subject: string; category: string; status: string; createdAt: string };
+export type CounterNoShowResult = { code: "NO_SHOW_RECORDED" | "ALREADY_RECORDED"; supportRequestId: ID; ticketNumber: string };
+export type CounterOrderPage = { orders: CounterOrder[]; total: number; statusCounts: Partial<Record<CounterOrderStatus, number>> };
+export type CounterOrderFilters = { status: CounterOrderFilter; search: string; pickupDate?: string; offset: number };
+export type CounterPickupVerification = { code: "VERIFIED"; orderId: ID } | {
+  code: "INVALID" | "WRONG_STORE" | "EXPIRED" | "REVOKED" | "USED" | "ORDER_UNAVAILABLE" | "RATE_LIMITED" | "ALREADY_VERIFIED";
 };
-export type CounterNoShowResult = {
-  code: "NO_SHOW_RECORDED" | "ALREADY_RECORDED";
-  supportRequestId: ID;
-  ticketNumber: string;
-};
-export type CounterOrderPage = {
-  orders: CounterOrder[];
-  total: number;
-  statusCounts: Partial<Record<CounterOrderStatus, number>>;
-};
-export type CounterOrderFilters = {
-  status: CounterOrderFilter;
-  search: string;
-  pickupDate?: string;
-  offset: number;
-};
-export type CounterPickupVerification =
-  | { code: "VERIFIED"; orderId: ID }
-  | {
-      code:
-        | "INVALID"
-        | "WRONG_STORE"
-        | "EXPIRED"
-        | "REVOKED"
-        | "USED"
-        | "ORDER_UNAVAILABLE";
-    };
-export type CounterPickupReferenceLookup =
-  | { code: "LOCATED"; orderId: ID }
-  | { code: "NOT_FOUND" };
+export type CounterPickupReferenceLookup = { code: "LOCATED"; orderId: ID } | { code: "NOT_FOUND" };
 
 export type CounterSubscription = OrgAdminSubscription & {
   userId: ID;
@@ -204,12 +136,7 @@ export type PaymentIntent = {
 
   membershipPlanId?: ID | null;
   fulfillmentCustomerLabel?: string | null;
-  fulfillmentCheckout?: {
-    organizationId: ID;
-    subscriptionId: ID;
-    fulfillmentId?: ID | null;
-    verifiedCapture?: boolean;
-  } | null;
+  fulfillmentCheckout?: { organizationId: ID; subscriptionId: ID; fulfillmentId?: ID | null; verifiedCapture?: boolean } | null;
 
   providerReferenceId?: string | null;
 
@@ -609,219 +536,77 @@ export class CounterApi {
   }
 
   orderStores(organizationId: ID): Promise<ApiResult<CounterOrderStore[]>> {
-    return httpClient.get(
-      `/api/v1/organizations/${encodeURIComponent(organizationId)}/counter/orders/stores`,
-    );
+    return httpClient.get(`/api/v1/organizations/${encodeURIComponent(organizationId)}/counter/orders/stores`);
   }
 
-  orders(
-    ctx: CounterContext,
-    filters: CounterOrderFilters,
-  ): Promise<ApiResult<CounterOrderPage>> {
-    const params = new URLSearchParams({
-      status: filters.status,
-      offset: String(filters.offset),
-      limit: "25",
-    });
+  orders(ctx: CounterContext, filters: CounterOrderFilters): Promise<ApiResult<CounterOrderPage>> {
+    const params = new URLSearchParams({ status: filters.status, offset: String(filters.offset), limit: "25" });
     if (filters.search.trim()) params.set("search", filters.search.trim());
     if (filters.pickupDate) params.set("pickupDate", filters.pickupDate);
     return httpClient.get(`${this.query(ctx, "orders")}&${params}`);
   }
 
   order(ctx: CounterContext, orderId: ID): Promise<ApiResult<CounterOrder>> {
-    return httpClient.get(
-      this.query(ctx, `orders/${encodeURIComponent(orderId)}`),
-    );
+    return httpClient.get(this.query(ctx, `orders/${encodeURIComponent(orderId)}`));
   }
 
-  transitionOrder(
-    ctx: CounterContext,
-    orderId: ID,
-    action: CounterOrderTransition,
-    version: number,
-  ): Promise<
-    ApiResult<{ code: "ORDER_UPDATED" | "CASH_STARTED" | "PAYMENT_RECORDED" }>
-  > {
-    return httpClient.post(
-      this.query(
-        ctx,
-        `orders/${encodeURIComponent(orderId)}/actions/${action}`,
-      ),
-      { version },
-    );
+  transitionOrder(ctx: CounterContext, orderId: ID, action: CounterOrderTransition, version: number): Promise<ApiResult<{ code: "ORDER_UPDATED" | "CASH_STARTED" | "PAYMENT_RECORDED" }>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/${action}`), { version });
   }
 
-  completeOrderCollection(
-    ctx: CounterContext,
-    orderId: ID,
-    version: number,
-  ): Promise<ApiResult<{ code: "COLLECTION_COMPLETED" }>> {
-    return httpClient.post(
-      this.query(
-        ctx,
-        `orders/${encodeURIComponent(orderId)}/actions/complete-collection`,
-      ),
-      { version },
-    );
+  completeOrderCollection(ctx: CounterContext, orderId: ID, version: number): Promise<ApiResult<{ code: "COLLECTION_COMPLETED" }>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/complete-collection`), { version });
   }
 
-  authorizeOrderPickup(
-    ctx: CounterContext,
-    orderId: ID,
-    version: number,
-    method: "qr" | "assisted",
-    credential: string,
-  ): Promise<ApiResult<{ code: "COLLECTION_AUTHORIZED" }>> {
-    return httpClient.post(
-      this.query(
-        ctx,
-        `orders/${encodeURIComponent(orderId)}/actions/authorize-pickup-${method}`,
-      ),
-      { version, credential },
-    );
+  authorizeOrderPickup(ctx: CounterContext, orderId: ID, version: number, method: "qr" | "assisted", credential: string): Promise<ApiResult<{ code: "COLLECTION_AUTHORIZED" }>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/authorize-pickup-${method}`), { version, credential });
   }
 
-  requestOrderPickupOtp(
-    ctx: CounterContext,
-    orderId: ID,
-  ): Promise<ApiResult<{ challengeId: string }>> {
-    return httpClient.post(
-      this.query(
-        ctx,
-        `orders/${encodeURIComponent(orderId)}/actions/request-pickup-otp`,
-      ),
-      {},
-    );
+  requestOrderPickupOtp(ctx: CounterContext, orderId: ID): Promise<ApiResult<{ challengeId: string }>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/request-pickup-otp`), {});
   }
 
-  authorizeOrderPickupOtp(
-    ctx: CounterContext,
-    orderId: ID,
-    version: number,
-    challengeId: string,
-    otp: string,
-  ): Promise<ApiResult<{ code: "COLLECTION_AUTHORIZED" }>> {
-    return httpClient.post(
-      this.query(
-        ctx,
-        `orders/${encodeURIComponent(orderId)}/actions/authorize-pickup-otp`,
-      ),
-      { version, challengeId, otp },
-    );
-  }
-  decideOrderCancellation(
-    ctx: CounterContext,
-    orderId: ID,
-    action: "approve-cancellation" | "reject-cancellation" | "cancel-order",
-    version: number,
-    reason: string,
-  ): Promise<
-    ApiResult<{
-      code:
-        | "ORDER_CANCELLED"
-        | "ORDER_CANCELLED_REFUND_REVIEW"
-        | "CANCELLATION_REJECTED";
-    }>
-  > {
-    return httpClient.post(
-      this.query(
-        ctx,
-        `orders/${encodeURIComponent(orderId)}/actions/${action}`,
-      ),
-      { version, reason },
-    );
+  authorizeOrderPickupOtp(ctx: CounterContext, orderId: ID, version: number, challengeId: string, otp: string): Promise<ApiResult<{ code: "COLLECTION_AUTHORIZED" }>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/authorize-pickup-otp`), { version, challengeId, otp });
   }
 
-  orderSupportCandidates(
-    ctx: CounterContext,
-    orderId: ID,
-    search: string,
-  ): Promise<ApiResult<CounterSupportCandidate[]>> {
-    const query = this.query(
-      ctx,
-      `orders/${encodeURIComponent(orderId)}/support-cases`,
-    );
-    return httpClient.get(
-      `${query}&search=${encodeURIComponent(search.trim())}`,
-    );
+  decideOrderCancellation(ctx: CounterContext, orderId: ID, action: "approve-cancellation" | "reject-cancellation" | "cancel-order", version: number, reason: string): Promise<ApiResult<{ code: "ORDER_CANCELLED" | "ORDER_CANCELLED_REFUND_REVIEW" | "CANCELLATION_REJECTED" }>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/${action}`), { version, reason });
   }
 
-  reportOrderNoShow(
-    ctx: CounterContext,
-    orderId: ID,
-    version: number,
-    reason: string,
-  ): Promise<ApiResult<CounterNoShowResult>> {
-    return httpClient.post(
-      this.query(
-        ctx,
-        `orders/${encodeURIComponent(orderId)}/actions/report-no-show`,
-      ),
-      { version, reason },
-    );
+  orderSupportCandidates(ctx: CounterContext, orderId: ID, search: string): Promise<ApiResult<CounterSupportCandidate[]>> {
+    const query = this.query(ctx, `orders/${encodeURIComponent(orderId)}/support-cases`);
+    return httpClient.get(`${query}&search=${encodeURIComponent(search.trim())}`);
   }
 
-  updateOrderSupport(
-    ctx: CounterContext,
-    orderId: ID,
-    action: CounterOrderSupportAction,
-    version: number,
-    caseNumber: string,
-  ): Promise<ApiResult<{ code: "ORDER_UPDATED" }>> {
-    return httpClient.post(
-      this.query(
-        ctx,
-        `orders/${encodeURIComponent(orderId)}/actions/${action}`,
-      ),
-      { version, credential: caseNumber },
-    );
+  reportOrderNoShow(ctx: CounterContext, orderId: ID, version: number, reason: string): Promise<ApiResult<CounterNoShowResult>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/report-no-show`),
+      { version, reason });
   }
 
-  startOrderTerminal(
-    ctx: CounterContext,
-    orderId: ID,
-    version: number,
-  ): Promise<ApiResult<unknown>> {
-    return httpClient.post(
-      this.query(
-        ctx,
-        `orders/${encodeURIComponent(orderId)}/actions/start-terminal`,
-      ),
-      { version },
-    );
+  updateOrderSupport(ctx: CounterContext, orderId: ID, action: CounterOrderSupportAction, version: number, caseNumber: string): Promise<ApiResult<{ code: "ORDER_UPDATED" }>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/${action}`), { version, credential: caseNumber });
   }
 
-  recoverOrderTerminal(
-    ctx: CounterContext,
-    orderId: ID,
-    version: number,
-    paymentAttemptId: string,
-  ): Promise<ApiResult<unknown>> {
-    return httpClient.post(
-      this.query(
-        ctx,
-        `orders/${encodeURIComponent(orderId)}/actions/recover-terminal`,
-      ),
-      { version, paymentAttemptId, confirmedNoSuccessfulPayment: true },
-    );
+  startOrderTerminal(ctx: CounterContext, orderId: ID, version: number): Promise<ApiResult<unknown>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/start-terminal`), { version });
   }
 
-  verifyPickupQr(
-    ctx: CounterContext,
-    credential: string,
-  ): Promise<ApiResult<CounterPickupVerification>> {
-    return httpClient.post(this.query(ctx, "orders/pickup/verify"), {
-      credential,
-    });
+  recoverOrderTerminal(ctx: CounterContext, orderId: ID, version: number, paymentAttemptId: string): Promise<ApiResult<unknown>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/recover-terminal`),
+      { version, paymentAttemptId, confirmedNoSuccessfulPayment: true });
   }
 
-  lookupPickupOrderReference(
-    ctx: CounterContext,
-    reference: string,
-  ): Promise<ApiResult<CounterPickupReferenceLookup>> {
-    return httpClient.post(this.query(ctx, "orders/pickup/reference"), {
-      reference,
-    });
+  authorizePickupCode(ctx: CounterContext, code: string, expectedOrderId?: string): Promise<ApiResult<CounterPickupVerification>> {
+    return httpClient.post(this.query(ctx, "orders/pickup/code"), { code, expectedOrderId });
+  }
+
+  verifyPickupQr(ctx: CounterContext, credential: string): Promise<ApiResult<CounterPickupVerification>> {
+    return httpClient.post(this.query(ctx, "orders/pickup/verify"), { credential });
+  }
+
+  lookupPickupOrderReference(ctx: CounterContext, reference: string): Promise<ApiResult<CounterPickupReferenceLookup>> {
+    return httpClient.post(this.query(ctx, "orders/pickup/reference"), { reference });
   }
 
   transactions(

@@ -78,6 +78,22 @@ class CounterService(
         return pickupLookupResult(result, "VERIFIED")
     }
 
+    fun authorizePickupCode(org: String, store: String, staff: String, code: String, expectedOrderId: String?,
+        principal: AuthenticatedPrincipal): CounterPickupLookupResult {
+        authorize(org, store, staff, principal)
+        if (!code.matches(Regex("[0-9]{6}"))) throw BadRequestException("Enter a six-digit Pickup Code")
+        val result = try {
+            val (current, previous) = PickupCodeSecurity.digests(org, store, code)
+            sql().authorizePickupCode(org, store, staff, principal.userId, current, previous, expectedOrderId)
+        } catch (error: kotlin.coroutines.cancellation.CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            throw ApiException(HttpStatusCode.ServiceUnavailable, "PICKUP_CODE_UNAVAILABLE",
+                "Pickup Code verification is temporarily unavailable")
+        }
+        return pickupLookupResult(result, "VERIFIED")
+    }
+
     fun pickupOrderReference(org: String, store: String, staff: String, reference: String, principal: AuthenticatedPrincipal): CounterPickupLookupResult {
         authorize(org, store, staff, principal)
         val validReference = counterPickupOrderReference(reference) ?: throw BadRequestException("Enter an order reference")

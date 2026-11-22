@@ -145,7 +145,10 @@ async function browserCheckoutRequest<T>(
       error?: { message?: string; code?: string };
     } | null;
     if (!response.ok || !payload?.success || payload.data == null) {
-      throw Object.assign(new Error(payload?.error?.message ?? "Secure checkout is unavailable."), { code: payload?.error?.code });
+      throw Object.assign(
+        new Error(payload?.error?.message ?? "Secure checkout is unavailable."),
+        { code: payload?.error?.code },
+      );
     }
     return payload.data;
   } catch (error) {
@@ -249,7 +252,13 @@ export type RedemptionTransactionQr = {
 export type CounterQrSummary = PendingRedemptionTransaction & {
   storeName?: string | null;
   timezone?: string | null;
-  items: { id: string; type: "BENEFIT" | "OFFER"; name?: string | null; productName?: string | null; quantity: number }[];
+  items: {
+    id: string;
+    type: "BENEFIT" | "OFFER";
+    name?: string | null;
+    productName?: string | null;
+    quantity: number;
+  }[];
 };
 export type CustomerRedemptionTransactionStatus = {
   transactionId: ID;
@@ -394,7 +403,12 @@ export type CustomerFulfillmentReview = {
 };
 
 export type CustomerFulfillmentStatus =
-  | "PLACED" | "PREPARING" | "READY" | "FULFILLED" | "CANCEL_REQUESTED" | "CANCELLED";
+  | "PLACED"
+  | "PREPARING"
+  | "READY"
+  | "FULFILLED"
+  | "CANCEL_REQUESTED"
+  | "CANCELLED";
 
 export type CustomerFulfillment = {
   id: ID;
@@ -423,7 +437,17 @@ export type CustomerFulfillment = {
   fulfilledAt?: string | null;
   refundStates: string[];
   timeline?: { id: ID; type: string; at: string }[] | null;
-  lines?: { id: ID; name: string; quantity: number; fulfilledQuantity?: number | null; unitPriceMinor?: number | null; subtotalMinor?: number | null; discountMinor?: number | null }[] | null;
+  lines?:
+    | {
+        id: ID;
+        name: string;
+        quantity: number;
+        fulfilledQuantity?: number | null;
+        unitPriceMinor?: number | null;
+        subtotalMinor?: number | null;
+        discountMinor?: number | null;
+      }[]
+    | null;
   version: number;
   canRequestCancellation: boolean;
   canRequestCollectionChange: boolean;
@@ -467,53 +491,133 @@ export type ActiveCustomerCounterQr = {
 };
 
 export class CustomerDataApi {
-  fulfillmentActivity(organizationId: ID, subscriptionId: ID): Promise<ApiResult<CustomerFulfillmentActivity>> {
-    return httpClient.get(`${base(organizationId)}/fulfillment/activity/${encodeURIComponent(subscriptionId)}`);
+  fulfillmentActivity(
+    organizationId: ID,
+    subscriptionId: ID,
+  ): Promise<ApiResult<CustomerFulfillmentActivity>> {
+    return httpClient.get(
+      `${base(organizationId)}/fulfillment/activity/${encodeURIComponent(subscriptionId)}`,
+    );
   }
-  fulfillmentStores(organizationId: ID, selection: CustomerFulfillmentSelection): Promise<ApiResult<CustomerFulfillmentStore[]>> {
-    return httpClient.post(`${base(organizationId)}/fulfillment/stores`, selection);
-  }
-
-  createStoreRedemption(organizationId: ID, request: CustomerFulfillmentRequest): Promise<ApiResult<PendingRedemptionTransaction>> {
-    return httpClient.post(`${base(organizationId)}/fulfillment/counter-redemption`, request);
-  }
-
-  counterQrSummary(organizationId: ID, selection: CustomerFulfillmentSelection, lookup?: { transactionId?: ID; paymentIntentId?: ID }): Promise<ApiResult<{ redemption?: CounterQrSummary }>> {
-    return httpClient.post(`${base(organizationId)}/fulfillment/counter-redemption/lookup`, { selection, ...lookup });
-  }
-
-  fulfillmentQuote(organizationId: ID, request: CustomerFulfillmentRequest): Promise<ApiResult<CustomerFulfillmentReview>> {
-    return httpClient.post(`${base(organizationId)}/fulfillment/quote`, request);
-  }
-
-  submitFulfillment(organizationId: ID, request: CustomerFulfillmentRequest): Promise<ApiResult<CustomerFulfillmentSubmission>> {
-    return httpClient.post(`${base(organizationId)}/fulfillment/requests`, request);
+  fulfillmentStores(
+    organizationId: ID,
+    selection: CustomerFulfillmentSelection,
+  ): Promise<ApiResult<CustomerFulfillmentStore[]>> {
+    return httpClient.post(
+      `${base(organizationId)}/fulfillment/stores`,
+      selection,
+    );
   }
 
-  pendingFulfillmentPayment(organizationId: ID, subscriptionId: ID): Promise<ApiResult<CustomerFulfillmentSubmission>> {
-    return httpClient.get(`${base(organizationId)}/fulfillment/payments?subscriptionId=${encodeURIComponent(subscriptionId)}`);
+  createStoreRedemption(
+    organizationId: ID,
+    request: CustomerFulfillmentRequest,
+  ): Promise<ApiResult<PendingRedemptionTransaction>> {
+    return httpClient.post(
+      `${base(organizationId)}/fulfillment/counter-redemption`,
+      request,
+    );
   }
 
-  reconcileFulfillmentPayment(organizationId: ID, intentId: ID): Promise<ApiResult<CustomerFulfillmentSubmission>> {
-    return httpClient.post(`${base(organizationId)}/fulfillment/payments/${encodeURIComponent(intentId)}/reconcile`, {});
+  counterQrSummary(
+    organizationId: ID,
+    selection: CustomerFulfillmentSelection,
+    lookup?: { transactionId?: ID; paymentIntentId?: ID },
+  ): Promise<ApiResult<{ redemption?: CounterQrSummary }>> {
+    return httpClient.post(
+      `${base(organizationId)}/fulfillment/counter-redemption/lookup`,
+      { selection, ...lookup },
+    );
   }
 
-  fulfillments(organizationId: ID, subscriptionId: ID | null, offset: number): Promise<ApiResult<CustomerFulfillment[]>> {
+  fulfillmentQuote(
+    organizationId: ID,
+    request: CustomerFulfillmentRequest,
+  ): Promise<ApiResult<CustomerFulfillmentReview>> {
+    return httpClient.post(
+      `${base(organizationId)}/fulfillment/quote`,
+      request,
+    );
+  }
+
+  submitFulfillment(
+    organizationId: ID,
+    request: CustomerFulfillmentRequest,
+  ): Promise<ApiResult<CustomerFulfillmentSubmission>> {
+    return httpClient.post(
+      `${base(organizationId)}/fulfillment/requests`,
+      request,
+    );
+  }
+
+  pendingFulfillmentPayment(
+    organizationId: ID,
+    subscriptionId: ID,
+  ): Promise<ApiResult<CustomerFulfillmentSubmission>> {
+    return httpClient.get(
+      `${base(organizationId)}/fulfillment/payments?subscriptionId=${encodeURIComponent(subscriptionId)}`,
+    );
+  }
+
+  reconcileFulfillmentPayment(
+    organizationId: ID,
+    intentId: ID,
+  ): Promise<ApiResult<CustomerFulfillmentSubmission>> {
+    return httpClient.post(
+      `${base(organizationId)}/fulfillment/payments/${encodeURIComponent(intentId)}/reconcile`,
+      {},
+    );
+  }
+
+  fulfillments(
+    organizationId: ID,
+    subscriptionId: ID | null,
+    offset: number,
+  ): Promise<ApiResult<CustomerFulfillment[]>> {
     const query = new URLSearchParams({ limit: "25", offset: String(offset) });
     if (subscriptionId) query.set("subscriptionId", subscriptionId);
-    return httpClient.get(`${base(organizationId)}/fulfillment/requests?${query}`);
+    return httpClient.get(
+      `${base(organizationId)}/fulfillment/requests?${query}`,
+    );
   }
 
-  fulfillment(organizationId: ID, id: ID): Promise<ApiResult<CustomerFulfillment>> {
-    return httpClient.get(`${base(organizationId)}/fulfillment/requests/${encodeURIComponent(id)}`);
+  fulfillment(
+    organizationId: ID,
+    id: ID,
+  ): Promise<ApiResult<CustomerFulfillment>> {
+    return httpClient.get(
+      `${base(organizationId)}/fulfillment/requests/${encodeURIComponent(id)}`,
+    );
   }
 
-  requestFulfillmentChange(organizationId: ID, id: ID, request: { version: number; collectionLocalTime?: string }): Promise<ApiResult<CustomerFulfillment>> {
-    return httpClient.post(`${base(organizationId)}/fulfillment/requests/${encodeURIComponent(id)}/change`, request);
+  requestFulfillmentChange(
+    organizationId: ID,
+    id: ID,
+    request: { version: number; collectionLocalTime?: string },
+  ): Promise<ApiResult<CustomerFulfillment>> {
+    return httpClient.post(
+      `${base(organizationId)}/fulfillment/requests/${encodeURIComponent(id)}/change`,
+      request,
+    );
+  }
+  fulfillmentPickupCode(
+    organizationId: ID,
+    id: ID,
+  ): Promise<ApiResult<{ code: string; expiresAt: string }>> {
+    return httpClient.post(
+      `${base(organizationId)}/fulfillment/requests/${encodeURIComponent(id)}/pickup-code`,
+      {},
+    );
   }
 
-  fulfillmentPickup(organizationId: ID, id: ID): Promise<ApiResult<{ reference: string; expiresAt: string }>> {
-    return httpClient.post(`${base(organizationId)}/fulfillment/requests/${encodeURIComponent(id)}/pickup`, {});
+  fulfillmentPickup(
+    organizationId: ID,
+    id: ID,
+  ): Promise<ApiResult<{ reference: string; expiresAt: string }>> {
+    return httpClient.post(
+      `${base(organizationId)}/fulfillment/requests/${encodeURIComponent(id)}/pickup`,
+      {},
+    );
   }
   selfProfile(): Promise<ApiResult<CustomerSelfProfile>> {
     return httpClient.get("/api/v1/customer/profile");
