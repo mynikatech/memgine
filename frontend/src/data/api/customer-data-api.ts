@@ -723,6 +723,15 @@ export class CustomerDataApi {
       request,
     );
   }
+  issueRedemptionTransactionCode(
+    organizationId: ID,
+    transactionId: ID,
+  ): Promise<ApiResult<{ code: string; expiresAt: string }>> {
+    return httpClient.post(
+      `${base(organizationId)}/redemption-transactions/${encodeURIComponent(transactionId)}/code`,
+      {},
+    );
+  }
   issueRedemptionTransactionQr(
     organizationId: ID,
     transactionId: ID,

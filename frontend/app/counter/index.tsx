@@ -1684,7 +1684,7 @@ export default function StaffCounter() {
       const context = counterContext();
       // The existing Counter scanner accepts both secure Pickup QRs and redemption QRs.
       // Pickup QR verification and payment belong here, not in Orders.
-      // Six-digit Pickup Code for an existing pre-order.
+      // One six-digit code input for immediate redemption and both advance-order payment journeys.
       if (/^[0-9]{6}$/.test(qrReference)) {
         const result = await existingOrderApi.authorizePickupCode(
           context,
@@ -1695,15 +1695,54 @@ export default function StaffCounter() {
           throw new Error(result.error.message);
         }
 
-        if (result.data.code !== "VERIFIED" || !result.data.orderId) {
+        if (result.data.code !== "VERIFIED") {
           throw new Error(
             result.data.code === "RATE_LIMITED"
               ? "Too many attempts. Try again later."
-              : "Invalid, expired, or already verified Pickup Code. Ask the customer to refresh credentials.",
+              : "Invalid, expired, or already used six-digit code. Ask the customer to refresh their QR and code.",
           );
         }
 
-        await refreshPickupOrder(result.data.orderId);
+        if (result.data.transactionId) {
+          // IMMEDIATE: reuse the existing redemption review/payment.
+          // Never create a new transaction or order here.
+          if (
+            !result.data.transactionNumber ||
+            result.data.status !== "PENDING"
+          ) {
+            throw new Error("Redemption transaction is no longer available.");
+          }
+
+          const transaction: CounterRedemptionTransaction = {
+            transactionId: result.data.transactionId,
+            transactionNumber: result.data.transactionNumber,
+            status: result.data.status,
+            expiresAt: result.data.expiresAt,
+          };
+
+          const validation =
+            await services.counter.validateRedemptionTransaction(
+              context,
+              transaction.transactionId,
+            );
+
+          setResolvedTransaction(transaction);
+          setTransactionValidation(validation);
+          setDynamicRedemptionStage("review");
+
+          if (
+            validation.length > 0 &&
+            validation.every((item) => item.eligible)
+          ) {
+            await loadRedemptionReview(transaction, validation);
+          }
+        } else if (result.data.orderId) {
+          // ADVANCE: Pay Now or Pay at Counter.
+          // Reuse the existing order and collect payment only if due.
+          await refreshPickupOrder(result.data.orderId);
+        } else {
+          throw new Error("No matching order or redemption was returned.");
+        }
 
         setTokenText("");
         qrScanInFlight.current = false;
@@ -4643,14 +4682,14 @@ export default function StaffCounter() {
                 </Text>
               </Pressable>
               <Text style={styles.label}>
-                Enter 6-digit Pickup Code / Redemption QR reference
+                Enter 6-digit verification code / Redemption QR reference
               </Text>
               <TextInput
                 testID="counter-qr-input"
                 editable={!pickupOrder}
                 value={tokenText}
                 onChangeText={setTokenText}
-                placeholder="6-digit Pickup Code or QR reference"
+                placeholder="6-digit code or QR reference"
                 placeholderTextColor={COLORS.textMuted}
                 autoCapitalize="none"
                 autoCorrect={false}

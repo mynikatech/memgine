@@ -126,6 +126,22 @@ interface RedemptionSql {
         @Bind("tokenHash") tokenHash: String,
         @Bind("actorUserId") actorUserId: String
     ): RedemptionTransactionQrIssueRow?
+        
+        @SqlQuery("SELECT customer_redemption_six_digit_store(:org,:actor,:redemption)")
+        fun redemptionSixDigitStore(
+            @Bind("org") org: String,
+            @Bind("actor") actor: String,
+            @Bind("redemption") redemption: String
+        ): String?
+
+        @SqlQuery("SELECT issue_customer_redemption_six_digit_code(:org,:actor,:redemption,:hash,:scopeHash)")
+        fun issueRedemptionSixDigitCode(
+            @Bind("org") org: String,
+            @Bind("actor") actor: String,
+            @Bind("redemption") redemption: String,
+            @Bind("hash") hash: String,
+            @Bind("scopeHash") scopeHash: String
+        ): String
 
     @SqlQuery("SELECT * FROM resolve_counter_redemption_transaction_qr(:organizationId, :storeId, :staffId, :tokenHash, :actorUserId)")
     fun resolveCounterTransactionQr(

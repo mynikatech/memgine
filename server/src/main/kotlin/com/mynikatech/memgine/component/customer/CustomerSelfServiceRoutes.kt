@@ -157,6 +157,21 @@ fun Route.customerSelfServiceRoutes(service: CustomerService, redemptionService:
                     call.callId
                 ))
             }
+            post("/redemption-transactions/{transactionId}/code") {
+                val transactionId = call.parameters["transactionId"]
+                    ?: throw BadRequestException("Redemption transaction id is required")
+
+                call.respond(
+                    ApiResponse.success(
+                        redemptionService.issueCustomerTransactionCode(
+                            call.organizationId(),
+                            transactionId,
+                            call.userId()
+                        ),
+                        call.callId
+                    )
+                )
+            }
             get("/redemption-transactions/{transactionId}") {
                 val transactionId = call.parameters["transactionId"]
                     ?: throw BadRequestException("Redemption transaction id is required")

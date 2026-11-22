@@ -12,6 +12,8 @@ import com.mynikatech.memgine.net.dto.CustomerCreateRedemptionTransactionRequest
 import com.mynikatech.memgine.net.dto.RedemptionTransactionDto
 import com.mynikatech.memgine.net.dto.RedemptionTransactionValidationDto
 import com.mynikatech.memgine.net.dto.RedemptionTransactionQrDto
+import com.mynikatech.memgine.component.counter.PickupCodeSecurity
+import kotlinx.serialization.Serializable
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
@@ -19,6 +21,12 @@ import org.postgresql.util.PSQLException
 import com.mynikatech.memgine.net.dto.RedemptionProductChoiceDto
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+
+@Serializable
+data class CustomerRedemptionSixDigitCode(
+    val code: String,
+    val expiresAt: String
+)
 
 class RedemptionService(
     private val sql: RedemptionSql,
@@ -163,6 +171,50 @@ class RedemptionService(
         return RedemptionTransactionQrDto(rawReference, row.transactionNumber, row.expiresAt)
     }
 
+    fun issueCustomerTransactionCode(
+        organizationId: String,
+        transactionId: String,
+        actorUserId: String
+    ): CustomerRedemptionSixDigitCode {
+        requireId(organizationId, "organization id")
+        requireId(transactionId, "redemption transaction id")
+
+        val store = sql.redemptionSixDigitStore(
+            organizationId,
+            actorUserId,
+            transactionId
+        ) ?: throw ForbiddenException(
+            "Redemption code is unavailable for this transaction"
+        )
+
+        repeat(12) {
+            val code = PickupCodeSecurity.newCode()
+
+            val expiry = sql.issueRedemptionSixDigitCode(
+                organizationId,
+                actorUserId,
+                transactionId,
+                PickupCodeSecurity.digest(organizationId, store, code),
+                PickupCodeSecurity.scopeDigest(organizationId, store, code)
+            )
+
+            if (expiry == "UNAVAILABLE") {
+                throw ForbiddenException("Redemption code is unavailable")
+            }
+
+            if (expiry == "INVALID") {
+                throw BadRequestException("Invalid redemption code")
+            }
+
+            if (expiry != "COLLISION") {
+                return CustomerRedemptionSixDigitCode(code, expiry)
+            }
+        }
+
+        throw ConflictException(
+            "Could not allocate a six-digit code for this Store. Try again."
+        )
+    }
     fun resolveCounterTransactionQr(
         organizationId: String,
         storeId: String,

@@ -104,7 +104,14 @@ class CounterService(
         val result = Json.parseToJsonElement(raw).jsonObject
         val code = result.getValue("code").jsonPrimitive.content
         if (code == "FORBIDDEN") throw ForbiddenException("Order access is unavailable for this Store")
-        return CounterPickupLookupResult(code, if (code == successCode) result.getValue("orderId").jsonPrimitive.content else null)
+        return CounterPickupLookupResult(
+            code,
+            if (code == successCode) result["orderId"]?.jsonPrimitive?.content else null,
+            if (code == successCode) result["transactionId"]?.jsonPrimitive?.content else null,
+            if (code == successCode) result["transactionNumber"]?.jsonPrimitive?.content else null,
+            if (code == successCode) result["status"]?.jsonPrimitive?.content else null,
+            if (code == successCode) result["expiresAt"]?.jsonPrimitive?.content else null
+        )
     }
 
     fun orders(org: String, store: String, staff: String, status: String?, search: String?, pickupDay: String?,

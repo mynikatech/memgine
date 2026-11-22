@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 309g-unified-six-digit-verification
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/309g-unified-six-digit-verification.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
