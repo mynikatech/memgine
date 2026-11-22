@@ -14,6 +14,12 @@ class CounterPickupReferenceRequest(val reference: String)
 data class CounterPickupLookupResult(val code: String, val orderId: String? = null)
 
 @Serializable
+class CounterOrderNoShowRequest(val version: Int, val reason: String)
+
+@Serializable
+class CounterOrderCancellationRequest(val version: Int, val reason: String)
+
+@Serializable
 class CounterOrderTransitionRequest(val version: Int)
 
 @Serializable

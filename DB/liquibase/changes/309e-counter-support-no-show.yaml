@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 309e-counter-support-no-show
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/309e-counter-support-no-show.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

@@ -119,6 +119,33 @@ class CounterService(
         return Json.parseToJsonElement(order).jsonObject
     }
 
+    fun orderSupportCandidates(org: String, store: String, staff: String, order: String,
+        search: String?, principal: AuthenticatedPrincipal): JsonArray {
+        authorize(org, store, staff, principal)
+        id(order, "order id")
+        if (search != null && (search.length > 80 || search.any { it.isISOControl() })) {
+            throw BadRequestException("Invalid Support case search")
+        }
+        return Json.parseToJsonElement(sql().orderSupportCandidates(org, store, staff,
+            principal.userId, order, search, 20)).jsonArray
+    }
+
+    fun reportOrderNoShow(org: String, store: String, staff: String, order: String,
+        request: CounterOrderNoShowRequest, principal: AuthenticatedPrincipal): JsonObject {
+        authorize(org, store, staff, principal)
+        id(order, "order id")
+        if (request.version < 1 || request.reason.trim().length !in 5..500) {
+            throw BadRequestException("Enter a no-show reason of 5 to 500 characters")
+        }
+        val response = Json.parseToJsonElement(sql().reportOrderNoShow(org, store, staff,
+            principal.userId, order, request.version, request.reason.trim())).jsonObject
+        val code = response.getValue("code").jsonPrimitive.content
+        if (code == "STALE_ORDER" || code == "INVALID_TRANSITION") {
+            throw ConflictException("Order changed or no-show reporting is unavailable. Refresh the order.")
+        }
+        return response
+    }
+
     fun updateOrder(org: String, store: String, staff: String, order: String, version: Int,
         command: CounterOrderCommand, credential: String?, principal: AuthenticatedPrincipal
     ): CounterOrderActionResult {
@@ -169,6 +196,40 @@ class CounterService(
                 "The order update could not be confirmed.")
         }
         throw ApiException(HttpStatusCode.Conflict, result, message)
+    }
+
+    fun decideOrderCancellation(org: String, store: String, staff: String, order: String,
+        version: Int, decision: String, reason: String, principal: AuthenticatedPrincipal
+    ): CounterOrderActionResult {
+        authorize(org, store, staff, principal)
+        id(order, "order id")
+        if (version < 1) throw BadRequestException("Invalid order version")
+        if (decision !in setOf("APPROVE", "REJECT", "CANCEL") || reason.trim().length !in 5..500 ||
+            reason.any { it.isISOControl() }) throw BadRequestException("Enter a reason between 5 and 500 characters")
+        val code = try {
+            sql().decideOrderCancellation(org, store, staff, principal.userId, order, version, decision, reason.trim())
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            throw ApiException(HttpStatusCode.ServiceUnavailable, "ORDER_CANCELLATION_UNAVAILABLE",
+                "Cancellation outcome could not be confirmed. Refresh this order before trying again.")
+        }
+        when (code) {
+            "ORDER_CANCELLED", "ORDER_CANCELLED_REFUND_REVIEW", "CANCELLATION_REJECTED" -> return CounterOrderActionResult(code)
+            "FORBIDDEN" -> throw ForbiddenException("Order access is unavailable for this Store")
+            "ORDER_NOT_FOUND" -> throw NotFoundException("Order not found at this Store")
+        }
+        val message = when (code) {
+            "STALE_ORDER" -> "The order changed. Refresh and review it before deciding cancellation."
+            "ALREADY_FULFILLED" -> "This order has already been collected; use the post-collection refund/reversal process."
+            "ALREADY_CANCELLED" -> "This order is already cancelled. Refresh its status."
+            "INVALID_REASON" -> "Enter a cancellation reason between 5 and 500 characters."
+            "INVALID_TRANSITION" -> "This cancellation action is not available in the current order state."
+            "PAYMENT_UNRESOLVED" -> "Payment or refund status is unresolved. Reconcile it before cancellation."
+            "ENTITLEMENT_CONFLICT" -> "The order entitlement is unavailable for cancellation."
+            else -> "The cancellation could not be confirmed. Refresh the order."
+        }
+        throw ApiException(HttpStatusCode.Conflict, code, message)
     }
 
     fun requestOrderPickupOtp(org: String, store: String, staff: String, order: String,

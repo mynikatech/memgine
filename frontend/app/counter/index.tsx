@@ -186,7 +186,10 @@ const canStartAnotherPayment = (checkout: CounterRedemptionCheckout) => {
 };
 
 const isPaidAwaitingCollection = (checkout: CounterRedemptionCheckout) =>
-  Boolean(checkout.fulfillmentOrderId && checkout.commerceStatus === "PROVIDER_SUCCEEDED");
+  Boolean(
+    checkout.fulfillmentOrderId &&
+    checkout.commerceStatus === "PROVIDER_SUCCEEDED",
+  );
 
 const paymentAttemptStatusLabel = (status?: string | null) => {
   switch (status) {
@@ -1033,7 +1036,8 @@ export default function StaffCounter() {
           ) {
             clearPendingRedemptionTerminalPayment();
             setRedemptionCheckoutStage("complete");
-            if (isPaidAwaitingCollection(latest)) await finishRedemptionCheckout(latest);
+            if (isPaidAwaitingCollection(latest))
+              await finishRedemptionCheckout(latest);
           } else if (latest.cashPaymentStatus === "PENDING") {
             clearPendingRedemptionTerminalPayment();
             setRedemptionCheckoutStage("waiting");
@@ -1557,22 +1561,42 @@ export default function StaffCounter() {
       // The existing Counter scanner accepts both secure Pickup QRs and redemption QRs.
       // Pickup QR verification and payment belong here, not in Orders.
       if (qrReference.startsWith("MEMGINE_PICKUP:")) {
-        const lookup = await existingOrderApi.verifyPickupQr(context, qrReference);
+        const lookup = await existingOrderApi.verifyPickupQr(
+          context,
+          qrReference,
+        );
         if (!lookup.success) throw new Error(lookup.error.message);
         if (lookup.data.code !== "VERIFIED" || !lookup.data.orderId) {
-          throw new Error("This pickup QR is invalid, expired, used, or not for this Store.");
+          throw new Error(
+            "This pickup QR is invalid, expired, used, or not for this Store.",
+          );
         }
         const orderId = lookup.data.orderId;
         const order = await existingOrderApi.order(context, orderId);
         if (!order.success) throw new Error(order.error.message);
-        if (order.data.lifecycle?.canAuthorizeCollection && !order.data.lifecycle.verificationMethod) {
-          const authorization = await existingOrderApi.authorizeOrderPickup(context, orderId, order.data.lifecycle.version, "qr", qrReference);
-          if (!authorization.success) throw new Error(authorization.error.message);
+        if (
+          order.data.lifecycle?.canAuthorizeCollection &&
+          !order.data.lifecycle.verificationMethod
+        ) {
+          const authorization = await existingOrderApi.authorizeOrderPickup(
+            context,
+            orderId,
+            order.data.lifecycle.version,
+            "qr",
+            qrReference,
+          );
+          if (!authorization.success)
+            throw new Error(authorization.error.message);
         } else if (!order.data.lifecycle?.verificationMethod) {
-          throw new Error("This order cannot be verified for collection. Review its latest status.");
+          throw new Error(
+            "This order cannot be verified for collection. Review its latest status.",
+          );
         }
         setTokenText("");
-        router.push({ pathname: "/counter/order-service", params: { orderId } } as never);
+        router.push({
+          pathname: "/counter/order-service",
+          params: { orderId },
+        } as never);
         return;
       }
       const transaction = await services.counter.resolveRedemptionTransactionQr(
@@ -1635,10 +1659,10 @@ export default function StaffCounter() {
     setRedemptionCheckout(checkout);
     setRedemptionCheckoutStage("complete");
 
-    if (isPaidAwaitingCollection(checkout) && checkout.fulfillmentOrderId) {
-      router.replace({ pathname: "/counter/orders", params: { orderId: checkout.fulfillmentOrderId } });
-      return;
-    }
+    // Payment at Counter creates/verifies an order.
+    // Orders owns actual handover and redemption.
+    // Do not route staff to Orders or mark a reservation
+    // as redeemed at payment success.
 
     const completed: CounterRedemptionTransaction = {
       transactionId: checkout.redemptionTransactionId,
@@ -1659,15 +1683,21 @@ export default function StaffCounter() {
       kind: "SUCCESS",
       message:
         checkout.paymentMethod === "CASH"
-          ? `Redemption ${checkout.transactionNumber} completed with Cash.`
-          : `Redemption ${checkout.transactionNumber} completed after POS payment.`,
+          ? checkout.fulfillmentOrderId
+            ? `Order ${checkout.transactionNumber} created and cash payment recorded. Complete collection from Orders.`
+            : `Redemption ${checkout.transactionNumber} completed with Cash.`
+          : checkout.fulfillmentOrderId
+            ? `Order ${checkout.transactionNumber} created and payment verified. Complete collection from Orders.`
+            : `Redemption ${checkout.transactionNumber} completed after POS payment.`,
       customer: customer ?? undefined,
-      outcomes: validation.map((item) => ({
-        benefitId: item.itemId,
-        title: item.displayName ?? item.itemId,
-        status: "REDEEMED",
-        redemptionId: checkout.redemptionTransactionId,
-      })),
+      outcomes: checkout.fulfillmentOrderId
+        ? []
+        : validation.map((item) => ({
+            benefitId: item.itemId,
+            title: item.displayName ?? item.itemId,
+            status: "REDEEMED",
+            redemptionId: checkout.redemptionTransactionId,
+          })),
     });
 
     if (customer) {
@@ -3747,9 +3777,14 @@ export default function StaffCounter() {
       <Text style={styles.muted}>
         Redeem member benefits — QR or staff-assisted.
       </Text>
-      <Pressable testID="counter-existing-order-verify-pay" style={styles.secondaryBtn}
-        onPress={() => router.push("/counter/order-service" as never)}>
-        <Text style={styles.secondaryBtnText}>Existing Pre-Order · Verify & Pay</Text>
+      <Pressable
+        testID="counter-existing-order-verify-pay"
+        style={styles.secondaryBtn}
+        onPress={() => router.push("/counter/order-service" as never)}
+      >
+        <Text style={styles.secondaryBtnText}>
+          Existing Pre-Order · Verify & Pay
+        </Text>
       </Pressable>
 
       {/* Fixed staff context */}
@@ -4206,7 +4241,11 @@ export default function StaffCounter() {
         <View style={styles.card}>
           {dynamicRedemptionStage === "success" && executedTransaction ? (
             <>
-              <Text style={styles.cardTitle}>Redemption successful</Text>
+              <Text style={styles.cardTitle}>
+                {redemptionCheckout?.fulfillmentOrderId
+                  ? "Order created successfully"
+                  : "Redemption successful"}
+              </Text>
               <Text style={styles.resultMsg}>
                 {
                   transactionValidation.filter(
@@ -4231,7 +4270,9 @@ export default function StaffCounter() {
                 ).length === 1
                   ? ""
                   : "s"}{" "}
-                redeemed.
+                {redemptionCheckout?.fulfillmentOrderId
+                  ? "reserved for this order. Actual redemption happens during collection in Orders."
+                  : "redeemed."}
               </Text>
               <Text style={styles.muted}>
                 Transaction: {executedTransaction.transactionNumber}

@@ -57,6 +57,14 @@ fun Route.counterRoutes(service: CounterService, commercePaymentService: Counter
                 call.respond(ApiResponse.success(service.orders(org, store, staff, query["status"], query["search"], query["pickupDate"],
                     query["limit"]?.toIntOrNull(), query["offset"]?.toIntOrNull(), call.authenticatedPrincipal()), call.callId))
             }
+            get("/{orderId}/support-cases") {
+                val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+                val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
+                val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
+                val order = call.parameters["orderId"] ?: throw BadRequestException("Order id is required")
+                call.respond(ApiResponse.success(service.orderSupportCandidates(org, store, staff, order,
+                    call.request.queryParameters["search"], call.authenticatedPrincipal()), call.callId))
+            }
             get("/{orderId}") {
                 val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
                 val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
@@ -71,6 +79,12 @@ fun Route.counterRoutes(service: CounterService, commercePaymentService: Counter
                 val order = call.parameters["orderId"] ?: throw BadRequestException("Order id is required")
                 val principal = call.authenticatedPrincipal()
                 val action = call.parameters["action"]
+                if (action == "report-no-show") {
+                    val request = call.receivePickupLookup<CounterOrderNoShowRequest>()
+                    call.respond(ApiResponse.success(service.reportOrderNoShow(org, store, staff, order,
+                        request, principal), call.callId))
+                    return@post
+                }
                 if (action == "start-terminal") {
                     val request = call.receive<CounterOrderTransitionRequest>()
                     call.respond(ApiResponse.success(service.startOrderTerminalPayment(org, store, staff, order, request.version, principal), call.callId))
@@ -90,6 +104,17 @@ fun Route.counterRoutes(service: CounterService, commercePaymentService: Counter
                     call.respond(ApiResponse.success(service.authorizeOrderPickupOtp(org, store, staff, order, request, principal), call.callId))
                     return@post
                 }
+                if (action in setOf("approve-cancellation", "reject-cancellation", "cancel-order")) {
+                    val request = call.receivePickupLookup<CounterOrderCancellationRequest>()
+                    val decision = when (action) {
+                        "approve-cancellation" -> "APPROVE"
+                        "reject-cancellation" -> "REJECT"
+                        else -> "CANCEL"
+                    }
+                    call.respond(ApiResponse.success(service.decideOrderCancellation(org, store, staff, order,
+                        request.version, decision, request.reason, principal), call.callId))
+                    return@post
+                }
                 val command = when (action) {
                     "start-preparing" -> CounterOrderCommand.START_PREPARING
                     "mark-ready" -> CounterOrderCommand.MARK_READY
@@ -99,12 +124,11 @@ fun Route.counterRoutes(service: CounterService, commercePaymentService: Counter
                     "start-cash" -> CounterOrderCommand.START_CASH
                     "confirm-cash" -> CounterOrderCommand.CONFIRM_CASH
                     "link-support" -> CounterOrderCommand.LINK_SUPPORT
-                    "request-cancellation" -> CounterOrderCommand.REQUEST_CANCELLATION
                     "report-no-show" -> CounterOrderCommand.REPORT_NO_SHOW
                     else -> throw BadRequestException("Unknown Counter order action")
                 }
                 val result = if (command in setOf(CounterOrderCommand.AUTHORIZE_PICKUP_QR, CounterOrderCommand.AUTHORIZE_PICKUP_ASSISTED,
-                        CounterOrderCommand.LINK_SUPPORT, CounterOrderCommand.REQUEST_CANCELLATION, CounterOrderCommand.REPORT_NO_SHOW)) {
+                        CounterOrderCommand.LINK_SUPPORT, CounterOrderCommand.REPORT_NO_SHOW)) {
                     val request = call.receivePickupLookup<CounterOrderCollectionRequest>()
                     service.updateOrder(org, store, staff, order, request.version, command, request.credential, principal)
                 } else {

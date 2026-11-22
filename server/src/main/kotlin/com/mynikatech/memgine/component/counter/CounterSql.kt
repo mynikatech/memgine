@@ -37,6 +37,21 @@ interface CounterSql {
         @Bind("actor") actor: String, @Bind("order") order: String, @Bind("version") version: Int,
         @Bind("command") command: String, @Bind("hash") hash: String?): String
 
+    @SqlQuery("SELECT counter_order_decide_cancellation(:org,:store,:staff,:actor,:order,:version,:decision,:reason)")
+    fun decideOrderCancellation(@Bind("org") org: String, @Bind("store") store: String, @Bind("staff") staff: String,
+        @Bind("actor") actor: String, @Bind("order") order: String, @Bind("version") version: Int,
+        @Bind("decision") decision: String, @Bind("reason") reason: String): String
+
+    @SqlQuery("SELECT counter_order_support_candidates(:org,:store,:staff,:actor,:order,:search,:limit)::text")
+    fun orderSupportCandidates(@Bind("org") org: String, @Bind("store") store: String,
+        @Bind("staff") staff: String, @Bind("actor") actor: String, @Bind("order") order: String,
+        @Bind("search") search: String?, @Bind("limit") limit: Int): String
+
+    @SqlQuery("SELECT counter_order_report_no_show(:org,:store,:staff,:actor,:order,:version,:reason)::text")
+    fun reportOrderNoShow(@Bind("org") org: String, @Bind("store") store: String,
+        @Bind("staff") staff: String, @Bind("actor") actor: String, @Bind("order") order: String,
+        @Bind("version") version: Int, @Bind("reason") reason: String): String
+
     @SqlQuery("SELECT verify_counter_pickup_qr(:org,:store,:staff,:actor,:hash)")
     fun verifyPickup(@Bind("org") org: String, @Bind("store") store: String, @Bind("staff") staff: String,
         @Bind("actor") actor: String, @Bind("hash") hash: String): String

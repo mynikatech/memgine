@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 309d-counter-order-cancellation
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/309d-counter-order-cancellation.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8
