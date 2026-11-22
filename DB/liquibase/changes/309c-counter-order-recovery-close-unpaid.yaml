@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 309c-counter-order-recovery-close-unpaid
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/309c-counter-order-recovery-close-unpaid.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

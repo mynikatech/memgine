@@ -20,6 +20,23 @@ data class StaffAssistedPurchaseRow(
 )
 
 interface CounterSql {
+    @SqlQuery("SELECT bind_counter_redemption_otp(:org,:redemption,:challenge,:actor)")
+    fun bindRedemptionOtp(@Bind("org") org: String, @Bind("redemption") redemption: String,
+        @Bind("challenge") challenge: String, @Bind("actor") actor: String): Boolean
+
+    @SqlQuery("SELECT counter_order_pickup_otp_target(:org,:store,:staff,:actor,:order,:challenge)")
+    fun orderPickupOtpTarget(@Bind("org") org: String, @Bind("store") store: String, @Bind("staff") staff: String,
+        @Bind("actor") actor: String, @Bind("order") order: String, @Bind("challenge") challenge: String?): String?
+
+    @SqlQuery("SELECT get_counter_order_lifecycle(:org,:store,:staff,:actor,:order)")
+    fun orderLifecycle(@Bind("org") org: String, @Bind("store") store: String, @Bind("staff") staff: String,
+        @Bind("actor") actor: String, @Bind("order") order: String): String?
+
+    @SqlQuery("SELECT update_counter_order_lifecycle(:org,:store,:staff,:actor,:order,:version,:command,:hash)")
+    fun updateOrderLifecycle(@Bind("org") org: String, @Bind("store") store: String, @Bind("staff") staff: String,
+        @Bind("actor") actor: String, @Bind("order") order: String, @Bind("version") version: Int,
+        @Bind("command") command: String, @Bind("hash") hash: String?): String
+
     @SqlQuery("SELECT verify_counter_pickup_qr(:org,:store,:staff,:actor,:hash)")
     fun verifyPickup(@Bind("org") org: String, @Bind("store") store: String, @Bind("staff") staff: String,
         @Bind("actor") actor: String, @Bind("hash") hash: String): String

@@ -36,7 +36,7 @@ const el = React.createElement;
 const host = (tag) => ({ children, testID, accessibilityState, style }) => el(tag, {
   "data-testid": testID, "data-selected": accessibilityState?.selected, style,
 }, children);
-const { CounterOrdersPanels, CounterOrderQueue, CounterOrderDetails } = load("frontend/src/ui/domain/CounterOrdersDashboard.tsx", {
+const { CollectionReview, CounterOrdersPanels, CounterOrderQueue, CounterOrderDetails } = load("frontend/src/ui/domain/CounterOrdersDashboard.tsx", {
   "@expo/vector-icons": { Ionicons: () => null },
   "react-native": { Platform: { OS: "web" }, View: host("div"), ScrollView: host("section"), Pressable: host("button") },
   "@/src/core/domain/savings-display": { formatTransactionMoney: (minor, code) => minor == null ? undefined : `${code} ${minor / 100}` },
@@ -44,7 +44,7 @@ const { CounterOrdersPanels, CounterOrderQueue, CounterOrderDetails } = load("fr
   "@/src/providers": { useTheme: () => ({ colors: {}, radius: {} }) },
   "@/src/ui": {
     Card: host("article"), Text: host("span"), Badge: ({ label }) => el("span", null, label),
-    Button: ({ label }) => el("button", null, label),
+    Button: ({ label, disabled }) => el("button", { disabled }, label),
     StateView: ({ kind, title, message, testID }) => el("aside", { "data-state": kind, "data-testid": testID }, title, message),
   },
   "./counter-orders-model": model,
@@ -58,6 +58,49 @@ const queueState = { kind: "ready", data: { orders: [first, second], total: 42, 
 const noop = () => {};
 const queue = (state, selectedId) => el(CounterOrderQueue, { state, selectedId, independent: true, offset: 0, onSelect: noop, onPage: noop, onRetry: noop });
 const detail = (data) => el(CounterOrderDetails, { state: { kind: "ready", data }, onRetry: noop });
+
+test("authorization submits the credential in the body and collection submits only the order version", async () => {
+  const api = new CounterApi();
+  const ctx = { organizationId: "ORG", storeId: "OSC", staffId: "STAFF" };
+  const credential = "MEMGINE_PICKUP:" + "A".repeat(43);
+  await api.transitionOrder(ctx, first.id, "start-preparing", 2);
+  await api.transitionOrder(ctx, first.id, "mark-ready", 3);
+  await api.authorizeOrderPickup(ctx, first.id, 4, "qr", credential);
+  await api.completeOrderCollection(ctx, first.id, 5);
+  const [prepare, ready, authorize, collect] = posts.splice(0);
+  assert.match(prepare.url, /orders\/FUL_1\/actions\/start-preparing\?.*storeId=OSC.*staffId=STAFF/);
+  assert.match(ready.url, /orders\/FUL_1\/actions\/mark-ready\?/);
+  assert.deepEqual(prepare.body, { version: 2 });
+  assert.deepEqual(ready.body, { version: 3 });
+  assert.match(collect.url, /orders\/FUL_1\/actions\/complete-collection\?/);
+  assert.match(authorize.url, /orders\/FUL_1\/actions\/authorize-pickup-qr\?/);
+  assert.ok(!authorize.url.includes(credential));
+  assert.deepEqual(authorize.body, { version: 4, credential });
+  assert.deepEqual(collect.body, { version: 5 });
+});
+
+test("collection review shows actual evidence, items and an explicit confirmation", () => {
+  const lifecycle = { canCompleteCollection: true, payment: "VERIFIED_ONLINE", verificationMethod: "QR" };
+  const order = { ...second, lifecycle };
+  const review = (data, busy = false) => renderToStaticMarkup(el(CollectionReview, { order: data, busy, onComplete: noop }));
+  assert.match(review(order), /ORDER-200.*Sample Customer.*OSC Store.*Ready for pickup.*Cookies.*Online payment verified.*Pickup QR verified.*Complete Collection/);
+  assert.match(review(order, true), /<button disabled=""[^>]*>Complete Collection/);
+  const unpaid = { ...order, lifecycle: { canCompleteCollection: false, payment: "PAYMENT_REQUIRED", outstandingMinor: 932 } };
+  assert.match(review(unpaid), /Payment due at counter.*Outstanding.*CAD 9.32.*<button disabled=/);
+  assert.doesNotMatch(renderToStaticMarkup(detail(unpaid)), /<span>Paid<\/span>/);
+  assert.match(renderToStaticMarkup(detail({ ...order, status: "FULFILLED", lifecycle: { ...lifecycle, collectedAt: first.placedAt } })), /Collected/);
+});
+
+test("the scanner and reference path cannot synthesize a collection credential", () => {
+  const dashboard = source("frontend/src/ui/domain/CounterOrdersDashboard.tsx");
+  const scanner = source("frontend/src/ui/domain/CounterPickupLookup.tsx");
+  assert.match(scanner, /match.code === "VERIFIED" && kind === "qr" \? value : undefined/);
+  assert.match(scanner, /expectedOrderId && match.orderId !== expectedOrderId/);
+  assert.match(dashboard, /lifecycle.canCompleteCollection \|\| !confirmCollection/);
+  assert.match(dashboard, /actionInFlight.current = true/);
+  assert.match(dashboard, /api.authorizeOrderPickup\(context, match.orderId, order.data.lifecycle.version, "qr", credential\)/);
+  assert.doesNotMatch(dashboard + scanner, /AsyncStorage|localStorage|sessionStorage|120_000|pickupCredential =/);
+});
 
 test("desktop and tablet show both panels at their respective proportions, mobile renders only the queue", () => {
   const desktop = model.counterOrdersLayout(1024, 764);

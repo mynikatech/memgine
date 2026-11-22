@@ -64,6 +64,55 @@ fun Route.counterRoutes(service: CounterService, commercePaymentService: Counter
                 val order = call.parameters["orderId"] ?: throw BadRequestException("Order id is required")
                 call.respond(ApiResponse.success(service.order(org, store, staff, order, call.authenticatedPrincipal()), call.callId))
             }
+            post("/{orderId}/actions/{action}") {
+                val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")
+                val store = call.request.queryParameters["storeId"] ?: throw BadRequestException("Store id is required")
+                val staff = call.request.queryParameters["staffId"] ?: throw BadRequestException("Staff id is required")
+                val order = call.parameters["orderId"] ?: throw BadRequestException("Order id is required")
+                val principal = call.authenticatedPrincipal()
+                val action = call.parameters["action"]
+                if (action == "start-terminal") {
+                    val request = call.receive<CounterOrderTransitionRequest>()
+                    call.respond(ApiResponse.success(service.startOrderTerminalPayment(org, store, staff, order, request.version, principal), call.callId))
+                    return@post
+                }
+                if (action == "recover-terminal") {
+                    val request = call.receive<CounterOrderTerminalRecoveryRequest>()
+                    call.respond(ApiResponse.success(service.recoverOrderTerminalPayment(org, store, staff, order, request, principal), call.callId))
+                    return@post
+                }
+                if (action == "request-pickup-otp") {
+                    call.respond(ApiResponse.success(service.requestOrderPickupOtp(org, store, staff, order, principal), call.callId))
+                    return@post
+                }
+                if (action == "authorize-pickup-otp") {
+                    val request = call.receivePickupLookup<CounterOrderPickupOtpRequest>()
+                    call.respond(ApiResponse.success(service.authorizeOrderPickupOtp(org, store, staff, order, request, principal), call.callId))
+                    return@post
+                }
+                val command = when (action) {
+                    "start-preparing" -> CounterOrderCommand.START_PREPARING
+                    "mark-ready" -> CounterOrderCommand.MARK_READY
+                    "complete-collection" -> CounterOrderCommand.COMPLETE_COLLECTION
+                    "authorize-pickup-qr" -> CounterOrderCommand.AUTHORIZE_PICKUP_QR
+                    "authorize-pickup-assisted" -> CounterOrderCommand.AUTHORIZE_PICKUP_ASSISTED
+                    "start-cash" -> CounterOrderCommand.START_CASH
+                    "confirm-cash" -> CounterOrderCommand.CONFIRM_CASH
+                    "link-support" -> CounterOrderCommand.LINK_SUPPORT
+                    "request-cancellation" -> CounterOrderCommand.REQUEST_CANCELLATION
+                    "report-no-show" -> CounterOrderCommand.REPORT_NO_SHOW
+                    else -> throw BadRequestException("Unknown Counter order action")
+                }
+                val result = if (command in setOf(CounterOrderCommand.AUTHORIZE_PICKUP_QR, CounterOrderCommand.AUTHORIZE_PICKUP_ASSISTED,
+                        CounterOrderCommand.LINK_SUPPORT, CounterOrderCommand.REQUEST_CANCELLATION, CounterOrderCommand.REPORT_NO_SHOW)) {
+                    val request = call.receivePickupLookup<CounterOrderCollectionRequest>()
+                    service.updateOrder(org, store, staff, order, request.version, command, request.credential, principal)
+                } else {
+                    val request = call.receivePickupLookup<CounterOrderTransitionRequest>()
+                    service.updateOrder(org, store, staff, order, request.version, command, null, principal)
+                }
+                call.respond(ApiResponse.success(result, call.callId))
+            }
         }
         post("/customers/lookup") {
             val org = call.parameters["organizationId"] ?: throw BadRequestException("Organization id is required")

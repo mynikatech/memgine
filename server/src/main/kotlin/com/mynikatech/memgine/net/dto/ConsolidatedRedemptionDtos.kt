@@ -216,6 +216,7 @@ data class CounterRedemptionCheckoutDto(
     val redemptionStatus: String,
     val redemptionCompletedAt: String? = null,
     val commerceTransactionId: String,
+    val fulfillmentOrderId: String? = null,
     val providerCode: String,
     val commerceStatus: String,
     val subtotalMinor: Long? = null,

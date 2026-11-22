@@ -38,7 +38,32 @@ export type CounterOrder = {
   paymentState: string; paymentMethod?: string | null; customerName?: string | null;
   subtotalMinor?: number | null; discountMinor?: number | null; taxMinor?: number | null;
   items: CounterOrderItem[]; timeline: { id: ID; type: string; at: string }[];
+  lifecycle?: CounterOrderLifecycle;
 };
+export type CounterOrderLifecycle = {
+  version: number;
+  payment: "NO_PAYMENT_REQUIRED" | "VERIFIED_ONLINE" | "VERIFIED_AT_COUNTER" | "PAYMENT_REQUIRED" |
+    "PAYMENT_UNRESOLVED" | "FINANCIAL_EXCEPTION" | "REFUND_CONFLICT" | "CASH_CONFIRMATION_REQUIRED" | "CASH_RECOVERY_READY";
+  outstandingMinor?: number | null;
+  collectedAt?: string | null;
+  canStartPreparing: boolean;
+  canMarkReady: boolean;
+  canCompleteCollection: boolean;
+  journey?: "IMMEDIATE_PAY_AT_COUNTER" | "ADVANCE_PAY_AT_COUNTER" | "ADVANCE_PAY_NOW";
+  canAuthorizeCollection?: boolean;
+  canStartCash?: boolean;
+  canConfirmCash?: boolean;
+  canStartTerminal?: boolean;
+  terminalRecoveryAttemptId?: string | null;
+  supportCaseNumber?: string | null;
+  collectionBlocker?: "CANCELLATION_REQUESTED" | "SUPPORT_UNRESOLVED" | null;
+  canLinkSupport?: boolean;
+  canRequestCancellation?: boolean;
+  canReportNoShow?: boolean;
+  verificationMethod?: "QR" | "PHONE_OTP" | "STAFF_ASSISTED" | null;
+};
+export type CounterOrderTransition = "start-preparing" | "mark-ready" | "start-cash" | "confirm-cash";
+export type CounterOrderSupportAction = "link-support" | "request-cancellation" | "report-no-show";
 export type CounterOrderPage = { orders: CounterOrder[]; total: number; statusCounts: Partial<Record<CounterOrderStatus, number>> };
 export type CounterOrderFilters = { status: CounterOrderFilter; search: string; pickupDate?: string; offset: number };
 export type CounterPickupVerification = { code: "VERIFIED"; orderId: ID } | {
@@ -164,6 +189,7 @@ export type CounterRedemptionPaymentAttemptSummary = {
 };
 
 export type CounterRedemptionCheckout = {
+  fulfillmentOrderId?: string | null;
   redemptionTransactionId: ID;
 
   transactionNumber: string;
@@ -520,6 +546,39 @@ export class CounterApi {
 
   order(ctx: CounterContext, orderId: ID): Promise<ApiResult<CounterOrder>> {
     return httpClient.get(this.query(ctx, `orders/${encodeURIComponent(orderId)}`));
+  }
+
+  transitionOrder(ctx: CounterContext, orderId: ID, action: CounterOrderTransition, version: number): Promise<ApiResult<{ code: "ORDER_UPDATED" | "CASH_STARTED" | "PAYMENT_RECORDED" }>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/${action}`), { version });
+  }
+
+  completeOrderCollection(ctx: CounterContext, orderId: ID, version: number): Promise<ApiResult<{ code: "COLLECTION_COMPLETED" }>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/complete-collection`), { version });
+  }
+
+  authorizeOrderPickup(ctx: CounterContext, orderId: ID, version: number, method: "qr" | "assisted", credential: string): Promise<ApiResult<{ code: "COLLECTION_AUTHORIZED" }>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/authorize-pickup-${method}`), { version, credential });
+  }
+
+  requestOrderPickupOtp(ctx: CounterContext, orderId: ID): Promise<ApiResult<{ challengeId: string }>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/request-pickup-otp`), {});
+  }
+
+  authorizeOrderPickupOtp(ctx: CounterContext, orderId: ID, version: number, challengeId: string, otp: string): Promise<ApiResult<{ code: "COLLECTION_AUTHORIZED" }>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/authorize-pickup-otp`), { version, challengeId, otp });
+  }
+
+  updateOrderSupport(ctx: CounterContext, orderId: ID, action: CounterOrderSupportAction, version: number, caseNumber: string): Promise<ApiResult<{ code: "ORDER_UPDATED" }>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/${action}`), { version, credential: caseNumber });
+  }
+
+  startOrderTerminal(ctx: CounterContext, orderId: ID, version: number): Promise<ApiResult<unknown>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/start-terminal`), { version });
+  }
+
+  recoverOrderTerminal(ctx: CounterContext, orderId: ID, version: number, paymentAttemptId: string): Promise<ApiResult<unknown>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/recover-terminal`),
+      { version, paymentAttemptId, confirmedNoSuccessfulPayment: true });
   }
 
   verifyPickupQr(ctx: CounterContext, credential: string): Promise<ApiResult<CounterPickupVerification>> {

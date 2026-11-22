@@ -877,11 +877,12 @@ class CounterCommercePaymentService(
         redemptionTransactionId: String,
         storeId: String,
         staffId: String,
-        actorUserId: String
+        actorUserId: String,
+        advanceOrder: Boolean = false
     ): CommerceRemoteTerminalPaymentDispatchDto = translate {
         requireRemotePaymentConfiguration()
 
-        val checkout = redemptionCheckout(
+        var checkout = redemptionCheckout(
             organizationId,
             redemptionTransactionId,
             storeId,
@@ -898,7 +899,7 @@ class CounterCommercePaymentService(
         if ((checkout.totalMinor ?: 0L) <= 0L) {
             throw BadRequestException("Counter redemption does not require terminal payment")
         }
-        if (checkout.commerceStatus == "ORDER_CREATED" &&
+        if (!advanceOrder && checkout.commerceStatus == "ORDER_CREATED" &&
             !sql().isRedemptionPricingAcknowledged(checkout.commerceTransactionId, actorUserId)
         ) {
             throw ConflictException("Counter redemption price reconciliation is incomplete")
@@ -914,6 +915,14 @@ class CounterCommercePaymentService(
 
         activeRemoteTerminalDispatchDto(organizationId, checkout.commerceTransactionId, actorUserId)?.let {
             return@translate it
+        }
+
+        if (advanceOrder && checkout.providerOrderId.isNullOrBlank()) {
+            if (checkout.commerceStatus != "ORDER_CREATED" || checkout.currencyCode != "CAD") {
+                throw ConflictException("Advance order is not ready for a terminal payment")
+            }
+            createPoyntRedemptionOrder(checkout, actorUserId, preserveAcceptedAmounts = true)
+            checkout = redemptionCheckout(organizationId, redemptionTransactionId, storeId, staffId, actorUserId)
         }
 
         val provider = providers.remoteTerminalPaymentProvider("POYNT")
@@ -1474,7 +1483,8 @@ suspend fun simulateRedemptionTerminalPayment(
 
     private fun createPoyntRedemptionOrder(
         checkout: CounterRedemptionCheckoutRow,
-        actorUserId: String
+        actorUserId: String,
+        preserveAcceptedAmounts: Boolean = false
     ) {
         val integrationId = checkout.integrationConfigurationId
             ?.takeIf { it.isNotBlank() }
@@ -1526,6 +1536,10 @@ suspend fun simulateRedemptionTerminalPayment(
                 !currentCurrency.matches(CURRENCY_CODE)) {
                 throw BadRequestException("Current POS product is invalid")
             }
+            if (preserveAcceptedAmounts && (line.unitPriceMinorAuthoritative != current.unitPriceMinorSnapshot ||
+                line.currencyCode != currentCurrency)) {
+                throw ConflictException("The current POS price differs from the accepted order")
+            }
 
             val storedPrice = line.unitPriceMinorSnapshot
                 ?: throw BadRequestException("Stored POS product price is unavailable")
@@ -1559,7 +1573,8 @@ suspend fun simulateRedemptionTerminalPayment(
             actorUserId = actorUserId,
             pricedLines = pricedLines,
             checkoutProvider = checkoutProvider,
-            pricingDiscrepancies = discrepancies
+            pricingDiscrepancies = discrepancies,
+            preserveAcceptedAmounts = preserveAcceptedAmounts
         )
     }
 
@@ -1667,7 +1682,8 @@ suspend fun simulateRedemptionTerminalPayment(
         actorUserId: String,
         pricedLines: List<CommerceTransactionLineDto>,
         checkoutProvider: CommerceCheckoutProvider,
-        pricingDiscrepancies: List<CounterRedemptionPriceDiscrepancyDto>
+        pricingDiscrepancies: List<CounterRedemptionPriceDiscrepancyDto>,
+        preserveAcceptedAmounts: Boolean = false
     ) {
         val currency = pricedLines.mapNotNull { it.currencyCode?.uppercase() }
             .distinct()
@@ -1683,6 +1699,10 @@ suspend fun simulateRedemptionTerminalPayment(
         val discount = materialized.sumOf { it.appliedAmountMinor }
         val tax = retailTaxMinor(checkout.organizationId, subtotal, discount)
         val total = subtotal - discount + tax
+        if (preserveAcceptedAmounts && (currency != checkout.currencyCode || subtotal != checkout.subtotalMinor ||
+            discount != checkout.adjustmentTotalMinor || tax != checkout.taxTotalMinor || total != checkout.totalMinor)) {
+            throw ConflictException("The current POS amounts differ from the accepted order")
+        }
 
         val request = CommerceCheckoutRequest(
             organizationId = checkout.organizationId,
@@ -1720,6 +1740,7 @@ suspend fun simulateRedemptionTerminalPayment(
             currency,
             actorUserId
         )
+        if (preserveAcceptedAmounts) return
 
         val reconciliationSnapshot = CounterRedemptionPricingSnapshot(
             commerceTransactionId = checkout.commerceTransactionId,
@@ -1906,6 +1927,7 @@ suspend fun simulateRedemptionTerminalPayment(
         redemptionStatus = row.redemptionStatus,
         redemptionCompletedAt = row.redemptionCompletedAt,
         commerceTransactionId = row.commerceTransactionId,
+        fulfillmentOrderId = sql().counterOrderForRedemption(row.commerceTransactionId, actorUserId),
         providerCode = row.providerCode,
         commerceStatus = row.commerceStatus,
         subtotalMinor = row.subtotalMinor,
@@ -2564,6 +2586,9 @@ private data class CounterAppliedAdjustment(
 )
 
 interface CounterCommercePaymentSql {
+    @SqlQuery("SELECT counter_order_for_redemption(:transactionId,:actorUserId)")
+    fun counterOrderForRedemption(@Bind("transactionId") transactionId: String, @Bind("actorUserId") actorUserId: String): String?
+
     /*
      * Existing membership payment functions.
      */

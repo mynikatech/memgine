@@ -113,8 +113,138 @@ class CounterService(
 
     fun order(org: String, store: String, staff: String, orderId: String, principal: AuthenticatedPrincipal): JsonObject {
         if (orderId.isBlank() || orderId.length > 64) throw BadRequestException("Invalid order id")
-        return readOrders(org, store, staff, principal, orderId, null, null, null, 1, 0)
-            .getValue("orders").jsonArray.firstOrNull()?.jsonObject ?: throw NotFoundException("Order not found at this Store")
+        authorize(org, store, staff, principal)
+        val order = sql().orderLifecycle(org, store, staff, principal.userId, orderId)
+            ?: throw NotFoundException("Order not found at this Store")
+        return Json.parseToJsonElement(order).jsonObject
+    }
+
+    fun updateOrder(org: String, store: String, staff: String, order: String, version: Int,
+        command: CounterOrderCommand, credential: String?, principal: AuthenticatedPrincipal
+    ): CounterOrderActionResult {
+        authorize(org, store, staff, principal)
+        id(order, "order id")
+        if (version < 1) throw BadRequestException("Invalid order version")
+        val evidence = when (command) {
+            CounterOrderCommand.AUTHORIZE_PICKUP_QR -> credential?.let(::counterPickupDigest)
+                ?: throw ApiException(HttpStatusCode.BadRequest, "INVALID_CREDENTIAL", "Scan a valid pickup QR")
+            CounterOrderCommand.AUTHORIZE_PICKUP_OTP, CounterOrderCommand.AUTHORIZE_PICKUP_ASSISTED,
+            CounterOrderCommand.LINK_SUPPORT, CounterOrderCommand.REQUEST_CANCELLATION, CounterOrderCommand.REPORT_NO_SHOW ->
+                credential?.trim()?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,64}")) }
+                    ?: throw BadRequestException("Invalid collection verification evidence")
+            else -> null
+        }
+        val result = try {
+            sql().updateOrderLifecycle(org, store, staff, principal.userId, order, version, command.name, evidence)
+        } catch (_: Exception) {
+            // Avoid forwarding a driver error that can contain a credential digest.
+            throw ApiException(HttpStatusCode.ServiceUnavailable, "ORDER_UPDATE_UNAVAILABLE",
+                "The order update could not be confirmed. Refresh the order before trying again.")
+        }
+        when (result) {
+            "ORDER_UPDATED", "COLLECTION_COMPLETED", "COLLECTION_AUTHORIZED", "CASH_STARTED", "PAYMENT_RECORDED" ->
+                return CounterOrderActionResult(result)
+            "FORBIDDEN" -> throw ForbiddenException("Order access is unavailable for this Store")
+            "ORDER_NOT_FOUND" -> throw NotFoundException("Order not found at this Store")
+        }
+        val message = when (result) {
+            "STALE_ORDER" -> "Another Counter session updated this order. Review the latest details."
+            "ALREADY_FULFILLED" -> "This order was already collected."
+            "INVALID_TRANSITION" -> "This action is no longer available for the order."
+            "INVALID_CREDENTIAL" -> "The verification evidence does not match this order."
+            "WRONG_STORE" -> "This pickup QR belongs to a different Store."
+            "CREDENTIAL_EXPIRED" -> "The pickup QR expired. Ask the customer to open a fresh QR."
+            "CREDENTIAL_REVOKED" -> "The pickup QR was replaced. Ask for the latest QR."
+            "CREDENTIAL_USED" -> "The pickup QR has already been used."
+            "AUTHORIZATION_REQUIRED" -> "Verify the customer for this order before collection."
+            "AUTHORIZATION_EXPIRED" -> "Collection verification expired. Verify the customer again."
+            "AUTHORIZATION_REVOKED" -> "Collection verification is unavailable. Verify the customer again."
+            "PAYMENT_REQUIRED" -> "Verified payment is required before collection."
+            "PAYMENT_UNRESOLVED" -> "Payment could not be verified. Check the existing payment record before collection."
+            "FINANCIAL_EXCEPTION", "REFUND_CONFLICT" -> "Resolve the financial exception or refund before collection."
+            "SUPPORT_UNRESOLVED" -> "Resolve the linked Support case before taking payment or completing collection."
+            "SUPPORT_CASE_UNAVAILABLE" -> "Enter an open Support case number for the customer on this order."
+            "ENTITLEMENT_CONFLICT" -> "The order's reserved benefits or offers are unavailable."
+            else -> throw ApiException(HttpStatusCode.ServiceUnavailable, "ORDER_UPDATE_UNAVAILABLE",
+                "The order update could not be confirmed.")
+        }
+        throw ApiException(HttpStatusCode.Conflict, result, message)
+    }
+
+    fun requestOrderPickupOtp(org: String, store: String, staff: String, order: String,
+        principal: AuthenticatedPrincipal
+    ): CounterOrderPickupChallenge {
+        authorize(org, store, staff, principal)
+        id(order, "order id")
+        val target = sql().orderPickupOtpTarget(org, store, staff, principal.userId, order, null)
+            ?.let { Json.parseToJsonElement(it).jsonObject } ?: throw NotFoundException("Order is unavailable for phone verification")
+        val customer = target.getValue("customerId").jsonPrimitive.content
+        val subscription = target.getValue("subscriptionId").jsonPrimitive.content
+        val phone = sql().customers(org, principal.userId).firstOrNull { it.userId == customer }?.primaryPhone
+            ?: throw BadRequestException("A verified customer phone is unavailable")
+        val binding = JsonObject(mapOf("collectionOrderId" to kotlinx.serialization.json.JsonPrimitive(order),
+            "counterActorId" to kotlinx.serialization.json.JsonPrimitive(principal.userId)))
+        val request = businessOtp.request(phone, null, OtpPurpose.COUNTER_REDEMPTION_VERIFY, org, store,
+            subscriptionId = subscription, userId = customer, staffId = staff, payloadJson = binding.toString())
+        return CounterOrderPickupChallenge(request.challengeId)
+    }
+
+    fun startOrderTerminalPayment(org: String, store: String, staff: String, orderId: String,
+        version: Int, principal: AuthenticatedPrincipal
+    ): CommerceRemoteTerminalPaymentDispatchDto {
+        val lifecycle = order(org, store, staff, orderId, principal)["lifecycle"]?.jsonObject
+            ?: throw ConflictException("Order is unavailable for terminal payment")
+        if (lifecycle["version"]?.jsonPrimitive?.content != version.toString()) {
+            throw ConflictException("The order changed. Refresh before taking payment.", "STALE_ORDER")
+        }
+        if (lifecycle["canStartTerminal"]?.jsonPrimitive?.content != "true") {
+            throw ConflictException("Terminal payment is unavailable. Check the existing payment status.")
+        }
+        val redemption = lifecycle.getValue("redemptionId").jsonPrimitive.content
+        return counterCommercePayments.startRedemptionRemoteTerminalPayment(org, redemption, store, staff, principal.userId,
+            advanceOrder = true)
+    }
+
+    fun recoverOrderTerminalPayment(org: String, store: String, staff: String, orderId: String,
+        request: CounterOrderTerminalRecoveryRequest, principal: AuthenticatedPrincipal
+    ): com.mynikatech.memgine.component.commerce.CounterTimeoutRecoveryResult {
+        val lifecycle = order(org, store, staff, orderId, principal)["lifecycle"]?.jsonObject
+            ?: throw ConflictException("Order is unavailable for payment recovery")
+        if (lifecycle["version"]?.jsonPrimitive?.content != request.version.toString()) {
+            throw ConflictException("The order changed. Refresh before recovering payment.", "STALE_ORDER")
+        }
+        if (lifecycle["terminalRecoveryAttemptId"]?.jsonPrimitive?.content != request.paymentAttemptId) {
+            throw ConflictException("The terminal attempt is unavailable for recovery")
+        }
+        val redemption = lifecycle.getValue("redemptionId").jsonPrimitive.content
+        return counterCommercePayments.recoverTimedOutRedemptionPayment(org, redemption, store, staff, principal.userId,
+            request.paymentAttemptId, "CASH", request.confirmedNoSuccessfulPayment)
+    }
+
+    fun authorizeOrderPickupOtp(org: String, store: String, staff: String, order: String,
+        request: CounterOrderPickupOtpRequest, principal: AuthenticatedPrincipal
+    ): CounterOrderActionResult {
+        authorize(org, store, staff, principal)
+        id(order, "order id")
+        id(request.challengeId, "challenge id")
+        if (!request.otp.matches(Regex("[0-9]{4,8}"))) throw BadRequestException("Invalid verification code")
+        if (sql().orderPickupOtpTarget(org, store, staff, principal.userId, order, request.challengeId) == null) {
+            throw ForbiddenException("Verification is unavailable for this order")
+        }
+        val purpose = OtpPurpose.COUNTER_REDEMPTION_VERIFY
+        val verified = try {
+            businessOtp.resolveVerified(request.challengeId, purpose)
+        } catch (_: BadRequestException) {
+            businessOtp.verifyAndResolve(request.challengeId, request.otp, purpose)
+        }
+        val binding = Json.parseToJsonElement(verified.payload).jsonObject
+        if (verified.organizationId != org || verified.storeId != store || verified.staffId != staff ||
+            binding["collectionOrderId"]?.jsonPrimitive?.content != order ||
+            binding["counterActorId"]?.jsonPrimitive?.content != principal.userId) {
+            throw ForbiddenException("Verification is unavailable for this order")
+        }
+        return updateOrder(org, store, staff, order, request.version, CounterOrderCommand.AUTHORIZE_PICKUP_OTP,
+            request.challengeId, principal)
     }
 
     private fun readOrders(org: String, store: String, staff: String, principal: AuthenticatedPrincipal, order: String?,
@@ -1006,7 +1136,9 @@ class CounterService(
         validation.firstOrNull { !it.eligible }?.let {
             throw BadRequestException(it.rejectionReason ?: "A selected item is no longer available")
         }
-        businessOtp.consume(input.challengeId, OtpPurpose.COUNTER_REDEMPTION_VERIFY)
+        if (!sql().bindRedemptionOtp(org, transaction.transactionId, input.challengeId, principal.userId)) {
+            throw BadRequestException("Business verification could not be bound to this redemption")
+        }
         return transaction
     }
 

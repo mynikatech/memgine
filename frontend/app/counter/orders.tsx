@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { APP_ROUTES } from "@/src/constants/navigation";
 import { useCounterSession } from "@/src/core/services/counter-session-context";
 import { useAuth, useBusiness } from "@/src/providers";
@@ -11,10 +11,14 @@ export default function CounterOrdersRoute() {
   const { session } = useAuth();
   const { context } = useCounterSession();
   const router = useRouter();
+  const { orderId } = useLocalSearchParams<{ orderId?: string }>();
   const scope = counterOrdersContext(organization.id, context, session?.posContext);
   const openWorkspace = () => router.replace(APP_ROUTES.counter.organization(organization.id) as never);
   if (!scope) return <StateView kind="empty" title="Select a Store in Counter"
     message="Orders use the active Store and staff from the Counter workspace." actionLabel="Open Counter workspace" onAction={openWorkspace} />;
-  return <CounterOrdersDashboard key={JSON.stringify([session?.userId, scope.organizationId, scope.storeId, scope.staffId])}
-    context={scope} onOpenWorkspace={openWorkspace} />;
+  return <CounterOrdersDashboard key={JSON.stringify([session?.userId, scope.organizationId, scope.storeId, scope.staffId, orderId])}
+    context={scope} initialOrderId={orderId} onOpenWorkspace={openWorkspace} onOpenSupport={() => router.push({
+      pathname: APP_ROUTES.counter.supportRequests,
+      params: { organizationId: scope.organizationId, storeId: scope.storeId, staffId: scope.staffId },
+    })} />;
 }

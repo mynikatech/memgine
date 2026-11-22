@@ -13,6 +13,29 @@ class CounterPickupReferenceRequest(val reference: String)
 @Serializable
 data class CounterPickupLookupResult(val code: String, val orderId: String? = null)
 
+@Serializable
+class CounterOrderTransitionRequest(val version: Int)
+
+@Serializable
+class CounterOrderCollectionRequest(val version: Int, val credential: String? = null)
+
+@Serializable
+data class CounterOrderActionResult(val code: String)
+
+@Serializable
+class CounterOrderPickupOtpRequest(val version: Int, val challengeId: String, val otp: String)
+
+@Serializable
+data class CounterOrderPickupChallenge(val challengeId: String)
+
+@Serializable
+class CounterOrderTerminalRecoveryRequest(val version: Int, val paymentAttemptId: String, val confirmedNoSuccessfulPayment: Boolean)
+
+enum class CounterOrderCommand {
+    START_PREPARING, MARK_READY, COMPLETE_COLLECTION, AUTHORIZE_PICKUP_QR, AUTHORIZE_PICKUP_OTP, AUTHORIZE_PICKUP_ASSISTED,
+    START_CASH, CONFIRM_CASH, LINK_SUPPORT, REQUEST_CANCELLATION, REPORT_NO_SHOW
+}
+
 private val pickupPayload = Regex("^MEMGINE_PICKUP:([A-Za-z0-9_-]{43})$")
 private val orderReference = Regex("^[A-Za-z0-9_-]{1,64}$")
 

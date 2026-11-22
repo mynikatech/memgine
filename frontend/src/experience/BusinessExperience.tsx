@@ -718,7 +718,8 @@ export function BusinessExperience({
     customerUserId,
     historyRefresh,
   ]);
-  const fulfillmentHistoryScope = JSON.stringify([orderScope, historySubscriptionId]);
+  const activeFulfillmentVersions = activity?.orders.map(({ id, version }) => [id, version]);
+  const fulfillmentHistoryScope = JSON.stringify([orderScope, historySubscriptionId, activeFulfillmentVersions]);
   const savingsScope = JSON.stringify([
     organization.id,
     customerUserId,
@@ -786,6 +787,10 @@ export function BusinessExperience({
   useEffect(() => {
     setFulfillmentOffset(0);
   }, [fulfillmentHistoryScope]);
+
+  useEffect(() => {
+    if (!focused || effectiveTab !== "history") setFulfillmentOffset(0);
+  }, [effectiveTab, focused]);
 
   useEffect(() => {
     if (isPreviewMode || !customerUserId || !focused || effectiveTab !== "history") return;

@@ -11,8 +11,9 @@ const api = new CounterApi();
 
 export type CounterPickupMatch = { orderId: string; kind: "verified" | "reference" };
 
-export function CounterPickupLookup({ mode, context, storeName, onClose, onMatch }: {
-  mode: "scan" | "manual"; context: CounterContext; storeName: string; onClose: () => void; onMatch: (match: CounterPickupMatch) => void;
+export function CounterPickupLookup({ mode, context, storeName, expectedOrderId, onClose, onMatch }: {
+  mode: "scan" | "manual"; context: CounterContext; storeName: string; expectedOrderId?: string; onClose: () => void;
+  onMatch: (match: CounterPickupMatch, credential?: string) => void;
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -72,7 +73,12 @@ export function CounterPickupLookup({ mode, context, storeName, onClose, onMatch
       if (!result.success) { setError(pickupLookupMessage(result.error.code)); return; }
       const match = result.data;
       if ((match.code === "VERIFIED" || match.code === "LOCATED") && match.orderId) {
-        onMatch({ orderId: match.orderId, kind: match.code === "VERIFIED" ? "verified" : "reference" });
+        if (expectedOrderId && match.orderId !== expectedOrderId) {
+          setError("This pickup QR belongs to a different order. Ask for the QR for the selected order.");
+          return;
+        }
+        onMatch({ orderId: match.orderId, kind: match.code === "VERIFIED" ? "verified" : "reference" },
+          match.code === "VERIFIED" && kind === "qr" ? value : undefined);
       } else setError(pickupLookupMessage(match.code));
     } catch {
       if (live.current) setError("Could not complete pickup lookup. Try again.");
@@ -109,12 +115,12 @@ export function CounterPickupLookup({ mode, context, storeName, onClose, onMatch
         editable={!busy && !permissionPending} returnKeyType="go" onSubmitEditing={() => void submit("qr", qrInput)} />
       <Button variant="outline" label="Verify pickup QR" disabled={busy || permissionPending || !qrInput.trim()} onPress={() => void submit("qr", qrInput)} />
     </Card>
-    <Card padding="md" elevation="none" style={{ gap: 8 }}>
+    {!expectedOrderId ? <Card padding="md" elevation="none" style={{ gap: 8 }}>
       <Input label="Order reference" value={orderInput} onChangeText={setOrderInput} autoCorrect={false} maxLength={65}
         editable={!busy && !permissionPending} returnKeyType="search" onSubmitEditing={() => void submit("reference", orderInput)} />
       <Text variant="caption" color="textMuted">Order lookup identifies an order. It does not verify pickup.</Text>
       <Button variant="outline" label="Find order" disabled={busy || permissionPending || !orderInput.trim()} onPress={() => void submit("reference", orderInput)} />
-    </Card>
+    </Card> : null}
   </View>;
 
   if (web) return <Modal visible onClose={onClose} title={title} maxWidth={560} scrollable>{content}</Modal>;

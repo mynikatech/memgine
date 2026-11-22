@@ -237,7 +237,7 @@ export function FulfillmentProgress({ item, confirmation = false }: { item: Cust
   const ready = item.status === "READY";
   const terminal = fulfillmentIsTerminal(item.status) || item.status === "CANCEL_REQUESTED";
   const stages: CustomerFulfillment["status"][] = item.workflow === "DETAILED" ? ["PLACED", "PREPARING", "READY", "FULFILLED"] :
-    item.workflow === "SIMPLE" ? ["PLACED", "FULFILLED"] : [];
+    item.workflow === "SIMPLE" ? ["PLACED", "READY", "FULFILLED"] : [];
   const step = stages.indexOf(item.status);
   const reached = (stage: CustomerFulfillment["status"]) => stage === "PLACED" || item.status === stage ||
     item.timeline?.some(({ type }) => (stage === "PREPARING" && type === "PREPARATION_STARTED") || (stage === "READY" && type === "MARKED_READY"));
@@ -707,7 +707,9 @@ export function CustomerFulfillmentDetails({ organizationId, initial, focused, c
         {item.verifiedSavingsMinor != null && formatTransactionMoney(item.verifiedSavingsMinor, item.currencyCode) ? (
           <Text variant="bodyStrong" color="success">Saved {formatTransactionMoney(item.verifiedSavingsMinor, item.currencyCode)}</Text>
         ) : null}
-        {item.timeline?.filter((entry) => timelineLabels[entry.type] && (item.workflow === "DETAILED" || !["PREPARATION_STARTED", "MARKED_READY"].includes(entry.type)))
+        {item.timeline?.filter((entry) => timelineLabels[entry.type] &&
+          (entry.type !== "PREPARATION_STARTED" || item.workflow === "DETAILED") &&
+          (entry.type !== "MARKED_READY" || item.workflow !== "NONE"))
           .map((entry) => <Text key={entry.id} variant="caption" color="textMuted">{timelineLabels[entry.type]} · {localTime(entry.at, item.timezone)}</Text>)}
         {item.refundStates.map((state) => refundLabels[state] ? <Text key={state} variant="bodySmall">{refundLabels[state]}</Text> : null)}
         {item.receiptId && item.status === "FULFILLED" ? (

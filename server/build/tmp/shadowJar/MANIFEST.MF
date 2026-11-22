@@ -1,2 +1,4 @@
 Manifest-Version: 1.0
+Main-Class: com.mynikatech.memgine.ApplicationKt
+Multi-Release: true
 
