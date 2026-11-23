@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 312-counter-cross-store-reservation
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/312-counter-cross-store-reservation.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

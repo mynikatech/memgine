@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 313-counter-table-read-privileges
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/313-counter-table-read-privileges.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

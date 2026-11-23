@@ -277,13 +277,138 @@ interface CounterSql {
         @Bind("actorUserId") actorUserId: String
     ): List<BenefitDto>
 
-    @SqlQuery("SELECT * FROM get_customer_redemption_item_status(:organizationId, :subscriptionId, :customerUserId)")
+
+    // Reuse canonical entitlement statuses. Only replace a non-available status
+    // when exactly one active, same-customer, same-store reservation is found.
+    
+    
+    @SqlQuery("""
+        SELECT
+            item."itemId" AS "itemId",
+            item."itemType" AS "itemType",
+
+            CASE
+                WHEN reserved_order.reference IS NULL
+                     OR reserved_location.store_id IS NULL
+                    THEN item.status
+
+                WHEN reserved_location.store_id = :storeId
+                    THEN 'RESERVED_FOR_ORDER'
+
+                ELSE 'RESERVED_OTHER_STORE'
+            END AS status,
+
+            CASE
+                WHEN reserved_order.reference IS NULL
+                     OR reserved_location.store_id IS NULL
+                    THEN item."displayReason"
+
+                WHEN reserved_location.store_id = :storeId
+                    THEN 'Reserved for Order ' ||
+                         reserved_order.reference
+
+                ELSE 'Reserved at ' ||
+                     reserved_location.store_name
+            END AS "displayReason"
+
+        FROM get_customer_redemption_item_status(
+            :organizationId,
+            :subscriptionId,
+            :customerUserId
+        ) AS item
+
+        LEFT JOIN LATERAL (
+            SELECT counter_reserved_order_reference_for_item(
+                :organizationId,
+                :storeId,
+                :staffId,
+                :actorUserId,
+                :subscriptionId,
+                :customerUserId,
+                item."itemType",
+                item."itemId"
+            ) AS reference
+        ) AS reserved_order ON TRUE
+
+        LEFT JOIN LATERAL (
+            SELECT
+                fulfillment.store_id,
+                store.store_name
+
+            FROM fulfillments fulfillment
+
+            JOIN stores store
+              ON store.store_id = fulfillment.store_id
+             AND store.organization_id = fulfillment.organization_id
+
+            JOIN commerce_transactions commerce
+              ON commerce.commerce_transaction_id =
+                 fulfillment.commerce_transaction_id
+             AND commerce.organization_id = :organizationId
+             AND commerce.customer_user_id = :customerUserId
+             AND commerce.subscription_id = :subscriptionId
+             AND commerce.store_id = fulfillment.store_id
+             AND commerce.source_channel = 'CUSTOMER_FULFILLMENT'
+             AND NOT commerce.is_deleted
+
+            JOIN redemption_transaction redemption
+              ON redemption.redemption_transaction_id =
+                 fulfillment.redemption_transaction_id
+             AND redemption.organization_id = :organizationId
+             AND redemption.subscription_id = :subscriptionId
+             AND redemption.store_id = fulfillment.store_id
+             AND redemption.status = 'RESERVED'
+
+            JOIN redemption_transaction_item redemption_item
+              ON redemption_item.redemption_transaction_id =
+                 redemption.redemption_transaction_id
+             AND redemption_item.item_type = item."itemType"
+             AND (
+                 (
+                     item."itemType" = 'BENEFIT'
+                     AND redemption_item.benefit_id = item."itemId"
+                 )
+                 OR
+                 (
+                     item."itemType" = 'OFFER'
+                     AND redemption_item.offer_id = item."itemId"
+                 )
+             )
+
+            JOIN redemption_entitlement_reservations reservation
+              ON reservation.fulfillment_id = fulfillment.fulfillment_id
+             AND reservation.redemption_transaction_item_id =
+                 redemption_item.redemption_transaction_item_id
+             AND reservation.reserved_quantity >
+                 COALESCE(reservation.consumed_quantity, 0)
+                 + COALESCE(reservation.released_quantity, 0)
+
+            JOIN statuses reservation_status
+              ON reservation_status.status_id =
+                 reservation.reservation_status_id
+             AND reservation_status.status_code = 'RESERVED'
+
+            WHERE fulfillment.organization_id = :organizationId
+              AND fulfillment.customer_user_id = :customerUserId
+              AND fulfillment.fulfillment_number =
+                  reserved_order.reference
+
+            ORDER BY fulfillment.fulfillment_id
+            LIMIT 1
+        ) AS reserved_location ON TRUE
+    """)
     @RegisterBeanMapper(CounterRedemptionItemStatusRow::class)
     fun redemptionItemStatuses(
         @Bind("organizationId") organizationId: String,
         @Bind("subscriptionId") subscriptionId: String,
-        @Bind("customerUserId") customerUserId: String
+        @Bind("customerUserId") customerUserId: String,
+        @Bind("storeId") storeId: String,
+        @Bind("staffId") staffId: String,
+        @Bind("actorUserId") actorUserId: String
     ): List<CounterRedemptionItemStatusRow>
+
+
+
 
     @SqlQuery("SELECT * FROM get_customer_offers(:organizationId, :customerUserId)")
     fun customerOffers(

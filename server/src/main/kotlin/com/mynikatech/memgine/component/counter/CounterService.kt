@@ -512,8 +512,14 @@ class CounterService(
         id(customerUserId, "customer user id")
         return translate {
             val lookup = sql()
-            val statuses = lookup.redemptionItemStatuses(org, subscriptionId, customerUserId)
-                .associateBy { "${it.itemType}:${it.itemId}" }
+            val statuses = lookup.redemptionItemStatuses(
+                org,
+                subscriptionId,
+                customerUserId,
+                store,
+                staff,
+                principal.userId
+            ).associateBy { "${it.itemType}:${it.itemId}" }
             val benefits = lookup.subscriptionBenefits(org, subscriptionId, principal.userId)
                 .mapNotNull { benefit ->
                     val status = statuses["BENEFIT:${benefit.id}"] ?: return@mapNotNull null

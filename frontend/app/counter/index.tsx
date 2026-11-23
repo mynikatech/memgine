@@ -1829,6 +1829,46 @@ export default function StaffCounter() {
     };
   }, [pickupOrder?.id, pickupOrder?.lifecycle?.payment]);
 
+  // Phase 311: follow an existing reservation to the SAME Counter financial review.
+  // A reservation is not a new redemption and is not proof of customer verification.
+  const openReservedOrder = async (reference: string) => {
+    if (busy || !reference) return;
+
+    resetDynamicRedemption();
+    setOrderVerification(undefined);
+    setMode("qr");
+    setOrderReference(reference);
+    setBusy(true);
+    setPickupError("");
+    setAlreadyVerifiedNotice(false);
+
+    try {
+      const found = await existingOrderApi.lookupPickupOrderReference(
+        counterContext(),
+        reference,
+      );
+
+      if (!found.success) {
+        throw new Error(found.error.message);
+      }
+
+      if (found.data.code !== "LOCATED" || !found.data.orderId) {
+        throw new Error("The reserved order is not available at this Store.");
+      }
+
+      await refreshPickupOrder(found.data.orderId);
+      setAlreadyVerifiedNotice(false);
+    } catch (failure) {
+      setPickupError(
+        failure instanceof Error
+          ? failure.message
+          : "Unable to open reserved order.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const findPickupOrder = async () => {
     if (!orderReference.trim() || busy) return;
     Keyboard.dismiss();
@@ -3797,16 +3837,34 @@ export default function StaffCounter() {
                 <Text style={styles.sectionTitle}>Benefits</Text>
                 {redemptionBenefitItems.map((benefit) => {
                   const selectable = benefit.status === "AVAILABLE";
+
+                  const reservedReference =
+                    benefit.status === "RESERVED_FOR_ORDER" &&
+                    benefit.displayReason?.startsWith("Reserved for Order ")
+                      ? benefit.displayReason
+                          .slice("Reserved for Order ".length)
+                          .trim()
+                      : null;
+
                   const on = selectable && selectedBenefitIds.has(benefit.id);
                   return (
                     <Pressable
                       key={benefit.id}
                       testID={`counter-benefit-${benefit.id}`}
-                      disabled={!selectable || busy}
-                      onPress={() => toggleBenefit(benefit.id)}
+                      accessibilityRole="button"
+                      disabled={busy || (!selectable && !reservedReference)}
+                      onPress={() =>
+                        reservedReference
+                          ? void openReservedOrder(reservedReference)
+                          : toggleBenefit(benefit.id)
+                      }
                       style={[
                         styles.benefitRow,
-                        !selectable && { opacity: 0.5 },
+                        !selectable &&
+                          !reservedReference &&
+                          benefit.status !== "RESERVED_OTHER_STORE" && {
+                            opacity: 0.5,
+                          },
                       ]}
                     >
                       <View style={[styles.check, on && styles.checkOn]}>
@@ -3822,9 +3880,14 @@ export default function StaffCounter() {
                           </Text>
                         ) : null}
                       </View>
+
                       {!selectable ? (
                         <Text style={styles.usedTag}>
-                          {benefit.displayReason ?? "UNAVAILABLE"}
+                          {reservedReference
+                            ? `🔒 ${benefit.displayReason} · Open Order`
+                            : benefit.status === "RESERVED_OTHER_STORE"
+                              ? `🔒 ${benefit.displayReason}`
+                              : (benefit.displayReason ?? "UNAVAILABLE")}
                         </Text>
                       ) : null}
                     </Pressable>
@@ -3835,14 +3898,33 @@ export default function StaffCounter() {
                 ) : null}
                 {redemptionOfferItems.map((offer) => {
                   const selectable = offer.status === "AVAILABLE";
+                  const reservedReference =
+                    offer.status === "RESERVED_FOR_ORDER" &&
+                    offer.displayReason?.startsWith("Reserved for Order ")
+                      ? offer.displayReason
+                          .slice("Reserved for Order ".length)
+                          .trim()
+                      : null;
                   const on = selectable && selectedOfferIds.has(offer.id);
                   return (
                     <Pressable
                       key={offer.id}
                       testID={`counter-offer-${offer.id}`}
-                      disabled={!selectable || busy}
-                      onPress={() => toggleOffer(offer.id)}
-                      style={[styles.offerRow, !selectable && { opacity: 0.5 }]}
+                      accessibilityRole="button"
+                      disabled={busy || (!selectable && !reservedReference)}
+                      onPress={() =>
+                        reservedReference
+                          ? void openReservedOrder(reservedReference)
+                          : toggleOffer(offer.id)
+                      }
+                      style={[
+                        styles.offerRow,
+                        !selectable &&
+                          !reservedReference &&
+                          offer.status !== "RESERVED_OTHER_STORE" && {
+                            opacity: 0.5,
+                          },
+                      ]}
                     >
                       <View style={[styles.check, on && styles.checkOn]}>
                         {on ? <Text style={styles.checkMark}>✓</Text> : null}
@@ -3860,9 +3942,14 @@ export default function StaffCounter() {
                           <Text style={styles.muted}>{offer.description}</Text>
                         ) : null}
                       </View>
+
                       {!selectable ? (
                         <Text style={styles.usedTag}>
-                          {offer.displayReason ?? "UNAVAILABLE"}
+                          {reservedReference
+                            ? `🔒 ${offer.displayReason} · Open Order`
+                            : offer.status === "RESERVED_OTHER_STORE"
+                              ? `🔒 ${offer.displayReason}`
+                              : (offer.displayReason ?? "UNAVAILABLE")}
                         </Text>
                       ) : null}
                     </Pressable>

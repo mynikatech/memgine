@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 311-counter-reservation-selection
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/311-counter-reservation-selection.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8
