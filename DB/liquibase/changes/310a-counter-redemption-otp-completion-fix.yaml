@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 310a-counter-redemption-otp-completion-fix
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/310a-counter-redemption-otp-completion-fix.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

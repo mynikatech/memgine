@@ -150,7 +150,7 @@ export type CounterOrderFilters = {
 };
 export type CounterPickupVerification =
   | {
-      code: "VERIFIED";
+      code: "VERIFIED" | "ALREADY_VERIFIED";
       orderId?: ID;
       transactionId?: ID;
       transactionNumber?: string;
@@ -165,8 +165,7 @@ export type CounterPickupVerification =
         | "REVOKED"
         | "USED"
         | "ORDER_UNAVAILABLE"
-        | "RATE_LIMITED"
-        | "ALREADY_VERIFIED";
+        | "RATE_LIMITED";
     };
 export type CounterPickupReferenceLookup =
   | { code: "LOCATED"; orderId: ID }

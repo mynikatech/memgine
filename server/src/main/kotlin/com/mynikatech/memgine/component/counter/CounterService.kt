@@ -101,19 +101,29 @@ class CounterService(
         return pickupLookupResult(sql().pickupOrderReference(org, store, staff, principal.userId, validReference), "LOCATED")
     }
 
+    
     private fun pickupLookupResult(raw: String, successCode: String): CounterPickupLookupResult {
         val result = Json.parseToJsonElement(raw).jsonObject
         val code = result.getValue("code").jsonPrimitive.content
-        if (code == "FORBIDDEN") throw ForbiddenException("Order access is unavailable for this Store")
+
+        if (code == "FORBIDDEN") {
+            throw ForbiddenException("Order access is unavailable for this Store")
+        }
+
+        val canReturnOrder =
+            code == successCode ||
+            (successCode == "VERIFIED" && code == "ALREADY_VERIFIED")
+
         return CounterPickupLookupResult(
             code,
-            if (code == successCode) result["orderId"]?.jsonPrimitive?.content else null,
-            if (code == successCode) result["transactionId"]?.jsonPrimitive?.content else null,
-            if (code == successCode) result["transactionNumber"]?.jsonPrimitive?.content else null,
-            if (code == successCode) result["status"]?.jsonPrimitive?.content else null,
-            if (code == successCode) result["expiresAt"]?.jsonPrimitive?.content else null
+            if (canReturnOrder) result["orderId"]?.jsonPrimitive?.content else null,
+            if (canReturnOrder) result["transactionId"]?.jsonPrimitive?.content else null,
+            if (canReturnOrder) result["transactionNumber"]?.jsonPrimitive?.content else null,
+            if (canReturnOrder) result["status"]?.jsonPrimitive?.content else null,
+            if (canReturnOrder) result["expiresAt"]?.jsonPrimitive?.content else null
         )
     }
+
 
     fun orders(org: String, store: String, staff: String, status: String?, search: String?, pickupDay: String?,
         limit: Int?, offset: Int?, principal: AuthenticatedPrincipal

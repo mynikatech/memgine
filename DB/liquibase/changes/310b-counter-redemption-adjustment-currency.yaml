@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 310b-counter-redemption-adjustment-currency
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/310b-counter-redemption-adjustment-currency.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

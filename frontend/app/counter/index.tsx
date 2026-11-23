@@ -291,134 +291,159 @@ const RESULT_STYLE: Record<CounterResult["kind"], { fg: string; bg: string }> =
 function CounterOrderFinancialReview({ order }: { order: CounterOrder }) {
   const money = (amount?: number | null) =>
     formatTransactionMoney(amount, order.currencyCode) ?? "Unavailable";
+  const [showDetails, setShowDetails] = useState(false);
   const lifecycle = order.lifecycle;
   const complete = counterFinancialComplete(order);
   const reviewAvailable = counterFinancialReviewAvailable(order);
-  const verificationLabel =
-    lifecycle?.verificationMethod?.replaceAll("_", " ") ?? "Not verified";
+  const due = lifecycle?.outstandingMinor;
+  const amountToShow = due ?? order.totalMinor;
+  // The order discount is already reflected in the total. Never subtract it again.
+  const discount = order.discountMinor;
   const paymentLabel = (() => {
     switch (lifecycle?.payment) {
-      case "VERIFIED_ONLINE": return "Paid online";
-      case "VERIFIED_AT_COUNTER": return "Paid at counter";
-      case "NO_PAYMENT_REQUIRED": return "No payment required";
-      case "PAYMENT_REQUIRED": return "Payment due";
-      case "PAYMENT_UNRESOLVED": return "Payment processing / unconfirmed";
-      case "CASH_CONFIRMATION_REQUIRED": return "Cash awaiting confirmation";
-      case "CASH_RECOVERY_READY": return "Cash recovery available";
-      case "FINANCIAL_EXCEPTION": return "Payment needs review";
-      case "REFUND_CONFLICT": return "Refund needs review";
-      default: return "Payment not confirmed";
+      case "VERIFIED_ONLINE":
+        return "Paid online";
+      case "VERIFIED_AT_COUNTER":
+        return "Paid at counter";
+      case "NO_PAYMENT_REQUIRED":
+        return "No payment required";
+      case "PAYMENT_REQUIRED":
+        return "Payment due";
+      case "PAYMENT_UNRESOLVED":
+        return "Payment unconfirmed";
+      case "CASH_CONFIRMATION_REQUIRED":
+        return "Confirm cash";
+      case "CASH_RECOVERY_READY":
+        return "Cash recovery available";
+      case "FINANCIAL_EXCEPTION":
+        return "Payment needs review";
+      case "REFUND_CONFLICT":
+        return "Refund needs review";
+      default:
+        return "Payment not confirmed";
     }
   })();
 
   return (
-    <View style={styles.orderReviewWrap} testID="counter-order-financial-review">
-      <View style={styles.orderReviewHeader}>
-        <View style={styles.orderReviewHeaderText}>
-          <Text style={styles.orderReviewEyebrow}>COUNTER · ORDER CHECKOUT</Text>
-          <Text style={styles.orderReviewTitle}>Financial review</Text>
-          <Text style={styles.orderReviewReference}>Order {order.reference}</Text>
-        </View>
-        <View style={styles.orderReviewStatusChip}>
-          <Text style={styles.orderReviewStatusText}>
-            {order.status.replaceAll("_", " ")}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.orderReviewMeta}>
-        <View style={styles.orderReviewMetaCell}>
-          <Text style={styles.orderReviewMetaLabel}>CUSTOMER</Text>
-          <Text style={styles.orderReviewMetaValue}>
+    <View style={styles.receiptPanel} testID="counter-order-financial-review">
+      <View style={styles.compactHeader}>
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <Text style={styles.compactEyebrow}>ORDER · {order.reference}</Text>
+          <Text style={styles.receiptCustomer} numberOfLines={2}>
             {order.customerName ?? "Customer name unavailable"}
           </Text>
+          <Text style={styles.compactMeta} numberOfLines={2}>
+            {order.storeName} ·{" "}
+            {lifecycle?.verificationMethod
+              ? `${lifecycle.verificationMethod.replaceAll("_", " ")} verified`
+              : "Verification pending"}
+          </Text>
         </View>
-        <View style={styles.orderReviewMetaCell}>
-          <Text style={styles.orderReviewMetaLabel}>STORE</Text>
-          <Text style={styles.orderReviewMetaValue}>{order.storeName}</Text>
-        </View>
-        <View style={styles.orderReviewMetaCell}>
-          <Text style={styles.orderReviewMetaLabel}>VERIFICATION</Text>
-          <Text style={styles.orderReviewMetaValue}>{verificationLabel}</Text>
-        </View>
-        <View style={styles.orderReviewMetaCell}>
-          <Text style={styles.orderReviewMetaLabel}>PAYMENT STATUS</Text>
-          <Text style={styles.orderReviewMetaValue}>{paymentLabel}</Text>
+        <View style={styles.compactStatus}>
+          <Text style={styles.compactStatusText}>{paymentLabel}</Text>
         </View>
       </View>
 
-      <View style={styles.orderReviewItems}>
-        <Text style={styles.orderReviewSectionTitle}>Items</Text>
-        <View style={styles.orderReviewTableHeader}>
-          <Text style={[styles.orderReviewTableCaption, styles.orderReviewItemCol]}>ITEM</Text>
-          <Text style={[styles.orderReviewTableCaption, styles.orderReviewQtyCol]}>QTY</Text>
-          <Text style={[styles.orderReviewTableCaption, styles.orderReviewMoneyCol]}>UNIT</Text>
-          <Text style={[styles.orderReviewTableCaption, styles.orderReviewMoneyCol]}>AMOUNT</Text>
-        </View>
+      <View style={styles.compactItems}>
         {order.items.map((line) => (
-          <View key={line.id} style={styles.orderReviewItemBlock}>
-            <View style={styles.orderReviewItemRow}>
-              <Text style={[styles.orderReviewItemName, styles.orderReviewItemCol]}>
-                {line.name}
-              </Text>
-              <Text style={[styles.orderReviewCell, styles.orderReviewQtyCol]}>{line.quantity}</Text>
-              <Text style={[styles.orderReviewCell, styles.orderReviewMoneyCol]}>
-                {money(line.unitPriceMinor)}
-              </Text>
-              <Text style={[styles.orderReviewItemAmount, styles.orderReviewMoneyCol]}>
-                {money(line.subtotalMinor)}
+          <View key={line.id} style={styles.compactItem}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.compactItemName}>
+                {line.name} × {line.quantity}
               </Text>
             </View>
-            {line.discountMinor != null && line.discountMinor > 0 ? (
-              <Text style={styles.orderReviewLineDiscount}>
-                Item discount: −{money(line.discountMinor)}
-              </Text>
-            ) : null}
+            <Text style={styles.compactItemAmount}>
+              {money(line.subtotalMinor)}
+            </Text>
           </View>
         ))}
       </View>
 
-      <View style={styles.orderReviewTotals}>
-        <View style={styles.orderReviewTotalRow}>
-          <Text style={styles.orderReviewTotalLabel}>Subtotal</Text>
-          <Text style={styles.orderReviewTotalValue}>{money(order.subtotalMinor)}</Text>
-        </View>
-        <View style={styles.orderReviewTotalRow}>
-          <Text style={styles.orderReviewTotalLabel}>Discount</Text>
-          <Text style={styles.orderReviewDiscountValue}>
-            {order.discountMinor != null && order.discountMinor > 0 ? "−" : ""}
-            {money(order.discountMinor)}
-          </Text>
-        </View>
-        <View style={styles.orderReviewTotalRow}>
-          <Text style={styles.orderReviewTotalLabel}>Tax</Text>
-          <Text style={styles.orderReviewTotalValue}>{money(order.taxMinor)}</Text>
-        </View>
-        <View style={styles.orderReviewGrandTotal}>
-          <Text style={styles.orderReviewGrandTotalLabel}>Order total</Text>
-          <Text style={styles.orderReviewGrandTotalAmount}>{money(order.totalMinor)}</Text>
-        </View>
-        {lifecycle?.outstandingMinor != null ? (
-          <View style={styles.orderReviewOutstanding}>
-            <Text style={styles.orderReviewOutstandingLabel}>AMOUNT DUE</Text>
-            <Text style={styles.orderReviewOutstandingAmount}>
-              {money(lifecycle.outstandingMinor)}
-            </Text>
-          </View>
-        ) : null}
+      <View style={styles.receiptBreakdown}>
+        <Text style={styles.compactMeta}>
+          Subtotal {money(order.subtotalMinor)}
+        </Text>
+        <Text style={styles.compactMeta}>
+          Discount {discount != null && discount > 0 ? "−" : ""}
+          {money(discount)}
+        </Text>
+        <Text style={styles.compactMeta}>Tax {money(order.taxMinor)}</Text>
       </View>
+
+      {discount != null && discount > 0 ? (
+        <View style={styles.receiptSavings} testID="counter-order-savings-row">
+          <Text style={styles.receiptSavingsText}>Savings from discounts</Text>
+          <Text style={styles.receiptSavingsAmount}>{money(discount)}</Text>
+        </View>
+      ) : null}
+
+      <View style={styles.receiptAmountRow}>
+        <Text style={styles.receiptAmountLabel}>
+          {due != null && due > 0
+            ? "AMOUNT TO COLLECT"
+            : due === 0
+              ? "AMOUNT DUE"
+              : "ORDER TOTAL"}
+        </Text>
+        <Text
+          style={styles.receiptAmount}
+          adjustsFontSizeToFit
+          numberOfLines={1}
+        >
+          {money(amountToShow)}
+        </Text>
+      </View>
+      {due != null && due !== order.totalMinor ? (
+        <Text style={styles.compactMeta}>
+          Order total: {money(order.totalMinor)}
+        </Text>
+      ) : null}
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: showDetails }}
+        onPress={() => setShowDetails((current) => !current)}
+        style={styles.compactDetailsButton}
+      >
+        <Text style={styles.compactDetailsText}>
+          {showDetails ? "Hide order details ▲" : "View order details ▼"}
+        </Text>
+      </Pressable>
+      {showDetails ? (
+        <View style={styles.compactDetails}>
+          <Text style={styles.compactMeta}>
+            Order status: {order.status.replaceAll("_", " ")}
+          </Text>
+          <Text style={styles.compactMeta}>Payment: {paymentLabel}</Text>
+          {order.items.map((line) => (
+            <View key={line.id} style={{ gap: 2 }}>
+              <Text style={styles.compactMeta}>
+                {line.name} — {line.quantity} × {money(line.unitPriceMinor)}
+              </Text>
+              {line.discountMinor != null && line.discountMinor > 0 ? (
+                <Text style={styles.compactDiscount}>
+                  Item discount: −{money(line.discountMinor)}
+                </Text>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      ) : null}
 
       {complete ? (
         <View style={styles.orderReviewSuccess}>
-          <Text style={styles.orderReviewSuccessTitle}>✓ Verified · Payment satisfied</Text>
+          <Text style={styles.orderReviewSuccessTitle}>
+            ✓ Verified · Payment satisfied
+          </Text>
           <Text style={styles.orderReviewSuccessDetail}>
-            Continue in Orders for preparation and final handover. No benefit has been consumed here.
+            Continue in Orders for preparation and handover. No benefit has been
+            consumed here.
           </Text>
         </View>
       ) : !reviewAvailable ? (
         <View style={styles.orderReviewWarning}>
           <Text style={styles.orderReviewWarningText}>
-            Order pricing is incomplete. Refresh the order before taking payment.
+            Order pricing is incomplete. Refresh before payment.
           </Text>
         </View>
       ) : null}
@@ -431,11 +456,27 @@ export default function StaffCounter() {
   const counterScrollRef = useRef<ScrollView>(null);
 
   const revealCounterFocusedInput = useCallback(() => {
-    if (Platform.OS === "web") return;
+    if (Platform.OS === "web") {
+      const reveal = () => {
+        const active = document.activeElement;
+        if (
+          active instanceof HTMLElement &&
+          active.matches("input, textarea, [contenteditable='true']")
+        ) {
+          active.scrollIntoView({
+            block: "nearest",
+            inline: "nearest",
+            behavior: "smooth",
+          });
+        }
+      };
+
+      requestAnimationFrame(reveal);
+      return;
+    }
 
     requestAnimationFrame(() => {
       const focusedInput = TextInput.State.currentlyFocusedInput();
-
       if (!focusedInput) return;
 
       counterScrollRef.current?.scrollResponderScrollNativeHandleToKeyboard(
@@ -447,7 +488,19 @@ export default function StaffCounter() {
   }, []);
 
   useEffect(() => {
-    if (Platform.OS === "web") return;
+    if (Platform.OS === "web") {
+      const viewport = window.visualViewport;
+
+      const onViewportResize = () => {
+        requestAnimationFrame(revealCounterFocusedInput);
+      };
+
+      viewport?.addEventListener("resize", onViewportResize);
+
+      return () => {
+        viewport?.removeEventListener("resize", onViewportResize);
+      };
+    }
 
     const listener = Keyboard.addListener(
       "keyboardDidShow",
@@ -456,6 +509,7 @@ export default function StaffCounter() {
 
     return () => listener.remove();
   }, [revealCounterFocusedInput]);
+
   const { organization } = useBusiness();
   const { session, hasCapability } = useAuth();
 
@@ -620,6 +674,7 @@ export default function StaffCounter() {
   const [simulatingPoyntOutcome, setSimulatingPoyntOutcome] =
     useState<DevPoyntOutcome | null>(null);
 
+  const [pickupSimulatorExpanded, setPickupSimulatorExpanded] = useState(false);
   /*
    * QR
    */
@@ -637,6 +692,7 @@ export default function StaffCounter() {
   const [pickupRecoveryConfirm, setPickupRecoveryConfirm] = useState(false);
 
   const [pickupError, setPickupError] = useState("");
+  const [alreadyVerifiedNotice, setAlreadyVerifiedNotice] = useState(false);
 
   const pickupPaymentInFlight = useRef(false);
   const [scannerActive, setScannerActive] = useState(false);
@@ -822,8 +878,10 @@ export default function StaffCounter() {
     setOrderReference("");
     setOrderVerification(undefined);
     setPickupError("");
+    setAlreadyVerifiedNotice(false);
     setPickupCashConfirm(false);
     setPickupRecoveryConfirm(false);
+    setPickupSimulatorExpanded(false);
 
     setTokenText("");
     setScannerActive(false);
@@ -1703,6 +1761,7 @@ export default function StaffCounter() {
   const resetDynamicRedemption = () => {
     setPickupOrder(null);
     setPickupError("");
+    setAlreadyVerifiedNotice(false);
     setPickupCashConfirm(false);
     setPickupRecoveryConfirm(false);
 
@@ -1772,6 +1831,7 @@ export default function StaffCounter() {
 
   const findPickupOrder = async () => {
     if (!orderReference.trim() || busy) return;
+    Keyboard.dismiss();
     setBusy(true);
     setPickupError("");
     try {
@@ -1783,6 +1843,8 @@ export default function StaffCounter() {
       if (found.data.code !== "LOCATED")
         throw new Error("No matching order is available at this Store.");
       await refreshPickupOrder(found.data.orderId);
+      setAlreadyVerifiedNotice(false);
+      setError("");
     } catch (failure) {
       setPickupError(
         failure instanceof Error
@@ -1946,6 +2008,7 @@ export default function StaffCounter() {
     setBusy(true);
     setResult(null);
     setError("");
+    setAlreadyVerifiedNotice(false);
     setRedemptionReview(null);
     setScannerActive(false);
     recordQrDiagnostic("Resolving scanned Counter QR");
@@ -1966,14 +2029,24 @@ export default function StaffCounter() {
 
         const pickupVerified = result.data.code === "VERIFIED";
         const pickupResumed =
-          result.data.code === "ALREADY_VERIFIED" && !!result.data.orderId;
+          result.data.code === "ALREADY_VERIFIED" &&
+          "orderId" in result.data &&
+          !!result.data.orderId;
         if (!pickupVerified && !pickupResumed) {
-          setError(pickupCodeError(result.data.code));
+          if (result.data.code === "ALREADY_VERIFIED") {
+            // A reused code does not safely identify an order without an
+            // authorized orderId. Offer reference lookup; never re-authorize.
+            setAlreadyVerifiedNotice(true);
+            setTokenText("");
+            Keyboard.dismiss();
+          } else {
+            setError(pickupCodeError(result.data.code));
+          }
           qrScanInFlight.current = false;
           return;
         }
 
-        if (result.data.transactionId) {
+        if ("transactionId" in result.data && result.data.transactionId) {
           // IMMEDIATE: reuse the existing redemption review/payment.
           // Never create a new transaction or order here.
           if (
@@ -2006,7 +2079,7 @@ export default function StaffCounter() {
           ) {
             await loadRedemptionReview(transaction, validation);
           }
-        } else if (result.data.orderId) {
+        } else if ("orderId" in result.data && result.data.orderId) {
           // ADVANCE: initial verification or resume of an existing authorization.
           // The server preserves the original verification evidence. Always
           // reload current payment state; no payment or collection begins here.
@@ -2099,6 +2172,7 @@ export default function StaffCounter() {
   };
 
   const startCameraScan = async () => {
+    Keyboard.dismiss();
     setError("");
 
     const permission = cameraPermission?.granted
@@ -4239,7 +4313,7 @@ export default function StaffCounter() {
       keyboardDismissMode="on-drag"
       automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
       onFocus={() => {
-        if (Keyboard.isVisible()) {
+        if (Platform.OS === "web" || Keyboard.isVisible()) {
           revealCounterFocusedInput();
         }
       }}
@@ -4837,169 +4911,193 @@ export default function StaffCounter() {
             </>
           ) : (
             <>
-              <Text style={styles.cardTitle}>Scan Redemption / Pickup QR</Text>
-              <Text style={styles.muted}>
-                Scan the customer&apos;s Redemption or Pickup QR. For a
-                pre-order, verification and payment happen here; Orders handles
-                handover.
-              </Text>
-              {scannerActive ? (
-                <View style={styles.cameraFrame}>
-                  <CameraView
-                    style={styles.camera}
-                    facing="back"
-                    barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-                    onCameraReady={() => {
-                      recordQrDiagnostic("Camera ready");
-                      setQrDiagnostics((previous) => ({
-                        ...previous,
-                        cameraReady: true,
-                      }));
+              {!pickupOrder ? (
+                <>
+                  <Text style={styles.cardTitle}>
+                    Scan Redemption / Pickup QR
+                  </Text>
+                  <Text style={styles.muted}>
+                    Scan the customer&apos;s Redemption or Pickup QR. For a
+                    pre-order, verification and payment happen here; Orders
+                    handles handover.
+                  </Text>
+                  {scannerActive ? (
+                    <View style={styles.cameraFrame}>
+                      <CameraView
+                        style={styles.camera}
+                        facing="back"
+                        barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                        onCameraReady={() => {
+                          recordQrDiagnostic("Camera ready");
+                          setQrDiagnostics((previous) => ({
+                            ...previous,
+                            cameraReady: true,
+                          }));
+                        }}
+                        onBarcodeScanned={({ data }) => {
+                          qrDiagnosticsRef.current += 1;
+
+                          const detectedAt = formatCounterTimestamp();
+
+                          console.log("[MEMGINE_QR]", {
+                            event: "QR_DETECTED",
+                            detectedAt,
+                            count: qrDiagnosticsRef.current,
+                            payloadLength: data.length,
+                            platform: Platform.OS,
+                          });
+
+                          setQrDiagnostics((previous) => ({
+                            ...previous,
+                            stage: "QR detected — resolving",
+                            detectedCount: qrDiagnosticsRef.current,
+                            lastDetectedAt: detectedAt,
+                            payloadLength: data.length,
+                          }));
+
+                          void resolveRedemptionQr(data);
+                        }}
+                        onMountError={(event) => {
+                          recordQrDiagnostic("Camera initialization failed");
+
+                          console.error("[MEMGINE_QR] Camera mount error", {
+                            message: event.message,
+                          });
+
+                          setScannerActive(false);
+                          setError(
+                            "The camera is unavailable on this device. Enter the QR reference instead.",
+                          );
+                        }}
+                      />
+                      <Pressable
+                        onPress={() => setScannerActive(false)}
+                        style={styles.cameraCancel}
+                      >
+                        <Text style={styles.secondaryBtnText}>
+                          Cancel camera
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+                  <Pressable
+                    testID="counter-qr-diagnostics-open"
+                    accessibilityRole="button"
+                    accessibilityLabel="Open QR scanner diagnostics"
+                    onPress={() => setQrDiagnosticsVisible(true)}
+                    style={{
+                      alignSelf: "flex-start",
+                      paddingVertical: 6,
+                      paddingHorizontal: 4,
                     }}
-                    onBarcodeScanned={({ data }) => {
-                      qrDiagnosticsRef.current += 1;
-
-                      const detectedAt = formatCounterTimestamp();
-
-                      console.log("[MEMGINE_QR]", {
-                        event: "QR_DETECTED",
-                        detectedAt,
-                        count: qrDiagnosticsRef.current,
-                        payloadLength: data.length,
-                        platform: Platform.OS,
-                      });
-
-                      setQrDiagnostics((previous) => ({
-                        ...previous,
-                        stage: "QR detected — resolving",
-                        detectedCount: qrDiagnosticsRef.current,
-                        lastDetectedAt: detectedAt,
-                        payloadLength: data.length,
-                      }));
-
-                      void resolveRedemptionQr(data);
+                  >
+                    <Text style={{ color: COLORS.text, fontWeight: "600" }}>
+                      + QR Diagnostics
+                    </Text>
+                  </Pressable>
+                  <Modal
+                    visible={qrDiagnosticsVisible}
+                    transparent
+                    animationType="fade"
+                    onRequestClose={() => setQrDiagnosticsVisible(false)}
+                  >
+                    <Pressable
+                      style={styles.modalBackdrop}
+                      onPress={() => setQrDiagnosticsVisible(false)}
+                    >
+                      <Pressable
+                        style={styles.modalCard}
+                        onPress={() => undefined}
+                      >
+                        <Text style={styles.cardTitle}>
+                          QR Scanner Diagnostics
+                        </Text>
+                        <Text style={styles.muted}>
+                          Platform: {Platform.OS}
+                        </Text>
+                        <Text style={styles.muted}>
+                          Stage: {qrDiagnostics.stage}
+                        </Text>
+                        <Text style={styles.muted}>
+                          Camera ready:{" "}
+                          {qrDiagnostics.cameraReady ? "Yes" : "No"}
+                        </Text>
+                        <Text style={styles.muted}>
+                          QR detected: {qrDiagnostics.detectedCount} times
+                        </Text>
+                        <Text style={styles.muted}>
+                          Last detection: {qrDiagnostics.lastDetectedAt}
+                        </Text>
+                        <Text style={styles.muted}>
+                          Payload length: {qrDiagnostics.payloadLength}
+                        </Text>
+                        <Pressable
+                          testID="counter-qr-diagnostics-close"
+                          accessibilityRole="button"
+                          onPress={() => setQrDiagnosticsVisible(false)}
+                          style={styles.secondaryBtn}
+                        >
+                          <Text style={styles.secondaryBtnText}>Close</Text>
+                        </Pressable>
+                      </Pressable>
+                    </Pressable>
+                  </Modal>
+                  <Pressable
+                    testID="counter-scan-redemption-qr"
+                    disabled={busy}
+                    onPress={() => void startCameraScan()}
+                    style={[styles.primaryBtn, busy && styles.btnDisabled]}
+                  >
+                    <Text style={styles.primaryBtnText}>
+                      {busy ? "Resolving..." : "Scan Redemption / Pickup QR"}
+                    </Text>
+                  </Pressable>
+                  <Text style={styles.label}>
+                    Enter 6-digit verification code / Redemption QR reference
+                  </Text>
+                  <TextInput
+                    testID="counter-qr-input"
+                    editable={!pickupOrder}
+                    value={tokenText}
+                    onChangeText={setTokenText}
+                    placeholder="6-digit code or QR reference"
+                    placeholderTextColor={COLORS.textMuted}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoComplete="off"
+                    returnKeyType="done"
+                    onSubmitEditing={() => {
+                      if (!tokenText.trim() || busy || pickupOrder) return;
+                      Keyboard.dismiss();
+                      void resolveRedemptionQr(tokenText);
                     }}
-                    onMountError={(event) => {
-                      recordQrDiagnostic("Camera initialization failed");
-
-                      console.error("[MEMGINE_QR] Camera mount error", {
-                        message: event.message,
-                      });
-
-                      setScannerActive(false);
-                      setError(
-                        "The camera is unavailable on this device. Enter the QR reference instead.",
-                      );
-                    }}
+                    style={styles.input}
                   />
                   <Pressable
-                    onPress={() => setScannerActive(false)}
-                    style={styles.cameraCancel}
+                    testID="counter-redeem-qr"
+                    disabled={!tokenText.trim() || busy || !!pickupOrder}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      void resolveRedemptionQr(tokenText);
+                    }}
+                    style={[
+                      styles.primaryBtn,
+                      (!tokenText.trim() || busy || !!pickupOrder) &&
+                        styles.btnDisabled,
+                    ]}
                   >
-                    <Text style={styles.secondaryBtnText}>Cancel camera</Text>
+                    <Text style={styles.primaryBtnText}>
+                      Verify Code / Use QR Reference
+                    </Text>
                   </Pressable>
-                </View>
+                </>
               ) : null}
-              <Pressable
-                testID="counter-qr-diagnostics-open"
-                accessibilityRole="button"
-                accessibilityLabel="Open QR scanner diagnostics"
-                onPress={() => setQrDiagnosticsVisible(true)}
-                style={{
-                  alignSelf: "flex-start",
-                  paddingVertical: 6,
-                  paddingHorizontal: 4,
-                }}
-              >
-                <Text style={{ color: COLORS.text, fontWeight: "600" }}>
-                  + QR Diagnostics
-                </Text>
-              </Pressable>
-              <Modal
-                visible={qrDiagnosticsVisible}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setQrDiagnosticsVisible(false)}
-              >
-                <Pressable
-                  style={styles.modalBackdrop}
-                  onPress={() => setQrDiagnosticsVisible(false)}
-                >
-                  <Pressable style={styles.modalCard} onPress={() => undefined}>
-                    <Text style={styles.cardTitle}>QR Scanner Diagnostics</Text>
-                    <Text style={styles.muted}>Platform: {Platform.OS}</Text>
-                    <Text style={styles.muted}>
-                      Stage: {qrDiagnostics.stage}
-                    </Text>
-                    <Text style={styles.muted}>
-                      Camera ready: {qrDiagnostics.cameraReady ? "Yes" : "No"}
-                    </Text>
-                    <Text style={styles.muted}>
-                      QR detected: {qrDiagnostics.detectedCount} times
-                    </Text>
-                    <Text style={styles.muted}>
-                      Last detection: {qrDiagnostics.lastDetectedAt}
-                    </Text>
-                    <Text style={styles.muted}>
-                      Payload length: {qrDiagnostics.payloadLength}
-                    </Text>
-                    <Pressable
-                      testID="counter-qr-diagnostics-close"
-                      accessibilityRole="button"
-                      onPress={() => setQrDiagnosticsVisible(false)}
-                      style={styles.secondaryBtn}
-                    >
-                      <Text style={styles.secondaryBtnText}>Close</Text>
-                    </Pressable>
-                  </Pressable>
-                </Pressable>
-              </Modal>
-              <Pressable
-                testID="counter-scan-redemption-qr"
-                disabled={busy}
-                onPress={() => void startCameraScan()}
-                style={[styles.primaryBtn, busy && styles.btnDisabled]}
-              >
-                <Text style={styles.primaryBtnText}>
-                  {busy ? "Resolving..." : "Scan Redemption / Pickup QR"}
-                </Text>
-              </Pressable>
-              <Text style={styles.label}>
-                Enter 6-digit verification code / Redemption QR reference
-              </Text>
-              <TextInput
-                testID="counter-qr-input"
-                editable={!pickupOrder}
-                value={tokenText}
-                onChangeText={(value) => {
-                  setTokenText(value);
-                  setError("");
-                }}
-                placeholder="6-digit code or QR reference"
-                placeholderTextColor={COLORS.textMuted}
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={styles.input}
-              />
-              <Pressable
-                testID="counter-redeem-qr"
-                disabled={!tokenText.trim() || busy || !!pickupOrder}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  void resolveRedemptionQr(tokenText);
-                }}
-                style={[
-                  styles.secondaryBtn,
-                  (!tokenText.trim() || busy) && styles.btnDisabled,
-                ]}
-              >
-                <Text style={styles.secondaryBtnText}>
-                  Verify Code / Use QR Reference
-                </Text>
-              </Pressable>
 
               {pickupOrder ? (
-                <View style={styles.card} testID="counter-309f-pickup-order">
+                <View
+                  style={styles.pickupCheckoutPanel}
+                  testID="counter-309f-pickup-order"
+                >
                   <CounterOrderFinancialReview order={pickupOrder} />
 
                   {!pickupOrder.lifecycle?.verificationMethod &&
@@ -5046,76 +5144,69 @@ export default function StaffCounter() {
                     />
                   ) : null}
 
-                  {pickupOrder.lifecycle?.canStartTerminal ? (
-                    <Pressable
-                      disabled={
-                        busy ||
-                        !counterFinancialReviewAvailable(pickupOrder) ||
-                        !pickupOrder.lifecycle?.verificationMethod
-                      }
-                      onPress={() => void runPickupPayment("start-terminal")}
-                      style={[styles.primaryBtn, busy && styles.btnDisabled]}
-                    >
-                      <Text style={styles.primaryBtnText}>
-                        Take Terminal Payment
+                  {pickupOrder.lifecycle?.canStartTerminal ||
+                  pickupOrder.lifecycle?.canStartCash ? (
+                    <>
+                      <Text style={styles.paymentSectionTitle}>
+                        Collect Payment
                       </Text>
-                    </Pressable>
-                  ) : null}
-                  {ENABLE_DEV_POYNT_SIMULATOR &&
-                  pickupOrder.lifecycle?.journey === "ADVANCE_PAY_AT_COUNTER" &&
-                  pickupOrder.lifecycle?.canStartTerminal &&
-                  counterFinancialReviewAvailable(pickupOrder) ? (
-                    <View style={styles.customerSavedBox}>
-                      <Text style={styles.identified}>
-                        DEV — Simulated Poynt Terminal
-                      </Text>
-                      <Text style={styles.muted}>
-                        No real terminal charge. The accepted pre-order total is
-                        used.
-                      </Text>
-                      {(
-                        [
-                          ["SUCCESS", "Redeem Success"],
-                          ["DECLINE", "Redeem Decline"],
-                          ["CANCEL", "Redeem Cancel"],
-                        ] as const
-                      ).map(([outcome, label]) => (
-                        <Pressable
-                          key={outcome}
-                          disabled={busy || simulatingPoyntOutcome !== null}
-                          onPress={() =>
-                            void simulateAdvancePickupPayment(outcome)
-                          }
-                          style={[
-                            styles.secondaryBtn,
-                            busy && styles.btnDisabled,
-                          ]}
-                        >
-                          <Text style={styles.secondaryBtnText}>{label}</Text>
-                        </Pressable>
-                      ))}
-                      {simulatingPoyntOutcome !== null ? (
-                        <Text style={styles.muted}>
-                          Processing simulated terminal outcome…
-                        </Text>
-                      ) : null}
-                    </View>
-                  ) : null}
-
-                  {pickupOrder.lifecycle?.canStartCash ? (
-                    <Pressable
-                      disabled={
-                        busy ||
-                        !counterFinancialReviewAvailable(pickupOrder) ||
-                        !pickupOrder.lifecycle?.verificationMethod
-                      }
-                      onPress={() => void runPickupPayment("start-cash")}
-                      style={[styles.secondaryBtn, busy && styles.btnDisabled]}
-                    >
-                      <Text style={styles.secondaryBtnText}>
-                        Take Cash Payment
-                      </Text>
-                    </Pressable>
+                      <View style={styles.pickupPaymentChoices}>
+                        {pickupOrder.lifecycle?.canStartTerminal ? (
+                          <Pressable
+                            testID="counter-pickup-terminal-payment"
+                            accessibilityRole="button"
+                            disabled={
+                              busy ||
+                              !counterFinancialReviewAvailable(pickupOrder) ||
+                              !pickupOrder.lifecycle?.verificationMethod
+                            }
+                            onPress={() =>
+                              void runPickupPayment("start-terminal")
+                            }
+                            style={[
+                              styles.pickupPaymentChoice,
+                              (busy ||
+                                !counterFinancialReviewAvailable(pickupOrder) ||
+                                !pickupOrder.lifecycle?.verificationMethod) &&
+                                styles.btnDisabled,
+                            ]}
+                          >
+                            <Text style={styles.pickupPaymentChoiceTitle}>
+                              Terminal
+                            </Text>
+                            <Text style={styles.pickupPaymentChoiceHint}>
+                              Card / Tap / Wallet
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                        {pickupOrder.lifecycle?.canStartCash ? (
+                          <Pressable
+                            testID="counter-pickup-cash-payment"
+                            accessibilityRole="button"
+                            disabled={
+                              busy ||
+                              !counterFinancialReviewAvailable(pickupOrder) ||
+                              !pickupOrder.lifecycle?.verificationMethod
+                            }
+                            onPress={() => void runPickupPayment("start-cash")}
+                            style={[
+                              styles.pickupPaymentChoice,
+                              (busy ||
+                                !counterFinancialReviewAvailable(pickupOrder) ||
+                                !pickupOrder.lifecycle?.verificationMethod) &&
+                                styles.btnDisabled,
+                            ]}
+                          >
+                            <Text style={styles.pickupPaymentChoiceTitle}>
+                              Cash
+                            </Text>
+                            <Text style={styles.pickupPaymentChoiceHint}>
+                              Pay at counter
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    </>
                   ) : null}
 
                   {pickupOrder.lifecycle?.canConfirmCash ? (
@@ -5184,29 +5275,94 @@ export default function StaffCounter() {
                     <Text style={styles.errorText}>{pickupError}</Text>
                   ) : null}
 
-                  <Pressable
-                    disabled={busy}
-                    onPress={() =>
-                      void refreshPickupOrder(pickupOrder.id).catch(() =>
-                        setPickupError("Refresh failed. Check order status."),
-                      )
-                    }
-                    style={[styles.secondaryBtn, busy && styles.btnDisabled]}
-                  >
-                    <Text style={styles.secondaryBtnText}>
-                      Refresh Payment / Verification Status
-                    </Text>
-                  </Pressable>
+                  <View style={styles.pickupUtilityRow}>
+                    <Pressable
+                      disabled={busy}
+                      onPress={() =>
+                        void refreshPickupOrder(pickupOrder.id).catch(() =>
+                          setPickupError("Refresh failed. Check order status."),
+                        )
+                      }
+                      style={[
+                        styles.pickupUtilityButton,
+                        busy && styles.btnDisabled,
+                      ]}
+                    >
+                      <Text style={styles.secondaryBtnText}>Check Status</Text>
+                    </Pressable>
 
-                  <Pressable
-                    disabled={busy}
-                    onPress={resetDynamicRedemption}
-                    style={[styles.secondaryBtn, busy && styles.btnDisabled]}
-                  >
-                    <Text style={styles.secondaryBtnText}>
-                      Done / Verify Next Customer
-                    </Text>
-                  </Pressable>
+                    <Pressable
+                      disabled={busy}
+                      onPress={resetDynamicRedemption}
+                      style={[
+                        styles.pickupUtilityButton,
+                        busy && styles.btnDisabled,
+                      ]}
+                    >
+                      <Text style={styles.secondaryBtnText}>Next Customer</Text>
+                    </Pressable>
+                  </View>
+                  {ENABLE_DEV_POYNT_SIMULATOR &&
+                  pickupOrder.lifecycle?.journey === "ADVANCE_PAY_AT_COUNTER" &&
+                  pickupOrder.lifecycle?.canStartTerminal &&
+                  counterFinancialReviewAvailable(pickupOrder) ? (
+                    <View style={styles.pickupSimulatorPanel}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{
+                          expanded: pickupSimulatorExpanded,
+                        }}
+                        onPress={() =>
+                          setPickupSimulatorExpanded((value) => !value)
+                        }
+                        style={{ minHeight: 44, justifyContent: "center" }}
+                      >
+                        <Text style={styles.identified}>
+                          DEV · Payment Simulator{" "}
+                          {pickupSimulatorExpanded ? "▲" : "▼"}
+                        </Text>
+                      </Pressable>
+
+                      {pickupSimulatorExpanded ? (
+                        <>
+                          <Text style={styles.muted}>
+                            Simulation only. No real payment will be collected.
+                          </Text>
+
+                          {(
+                            [
+                              ["SUCCESS", "Simulate Approved"],
+                              ["DECLINE", "Simulate Declined"],
+                              ["CANCEL", "Simulate Cancelled"],
+                            ] as const
+                          ).map(([outcome, label]) => (
+                            <Pressable
+                              key={outcome}
+                              disabled={busy || simulatingPoyntOutcome !== null}
+                              onPress={() =>
+                                void simulateAdvancePickupPayment(outcome)
+                              }
+                              style={[
+                                styles.secondaryBtn,
+                                (busy || simulatingPoyntOutcome !== null) &&
+                                  styles.btnDisabled,
+                              ]}
+                            >
+                              <Text style={styles.secondaryBtnText}>
+                                {label}
+                              </Text>
+                            </Pressable>
+                          ))}
+
+                          {simulatingPoyntOutcome !== null ? (
+                            <Text style={styles.muted}>
+                              Processing simulated terminal outcome…
+                            </Text>
+                          ) : null}
+                        </>
+                      ) : null}
+                    </View>
+                  ) : null}
 
                   <Text style={styles.muted}>
                     Order preparation, final handover and benefit consumption
@@ -5217,6 +5373,18 @@ export default function StaffCounter() {
 
               {!pickupOrder ? (
                 <View style={{ marginTop: 12 }}>
+                  {alreadyVerifiedNotice ? (
+                    <View
+                      style={styles.alreadyVerifiedNotice}
+                      testID="counter-pickup-already-verified-notice"
+                    >
+                      <Text style={styles.alreadyVerifiedNoticeText}>
+                        This pickup code was already verified. Enter the order
+                        reference below to reopen the existing order. No new
+                        verification or payment will be started.
+                      </Text>
+                    </View>
+                  ) : null}
                   <Text style={styles.label}>
                     Find an existing order by reference
                   </Text>
@@ -6389,7 +6557,12 @@ const styles = StyleSheet.create({
     color: "#64748B",
     letterSpacing: 1,
   },
-  orderReviewTitle: { fontSize: 19, fontWeight: "700", color: "#0F172A", marginTop: 5 },
+  orderReviewTitle: {
+    fontSize: 19,
+    fontWeight: "700",
+    color: "#0F172A",
+    marginTop: 5,
+  },
   orderReviewReference: { fontSize: 12, color: "#475569", marginTop: 5 },
   orderReviewStatusChip: {
     paddingHorizontal: 10,
@@ -6406,8 +6579,18 @@ const styles = StyleSheet.create({
     columnGap: 10,
   },
   orderReviewMetaCell: { width: "47%", minWidth: 135, flexGrow: 1 },
-  orderReviewMetaLabel: { fontSize: 10, color: "#64748B", fontWeight: "700", letterSpacing: 0.7 },
-  orderReviewMetaValue: { fontSize: 13, color: COLORS.text, fontWeight: "600", marginTop: 5 },
+  orderReviewMetaLabel: {
+    fontSize: 10,
+    color: "#64748B",
+    fontWeight: "700",
+    letterSpacing: 0.7,
+  },
+  orderReviewMetaValue: {
+    fontSize: 13,
+    color: COLORS.text,
+    fontWeight: "600",
+    marginTop: 5,
+  },
   orderReviewItems: { marginHorizontal: 16, marginTop: 3 },
   orderReviewSectionTitle: {
     fontSize: 14,
@@ -6425,21 +6608,60 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.border,
   },
-  orderReviewTableCaption: { color: "#64748B", fontSize: 10, fontWeight: "700", textAlign: "right" },
-  orderReviewItemBlock: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border },
-  orderReviewItemRow: { flexDirection: "row", paddingVertical: 12, paddingHorizontal: 7, alignItems: "flex-start" },
+  orderReviewTableCaption: {
+    color: "#64748B",
+    fontSize: 10,
+    fontWeight: "700",
+    textAlign: "right",
+  },
+  orderReviewItemBlock: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
+  },
+  orderReviewItemRow: {
+    flexDirection: "row",
+    paddingVertical: 12,
+    paddingHorizontal: 7,
+    alignItems: "flex-start",
+  },
   orderReviewItemCol: { flex: 1.45, textAlign: "left" },
   orderReviewQtyCol: { width: 35, textAlign: "center" },
   orderReviewMoneyCol: { flex: 1, textAlign: "right" },
   orderReviewItemName: { fontSize: 13, fontWeight: "600", color: COLORS.text },
   orderReviewCell: { fontSize: 12, color: "#475569" },
-  orderReviewItemAmount: { fontSize: 12, fontWeight: "700", color: COLORS.text },
-  orderReviewLineDiscount: { fontSize: 11, color: "#15803D", marginLeft: 7, marginBottom: 9 },
-  orderReviewTotals: { paddingHorizontal: 16, paddingTop: 15, paddingBottom: 16, gap: 9 },
-  orderReviewTotalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  orderReviewItemAmount: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  orderReviewLineDiscount: {
+    fontSize: 11,
+    color: "#15803D",
+    marginLeft: 7,
+    marginBottom: 9,
+  },
+  orderReviewTotals: {
+    paddingHorizontal: 16,
+    paddingTop: 15,
+    paddingBottom: 16,
+    gap: 9,
+  },
+  orderReviewTotalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   orderReviewTotalLabel: { fontSize: 13, color: "#64748B" },
-  orderReviewTotalValue: { fontSize: 13, fontWeight: "600", color: COLORS.text },
-  orderReviewDiscountValue: { fontSize: 13, fontWeight: "600", color: "#15803D" },
+  orderReviewTotalValue: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  orderReviewDiscountValue: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#15803D",
+  },
   orderReviewGrandTotal: {
     flexDirection: "row",
     alignItems: "center",
@@ -6449,8 +6671,16 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
-  orderReviewGrandTotalLabel: { fontSize: 15, color: COLORS.text, fontWeight: "700" },
-  orderReviewGrandTotalAmount: { fontSize: 20, color: "#0F172A", fontWeight: "800" },
+  orderReviewGrandTotalLabel: {
+    fontSize: 15,
+    color: COLORS.text,
+    fontWeight: "700",
+  },
+  orderReviewGrandTotalAmount: {
+    fontSize: 20,
+    color: "#0F172A",
+    fontWeight: "800",
+  },
   orderReviewOutstanding: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -6460,8 +6690,16 @@ const styles = StyleSheet.create({
     padding: 12,
     marginTop: 8,
   },
-  orderReviewOutstandingLabel: { color: "#9A3412", fontSize: 11, fontWeight: "700" },
-  orderReviewOutstandingAmount: { color: "#9A3412", fontSize: 19, fontWeight: "800" },
+  orderReviewOutstandingLabel: {
+    color: "#9A3412",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  orderReviewOutstandingAmount: {
+    color: "#9A3412",
+    fontSize: 19,
+    fontWeight: "800",
+  },
   orderReviewSuccess: {
     backgroundColor: "#ECFDF5",
     borderTopWidth: 1,
@@ -6469,7 +6707,11 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 5,
   },
-  orderReviewSuccessTitle: { color: "#065F46", fontSize: 13, fontWeight: "700" },
+  orderReviewSuccessTitle: {
+    color: "#065F46",
+    fontSize: 13,
+    fontWeight: "700",
+  },
   orderReviewSuccessDetail: { color: "#047857", fontSize: 12, lineHeight: 18 },
   orderReviewWarning: { padding: 12, backgroundColor: "#FFF7ED" },
   orderReviewWarningText: { fontSize: 12, color: "#9A3412" },
@@ -6498,6 +6740,245 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
   },
 
+  // Pick-up checkout: one receipt surface with equal-weight payment choices.
+  pickupCheckoutPanel: {
+    padding: 8,
+    gap: 8,
+    backgroundColor: COLORS.background,
+    borderRadius: RADIUS.md,
+  },
+  receiptPanel: {
+    padding: 10,
+    gap: 8,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+  },
+  receiptCustomer: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  receiptBreakdown: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  receiptSavings: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 5,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.border,
+  },
+  receiptSavingsText: {
+    fontSize: 12,
+    color: "#15803D",
+    fontWeight: "700",
+  },
+  receiptSavingsAmount: {
+    fontSize: 13,
+    color: "#15803D",
+    fontWeight: "700",
+  },
+  receiptAmountRow: {
+    padding: 12,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.accentSoft,
+    gap: 3,
+  },
+  receiptAmountLabel: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontWeight: "700",
+  },
+  receiptAmount: {
+    fontSize: 23,
+    fontWeight: "800",
+    color: COLORS.text,
+  },
+  paymentSectionTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginTop: 4,
+  },
+  pickupPaymentChoices: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  pickupPaymentChoice: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 76,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surface,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 5,
+    paddingVertical: 10,
+    gap: 3,
+  },
+  pickupPaymentChoiceTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.accent,
+  },
+  pickupPaymentChoiceHint: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    textAlign: "center",
+  },
+  pickupUtilityRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  pickupUtilityButton: {
+    flex: 1,
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: 6,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  pickupSimulatorPanel: {
+    paddingHorizontal: 8,
+    backgroundColor: COLORS.background,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.border,
+  },
+  compactReview: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    padding: 10,
+    gap: 8,
+    overflow: "hidden",
+  },
+  compactHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  compactEyebrow: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.textMuted,
+  },
+  compactReference: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginTop: 2,
+  },
+  compactMeta: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    flexShrink: 1,
+  },
+  compactStatus: {
+    borderRadius: 12,
+    backgroundColor: COLORS.accentSoft,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    maxWidth: "45%",
+  },
+  compactStatusText: {
+    color: COLORS.text,
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  compactItems: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.border,
+  },
+  compactItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 8,
+    paddingVertical: 7,
+  },
+  compactItemName: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  compactItemAmount: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.text,
+    flexShrink: 1,
+    textAlign: "right",
+  },
+  compactDiscount: {
+    fontSize: 11,
+    color: "#15803D",
+    marginTop: 2,
+  },
+  compactBreakdown: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  compactAmountRow: {
+    backgroundColor: COLORS.accentSoft,
+    borderRadius: RADIUS.sm,
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  compactAmountLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.text,
+    flexShrink: 1,
+  },
+  compactAmount: {
+    fontSize: 21,
+    fontWeight: "800",
+    color: COLORS.text,
+    flexShrink: 1,
+    textAlign: "right",
+  },
+  compactDetailsButton: {
+    minHeight: 44,
+    justifyContent: "center",
+    alignSelf: "flex-start",
+  },
+  compactDetailsText: {
+    color: COLORS.accent,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  alreadyVerifiedNotice: {
+    backgroundColor: COLORS.accentSoft,
+    borderColor: COLORS.border,
+    borderWidth: 1,
+    borderRadius: RADIUS.sm,
+    padding: 10,
+    marginBottom: 6,
+  },
+  alreadyVerifiedNoticeText: {
+    fontSize: 12,
+    color: COLORS.text,
+    lineHeight: 18,
+  },
+  compactDetails: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.border,
+    paddingTop: 8,
+    gap: 4,
+  },
   modalCard: {
     width: "100%",
     maxWidth: 520,
