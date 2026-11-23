@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 310e-customer-redemption-savings
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/310e-customer-redemption-savings.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

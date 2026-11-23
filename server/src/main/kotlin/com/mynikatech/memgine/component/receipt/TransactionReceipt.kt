@@ -91,7 +91,64 @@ data class SubscriptionActualSavings(
     var coverageState: String = ""
 )
 
+@Serializable
+data class BusinessSavingsMembership(
+    var subscriptionId: String = "",
+    var membershipName: String = "",
+    var planName: String = "",
+    var currencyCode: String? = null,
+    var verifiedNetSavingsMinor: Long? = null,
+    var verifiedRedemptionCount: Long = 0,
+    var coverageState: String = "",
+    var activePlanCurrencyCode: String? = null
+)
+
+@Serializable
+data class BusinessSavingsTotal(
+    val currencyCode: String,
+    val verifiedNetSavingsMinor: Long,
+    val coverageState: String
+)
+
+@Serializable
+data class BusinessActualSavings(
+    val coverageState: String,
+    val totals: List<BusinessSavingsTotal>,
+    val memberships: List<BusinessSavingsMembership>,
+    val activePlanCurrencyCode: String?
+)
+
+internal fun businessActualSavings(rawRows: List<BusinessSavingsMembership>): BusinessActualSavings {
+    val rows = rawRows.filter { it.subscriptionId.isNotEmpty() }
+    val incomplete = rawRows.any { it.coverageState !in setOf("COMPLETE", "NO_REDEMPTION_HISTORY") }
+    val verified = rows.filter { it.verifiedRedemptionCount > 0 && it.currencyCode != null && it.verifiedNetSavingsMinor != null }
+    val invalid = rows.any { it.coverageState == "TOTAL_OUT_OF_RANGE" ||
+        (it.verifiedRedemptionCount > 0 && (it.currencyCode == null || it.verifiedNetSavingsMinor == null)) }
+    val totals = try {
+        verified.groupBy { it.currencyCode!! }.map { (currency, entries) ->
+            BusinessSavingsTotal(currency, entries.fold(0L) { total, entry ->
+                Math.addExact(total, entry.verifiedNetSavingsMinor!!)
+            }, if (incomplete) "PARTIAL" else "COMPLETE")
+        }.sortedBy { it.currencyCode }
+    } catch (_: ArithmeticException) { emptyList() }
+    val unavailable = invalid || (verified.isNotEmpty() && totals.isEmpty())
+    return BusinessActualSavings(
+        when {
+            unavailable -> "UNAVAILABLE"
+            incomplete -> "PARTIAL"
+            verified.isEmpty() -> "NO_REDEMPTION_HISTORY"
+            else -> "COMPLETE"
+        }, if (unavailable) emptyList() else totals, rows, rawRows.firstOrNull()?.activePlanCurrencyCode
+    )
+}
+
 interface TransactionReceiptSql {
+    @SqlQuery("SELECT * FROM get_customer_business_actual_savings(:customerUserId, :organizationId)")
+    @RegisterBeanMapper(BusinessSavingsMembership::class)
+    fun businessSavings(
+        @Bind("customerUserId") customerUserId: String,
+        @Bind("organizationId") organizationId: String
+    ): List<BusinessSavingsMembership>
     @SqlQuery("SELECT * FROM get_customer_transaction_actual_savings(:customerUserId, :transactionIds)")
     @RegisterBeanMapper(TransactionActualSavings::class)
     fun customerActualSavings(
@@ -207,6 +264,11 @@ fun Route.transactionReceiptRoutes(sql: TransactionReceiptSql) {
         }, call.callId))
     }
     route("/customer/organizations/{organizationId}") {
+        get("/actual-savings") {
+            val organizationId = call.parameters["organizationId"] ?: throw NotFoundException("Organization was not found")
+            val rows = sql.businessSavings(call.authenticatedPrincipal().userId, organizationId)
+            call.respond(ApiResponse.success(businessActualSavings(rows), call.callId))
+        }
         get("/transactions") {
             val organizationId = call.parameters["organizationId"] ?: throw NotFoundException("Organization was not found")
             val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, 100) ?: 25

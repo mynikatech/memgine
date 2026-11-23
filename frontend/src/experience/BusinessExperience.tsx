@@ -27,6 +27,7 @@ import { ThemeHeaderDecoration } from "@/src/ui/domain/ThemeHeaderDecoration";
 
 import { ThemeFeatureSection } from "@/src/ui/domain/ThemeFeatureSection";
 import { MembershipPlanDetailsModal } from "@/src/ui/domain/MembershipPlanDetailsModal";
+import { BusinessSavingsBanner } from "@/src/ui/domain/BusinessSavingsBanner";
 import {
   getSubscriptionPeriodLabel,
   resolveJoinPlan,
@@ -74,7 +75,7 @@ import {
   type CustomerFulfillment,
   type CustomerFulfillmentPayment,
   type CustomerRedemptionItemStatus,
-  type SubscriptionActualSavings,
+  type BusinessActualSavings,
   type TransactionHistoryItem,
   type TransactionReceipt,
 } from "@/src/data/api/customer-data-api";
@@ -82,9 +83,20 @@ import {
   CustomerFulfillmentSummary,
   fulfillmentIsTerminal,
 } from "@/src/ui/domain/CustomerFulfillmentFlow";
-import { CustomerActiveOrders, ReservationLinks, useCustomerFulfillmentActivity } from "@/src/ui/domain/CustomerActiveOrders";
-import { activeCounterQrForSelection, entitlementUnavailableLabel, redemptionContentWidth } from "@/src/ui/domain/fulfillment-presentation";
-import { storeConflictMessage, type FulfillmentStoreName } from "@/src/ui/domain/fulfillment-store-eligibility";
+import {
+  CustomerActiveOrders,
+  ReservationLinks,
+  useCustomerFulfillmentActivity,
+} from "@/src/ui/domain/CustomerActiveOrders";
+import {
+  activeCounterQrForSelection,
+  entitlementUnavailableLabel,
+  redemptionContentWidth,
+} from "@/src/ui/domain/fulfillment-presentation";
+import {
+  storeConflictMessage,
+  type FulfillmentStoreName,
+} from "@/src/ui/domain/fulfillment-store-eligibility";
 import { TransactionReceiptViewer } from "@/src/ui/domain/TransactionReceiptViewer";
 import {
   groupCustomerOrders,
@@ -690,15 +702,24 @@ export function BusinessExperience({
     string | null
   >(null);
   const [historyRefresh, setHistoryRefresh] = useState(0);
-  const activity = useCustomerFulfillmentActivity(organization.id, subscription?.id,
-    !isPreviewMode && !!customerUserId && focused, historyRefresh);
-  const [pendingFulfillmentPayment, setPendingFulfillmentPayment] = useState<CustomerFulfillmentPayment | null>(null);
+  const activity = useCustomerFulfillmentActivity(
+    organization.id,
+    subscription?.id,
+    !isPreviewMode && !!customerUserId && focused,
+    historyRefresh,
+  );
+  const [pendingFulfillmentPayment, setPendingFulfillmentPayment] =
+    useState<CustomerFulfillmentPayment | null>(null);
   const [fulfillmentOffset, setFulfillmentOffset] = useState(0);
   const [fulfillmentHistory, setFulfillmentHistory] = useState<{
-    key: string; rows: CustomerFulfillment[]; hasMore: boolean;
+    key: string;
+    rows: CustomerFulfillment[];
+    hasMore: boolean;
   }>({ key: "", rows: [], hasMore: false });
-  const [fulfillmentHistoryFailure, setFulfillmentHistoryFailure] = useState(false);
-  const [fulfillmentHistoryLoading, setFulfillmentHistoryLoading] = useState(false);
+  const [fulfillmentHistoryFailure, setFulfillmentHistoryFailure] =
+    useState(false);
+  const [fulfillmentHistoryLoading, setFulfillmentHistoryLoading] =
+    useState(false);
   const [orders, setOrders] = useState<{
     key: string;
     rows: TransactionHistoryItem[];
@@ -718,16 +739,22 @@ export function BusinessExperience({
     customerUserId,
     historyRefresh,
   ]);
-  const activeFulfillmentVersions = activity?.orders.map(({ id, version }) => [id, version]);
-  const fulfillmentHistoryScope = JSON.stringify([orderScope, historySubscriptionId, activeFulfillmentVersions]);
-  const savingsScope = JSON.stringify([
+  const activeFulfillmentVersions = activity?.orders.map(({ id, version }) => [
+    id,
+    version,
+  ]);
+  const fulfillmentHistoryScope = JSON.stringify([
+    orderScope,
+    historySubscriptionId,
+    activeFulfillmentVersions,
+  ]);
+  const businessSavingsScope = JSON.stringify([
     organization.id,
     customerUserId,
-    subscription?.id,
   ]);
-  const [savingsResult, setSavingsResult] = useState<{
+  const [businessSavingsResult, setBusinessSavingsResult] = useState<{
     key: string;
-    rows?: SubscriptionActualSavings[];
+    data?: BusinessActualSavings;
     error?: boolean;
   }>();
   const scopedRedemptions = useMemo(
@@ -759,11 +786,23 @@ export function BusinessExperience({
     const id = subscription?.id;
     if (!id || !customerUserId || !focused || isPreviewMode) return;
     let live = true;
-    void customerTransactionApi.pendingFulfillmentPayment(organization.id, id).then((result) => {
-      if (live && result.success) setPendingFulfillmentPayment(result.data.payment ?? null);
-    }).catch(() => undefined);
-    return () => { live = false; };
-  }, [customerUserId, focused, isPreviewMode, organization.id, subscription?.id]);
+    void customerTransactionApi
+      .pendingFulfillmentPayment(organization.id, id)
+      .then((result) => {
+        if (live && result.success)
+          setPendingFulfillmentPayment(result.data.payment ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [
+    customerUserId,
+    focused,
+    isPreviewMode,
+    organization.id,
+    subscription?.id,
+  ]);
 
   useEffect(() => {
     if (!focused || !refreshOnFulfillmentReturn.current) return;
@@ -773,15 +812,30 @@ export function BusinessExperience({
     void onRefreshRedemptionState?.();
   }, [focused, onRefreshRedemptionState]);
 
-  const openFulfillment = (view: "details" | "payment", id: string, subscriptionId = subscription?.id) => {
+  const openFulfillment = (
+    view: "details" | "payment",
+    id: string,
+    subscriptionId = subscription?.id,
+  ) => {
     if (!subscriptionId || isPreviewMode) return;
     refreshOnFulfillmentReturn.current = true;
-    router.push({ pathname: "/business/fulfillment", params: { org: organization.id, subscription: subscriptionId, view, id } });
+    router.push({
+      pathname: "/business/fulfillment",
+      params: { org: organization.id, subscription: subscriptionId, view, id },
+    });
   };
   const openCounterQr = (id: string) => {
     if (!subscription?.id || isPreviewMode) return;
     refreshOnFulfillmentReturn.current = true;
-    router.push({ pathname: "/business/fulfillment", params: { org: organization.id, subscription: subscription.id, view: "qr", id } });
+    router.push({
+      pathname: "/business/fulfillment",
+      params: {
+        org: organization.id,
+        subscription: subscription.id,
+        view: "qr",
+        id,
+      },
+    });
   };
 
   useEffect(() => {
@@ -793,25 +847,62 @@ export function BusinessExperience({
   }, [effectiveTab, focused]);
 
   useEffect(() => {
-    if (isPreviewMode || !customerUserId || !focused || effectiveTab !== "history") return;
-    if (fulfillmentOffset > 0 && fulfillmentHistory.key !== fulfillmentHistoryScope) return;
+    if (
+      isPreviewMode ||
+      !customerUserId ||
+      !focused ||
+      effectiveTab !== "history"
+    )
+      return;
+    if (
+      fulfillmentOffset > 0 &&
+      fulfillmentHistory.key !== fulfillmentHistoryScope
+    )
+      return;
     let live = true;
     setFulfillmentHistoryLoading(true);
     setFulfillmentHistoryFailure(false);
-    void customerTransactionApi.fulfillments(organization.id, historySubscriptionId, fulfillmentOffset)
+    void customerTransactionApi
+      .fulfillments(organization.id, historySubscriptionId, fulfillmentOffset)
       .then((result) => {
         if (!live) return;
         if (!result.success) throw new Error(result.error.message);
         setFulfillmentHistory((previous) => {
-          const initial = fulfillmentOffset && previous.key === fulfillmentHistoryScope ? previous.rows : [];
-          const rows = [...new Map([...initial, ...result.data].map((item) => [item.id, item])).values()];
-          return { key: fulfillmentHistoryScope, rows, hasMore: result.data.length === 25 };
+          const initial =
+            fulfillmentOffset && previous.key === fulfillmentHistoryScope
+              ? previous.rows
+              : [];
+          const rows = [
+            ...new Map(
+              [...initial, ...result.data].map((item) => [item.id, item]),
+            ).values(),
+          ];
+          return {
+            key: fulfillmentHistoryScope,
+            rows,
+            hasMore: result.data.length === 25,
+          };
         });
       })
-      .catch(() => { if (live) setFulfillmentHistoryFailure(true); })
-      .finally(() => { if (live) setFulfillmentHistoryLoading(false); });
-    return () => { live = false; };
-  }, [customerUserId, effectiveTab, focused, fulfillmentHistoryScope, fulfillmentOffset, historySubscriptionId, isPreviewMode, organization.id]);
+      .catch(() => {
+        if (live) setFulfillmentHistoryFailure(true);
+      })
+      .finally(() => {
+        if (live) setFulfillmentHistoryLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [
+    customerUserId,
+    effectiveTab,
+    focused,
+    fulfillmentHistoryScope,
+    fulfillmentOffset,
+    historySubscriptionId,
+    isPreviewMode,
+    organization.id,
+  ]);
 
   useEffect(() => {
     if (isPreviewMode || !customerUserId || effectiveTab !== "history") return;
@@ -855,45 +946,58 @@ export function BusinessExperience({
   ]);
 
   useEffect(() => {
-    if (isPreviewMode || !customerUserId || !focused || !subscription?.id)
-      return;
+    if (isPreviewMode || !customerUserId || !focused) return;
     let cancelled = false;
+    setBusinessSavingsResult({ key: businessSavingsScope });
     void customerTransactionApi
-      .subscriptionActualSavings(organization.id, subscription.id)
+      .businessActualSavings(organization.id)
       .then((result) => {
         if (!cancelled)
-          setSavingsResult(
+          setBusinessSavingsResult(
             result.success
-              ? { key: savingsScope, rows: result.data }
-              : { key: savingsScope, error: true },
+              ? { key: businessSavingsScope, data: result.data }
+              : { key: businessSavingsScope, error: true },
           );
       })
       .catch(() => {
-        if (!cancelled) setSavingsResult({ key: savingsScope, error: true });
+        if (!cancelled)
+          setBusinessSavingsResult({ key: businessSavingsScope, error: true });
       });
     return () => {
       cancelled = true;
     };
   }, [
+    businessSavingsScope,
     customerUserId,
     focused,
     historyRefresh,
     isPreviewMode,
     organization.id,
-    savingsScope,
-    subscription?.id,
   ]);
 
-  const savingsForSubscription =
-    savingsResult?.key === savingsScope ? savingsResult : undefined;
-  const savingsRows =
-    savingsForSubscription?.rows?.filter(
-      (row) => row.subscriptionId === subscription?.id,
-    ) ?? [];
+  // The business response already contains each owned membership's verified
+  // currency amounts and coverage. Reuse it instead of recalculating savings
+  // with a second subscription-specific HTTP request.
+  const currentBusinessSavings =
+    businessSavingsResult?.key === businessSavingsScope
+      ? businessSavingsResult
+      : undefined;
+  const savingsRows = (currentBusinessSavings?.data?.memberships ?? [])
+    .filter((row) => row.subscriptionId === subscription?.id)
+    .map((row) => ({
+      ...row,
+      // The membership display uses netSavingsMinor for COMPLETE rows.
+      // A COMPLETE verified amount is the authoritative net amount; PARTIAL
+      // rows continue to use verifiedNetSavingsMinor without claiming a total.
+      netSavingsMinor:
+        row.coverageState === "COMPLETE"
+          ? row.verifiedNetSavingsMinor
+          : undefined,
+    }));
   const actualSavings = subscriptionSavingsDisplay(savingsRows);
-  const actualSavingsMessage = !savingsForSubscription
+  const actualSavingsMessage = !currentBusinessSavings
     ? "Loading savings…"
-    : savingsForSubscription.error
+    : currentBusinessSavings.error
       ? "Unable to load savings"
       : actualSavings.incomplete && !actualSavings.partial.length
         ? "Savings history incomplete"
@@ -905,7 +1009,9 @@ export function BusinessExperience({
             ? "No completed redemptions yet"
             : "Savings unavailable";
 
-  const openOrderReceipt = async (order: Pick<TransactionHistoryItem, "organizationId" | "receiptId">) => {
+  const openOrderReceipt = async (
+    order: Pick<TransactionHistoryItem, "organizationId" | "receiptId">,
+  ) => {
     if (!order.receiptId) return;
     const request = ++receiptRequest.current;
     setReceiptError(null);
@@ -1330,22 +1436,55 @@ export function BusinessExperience({
     [activity, redemptionItemStatuses],
   );
   const reservationsFor = (kind: "BENEFIT" | "OFFER", id: string) =>
-    activity?.reservations.filter((item) => item.itemType === kind && item.itemId === id) ?? [];
+    activity?.reservations.filter(
+      (item) => item.itemType === kind && item.itemId === id,
+    ) ?? [];
   const counterQrs = activity?.counterQrs ?? [];
   const counterQrFor = (kind: "BENEFIT" | "OFFER", id: string) =>
-    activeCounterQrForSelection(counterQrs, kind === "BENEFIT" ? [id] : [], kind === "OFFER" ? [id] : []);
-  const reservationCustomerLabels = Object.fromEntries((activity?.orders ?? []).map((order) => [order.id, order.customerLabel]));
-  const redemptionContent = { width: "100%" as const, maxWidth: redemptionContentWidth, alignSelf: "center" as const };
-  const renderReservations = (kind: "BENEFIT" | "OFFER", id: string, unavailable: boolean) => {
+    activeCounterQrForSelection(
+      counterQrs,
+      kind === "BENEFIT" ? [id] : [],
+      kind === "OFFER" ? [id] : [],
+    );
+  const reservationCustomerLabels = Object.fromEntries(
+    (activity?.orders ?? []).map((order) => [order.id, order.customerLabel]),
+  );
+  const redemptionContent = {
+    width: "100%" as const,
+    maxWidth: redemptionContentWidth,
+    alignSelf: "center" as const,
+  };
+  const renderReservations = (
+    kind: "BENEFIT" | "OFFER",
+    id: string,
+    unavailable: boolean,
+  ) => {
     const counterQr = counterQrFor(kind, id);
-    return <>
-      {counterQr ? <View style={{ gap: 4, alignItems: "flex-start", paddingVertical: 4 }}>
-        <Text variant="bodySmall" color="textMuted">Redemption in progress — {counterQr.transactionNumber}</Text>
-        <Button label="View Existing QR" size="sm" variant="outline" onPress={() => openCounterQr(counterQr.transactionId)} />
-      </View> : null}
-      <ReservationLinks reservations={reservationsFor(kind, id)} available={!unavailable && !counterQr} customerLabels={reservationCustomerLabels}
-        onOpen={(fulfillmentId) => openFulfillment("details", fulfillmentId)} />
-    </>;
+    return (
+      <>
+        {counterQr ? (
+          <View
+            style={{ gap: 4, alignItems: "flex-start", paddingVertical: 4 }}
+          >
+            <Text variant="bodySmall" color="textMuted">
+              Redemption in progress — {counterQr.transactionNumber}
+            </Text>
+            <Button
+              label="View Existing QR"
+              size="sm"
+              variant="outline"
+              onPress={() => openCounterQr(counterQr.transactionId)}
+            />
+          </View>
+        ) : null}
+        <ReservationLinks
+          reservations={reservationsFor(kind, id)}
+          available={!unavailable && !counterQr}
+          customerLabels={reservationCustomerLabels}
+          onOpen={(fulfillmentId) => openFulfillment("details", fulfillmentId)}
+        />
+      </>
+    );
   };
   const statusFor = (
     itemType: "BENEFIT" | "OFFER",
@@ -1541,27 +1680,33 @@ export function BusinessExperience({
     itemStatus: statusFor("OFFER", offer.id),
   }));
   const selectableBenefits = benefitItems.filter(
-    ({ benefit, itemStatus }) => itemStatus.status === "AVAILABLE" && !counterQrFor("BENEFIT", benefit.id),
+    ({ benefit, itemStatus }) =>
+      itemStatus.status === "AVAILABLE" && !counterQrFor("BENEFIT", benefit.id),
   );
   const selectableOffers = offerItems.filter(
-    ({ offer, itemStatus }) => itemStatus.status === "AVAILABLE" && !counterQrFor("OFFER", offer.id),
+    ({ offer, itemStatus }) =>
+      itemStatus.status === "AVAILABLE" && !counterQrFor("OFFER", offer.id),
   );
   const redeemSectionBenefits = benefitItems.filter(
     ({ benefit, itemStatus }) =>
       itemStatus.status === "AVAILABLE" ||
       itemStatus.status === "LIMIT_REACHED" ||
-      reservationsFor("BENEFIT", benefit.id).length > 0 || !!counterQrFor("BENEFIT", benefit.id),
+      reservationsFor("BENEFIT", benefit.id).length > 0 ||
+      !!counterQrFor("BENEFIT", benefit.id),
   );
   const redeemSectionOffers = offerItems.filter(
     ({ offer, itemStatus }) =>
       itemStatus.status === "AVAILABLE" ||
       itemStatus.status === "LIMIT_REACHED" ||
-      reservationsFor("OFFER", offer.id).length > 0 || !!counterQrFor("OFFER", offer.id),
+      reservationsFor("OFFER", offer.id).length > 0 ||
+      !!counterQrFor("OFFER", offer.id),
   );
   const offersTabItems = offerItems.filter(
     ({ offer, itemStatus }) =>
-      (itemStatus.status !== "NOT_APPLICABLE" && itemStatus.status !== "INACTIVE") ||
-      reservationsFor("OFFER", offer.id).length > 0 || !!counterQrFor("OFFER", offer.id),
+      (itemStatus.status !== "NOT_APPLICABLE" &&
+        itemStatus.status !== "INACTIVE") ||
+      reservationsFor("OFFER", offer.id).length > 0 ||
+      !!counterQrFor("OFFER", offer.id),
   );
   const selectableBenefitKey = selectableBenefits
     .map(({ benefit }) => benefit.id)
@@ -1601,17 +1746,35 @@ export function BusinessExperience({
     selectedOfferIds.has(offer.id),
   ).length;
   const selectedCount = selectedBenefitCount + selectedOfferCount;
-  const eligibilityScope = JSON.stringify([organization.id, subscription?.id, customerUserId]);
-  const eligibilityItems = JSON.stringify([
-    ...selectableBenefits.map(({ benefit }) => `BENEFIT:${benefit.id}`),
-    ...selectableOffers.map(({ offer }) => `OFFER:${offer.id}`),
-  ].sort());
-  const [itemStores, setItemStores] = useState<{ scope: string; values: Record<string, FulfillmentStoreName[]> }>();
-  const currentItemStores = itemStores?.scope === eligibilityScope ? itemStores.values : {};
-  const showStoreEligibility = effectiveTab === "card" || effectiveTab === "offers";
+  const eligibilityScope = JSON.stringify([
+    organization.id,
+    subscription?.id,
+    customerUserId,
+  ]);
+  const eligibilityItems = JSON.stringify(
+    [
+      ...selectableBenefits.map(({ benefit }) => `BENEFIT:${benefit.id}`),
+      ...selectableOffers.map(({ offer }) => `OFFER:${offer.id}`),
+    ].sort(),
+  );
+  const [itemStores, setItemStores] = useState<{
+    scope: string;
+    values: Record<string, FulfillmentStoreName[]>;
+  }>();
+  const currentItemStores =
+    itemStores?.scope === eligibilityScope ? itemStores.values : {};
+  const showStoreEligibility =
+    effectiveTab === "card" || effectiveTab === "offers";
   useEffect(() => {
-    if (!focused || !showStoreEligibility || isPreviewMode ||
-        isHistoricalSubscription || !customerUserId || !subscription?.id) return;
+    if (
+      !focused ||
+      !showStoreEligibility ||
+      isPreviewMode ||
+      isHistoricalSubscription ||
+      !customerUserId ||
+      !subscription?.id
+    )
+      return;
     const subscriptionId = subscription.id;
     const keys = JSON.parse(eligibilityItems) as string[];
     let live = true;
@@ -1619,45 +1782,117 @@ export function BusinessExperience({
     void (async () => {
       // Bound concurrent calls while reusing the same Store policy and pricing checks as the basket.
       for (let offset = 0; live && offset < keys.length; offset += 4) {
-        const results = await Promise.allSettled(keys.slice(offset, offset + 4).map(async (key) => {
-          const isBenefit = key.startsWith("BENEFIT:");
-          const id = key.slice(key.indexOf(":") + 1);
-          const result = await customerTransactionApi.fulfillmentStores(organization.id, {
-            subscriptionId, benefitIds: isBenefit ? [id] : [], offerIds: isBenefit ? [] : [id],
-          });
-          return result.success ? { [key]: result.data.map(({ id, name }) => ({ id, name })) } : {};
-        }));
+        const results = await Promise.allSettled(
+          keys.slice(offset, offset + 4).map(async (key) => {
+            const isBenefit = key.startsWith("BENEFIT:");
+            const id = key.slice(key.indexOf(":") + 1);
+            const result = await customerTransactionApi.fulfillmentStores(
+              organization.id,
+              {
+                subscriptionId,
+                benefitIds: isBenefit ? [id] : [],
+                offerIds: isBenefit ? [] : [id],
+              },
+            );
+            return result.success
+              ? { [key]: result.data.map(({ id, name }) => ({ id, name })) }
+              : {};
+          }),
+        );
         if (!live) return;
-        const values = Object.assign({}, ...results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []));
-        setItemStores((previous) => ({ scope: eligibilityScope, values: { ...previous?.values, ...values } }));
+        const values = Object.assign(
+          {},
+          ...results.flatMap((result) =>
+            result.status === "fulfilled" ? [result.value] : [],
+          ),
+        );
+        setItemStores((previous) => ({
+          scope: eligibilityScope,
+          values: { ...previous?.values, ...values },
+        }));
       }
     })();
-    return () => { live = false; };
-  }, [customerUserId, eligibilityItems, eligibilityScope, focused, isHistoricalSubscription, isPreviewMode, organization.id, showStoreEligibility, subscription?.id]);
+    return () => {
+      live = false;
+    };
+  }, [
+    customerUserId,
+    eligibilityItems,
+    eligibilityScope,
+    focused,
+    isHistoricalSubscription,
+    isPreviewMode,
+    organization.id,
+    showStoreEligibility,
+    subscription?.id,
+  ]);
 
   const itemStoreLabel = (key: string) => {
     const eligible = currentItemStores[key];
-    return eligible && (eligible.length ? `Eligible Stores: ${eligible.map(({ name }) => name).join(", ")}` : "No eligible Store");
+    return (
+      eligible &&
+      (eligible.length
+        ? `Eligible Stores: ${eligible.map(({ name }) => name).join(", ")}`
+        : "No eligible Store")
+    );
   };
-  const redeemOfferAvailability = (offer: Offer) => isPreviewMode ? offerAvailabilityText(offer) :
-    [offer.availabilityText, itemStoreLabel(`OFFER:${offer.id}`)].filter(Boolean).join("\n");
-  const [storeCheck, setStoreCheck] = useState<{ key: string; pending?: boolean; message?: string }>();
-  const basketKey = (scope: "ALL" | "OFFERS") => JSON.stringify([
-    eligibilityScope, scope,
-    scope === "ALL" ? selectableBenefits.filter(({ benefit }) => selectedBenefitIds.has(benefit.id)).map(({ benefit }) => benefit.id) : [],
-    selectableOffers.filter(({ offer }) => selectedOfferIds.has(offer.id)).map(({ offer }) => offer.id),
-  ]);
+  const redeemOfferAvailability = (offer: Offer) =>
+    isPreviewMode
+      ? offerAvailabilityText(offer)
+      : [offer.availabilityText, itemStoreLabel(`OFFER:${offer.id}`)]
+          .filter(Boolean)
+          .join("\n");
+  const [storeCheck, setStoreCheck] = useState<{
+    key: string;
+    pending?: boolean;
+    message?: string;
+  }>();
+  const basketKey = (scope: "ALL" | "OFFERS") =>
+    JSON.stringify([
+      eligibilityScope,
+      scope,
+      scope === "ALL"
+        ? selectableBenefits
+            .filter(({ benefit }) => selectedBenefitIds.has(benefit.id))
+            .map(({ benefit }) => benefit.id)
+        : [],
+      selectableOffers
+        .filter(({ offer }) => selectedOfferIds.has(offer.id))
+        .map(({ offer }) => offer.id),
+    ]);
   const basketKeys = { ALL: basketKey("ALL"), OFFERS: basketKey("OFFERS") };
-  const activeBasket = useRef({ focused, keys: basketKeys, tab: effectiveTab, itemStores: currentItemStores });
-  activeBasket.current = { focused, keys: basketKeys, tab: effectiveTab, itemStores: currentItemStores };
+  const activeBasket = useRef({
+    focused,
+    keys: basketKeys,
+    tab: effectiveTab,
+    itemStores: currentItemStores,
+  });
+  activeBasket.current = {
+    focused,
+    keys: basketKeys,
+    tab: effectiveTab,
+    itemStores: currentItemStores,
+  };
   const pendingStoreCheck = useRef<string | undefined>(undefined);
-  useEffect(() => () => { pendingStoreCheck.current = undefined; }, []);
-  const checkFor = (scope: "ALL" | "OFFERS") => storeCheck?.key === basketKeys[scope] ? storeCheck : undefined;
+  useEffect(
+    () => () => {
+      pendingStoreCheck.current = undefined;
+    },
+    [],
+  );
+  const checkFor = (scope: "ALL" | "OFFERS") =>
+    storeCheck?.key === basketKeys[scope] ? storeCheck : undefined;
   const openRedemptionSelection = async (scope: "ALL" | "OFFERS") => {
     if (!subscription || isPreviewMode || isHistoricalSubscription) return;
-    const selectedBenefits = scope === "ALL"
-      ? selectableBenefits.map(({ benefit }) => benefit).filter((item) => selectedBenefitIds.has(item.id)) : [];
-    const selectedOffers = selectableOffers.map(({ offer }) => offer).filter((item) => selectedOfferIds.has(item.id));
+    const selectedBenefits =
+      scope === "ALL"
+        ? selectableBenefits
+            .map(({ benefit }) => benefit)
+            .filter((item) => selectedBenefitIds.has(item.id))
+        : [];
+    const selectedOffers = selectableOffers
+      .map(({ offer }) => offer)
+      .filter((item) => selectedOfferIds.has(item.id));
     if (!selectedBenefits.length && !selectedOffers.length) return;
     const key = basketKeys[scope];
     if (pendingStoreCheck.current === key) return;
@@ -1666,17 +1901,36 @@ export function BusinessExperience({
     const benefitIds = selectedBenefits.map((item) => item.id);
     const offerIds = selectedOffers.map((item) => item.id);
     const labels: [string, string][] = [
-      ...selectedBenefits.map((item): [string, string] => ["BENEFIT:" + item.id, item.displayName ?? item.benefitName]),
-      ...selectedOffers.map((item): [string, string] => ["OFFER:" + item.id, item.offerName]),
+      ...selectedBenefits.map((item): [string, string] => [
+        "BENEFIT:" + item.id,
+        item.displayName ?? item.benefitName,
+      ]),
+      ...selectedOffers.map((item): [string, string] => [
+        "OFFER:" + item.id,
+        item.offerName,
+      ]),
     ];
-    const isCurrent = () => pendingStoreCheck.current === key && activeBasket.current.focused &&
-      activeBasket.current.tab === effectiveTab && activeBasket.current.keys[scope] === key;
+    const isCurrent = () =>
+      pendingStoreCheck.current === key &&
+      activeBasket.current.focused &&
+      activeBasket.current.tab === effectiveTab &&
+      activeBasket.current.keys[scope] === key;
     try {
-      const result = await customerTransactionApi.fulfillmentStores(organization.id, { subscriptionId: subscription.id, benefitIds, offerIds });
+      const result = await customerTransactionApi.fulfillmentStores(
+        organization.id,
+        { subscriptionId: subscription.id, benefitIds, offerIds },
+      );
       if (!isCurrent()) return;
-      if (!result.success) throw new Error("Could not check Store availability. Try again.");
+      if (!result.success)
+        throw new Error("Could not check Store availability. Try again.");
       if (!result.data.length) {
-        setStoreCheck({ key, message: storeConflictMessage(labels, activeBasket.current.itemStores) });
+        setStoreCheck({
+          key,
+          message: storeConflictMessage(
+            labels,
+            activeBasket.current.itemStores,
+          ),
+        });
         return;
       }
       setStoreCheck(undefined);
@@ -1684,22 +1938,48 @@ export function BusinessExperience({
       router.push({
         pathname: "/business/fulfillment",
         params: {
-          org: organization.id, subscription: subscription.id, view: "selection",
-          benefits: benefitIds.join(","), offers: offerIds.join(","),
-          labels: JSON.stringify(Object.fromEntries(labels)), storeNames: JSON.stringify(storeNamesById),
-          storeAddresses: JSON.stringify(Object.fromEntries(stores.map(({ id, address }) => [id,
-            [address?.line1, address?.city, address?.region].filter(Boolean).join(", ")]))),
+          org: organization.id,
+          subscription: subscription.id,
+          view: "selection",
+          benefits: benefitIds.join(","),
+          offers: offerIds.join(","),
+          labels: JSON.stringify(Object.fromEntries(labels)),
+          storeNames: JSON.stringify(storeNamesById),
+          storeAddresses: JSON.stringify(
+            Object.fromEntries(
+              stores.map(({ id, address }) => [
+                id,
+                [address?.line1, address?.city, address?.region]
+                  .filter(Boolean)
+                  .join(", "),
+              ]),
+            ),
+          ),
           storeImage: resolvedBranding.logoUrl ?? "",
-          artwork: JSON.stringify(Object.fromEntries(selectedOffers.filter(({ promotionImageUrl }) => promotionImageUrl)
-            .map(({ id, promotionImageUrl }) => [`OFFER:${id}`, promotionImageUrl]))),
+          artwork: JSON.stringify(
+            Object.fromEntries(
+              selectedOffers
+                .filter(({ promotionImageUrl }) => promotionImageUrl)
+                .map(({ id, promotionImageUrl }) => [
+                  `OFFER:${id}`,
+                  promotionImageUrl,
+                ]),
+            ),
+          ),
         },
       });
     } catch {
-      if (isCurrent()) setStoreCheck({ key, message: "Could not check Store availability. Try again." });
+      if (isCurrent())
+        setStoreCheck({
+          key,
+          message: "Could not check Store availability. Try again.",
+        });
     } finally {
       if (pendingStoreCheck.current === key) {
         pendingStoreCheck.current = undefined;
-        setStoreCheck((previous) => previous?.key === key && previous.pending ? undefined : previous);
+        setStoreCheck((previous) =>
+          previous?.key === key && previous.pending ? undefined : previous,
+        );
       }
     }
   };
@@ -2077,18 +2357,36 @@ export function BusinessExperience({
                 ? selectedOfferIds.has(offer.id)
                   ? "Remove from redemption"
                   : "Add to redemption"
-                : entitlementUnavailableLabel(itemStatus.status, itemStatus.displayReason, reservationsFor("OFFER", offer.id).length > 0)
+                : entitlementUnavailableLabel(
+                    itemStatus.status,
+                    itemStatus.displayReason,
+                    reservationsFor("OFFER", offer.id).length > 0,
+                  )
         }
-        ctaDisabled={!!itemStatus && !isPreviewMode && (isHistoricalSubscription || itemStatus.status !== "AVAILABLE")}
+        ctaDisabled={
+          !!itemStatus &&
+          !isPreviewMode &&
+          (isHistoricalSubscription || itemStatus.status !== "AVAILABLE")
+        }
         usageRules={offerUsageRules?.filter(
           (rule) => rule.offerId === offer.id,
         )}
         onPress={
-          itemStatus?.status === "AVAILABLE" && !isPreviewMode && !isHistoricalSubscription && !counterQrFor("OFFER", offer.id)
-            ? () => toggleOffer(offer.id) : undefined
+          itemStatus?.status === "AVAILABLE" &&
+          !isPreviewMode &&
+          !isHistoricalSubscription &&
+          !counterQrFor("OFFER", offer.id)
+            ? () => toggleOffer(offer.id)
+            : undefined
         }
       />
-      {itemStatus ? renderReservations("OFFER", offer.id, itemStatus.status !== "AVAILABLE") : null}
+      {itemStatus
+        ? renderReservations(
+            "OFFER",
+            offer.id,
+            itemStatus.status !== "AVAILABLE",
+          )
+        : null}
     </DecorativeThemeFrame>
   );
 
@@ -2376,40 +2674,45 @@ export function BusinessExperience({
             <View style={{ gap: 18 }}>
               {overviewBenefits.map((b) => (
                 <View key={b.id} style={{ gap: 4 }}>
-                <BenefitItem
-                  testID={`experience-benefit-${b.id}`}
-                  title={b.displayName ?? b.benefitName}
-                  subtitle={b.description}
-                  advertisedSavings={b.advertisedSavings}
-                  disclaimerText={b.disclaimerText}
-                  eligibleProducts={b.products?.map(
-                    (product) => product.productName || product.productCode,
-                  )}
-                  participatingStores={
-                    isPlanExploration ? participatingStores(b) : undefined
-                  }
-                  productStoreAvailability={
-                    isPlanExploration
-                      ? undefined
-                      : b.products?.map((eligible) => ({
-                          productId: eligible.productId,
-                          productName:
-                            eligible.productName || eligible.productCode,
-                          availability: benefitProductAvailability(
-                            b.id,
-                            eligible.productId,
-                          ),
-                        }))
-                  }
-                  icon={benefitIconForType(b.benefitTypeId)}
-                  usageRules={
-                    benefitUsageRules?.filter(
-                      (rule) => rule.benefitId === b.id,
-                    ) ?? (isPlanExploration ? [] : undefined)
-                  }
-                />
-                {!isPlanExploration && !isPreviewMode
-                  ? renderReservations("BENEFIT", b.id, statusFor("BENEFIT", b.id).status !== "AVAILABLE") : null}
+                  <BenefitItem
+                    testID={`experience-benefit-${b.id}`}
+                    title={b.displayName ?? b.benefitName}
+                    subtitle={b.description}
+                    advertisedSavings={b.advertisedSavings}
+                    disclaimerText={b.disclaimerText}
+                    eligibleProducts={b.products?.map(
+                      (product) => product.productName || product.productCode,
+                    )}
+                    participatingStores={
+                      isPlanExploration ? participatingStores(b) : undefined
+                    }
+                    productStoreAvailability={
+                      isPlanExploration
+                        ? undefined
+                        : b.products?.map((eligible) => ({
+                            productId: eligible.productId,
+                            productName:
+                              eligible.productName || eligible.productCode,
+                            availability: benefitProductAvailability(
+                              b.id,
+                              eligible.productId,
+                            ),
+                          }))
+                    }
+                    icon={benefitIconForType(b.benefitTypeId)}
+                    usageRules={
+                      benefitUsageRules?.filter(
+                        (rule) => rule.benefitId === b.id,
+                      ) ?? (isPlanExploration ? [] : undefined)
+                    }
+                  />
+                  {!isPlanExploration && !isPreviewMode
+                    ? renderReservations(
+                        "BENEFIT",
+                        b.id,
+                        statusFor("BENEFIT", b.id).status !== "AVAILABLE",
+                      )
+                    : null}
                 </View>
               ))}
             </View>
@@ -2435,244 +2738,301 @@ export function BusinessExperience({
         )}
 
       {!isPreviewMode && !isPlanExploration && subscription ? (
-        <CustomerActiveOrders orders={activity?.orders ?? []} reservations={activity?.reservations ?? []}
-          pendingPayment={pendingFulfillmentPayment?.subscriptionId === subscription.id ? pendingFulfillmentPayment : null}
+        <CustomerActiveOrders
+          orders={activity?.orders ?? []}
+          reservations={activity?.reservations ?? []}
+          pendingPayment={
+            pendingFulfillmentPayment?.subscriptionId === subscription.id
+              ? pendingFulfillmentPayment
+              : null
+          }
           itemNames={Object.fromEntries([
-            ...benefits.map((item) => ["BENEFIT:" + item.id, item.displayName ?? item.benefitName]),
+            ...benefits.map((item) => [
+              "BENEFIT:" + item.id,
+              item.displayName ?? item.benefitName,
+            ]),
             ...exp.offers.map((item) => ["OFFER:" + item.id, item.offerName]),
           ])}
-          onOrder={(id) => openFulfillment("details", id)} onPayment={(id) => openFulfillment("payment", id)} />
+          onOrder={(id) => openFulfillment("details", id)}
+          onPayment={(id) => openFulfillment("payment", id)}
+        />
       ) : null}
       {!isPlanExploration &&
       !isHistoricalSubscription &&
       exp.membership?.active &&
       (redeemSectionBenefits.length || redeemSectionOffers.length) ? (
         <View style={redemptionContent}>
-        <Section
-          titleColor={pageTextColor}
-          title={t("experience.redeemBenefits")}
-        >
-          <Card padding="lg" testID="experience-redeem-benefits">
-            <View style={{ gap: 14 }}>
-              {redeemSectionBenefits.length ? (
-                <>
-                  <Text variant="bodyStrong" color="text">
-                    Benefits
-                  </Text>
-                  {redeemSectionBenefits.map(({ benefit: b, itemStatus }) => {
-                    const counterQr = counterQrFor("BENEFIT", b.id);
-                    const selectable = itemStatus.status === "AVAILABLE" && !counterQr;
-                    const reservation = reservationsFor("BENEFIT", b.id)[0];
-                    const selected = selectable && selectedBenefitIds.has(b.id);
-                    const unavailableLabel = counterQr ? undefined : entitlementUnavailableLabel(itemStatus.status, itemStatus.displayReason, !!reservation);
-                    const savings = advertisedSavingsLabel(
-                      b.advertisedSavings,
-                      "use",
-                    );
+          <Section
+            titleColor={pageTextColor}
+            title={t("experience.redeemBenefits")}
+          >
+            <Card padding="lg" testID="experience-redeem-benefits">
+              <View style={{ gap: 14 }}>
+                {redeemSectionBenefits.length ? (
+                  <>
+                    <Text variant="bodyStrong" color="text">
+                      Benefits
+                    </Text>
+                    {redeemSectionBenefits.map(({ benefit: b, itemStatus }) => {
+                      const counterQr = counterQrFor("BENEFIT", b.id);
+                      const selectable =
+                        itemStatus.status === "AVAILABLE" && !counterQr;
+                      const reservation = reservationsFor("BENEFIT", b.id)[0];
+                      const selected =
+                        selectable && selectedBenefitIds.has(b.id);
+                      const unavailableLabel = counterQr
+                        ? undefined
+                        : entitlementUnavailableLabel(
+                            itemStatus.status,
+                            itemStatus.displayReason,
+                            !!reservation,
+                          );
+                      const savings = advertisedSavingsLabel(
+                        b.advertisedSavings,
+                        "use",
+                      );
 
-                    return (
-                      <View key={b.id} style={{ gap: 4 }}>
-                      <Pressable
-                        testID={`experience-redeem-benefit-${b.id}`}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected, disabled: !selectable || isPreviewMode }}
-                        disabled={!selectable || isPreviewMode}
-                        onPress={() => toggleBenefit(b.id)}
-                        style={({ pressed }) => ({
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: theme.spacing.md,
-                          padding: theme.spacing.sm,
-                          borderRadius: theme.radius.md,
-                          borderWidth: 1,
-                          borderColor: selected ? theme.colors.primary : theme.colors.border,
-                          backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surface,
-                          opacity: !selectable && !reservation
-                            ? 0.5
-                            : pressed
-                              ? theme.states.pressedOpacity
-                              : 1,
-                        })}
+                      return (
+                        <View key={b.id} style={{ gap: 4 }}>
+                          <Pressable
+                            testID={`experience-redeem-benefit-${b.id}`}
+                            accessibilityRole="button"
+                            accessibilityState={{
+                              selected,
+                              disabled: !selectable || isPreviewMode,
+                            }}
+                            disabled={!selectable || isPreviewMode}
+                            onPress={() => toggleBenefit(b.id)}
+                            style={({ pressed }) => ({
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: theme.spacing.md,
+                              padding: theme.spacing.sm,
+                              borderRadius: theme.radius.md,
+                              borderWidth: 1,
+                              borderColor: selected
+                                ? theme.colors.primary
+                                : theme.colors.border,
+                              backgroundColor: selected
+                                ? theme.colors.primarySoft
+                                : theme.colors.surface,
+                              opacity:
+                                !selectable && !reservation
+                                  ? 0.5
+                                  : pressed
+                                    ? theme.states.pressedOpacity
+                                    : 1,
+                            })}
+                          >
+                            <Ionicons
+                              name={
+                                !selectable
+                                  ? "ban-outline"
+                                  : selected
+                                    ? "checkbox"
+                                    : "square-outline"
+                              }
+                              size={22}
+                              color={
+                                !selectable || !selected
+                                  ? theme.colors.textMuted
+                                  : theme.colors.primary
+                              }
+                            />
+
+                            <View style={{ flex: 1 }}>
+                              <Text
+                                variant="bodyStrong"
+                                color={selectable ? "text" : "textMuted"}
+                              >
+                                {b.displayName ?? b.benefitName}
+                              </Text>
+
+                              {b.description ? (
+                                <Text variant="bodySmall" color="textMuted">
+                                  {b.description}
+                                </Text>
+                              ) : null}
+                              {itemStoreLabel(`BENEFIT:${b.id}`) ? (
+                                <Text variant="caption" color="textMuted">
+                                  {itemStoreLabel(`BENEFIT:${b.id}`)}
+                                </Text>
+                              ) : null}
+                              {savings ? (
+                                <Text
+                                  variant="caption"
+                                  color={selectable ? "primary" : "textMuted"}
+                                >
+                                  {savings}
+                                </Text>
+                              ) : null}
+                              {b.products?.length ? (
+                                <View style={{ gap: 3, marginTop: 4 }}>
+                                  <Text
+                                    variant="bodySmall"
+                                    color="textSecondary"
+                                  >
+                                    Choose from:
+                                  </Text>
+                                  {b.products.map((eligible) => (
+                                    <Text
+                                      key={eligible.productId}
+                                      variant="caption"
+                                      color="textMuted"
+                                    >
+                                      {eligible.productName ||
+                                        eligible.productCode}{" "}
+                                      —{" "}
+                                      {benefitProductAvailability(
+                                        b.id,
+                                        eligible.productId,
+                                      )}
+                                    </Text>
+                                  ))}
+                                </View>
+                              ) : null}
+                            </View>
+
+                            {unavailableLabel ? (
+                              <Badge label={unavailableLabel} tone="neutral" />
+                            ) : null}
+                          </Pressable>
+                          {renderReservations("BENEFIT", b.id, !selectable)}
+                        </View>
+                      );
+                    })}
+                  </>
+                ) : null}
+
+                {redeemSectionOffers.length ? (
+                  <View style={{ gap: theme.spacing.sm }}>
+                    <Text variant="bodyStrong" color="text">
+                      Special Offers
+                    </Text>
+                    {redeemSectionOffers.map(({ offer, itemStatus }) => (
+                      <DecorativeThemeFrame
+                        key={offer.id}
+                        imageUrl={
+                          resolvedBranding.decoration?.cardBackgroundImageUrl ??
+                          null
+                        }
+                        primaryColor={theme.colors.primary}
+                        accentColor={theme.colors.accent}
+                        variant="content"
+                        decoration={resolvedBranding.decoration}
                       >
-                        <Ionicons
-                          name={
-                            !selectable
-                              ? "ban-outline"
-                              : selected
-                                ? "checkbox"
-                                : "square-outline"
+                        <OfferCard
+                          decorative={Boolean(
+                            resolvedBranding.decoration
+                              ?.cardBackgroundImageUrl &&
+                            resolvedBranding.decoration?.cardTreatment ===
+                              "IMAGE_OVERLAY",
+                          )}
+                          offerId={offer.id}
+                          testID={`experience-redeem-offer-${offer.id}`}
+                          title={offer.offerName}
+                          description={offer.description}
+                          advertisedSavings={offer.advertisedSavings}
+                          imageUrl={offer.promotionImageUrl}
+                          badge={offer.badgeText}
+                          availabilityText={redeemOfferAvailability(offer)}
+                          disclaimerText={offer.disclaimerText}
+                          applicableProducts={offer.products?.map(
+                            (product) =>
+                              product.productName || product.productCode,
+                          )}
+                          discountPercentage={offer.discountPercentage}
+                          ctaLabel={
+                            counterQrFor("OFFER", offer.id)
+                              ? undefined
+                              : isPreviewMode
+                                ? offer.ctaLabel
+                                : itemStatus.status === "AVAILABLE"
+                                  ? selectedOfferIds.has(offer.id)
+                                    ? "Remove from redemption"
+                                    : "Add to redemption"
+                                  : entitlementUnavailableLabel(
+                                      itemStatus.status,
+                                      itemStatus.displayReason,
+                                      reservationsFor("OFFER", offer.id)
+                                        .length > 0,
+                                    )
                           }
-                          size={22}
-                          color={
-                            !selectable || !selected
-                              ? theme.colors.textMuted
-                              : theme.colors.primary
+                          ctaDisabled={
+                            !isPreviewMode &&
+                            (isHistoricalSubscription ||
+                              itemStatus.status !== "AVAILABLE")
+                          }
+                          usageRules={offerUsageRules?.filter(
+                            (rule) => rule.offerId === offer.id,
+                          )}
+                          onPress={
+                            isPreviewMode ||
+                            isHistoricalSubscription ||
+                            itemStatus.status !== "AVAILABLE" ||
+                            counterQrFor("OFFER", offer.id)
+                              ? undefined
+                              : () => toggleOffer(offer.id)
                           }
                         />
+                        {renderReservations(
+                          "OFFER",
+                          offer.id,
+                          itemStatus.status !== "AVAILABLE",
+                        )}
+                      </DecorativeThemeFrame>
+                    ))}
+                  </View>
+                ) : null}
 
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            variant="bodyStrong"
-                            color={selectable ? "text" : "textMuted"}
-                          >
-                            {b.displayName ?? b.benefitName}
-                          </Text>
-
-                          {b.description ? (
-                            <Text variant="bodySmall" color="textMuted">
-                              {b.description}
-                            </Text>
-                          ) : null}
-                          {itemStoreLabel(`BENEFIT:${b.id}`) ? (
-                            <Text variant="caption" color="textMuted">{itemStoreLabel(`BENEFIT:${b.id}`)}</Text>
-                          ) : null}
-                          {savings ? (
-                            <Text
-                              variant="caption"
-                              color={selectable ? "primary" : "textMuted"}
-                            >
-                              {savings}
-                            </Text>
-                          ) : null}
-                          {b.products?.length ? (
-                            <View style={{ gap: 3, marginTop: 4 }}>
-                              <Text variant="bodySmall" color="textSecondary">
-                                Choose from:
-                              </Text>
-                              {b.products.map((eligible) => (
-                                <Text
-                                  key={eligible.productId}
-                                  variant="caption"
-                                  color="textMuted"
-                                >
-                                  {eligible.productName || eligible.productCode}{" "}
-                                  —{" "}
-                                  {benefitProductAvailability(
-                                    b.id,
-                                    eligible.productId,
-                                  )}
-                                </Text>
-                              ))}
-                            </View>
-                          ) : null}
-                        </View>
-
-                        {unavailableLabel ? (
-                          <Badge
-                            label={unavailableLabel}
-                            tone="neutral"
-                          />
-                        ) : null}
-                      </Pressable>
-                      {renderReservations("BENEFIT", b.id, !selectable)}
-                      </View>
-                    );
-                  })}
-                </>
-              ) : null}
-
-              {redeemSectionOffers.length ? (
-                <View style={{ gap: theme.spacing.sm }}>
-                  <Text variant="bodyStrong" color="text">
-                    Special Offers
+                {!hasRedeemable ? (
+                  <Text variant="bodySmall" color="textMuted">
+                    {t("experience.noRedeemable")}
                   </Text>
-                  {redeemSectionOffers.map(({ offer, itemStatus }) => (
-                    <DecorativeThemeFrame
-                      key={offer.id}
-                      imageUrl={
-                        resolvedBranding.decoration?.cardBackgroundImageUrl ??
-                        null
-                      }
-                      primaryColor={theme.colors.primary}
-                      accentColor={theme.colors.accent}
-                      variant="content"
-                      decoration={resolvedBranding.decoration}
-                    >
-                      <OfferCard
-                        decorative={Boolean(
-                          resolvedBranding.decoration?.cardBackgroundImageUrl &&
-                          resolvedBranding.decoration?.cardTreatment ===
-                            "IMAGE_OVERLAY",
-                        )}
-                        offerId={offer.id}
-                        testID={`experience-redeem-offer-${offer.id}`}
-                        title={offer.offerName}
-                        description={offer.description}
-                        advertisedSavings={offer.advertisedSavings}
-                        imageUrl={offer.promotionImageUrl}
-                        badge={offer.badgeText}
-                        availabilityText={redeemOfferAvailability(offer)}
-                        disclaimerText={offer.disclaimerText}
-                        applicableProducts={offer.products?.map(
-                          (product) =>
-                            product.productName || product.productCode,
-                        )}
-                        discountPercentage={offer.discountPercentage}
-                        ctaLabel={
-                          counterQrFor("OFFER", offer.id) ? undefined : isPreviewMode
-                            ? offer.ctaLabel
-                            : itemStatus.status === "AVAILABLE"
-                              ? selectedOfferIds.has(offer.id)
-                                ? "Remove from redemption"
-                                : "Add to redemption"
-                              : entitlementUnavailableLabel(itemStatus.status, itemStatus.displayReason, reservationsFor("OFFER", offer.id).length > 0)
-                        }
-                        ctaDisabled={!isPreviewMode && (isHistoricalSubscription || itemStatus.status !== "AVAILABLE")}
-                        usageRules={offerUsageRules?.filter(
-                          (rule) => rule.offerId === offer.id,
-                        )}
-                        onPress={
-                          isPreviewMode ||
-                          isHistoricalSubscription ||
-                          itemStatus.status !== "AVAILABLE" || counterQrFor("OFFER", offer.id)
-                            ? undefined
-                            : () => toggleOffer(offer.id)
-                        }
-                      />
-                      {renderReservations("OFFER", offer.id, itemStatus.status !== "AVAILABLE")}
-                    </DecorativeThemeFrame>
-                  ))}
-                </View>
-              ) : null}
+                ) : null}
 
-              {!hasRedeemable ? (
-                <Text variant="bodySmall" color="textMuted">
-                  {t("experience.noRedeemable")}
-                </Text>
-              ) : null}
-
-              {!isPreviewMode ? (
-                <View
-                  style={{
-                    flexDirection: isMobileLayout ? "column" : "row",
-                    alignItems: isMobileLayout ? "stretch" : "center",
-                    justifyContent: isMobileLayout
-                      ? "flex-start"
-                      : "space-between",
-                    width: "100%",
-                    gap: isMobileLayout ? theme.spacing.md : theme.spacing.sm,
-                    marginTop: theme.spacing.sm,
-                  }}
-                >
-                  <Text variant="caption" color="textMuted">
-                    {selectedSummary || "No items selected"}
-                  </Text>
-                  <Button
-                    label={checkFor("ALL")?.pending ? "Checking Stores…" : `Redeem Selected${selectedCount ? ` (${selectedCount})` : ""}`}
-                    disabled={selectedCount === 0 || checkFor("ALL")?.pending}
-                    onPress={() => {
-                      void openRedemptionSelection("ALL");
+                {!isPreviewMode ? (
+                  <View
+                    style={{
+                      flexDirection: isMobileLayout ? "column" : "row",
+                      alignItems: isMobileLayout ? "stretch" : "center",
+                      justifyContent: isMobileLayout
+                        ? "flex-start"
+                        : "space-between",
+                      width: "100%",
+                      gap: isMobileLayout ? theme.spacing.md : theme.spacing.sm,
+                      marginTop: theme.spacing.sm,
                     }}
-                    testID="experience-redeem-selected"
-                  />
-                </View>
-              ) : null}
-              {checkFor("ALL")?.message ? (
-                <Text accessibilityLiveRegion="polite" variant="bodySmall" color="danger">{checkFor("ALL")?.message}</Text>
-              ) : null}
-            </View>
-          </Card>
-        </Section>
+                  >
+                    <Text variant="caption" color="textMuted">
+                      {selectedSummary || "No items selected"}
+                    </Text>
+                    <Button
+                      label={
+                        checkFor("ALL")?.pending
+                          ? "Checking Stores…"
+                          : `Redeem Selected${selectedCount ? ` (${selectedCount})` : ""}`
+                      }
+                      disabled={selectedCount === 0 || checkFor("ALL")?.pending}
+                      onPress={() => {
+                        void openRedemptionSelection("ALL");
+                      }}
+                      testID="experience-redeem-selected"
+                    />
+                  </View>
+                ) : null}
+                {checkFor("ALL")?.message ? (
+                  <Text
+                    accessibilityLiveRegion="polite"
+                    variant="bodySmall"
+                    color="danger"
+                  >
+                    {checkFor("ALL")?.message}
+                  </Text>
+                ) : null}
+              </View>
+            </Card>
+          </Section>
         </View>
       ) : null}
 
@@ -2716,7 +3076,10 @@ export function BusinessExperience({
      * presented once as its own offer card.
      */
     return (
-      <View style={[{ gap: theme.spacing.lg }, !isPreviewMode && redemptionContent]} testID="experience-tab-offers">
+      <View
+        style={[{ gap: theme.spacing.lg }, !isPreviewMode && redemptionContent]}
+        testID="experience-tab-offers"
+      >
         {renderTabPreviewLink("offers")}
 
         <Section titleColor={pageTextColor} title={t("experience.todaysPerks")}>
@@ -2794,15 +3157,27 @@ export function BusinessExperience({
                 </Text>
 
                 <Button
-                  label={checkFor("OFFERS")?.pending ? "Checking Stores…" : `Redeem Selected${selectedOfferCount ? ` (${selectedOfferCount})` : ""}`}
-                  disabled={selectedOfferCount === 0 || checkFor("OFFERS")?.pending}
+                  label={
+                    checkFor("OFFERS")?.pending
+                      ? "Checking Stores…"
+                      : `Redeem Selected${selectedOfferCount ? ` (${selectedOfferCount})` : ""}`
+                  }
+                  disabled={
+                    selectedOfferCount === 0 || checkFor("OFFERS")?.pending
+                  }
                   onPress={() => {
                     void openRedemptionSelection("OFFERS");
                   }}
                   testID="experience-offers-redeem-selected"
                 />
                 {checkFor("OFFERS")?.message ? (
-                  <Text accessibilityLiveRegion="polite" variant="bodySmall" color="danger">{checkFor("OFFERS")?.message}</Text>
+                  <Text
+                    accessibilityLiveRegion="polite"
+                    variant="bodySmall"
+                    color="danger"
+                  >
+                    {checkFor("OFFERS")?.message}
+                  </Text>
                 ) : null}
               </View>
             ) : null}
@@ -2821,17 +3196,27 @@ export function BusinessExperience({
       historyBenefits.map((benefit) => [benefit.id, benefit]),
     );
     const canPageOrders = orders.key === orderScope && hasMoreOrders;
-    const fulfillmentEntries = fulfillmentHistory.key === fulfillmentHistoryScope ? fulfillmentHistory.rows : [];
-    const canPageFulfillment = fulfillmentHistory.key === fulfillmentHistoryScope && fulfillmentHistory.hasMore;
-    const linkedFulfillmentIds = new Set(fulfillmentEntries.flatMap((item) =>
-      [item.commerceId, item.redemptionId].filter((id): id is string => !!id),
-    ));
+    const fulfillmentEntries =
+      fulfillmentHistory.key === fulfillmentHistoryScope
+        ? fulfillmentHistory.rows
+        : [];
+    const canPageFulfillment =
+      fulfillmentHistory.key === fulfillmentHistoryScope &&
+      fulfillmentHistory.hasMore;
+    const linkedFulfillmentIds = new Set(
+      fulfillmentEntries.flatMap((item) =>
+        [item.commerceId, item.redemptionId].filter((id): id is string => !!id),
+      ),
+    );
     const orderGroups = groupCustomerOrders(
       orders.key === orderScope
         ? orders.rows.filter((order) => {
-            if (order.transactionType === "COUNTER_REDEMPTION" &&
-                (linkedFulfillmentIds.has(order.transactionId) ||
-                 (!!order.canonicalOrderId && linkedFulfillmentIds.has(order.canonicalOrderId)))) {
+            if (
+              order.transactionType === "COUNTER_REDEMPTION" &&
+              (linkedFulfillmentIds.has(order.transactionId) ||
+                (!!order.canonicalOrderId &&
+                  linkedFulfillmentIds.has(order.canonicalOrderId)))
+            ) {
               return false;
             }
             const attributedId =
@@ -3053,20 +3438,28 @@ export function BusinessExperience({
               {
                 title: "Current Orders",
                 entries: orderGroups.current,
-                fulfillments: fulfillmentEntries.filter((item) => !fulfillmentIsTerminal(item.status)),
+                fulfillments: fulfillmentEntries.filter(
+                  (item) => !fulfillmentIsTerminal(item.status),
+                ),
                 empty: "No current orders.",
               },
               {
                 title: "Past Orders",
                 entries: orderGroups.past,
-                fulfillments: fulfillmentEntries.filter((item) => fulfillmentIsTerminal(item.status)),
+                fulfillments: fulfillmentEntries.filter((item) =>
+                  fulfillmentIsTerminal(item.status),
+                ),
                 empty: "No past orders.",
               },
             ].map(({ title, entries, fulfillments, empty }) => (
               <Section key={title} titleColor={pageTextColor} title={title}>
                 <View style={{ gap: theme.spacing.sm }}>
-                  {!ordersLoading && !ordersError && !fulfillmentHistoryLoading && !fulfillmentHistoryFailure &&
-                    !entries.length && !fulfillments.length ? (
+                  {!ordersLoading &&
+                  !ordersError &&
+                  !fulfillmentHistoryLoading &&
+                  !fulfillmentHistoryFailure &&
+                  !entries.length &&
+                  !fulfillments.length ? (
                     <Text variant="bodySmall" color="textMuted">
                       {canPageOrders || canPageFulfillment
                         ? "No matching orders in the pages loaded."
@@ -3075,7 +3468,10 @@ export function BusinessExperience({
                   ) : null}
                   {fulfillments.map((item) => (
                     <ProfileThemeCard key={item.id}>
-                      <CustomerFulfillmentSummary item={item} onOpen={() => openFulfillment("details", item.id)} />
+                      <CustomerFulfillmentSummary
+                        item={item}
+                        onOpen={() => openFulfillment("details", item.id)}
+                      />
                     </ProfileThemeCard>
                   ))}
                   {entries.map((order) => {
@@ -3187,13 +3583,16 @@ export function BusinessExperience({
                   setHistoryRefresh((current) => current + 1);
                 }}
               />
-            ) : (canPageOrders || canPageFulfillment) && !ordersLoading && !fulfillmentHistoryLoading ? (
+            ) : (canPageOrders || canPageFulfillment) &&
+              !ordersLoading &&
+              !fulfillmentHistoryLoading ? (
               <Button
                 label="Load older orders"
                 variant="secondary"
                 onPress={() => {
                   if (canPageOrders) setOrderOffset((offset) => offset + 25);
-                  if (canPageFulfillment) setFulfillmentOffset((offset) => offset + 25);
+                  if (canPageFulfillment)
+                    setFulfillmentOffset((offset) => offset + 25);
                 }}
               />
             ) : null}
@@ -4268,7 +4667,9 @@ export function BusinessExperience({
       >
         <View
           style={{
-            ...(!isPreviewMode && showStoreEligibility ? redemptionContent : undefined),
+            ...(!isPreviewMode && showStoreEligibility
+              ? redemptionContent
+              : undefined),
             paddingHorizontal: theme.spacing.lg,
             paddingTop: theme.spacing.sm,
           }}
@@ -4299,7 +4700,9 @@ export function BusinessExperience({
           style={{
             flexDirection: "row",
             alignItems: "center",
-            ...(!isPreviewMode && showStoreEligibility ? redemptionContent : undefined),
+            ...(!isPreviewMode && showStoreEligibility
+              ? redemptionContent
+              : undefined),
             gap: theme.spacing.md,
             paddingHorizontal: theme.spacing.lg,
             paddingVertical: theme.spacing.sm,
@@ -4336,7 +4739,9 @@ export function BusinessExperience({
           ref={mainScroll}
           style={{ flex: 1 }}
           contentContainerStyle={{
-            ...(!isPreviewMode && showStoreEligibility ? redemptionContent : undefined),
+            ...(!isPreviewMode && showStoreEligibility
+              ? redemptionContent
+              : undefined),
             padding: theme.spacing.lg,
             paddingTop: theme.spacing.sm,
             paddingBottom: insets.bottom + 90,
@@ -4344,6 +4749,28 @@ export function BusinessExperience({
           }}
           showsVerticalScrollIndicator={false}
         >
+          {!isPreviewMode &&
+          !previewSection &&
+          customerUserId &&
+          effectiveTab === "card" ? (
+            <BusinessSavingsBanner
+              businessName={exp.displayName}
+              savings={
+                businessSavingsResult?.key === businessSavingsScope
+                  ? businessSavingsResult.data
+                  : undefined
+              }
+              loading={
+                businessSavingsResult?.key !== businessSavingsScope ||
+                (!businessSavingsResult.data && !businessSavingsResult.error)
+              }
+              backgroundColor={theme.colors.surface}
+              borderColor={theme.colors.border}
+              textColor={theme.colors.text}
+              accentColor={theme.colors.primary}
+              onHistory={() => handleTabChange("history")}
+            />
+          ) : null}
           {!previewSection ? (
             <AnnouncementDisplay
               configuration={announcementConfiguration}
@@ -4496,43 +4923,43 @@ export function BusinessExperience({
             }}
           >
             <View style={{ ...redemptionContent, flexDirection: "row" }}>
-            {exp.tabs.map((tb) => {
-              const focused = tb.key === effectiveTab;
+              {exp.tabs.map((tb) => {
+                const focused = tb.key === effectiveTab;
 
-              return (
-                <Pressable
-                  key={tb.key}
-                  testID={`experience-tabbar-${tb.key}`}
-                  onPress={() => handleTabChange(tb.key)}
-                  style={{
-                    flex: 1,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    paddingVertical: 10,
-                    gap: 2,
-                  }}
-                >
-                  <Ionicons
-                    name={
-                      (focused
-                        ? tb.icon
-                        : tb.iconOutline) as keyof typeof Ionicons.glyphMap
-                    }
-                    size={22}
-                    color={
-                      focused ? theme.colors.primary : theme.colors.textMuted
-                    }
-                  />
-
-                  <Text
-                    variant="caption"
-                    color={focused ? "primary" : "textMuted"}
+                return (
+                  <Pressable
+                    key={tb.key}
+                    testID={`experience-tabbar-${tb.key}`}
+                    onPress={() => handleTabChange(tb.key)}
+                    style={{
+                      flex: 1,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      paddingVertical: 10,
+                      gap: 2,
+                    }}
                   >
-                    {t(tb.labelKey)}
-                  </Text>
-                </Pressable>
-              );
-            })}
+                    <Ionicons
+                      name={
+                        (focused
+                          ? tb.icon
+                          : tb.iconOutline) as keyof typeof Ionicons.glyphMap
+                      }
+                      size={22}
+                      color={
+                        focused ? theme.colors.primary : theme.colors.textMuted
+                      }
+                    />
+
+                    <Text
+                      variant="caption"
+                      color={focused ? "primary" : "textMuted"}
+                    >
+                      {t(tb.labelKey)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
         ) : null}
@@ -4685,7 +5112,6 @@ export function BusinessExperience({
             ) : null}
           </Modal>
         ) : null}
-
       </View>
     </BusinessThemeScope>
   );

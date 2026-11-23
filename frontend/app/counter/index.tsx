@@ -4038,7 +4038,7 @@ export default function StaffCounter() {
           onPress={resetIdentity}
           style={[styles.secondaryBtn, busy && styles.btnDisabled]}
         >
-          <Text style={styles.secondaryBtnText}>Cancel Redemption</Text>
+          <Text style={styles.secondaryBtnText}>Cancel Selection</Text>
         </Pressable>
       </View>
     );

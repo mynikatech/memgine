@@ -299,6 +299,13 @@ export type SubscriptionActualSavings = {
   coverageState: string;
 };
 
+export type BusinessActualSavings = {
+  coverageState: "COMPLETE" | "PARTIAL" | "NO_REDEMPTION_HISTORY" | "UNAVAILABLE";
+  activePlanCurrencyCode?: string | null;
+  totals: { currencyCode: string; verifiedNetSavingsMinor: number; coverageState: "COMPLETE" | "PARTIAL" }[];
+  memberships: (SubscriptionActualSavings & { membershipName: string; planName: string })[];
+};
+
 /** Immutable server-issued receipt. Amounts are minor units from the receipt snapshot. */
 export type TransactionReceipt = {
   transactionReceiptId: ID;
@@ -705,6 +712,9 @@ export class CustomerDataApi {
     return httpClient.get(
       `${base(organizationId)}/subscriptions/${encodeURIComponent(subscriptionId)}/actual-savings`,
     );
+  }
+  businessActualSavings(organizationId: ID): Promise<ApiResult<BusinessActualSavings>> {
+    return httpClient.get(`${base(organizationId)}/actual-savings`);
   }
   receipt(
     organizationId: ID,

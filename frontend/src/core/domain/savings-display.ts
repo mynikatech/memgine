@@ -64,6 +64,24 @@ export function formatTransactionMoney(
   return amount && amountMinor < 0 ? `−${amount}` : amount;
 }
 
+export function formatBusinessSavingsMoney(amount: number, currency: string): string | undefined {
+  if (amount < 0) return undefined;
+  let exact: string | undefined;
+  try {
+    exact = formatTransactionMoney(amount, currency);
+  } catch { return undefined; }
+  if (!exact) return undefined;
+  try {
+    const formatter = new Intl.NumberFormat(undefined, { style: "currency", currency, currencyDisplay: "narrowSymbol" });
+    const precision = formatter.resolvedOptions().maximumFractionDigits;
+    // At extreme magnitudes, preserve the exact minor-unit string rather than
+    // risk rounding a fractional unit through IEEE-754 division.
+    if (precision === undefined || amount > 1000000000000) return exact;
+    const result = formatter.format(amount / 10 ** precision);
+    return ["CAD", "USD"].includes(currency) ? `${result} ${currency}` : result;
+  } catch { return exact; }
+}
+
 export function verifiedSavingsMoney(
   savings?: {
     verificationState: string;
