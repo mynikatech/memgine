@@ -62,6 +62,7 @@ export type CounterOrder = {
   items: CounterOrderItem[];
   timeline: { id: ID; type: string; at: string }[];
   lifecycle?: CounterOrderLifecycle;
+  collectionExtension?: { requestId?: string | null; previousAt?: string | null; proposedAt?: string | null; type: string; reason?: string | null; timezone?: string | null; at: string; history?: { id: string; type: string; at: string; previousAt?: string | null; proposedAt?: string | null; reason?: string | null }[] } | null;
 };
 export type CounterOrderLifecycle = {
   version: number;
@@ -646,6 +647,10 @@ export class CounterApi {
     return httpClient.get(
       this.query(ctx, `orders/${encodeURIComponent(orderId)}`),
     );
+  }
+
+  changeCollectionExtension(ctx: CounterContext, orderId: ID, request: { version: number; action: 'APPROVE' | 'REJECT' | 'EXTEND'; requestId?: string; localTime?: string; reason?: string }): Promise<ApiResult<{ code: string }>> {
+    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/collection-extension`), request);
   }
 
   transitionOrder(

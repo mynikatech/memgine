@@ -436,7 +436,7 @@ export type CustomerFulfillment = {
   acceptedAt: string;
   fulfilledAt?: string | null;
   refundStates: string[];
-  timeline?: { id: ID; type: string; at: string }[] | null;
+  timeline?: { id: ID; type: string; at: string; previousAt?: string | null; proposedAt?: string | null; reason?: string | null }[] | null;
   lines?:
     | {
         id: ID;

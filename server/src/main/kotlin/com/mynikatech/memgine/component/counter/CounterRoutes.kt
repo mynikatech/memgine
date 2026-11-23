@@ -87,6 +87,11 @@ fun Route.counterRoutes(service: CounterService, commercePaymentService: Counter
                 val order = call.parameters["orderId"] ?: throw BadRequestException("Order id is required")
                 val principal = call.authenticatedPrincipal()
                 val action = call.parameters["action"]
+                if (action == "collection-extension") {
+                    val request = call.receive<CounterCollectionExtensionRequest>()
+                    call.respond(ApiResponse.success(service.changeCollectionExtension(org, store, staff, order, request, principal), call.callId))
+                    return@post
+                }
                 if (action == "report-no-show") {
                     val request = call.receivePickupLookup<CounterOrderNoShowRequest>()
                     call.respond(ApiResponse.success(service.reportOrderNoShow(org, store, staff, order,

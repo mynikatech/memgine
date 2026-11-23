@@ -40,7 +40,8 @@ import {
 import { storage } from "@/src/utils/storage";
 import type { ApiResult } from "@/src/data/api/result";
 import { Badge, Button, Card, Input, Modal, Text } from "@/src/ui";
-import { useTheme } from "@/src/providers";
+import { useAuth, useTheme } from "@/src/providers";
+import { fulfillmentPickupCache } from "@/src/core/services/fulfillment-pickup-cache";
 import { QrPlaceholder } from "./QrPlaceholder";
 import {
   fulfillmentContentWidth,
@@ -78,6 +79,7 @@ const timelineLabels: Record<string, string> = {
   COLLECTION_CHANGE_REQUESTED: "Collection change requested",
   COLLECTION_CHANGE_APPROVED: "Collection change approved",
   COLLECTION_CHANGE_REJECTED: "Collection change declined",
+  STAFF_COLLECTION_EXTENDED: "Collection time extended by Store",
   CANCELLATION_REQUESTED: "Cancellation requested",
   CANCELLED: "Cancelled",
   DELAY_RECORDED: "Delay recorded",
@@ -685,6 +687,9 @@ export function FulfillmentPickupCard({
   item: CustomerFulfillment;
   active: boolean;
 }) {
+  const { session } = useAuth();
+  const scope = JSON.stringify([session?.userId, session?.expiresAt, organizationId, item.id]);
+  const visible = !!session?.userId && !!item.canShowPickup && ['PLACED', 'PREPARING', 'READY'].includes(item.status);
   const [credential, setCredential] = useState<{
     reference: string;
     expiresAt: string;
@@ -696,42 +701,66 @@ export function FulfillmentPickupCard({
   const [codeBusy, setCodeBusy] = useState(false);
   const [codeError, setCodeError] = useState<string>();
   const [failure, setFailure] = useState<string>();
-  const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
-  const request = useRef<{
-    attempt: number;
-    result: Promise<{ reference: string; expiresAt: string }>;
-  } | null>(null);
-  const allowed =
-    !!item.canShowPickup &&
-    (item.status === "PLACED" ||
-      item.status === "PREPARING" ||
-      item.status === "READY");
+  const live = useRef(false);
+  const currentScope = useRef(scope);
+  const previousSession = useRef(session?.userId);
+  const previousScope = useRef(scope);
+  const inFlight = useRef(false);
+  currentScope.current = scope;
+  const allowed = visible;
   useEffect(() => {
-    if (!allowed || !active) return;
-    if (request.current?.attempt !== attempt) {
-      request.current = {
-        attempt,
-        result: read(api.fulfillmentPickup(organizationId, item.id)),
-      };
+    live.current = true;
+    return () => { live.current = false; };
+  }, []);
+  useEffect(() => {
+    if (previousSession.current && previousSession.current !== session?.userId) {
+      fulfillmentPickupCache.invalidate(previousScope.current);
     }
-    let live = true;
-    setBusy(true);
+    previousSession.current = session?.userId;
+    previousScope.current = scope;
+  }, [session?.userId, scope]);
+  useEffect(() => {
+    if (!allowed) {
+      fulfillmentPickupCache.invalidate(scope);
+      setCredential(undefined);
+      setPickupCode(undefined);
+      return;
+    }
+    setCredential(fulfillmentPickupCache.get<{ reference: string; expiresAt: string }>(scope, 'qr'));
+    setPickupCode(fulfillmentPickupCache.get<{ code: string; expiresAt: string }>(scope, 'code'));
     setFailure(undefined);
-    void request.current.result
-      .then((result) => {
-        if (live) setCredential(result);
-      })
-      .catch(() => {
-        if (live) setFailure("Could not load the pickup QR.");
-      })
-      .finally(() => {
-        if (live) setBusy(false);
-      });
-    return () => {
-      live = false;
-    };
-  }, [active, allowed, attempt, item.id, organizationId]);
+    setCodeError(undefined);
+  }, [scope, allowed, active]);
+  useEffect(() => fulfillmentPickupCache.subscribe(scope, () => {
+    if (!allowed) return;
+    setCredential(fulfillmentPickupCache.get<{ reference: string; expiresAt: string }>(scope, 'qr'));
+    setPickupCode(fulfillmentPickupCache.get<{ code: string; expiresAt: string }>(scope, 'code'));
+  }), [scope, allowed]);
+  const generate = async (kind: 'qr' | 'code', refresh: boolean) => {
+    if (!allowed || !active || inFlight.current) return;
+    inFlight.current = true;
+    const requestScope = scope;
+    if (kind === 'qr') { setBusy(true); setFailure(undefined); if (refresh) setCredential(undefined); }
+    else { setCodeBusy(true); setCodeError(undefined); if (refresh) setPickupCode(undefined); }
+    try {
+      if (kind === 'qr') {
+        const result = await fulfillmentPickupCache.issue(requestScope, 'qr', () => read(api.fulfillmentPickup(organizationId, item.id)), refresh);
+        if (live.current && currentScope.current === requestScope) setCredential(result);
+      } else {
+        const result = await fulfillmentPickupCache.issue(requestScope, 'code', () => read(api.fulfillmentPickupCode(organizationId, item.id)), refresh);
+        if (live.current && currentScope.current === requestScope) setPickupCode(result);
+      }
+    } catch {
+      if (live.current && currentScope.current === requestScope) {
+        if (kind === 'qr') setFailure('Could not generate the pickup QR.');
+        else setCodeError('Could not generate the Pickup Code.');
+      }
+    } finally {
+      inFlight.current = false;
+      if (live.current && currentScope.current === requestScope) { setBusy(false); setCodeBusy(false); }
+    }
+  };
   useEffect(() => {
     if (!credential) return;
     const timer = setTimeout(
@@ -740,37 +769,6 @@ export function FulfillmentPickupCard({
     );
     return () => clearTimeout(timer);
   }, [credential]);
-  // Eligible pre-order stages present QR and code together. Orders controls handover.
-  useEffect(() => {
-    if (!allowed || !active) {
-      setPickupCode(undefined);
-      return;
-    }
-    let live = true;
-    setPickupCode(undefined);
-    setCodeError(undefined);
-    setCodeBusy(true);
-    void read(api.fulfillmentPickupCode(organizationId, item.id))
-      .then((result) => {
-        if (live) setPickupCode(result);
-      })
-      .catch((error: unknown) => {
-        if (live) {
-          const message =
-            error instanceof Error
-              ? error.message
-              : "Pickup Code generation failed";
-
-          setCodeError(message);
-        }
-      })
-      .finally(() => {
-        if (live) setCodeBusy(false);
-      });
-    return () => {
-      live = false;
-    };
-  }, [active, allowed, attempt, item.id, item.status, organizationId]);
   useEffect(() => {
     if (!pickupCode) return;
     const ms = Math.max(0, Date.parse(pickupCode.expiresAt) - Date.now());
@@ -805,28 +803,17 @@ export function FulfillmentPickupCard({
           <Button
             variant="ghost"
             size="sm"
-            label="Refresh QR and Pickup Code"
-            onPress={() => {
-              setCredential(undefined);
-              setPickupCode(undefined);
-              setFailure(undefined);
-              setCodeError(undefined);
-              setAttempt((value) => value + 1);
-            }}
+            disabled={busy || codeBusy}
+            label="Replace pickup QR"
+            onPress={() => void generate('qr', true)}
           />
         </>
       ) : (
         <Button
           variant={item.status === "READY" ? "primary" : "outline"}
-          disabled={busy}
-          label={busy ? "Loading pickup QR…" : "Get pickup QR and code"}
-          onPress={() => {
-            setCredential(undefined);
-            setPickupCode(undefined);
-            setFailure(undefined);
-            setCodeError(undefined);
-            setAttempt((value) => value + 1);
-          }}
+          disabled={busy || codeBusy || !active}
+          label={busy ? "Generating pickup QR…" : "Get pickup QR"}
+          onPress={() => void generate('qr', false)}
         />
       )}
       {allowed && active ? (
@@ -845,6 +832,10 @@ export function FulfillmentPickupCard({
               </Text>
             </>
           ) : null}
+          <Button variant="ghost" size="sm" disabled={busy || codeBusy}
+            label={pickupCode ? "Replace Pickup Code" : "Get Pickup Code"}
+            onPress={() => void generate('code', !!pickupCode)} />
+          {(credential || pickupCode) ? <Text variant="caption" color="textMuted">Replacing a QR or code makes its previous value invalid.</Text> : null}
           {codeError ? (
             <Text variant="caption" color="danger">
               {codeError}
@@ -1730,6 +1721,9 @@ export function CustomerFulfillmentDetails({
                 <Text key={entry.id} variant="caption" color="textMuted">
                   {timelineLabels[entry.type]} ·{" "}
                   {localTime(entry.at, item.timezone)}
+                  {entry.previousAt ? ` · Previous ${localTime(entry.previousAt, item.timezone)}` : ""}
+                  {entry.proposedAt ? ` · Proposed ${localTime(entry.proposedAt, item.timezone)}` : ""}
+                  {entry.reason ? ` · ${entry.reason}` : ""}
                 </Text>
               ))}
             {item.refundStates.map((state) =>

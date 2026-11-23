@@ -139,7 +139,21 @@ class CounterService(
         authorize(org, store, staff, principal)
         val order = sql().orderLifecycle(org, store, staff, principal.userId, orderId)
             ?: throw NotFoundException("Order not found at this Store")
-        return Json.parseToJsonElement(order).jsonObject
+        val extension = sql().collectionExtension(org, store, staff, principal.userId, orderId)
+        return JsonObject(Json.parseToJsonElement(order).jsonObject + ("collectionExtension" to (extension?.let { Json.parseToJsonElement(it) } ?: kotlinx.serialization.json.JsonNull)))
+    }
+
+    fun changeCollectionExtension(org: String, store: String, staff: String, order: String, request: CounterCollectionExtensionRequest, principal: AuthenticatedPrincipal): CounterOrderActionResult {
+        authorize(org, store, staff, principal)
+        id(order, "order id")
+        if (request.version < 1 || request.action !in setOf("APPROVE", "REJECT", "EXTEND")) throw BadRequestException("Invalid extension request")
+        if (request.action != "APPROVE" && request.reason?.trim()?.length !in 5..500) throw BadRequestException("Enter a reason of 5 to 500 characters")
+        if (request.action != "EXTEND" && request.requestId.isNullOrBlank()) throw BadRequestException("Extension request is required")
+        if (request.action == "EXTEND") try { java.time.LocalDateTime.parse(request.localTime) } catch (_: Exception) { throw BadRequestException("Enter a valid local collection date and time") }
+        val code = sql().changeCollectionExtension(org, store, staff, principal.userId, order, request.version, request.action, request.requestId, request.localTime, request.reason?.trim())
+        if (code == "FORBIDDEN") throw ForbiddenException("Order access is unavailable for this Store")
+        if (code != "UPDATED") throw ConflictException("Extension could not be applied. Check the Store hours, time and latest order status.", code)
+        return CounterOrderActionResult(code)
     }
 
     fun orderSupportCandidates(org: String, store: String, staff: String, order: String,

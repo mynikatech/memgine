@@ -1,8 +1,12 @@
 package com.mynikatech.memgine.component.counter
 
 import kotlinx.serialization.Serializable
+
 import java.security.MessageDigest
 import java.util.Base64
+
+@Serializable
+data class CounterCollectionExtensionRequest(val version: Int, val action: String, val requestId: String? = null, val localTime: String? = null, val reason: String? = null)
 
 @Serializable
 class CounterPickupQrRequest(val credential: String)

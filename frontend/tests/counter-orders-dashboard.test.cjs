@@ -48,6 +48,7 @@ const { CollectionReview, CounterOrdersPanels, CounterOrderQueue, CounterOrderDe
     StateView: ({ kind, title, message, testID }) => el("aside", { "data-state": kind, "data-testid": testID }, title, message),
   },
   "./counter-orders-model": model,
+  "./collection-extension": { collectionExtensionLocalTime: () => undefined },
   "./CounterPickupLookup": { CounterPickupLookup: () => null },
 });
 const first = { id: "FUL_1", reference: "ORDER-100", storeId: "OSC", storeName: "OSC Store", timezone: "America/Toronto",
@@ -96,9 +97,9 @@ test("the scanner and reference path cannot synthesize a collection credential",
   const scanner = source("frontend/src/ui/domain/CounterPickupLookup.tsx");
   assert.match(scanner, /match.code === "VERIFIED" && kind === "qr" \? value : undefined/);
   assert.match(scanner, /expectedOrderId && match.orderId !== expectedOrderId/);
-  assert.match(dashboard, /lifecycle.canCompleteCollection \|\| !confirmCollection/);
+  assert.match(dashboard, /collect\s*&&\s*\(isCounterDesk\s*\|\|\s*!lifecycle\.canCompleteCollection\s*\|\|\s*!confirmCollection\)/);
   assert.match(dashboard, /actionInFlight.current = true/);
-  assert.match(dashboard, /api.authorizeOrderPickup\(context, match.orderId, order.data.lifecycle.version, "qr", credential\)/);
+  assert.match(dashboard, /api\.authorizeOrderPickup\(\s*context,\s*match\.orderId,\s*order\.data\.lifecycle\.version,\s*"qr",\s*credential,?\s*\)/);
   assert.doesNotMatch(dashboard + scanner, /AsyncStorage|localStorage|sessionStorage|120_000|pickupCredential =/);
 });
 
@@ -161,7 +162,7 @@ test("Orders inherit the active Store and staff and remount on context changes",
   assert.equal(model.counterOrdersContext("ORG", workspace, { ...fixed, organizationId: "other" }), undefined);
   assert.equal(model.counterOrdersContext("ORG", null), undefined);
   const route = source("frontend/app/counter/orders.tsx");
-  assert.match(route, /key=\{JSON.stringify\(\[session\?\.userId, scope\.organizationId, scope\.storeId, scope\.staffId\]/);
+  assert.match(route, /key=\{JSON.stringify\(\[session\?\.userId, scope\.organizationId, scope\.storeId, scope\.staffId, orderId\]/);
   assert.match(route, /Open Counter workspace/);
   assert.doesNotMatch(source("frontend/src/ui/domain/CounterOrdersDashboard.tsx"), /ReferenceSelect label="Store"/);
 });

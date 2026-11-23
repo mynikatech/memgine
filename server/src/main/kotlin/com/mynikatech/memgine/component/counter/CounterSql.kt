@@ -20,6 +20,12 @@ data class StaffAssistedPurchaseRow(
 )
 
 interface CounterSql {
+    @SqlQuery("SELECT get_counter_order_collection_extension(:org,:store,:staff,:actor,:order)")
+    fun collectionExtension(@Bind("org") org: String, @Bind("store") store: String, @Bind("staff") staff: String, @Bind("actor") actor: String, @Bind("order") order: String): String?
+
+    @SqlQuery("SELECT counter_order_collection_extension(:org,:store,:staff,:actor,:order,:version,:action,:request,CAST(:local AS timestamp),:reason)")
+    fun changeCollectionExtension(@Bind("org") org: String, @Bind("store") store: String, @Bind("staff") staff: String, @Bind("actor") actor: String, @Bind("order") order: String, @Bind("version") version: Int, @Bind("action") action: String, @Bind("request") request: String?, @Bind("local") local: String?, @Bind("reason") reason: String?): String
+
     @SqlQuery("SELECT bind_counter_redemption_otp(:org,:redemption,:challenge,:actor)")
     fun bindRedemptionOtp(@Bind("org") org: String, @Bind("redemption") redemption: String,
         @Bind("challenge") challenge: String, @Bind("actor") actor: String): Boolean
