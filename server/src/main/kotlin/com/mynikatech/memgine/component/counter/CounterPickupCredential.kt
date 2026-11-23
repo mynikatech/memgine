@@ -37,6 +37,9 @@ class CounterOrderCancellationRequest(val version: Int, val reason: String)
 class CounterOrderTransitionRequest(val version: Int)
 
 @Serializable
+data class CounterOrderDevSimulationRequest(val version: Int, val outcome: String)
+
+@Serializable
 class CounterOrderCollectionRequest(val version: Int, val credential: String? = null)
 
 @Serializable

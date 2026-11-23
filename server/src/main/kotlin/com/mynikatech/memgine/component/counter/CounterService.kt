@@ -29,6 +29,7 @@ import org.jdbi.v3.core.Jdbi
 import org.postgresql.util.PSQLException
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
+import kotlinx.serialization.json.contentOrNull
 
 class CounterService(
     private val jdbi: Jdbi,
@@ -301,6 +302,59 @@ class CounterService(
         val redemption = lifecycle.getValue("redemptionId").jsonPrimitive.content
         return counterCommercePayments.startRedemptionRemoteTerminalPayment(org, redemption, store, staff, principal.userId,
             advanceOrder = true)
+    }
+    
+      suspend fun simulateAdvanceOrderTerminalPayment(
+        org: String,
+        store: String,
+        staff: String,
+        orderId: String,
+        version: Int,
+        outcome: String,
+        principal: AuthenticatedPrincipal
+    ): CounterRedemptionCheckoutDto {
+        val lifecycle = order(
+            org, store, staff, orderId, principal
+        )["lifecycle"]?.jsonObject
+            ?: throw ConflictException(
+                "Order is unavailable for DEV terminal simulation"
+            )
+
+        if (lifecycle["version"]?.jsonPrimitive?.content != version.toString()) {
+            throw ConflictException(
+                "The order changed. Refresh before simulating payment.",
+                "STALE_ORDER"
+            )
+        }
+
+        if (
+            lifecycle["journey"]?.jsonPrimitive?.content !=
+                "ADVANCE_PAY_AT_COUNTER" ||
+            lifecycle["canStartTerminal"]?.jsonPrimitive?.content != "true" ||
+            lifecycle["verificationMethod"]?.jsonPrimitive?.contentOrNull == null ||
+            lifecycle["collectionBlocker"]?.jsonPrimitive?.contentOrNull != null
+        ) {
+            throw ConflictException(
+                "The order is not eligible for DEV payment simulation"
+            )
+        }
+
+        val redemptionId =
+            lifecycle["redemptionId"]?.jsonPrimitive?.contentOrNull
+                ?: throw ConflictException(
+                    "Order redemption is unavailable"
+                )
+
+        return counterCommercePayments.simulateRedemptionTerminalPayment(
+            organizationId = org,
+            redemptionTransactionId = redemptionId,
+            storeId = store,
+            staffId = staff,
+            actorUserId = principal.userId,
+            requestedOutcome = outcome,
+            advanceOrderId = orderId,
+            expectedOrderVersion = version
+        )
     }
 
     fun recoverOrderTerminalPayment(org: String, store: String, staff: String, orderId: String,

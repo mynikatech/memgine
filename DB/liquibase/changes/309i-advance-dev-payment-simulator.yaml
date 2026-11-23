@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 309i-advance-dev-payment-simulator
+      author: mynikatech
+      changes:
+        - sqlFile:
+            path: ../sql/309i-advance-dev-payment-simulator.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

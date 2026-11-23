@@ -1424,7 +1424,7 @@ function CounterOrderNoShowForm({
   );
 }
 
-function CounterOrderVerification({
+export function CounterOrderVerification({
   context,
   order,
   mode,

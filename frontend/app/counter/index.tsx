@@ -61,6 +61,11 @@ import type {
 } from "@/src/data/api/counter-api";
 import type { CounterRedemptionSelection } from "@/src/data/api/counter-api";
 import { CounterApi, type CounterOrder } from "@/src/data/api/counter-api";
+import {
+  counterFinancialComplete,
+  counterFinancialReviewAvailable,
+} from "@/src/ui/domain/counter-financial-state";
+import { CounterOrderVerification } from "@/src/ui/domain/CounterOrdersDashboard";
 
 const existingOrderApi = new CounterApi();
 
@@ -282,6 +287,145 @@ const RESULT_STYLE: Record<CounterResult["kind"], { fg: string; bg: string }> =
     },
   };
 
+/** Presentation only. Financial and verification evidence always comes from the server. */
+function CounterOrderFinancialReview({ order }: { order: CounterOrder }) {
+  const money = (amount?: number | null) =>
+    formatTransactionMoney(amount, order.currencyCode) ?? "Unavailable";
+  const lifecycle = order.lifecycle;
+  const complete = counterFinancialComplete(order);
+  const reviewAvailable = counterFinancialReviewAvailable(order);
+  const verificationLabel =
+    lifecycle?.verificationMethod?.replaceAll("_", " ") ?? "Not verified";
+  const paymentLabel = (() => {
+    switch (lifecycle?.payment) {
+      case "VERIFIED_ONLINE": return "Paid online";
+      case "VERIFIED_AT_COUNTER": return "Paid at counter";
+      case "NO_PAYMENT_REQUIRED": return "No payment required";
+      case "PAYMENT_REQUIRED": return "Payment due";
+      case "PAYMENT_UNRESOLVED": return "Payment processing / unconfirmed";
+      case "CASH_CONFIRMATION_REQUIRED": return "Cash awaiting confirmation";
+      case "CASH_RECOVERY_READY": return "Cash recovery available";
+      case "FINANCIAL_EXCEPTION": return "Payment needs review";
+      case "REFUND_CONFLICT": return "Refund needs review";
+      default: return "Payment not confirmed";
+    }
+  })();
+
+  return (
+    <View style={styles.orderReviewWrap} testID="counter-order-financial-review">
+      <View style={styles.orderReviewHeader}>
+        <View style={styles.orderReviewHeaderText}>
+          <Text style={styles.orderReviewEyebrow}>COUNTER · ORDER CHECKOUT</Text>
+          <Text style={styles.orderReviewTitle}>Financial review</Text>
+          <Text style={styles.orderReviewReference}>Order {order.reference}</Text>
+        </View>
+        <View style={styles.orderReviewStatusChip}>
+          <Text style={styles.orderReviewStatusText}>
+            {order.status.replaceAll("_", " ")}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.orderReviewMeta}>
+        <View style={styles.orderReviewMetaCell}>
+          <Text style={styles.orderReviewMetaLabel}>CUSTOMER</Text>
+          <Text style={styles.orderReviewMetaValue}>
+            {order.customerName ?? "Customer name unavailable"}
+          </Text>
+        </View>
+        <View style={styles.orderReviewMetaCell}>
+          <Text style={styles.orderReviewMetaLabel}>STORE</Text>
+          <Text style={styles.orderReviewMetaValue}>{order.storeName}</Text>
+        </View>
+        <View style={styles.orderReviewMetaCell}>
+          <Text style={styles.orderReviewMetaLabel}>VERIFICATION</Text>
+          <Text style={styles.orderReviewMetaValue}>{verificationLabel}</Text>
+        </View>
+        <View style={styles.orderReviewMetaCell}>
+          <Text style={styles.orderReviewMetaLabel}>PAYMENT STATUS</Text>
+          <Text style={styles.orderReviewMetaValue}>{paymentLabel}</Text>
+        </View>
+      </View>
+
+      <View style={styles.orderReviewItems}>
+        <Text style={styles.orderReviewSectionTitle}>Items</Text>
+        <View style={styles.orderReviewTableHeader}>
+          <Text style={[styles.orderReviewTableCaption, styles.orderReviewItemCol]}>ITEM</Text>
+          <Text style={[styles.orderReviewTableCaption, styles.orderReviewQtyCol]}>QTY</Text>
+          <Text style={[styles.orderReviewTableCaption, styles.orderReviewMoneyCol]}>UNIT</Text>
+          <Text style={[styles.orderReviewTableCaption, styles.orderReviewMoneyCol]}>AMOUNT</Text>
+        </View>
+        {order.items.map((line) => (
+          <View key={line.id} style={styles.orderReviewItemBlock}>
+            <View style={styles.orderReviewItemRow}>
+              <Text style={[styles.orderReviewItemName, styles.orderReviewItemCol]}>
+                {line.name}
+              </Text>
+              <Text style={[styles.orderReviewCell, styles.orderReviewQtyCol]}>{line.quantity}</Text>
+              <Text style={[styles.orderReviewCell, styles.orderReviewMoneyCol]}>
+                {money(line.unitPriceMinor)}
+              </Text>
+              <Text style={[styles.orderReviewItemAmount, styles.orderReviewMoneyCol]}>
+                {money(line.subtotalMinor)}
+              </Text>
+            </View>
+            {line.discountMinor != null && line.discountMinor > 0 ? (
+              <Text style={styles.orderReviewLineDiscount}>
+                Item discount: −{money(line.discountMinor)}
+              </Text>
+            ) : null}
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.orderReviewTotals}>
+        <View style={styles.orderReviewTotalRow}>
+          <Text style={styles.orderReviewTotalLabel}>Subtotal</Text>
+          <Text style={styles.orderReviewTotalValue}>{money(order.subtotalMinor)}</Text>
+        </View>
+        <View style={styles.orderReviewTotalRow}>
+          <Text style={styles.orderReviewTotalLabel}>Discount</Text>
+          <Text style={styles.orderReviewDiscountValue}>
+            {order.discountMinor != null && order.discountMinor > 0 ? "−" : ""}
+            {money(order.discountMinor)}
+          </Text>
+        </View>
+        <View style={styles.orderReviewTotalRow}>
+          <Text style={styles.orderReviewTotalLabel}>Tax</Text>
+          <Text style={styles.orderReviewTotalValue}>{money(order.taxMinor)}</Text>
+        </View>
+        <View style={styles.orderReviewGrandTotal}>
+          <Text style={styles.orderReviewGrandTotalLabel}>Order total</Text>
+          <Text style={styles.orderReviewGrandTotalAmount}>{money(order.totalMinor)}</Text>
+        </View>
+        {lifecycle?.outstandingMinor != null ? (
+          <View style={styles.orderReviewOutstanding}>
+            <Text style={styles.orderReviewOutstandingLabel}>AMOUNT DUE</Text>
+            <Text style={styles.orderReviewOutstandingAmount}>
+              {money(lifecycle.outstandingMinor)}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      {complete ? (
+        <View style={styles.orderReviewSuccess}>
+          <Text style={styles.orderReviewSuccessTitle}>✓ Verified · Payment satisfied</Text>
+          <Text style={styles.orderReviewSuccessDetail}>
+            Continue in Orders for preparation and final handover. No benefit has been consumed here.
+          </Text>
+        </View>
+      ) : !reviewAvailable ? (
+        <View style={styles.orderReviewWarning}>
+          <Text style={styles.orderReviewWarningText}>
+            Order pricing is incomplete. Refresh the order before taking payment.
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export default function StaffCounter() {
   // Keep Counter input fields visible above the mobile keyboard.
   const counterScrollRef = useRef<ScrollView>(null);
@@ -483,6 +627,10 @@ export default function StaffCounter() {
 
   // 309F: Verified pre-order on the existing Counter screen.
   const [pickupOrder, setPickupOrder] = useState<CounterOrder | null>(null);
+  const [orderReference, setOrderReference] = useState("");
+  const [orderVerification, setOrderVerification] = useState<
+    "phone" | "assisted"
+  >();
 
   const [pickupCashConfirm, setPickupCashConfirm] = useState(false);
 
@@ -671,6 +819,8 @@ export default function StaffCounter() {
     counterCheckout.clear();
 
     setPickupOrder(null);
+    setOrderReference("");
+    setOrderVerification(undefined);
     setPickupError("");
     setPickupCashConfirm(false);
     setPickupRecoveryConfirm(false);
@@ -1051,10 +1201,12 @@ export default function StaffCounter() {
             latest.redemptionStatus === "SUCCESS" ||
             latest.commerceStatus === "COMPLETED"
           ) {
-            clearPendingRedemptionTerminalPayment();
-            setRedemptionCheckoutStage("complete");
-            if (isPaidAwaitingCollection(latest))
+            if (latest.fulfillmentOrderId) {
               await finishRedemptionCheckout(latest);
+            } else {
+              clearPendingRedemptionTerminalPayment();
+              setRedemptionCheckoutStage("complete");
+            }
           } else if (latest.cashPaymentStatus === "PENDING") {
             clearPendingRedemptionTerminalPayment();
             setRedemptionCheckoutStage("waiting");
@@ -1535,6 +1687,19 @@ export default function StaffCounter() {
     return "Unable to resolve this redemption QR. Please try again.";
   };
 
+  // A fresh valid code can reopen an already-authorized order. Invalid
+  // and revoked credentials still do not reveal the order they might belong to.
+  const pickupCodeError = (code: string): string => {
+    switch (code) {
+      case "RATE_LIMITED":
+        return "Too many verification attempts. Please try again later.";
+      case "ALREADY_VERIFIED":
+        return "This order is already verified. Find it by its order reference to continue.";
+      default:
+        return "Pickup Code is invalid, expired, revoked, or previously used. Ask the customer for a fresh code.";
+    }
+  };
+
   const resetDynamicRedemption = () => {
     setPickupOrder(null);
     setPickupError("");
@@ -1575,6 +1740,60 @@ export default function StaffCounter() {
     return response.data;
   };
 
+  useEffect(() => {
+    if (
+      !pickupOrder?.id ||
+      pickupOrder.lifecycle?.payment !== "PAYMENT_UNRESOLVED"
+    )
+      return;
+    const id = pickupOrder.id;
+    const context = counterContext();
+    let live = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline =
+      Date.now() + COUNTER_REDEMPTION_PAYMENT_AUTO_POLL_WINDOW_MS;
+    const refresh = async () => {
+      try {
+        const result = await existingOrderApi.order(context, id);
+        if (!live) return;
+        if (result.success) setPickupOrder(result.data);
+      } catch {
+        // Keep the last known payment state and allow manual refresh.
+      }
+      if (live && Date.now() < deadline)
+        timer = setTimeout(() => void refresh(), 5000);
+    };
+    timer = setTimeout(() => void refresh(), 5000);
+    return () => {
+      live = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [pickupOrder?.id, pickupOrder?.lifecycle?.payment]);
+
+  const findPickupOrder = async () => {
+    if (!orderReference.trim() || busy) return;
+    setBusy(true);
+    setPickupError("");
+    try {
+      const found = await existingOrderApi.lookupPickupOrderReference(
+        counterContext(),
+        orderReference.trim(),
+      );
+      if (!found.success) throw new Error(found.error.message);
+      if (found.data.code !== "LOCATED")
+        throw new Error("No matching order is available at this Store.");
+      await refreshPickupOrder(found.data.orderId);
+    } catch (failure) {
+      setPickupError(
+        failure instanceof Error
+          ? failure.message
+          : "Could not find this order.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const runPickupPayment = async (
     operation:
       | "start-cash"
@@ -1586,6 +1805,16 @@ export default function StaffCounter() {
     const lifecycle = order?.lifecycle;
 
     if (!order || !lifecycle || pickupPaymentInFlight.current) {
+      return;
+    }
+
+    if (
+      !counterFinancialReviewAvailable(order) ||
+      !lifecycle.verificationMethod
+    ) {
+      setPickupError(
+        "Order pricing or customer verification is unavailable. Refresh the order before taking payment.",
+      );
       return;
     }
 
@@ -1665,6 +1894,46 @@ export default function StaffCounter() {
     }
   };
 
+  const simulateAdvancePickupPayment = async (outcome: DevPoyntOutcome) => {
+    const order = pickupOrder;
+    const lifecycle = order?.lifecycle;
+    if (
+      !ENABLE_DEV_POYNT_SIMULATOR ||
+      !order ||
+      !lifecycle ||
+      busy ||
+      pickupPaymentInFlight.current ||
+      lifecycle.journey !== "ADVANCE_PAY_AT_COUNTER" ||
+      !lifecycle.canStartTerminal ||
+      !counterFinancialReviewAvailable(order)
+    )
+      return;
+
+    pickupPaymentInFlight.current = true;
+    setBusy(true);
+    setSimulatingPoyntOutcome(outcome);
+    setPickupError("");
+    try {
+      const result = await existingOrderApi.simulateAdvanceOrderPayment(
+        counterContext(),
+        order.id,
+        lifecycle.version,
+        outcome,
+      );
+      if (!result.success) setPickupError(result.error.message);
+      await refreshPickupOrder(order.id);
+    } catch {
+      setPickupError(
+        "DEV simulation outcome is uncertain. Refresh the existing order before any retry.",
+      );
+      await refreshPickupOrder(order.id).catch(() => undefined);
+    } finally {
+      setSimulatingPoyntOutcome(null);
+      pickupPaymentInFlight.current = false;
+      setBusy(false);
+    }
+  };
+
   const resolveRedemptionQr = async (rawReference: string) => {
     const qrReference = rawReference.trim();
     if (!qrReference) {
@@ -1695,12 +1964,13 @@ export default function StaffCounter() {
           throw new Error(result.error.message);
         }
 
-        if (result.data.code !== "VERIFIED") {
-          throw new Error(
-            result.data.code === "RATE_LIMITED"
-              ? "Too many attempts. Try again later."
-              : "Invalid, expired, or already used six-digit code. Ask the customer to refresh their QR and code.",
-          );
+        const pickupVerified = result.data.code === "VERIFIED";
+        const pickupResumed =
+          result.data.code === "ALREADY_VERIFIED" && !!result.data.orderId;
+        if (!pickupVerified && !pickupResumed) {
+          setError(pickupCodeError(result.data.code));
+          qrScanInFlight.current = false;
+          return;
         }
 
         if (result.data.transactionId) {
@@ -1737,9 +2007,11 @@ export default function StaffCounter() {
             await loadRedemptionReview(transaction, validation);
           }
         } else if (result.data.orderId) {
-          // ADVANCE: Pay Now or Pay at Counter.
-          // Reuse the existing order and collect payment only if due.
+          // ADVANCE: initial verification or resume of an existing authorization.
+          // The server preserves the original verification evidence. Always
+          // reload current payment state; no payment or collection begins here.
           await refreshPickupOrder(result.data.orderId);
+          setPickupError("");
         } else {
           throw new Error("No matching order or redemption was returned.");
         }
@@ -1844,8 +2116,26 @@ export default function StaffCounter() {
   const finishRedemptionCheckout = async (
     checkout: CounterRedemptionCheckout,
   ) => {
-    clearPendingRedemptionTerminalPayment();
     setRedemptionCheckout(checkout);
+    if (checkout.fulfillmentOrderId) {
+      try {
+        const order = await refreshPickupOrder(checkout.fulfillmentOrderId);
+        if (!counterFinancialComplete(order)) {
+          setRedemptionCheckoutStage("waiting");
+          setError(
+            "Verification or payment is not yet confirmed. Review the order and refresh its payment status.",
+          );
+          return;
+        }
+      } catch {
+        setRedemptionCheckoutStage("waiting");
+        setError(
+          "Unable to verify the order payment. Refresh the existing order before continuing.",
+        );
+        return;
+      }
+    }
+    clearPendingRedemptionTerminalPayment();
     setRedemptionCheckoutStage("complete");
 
     // Payment at Counter creates/verifies an order.
@@ -1870,14 +2160,9 @@ export default function StaffCounter() {
 
     setResult({
       kind: "SUCCESS",
-      message:
-        checkout.paymentMethod === "CASH"
-          ? checkout.fulfillmentOrderId
-            ? `Order ${checkout.transactionNumber} created and cash payment recorded. Complete collection from Orders.`
-            : `Redemption ${checkout.transactionNumber} completed with Cash.`
-          : checkout.fulfillmentOrderId
-            ? `Order ${checkout.transactionNumber} created and payment verified. Complete collection from Orders.`
-            : `Redemption ${checkout.transactionNumber} completed after POS payment.`,
+      message: checkout.fulfillmentOrderId
+        ? "Verified — Payment Complete / No Payment Required. Continue in Orders for handover."
+        : `Redemption ${checkout.transactionNumber} completed.`,
       customer: customer ?? undefined,
       outcomes: checkout.fulfillmentOrderId
         ? []
@@ -1921,8 +2206,6 @@ export default function StaffCounter() {
         latest.redemptionStatus === "SUCCESS" ||
         latest.commerceStatus === "COMPLETED"
       ) {
-        clearPendingRedemptionTerminalPayment();
-        setRedemptionCheckoutStage("complete");
         await finishRedemptionCheckout(latest);
         return;
       }
@@ -4688,7 +4971,10 @@ export default function StaffCounter() {
                 testID="counter-qr-input"
                 editable={!pickupOrder}
                 value={tokenText}
-                onChangeText={setTokenText}
+                onChangeText={(value) => {
+                  setTokenText(value);
+                  setError("");
+                }}
                 placeholder="6-digit code or QR reference"
                 placeholderTextColor={COLORS.textMuted}
                 autoCapitalize="none"
@@ -4714,56 +5000,59 @@ export default function StaffCounter() {
 
               {pickupOrder ? (
                 <View style={styles.card} testID="counter-309f-pickup-order">
-                  <Text style={styles.cardTitle}>
-                    Pre-order Verified at Counter
-                  </Text>
+                  <CounterOrderFinancialReview order={pickupOrder} />
 
-                  <Text style={styles.muted}>
-                    Order: {pickupOrder.reference}
-                  </Text>
-
-                  <Text style={styles.muted}>
-                    Customer: {pickupOrder.customerName ?? "Customer verified"}
-                  </Text>
-
-                  <Text style={styles.muted}>
-                    Store: {pickupOrder.storeName}
-                  </Text>
-
-                  <Text style={styles.muted}>
-                    Order status: {pickupOrder.status}
-                  </Text>
-
-                  <Text style={styles.muted}>
-                    Verification:{" "}
-                    {pickupOrder.lifecycle?.verificationMethod ?? "Pending"}
-                  </Text>
-
-                  <Text style={styles.muted}>
-                    Payment: {pickupOrder.lifecycle?.payment ?? "Unconfirmed"}
-                  </Text>
-
-                  {pickupOrder.lifecycle?.outstandingMinor != null ? (
-                    <Text style={styles.muted}>
-                      Outstanding:{" "}
-                      {formatTransactionMoney(
-                        pickupOrder.lifecycle.outstandingMinor,
-                        pickupOrder.currencyCode,
-                      )}
-                    </Text>
+                  {!pickupOrder.lifecycle?.verificationMethod &&
+                  pickupOrder.lifecycle?.canAuthorizeCollection ? (
+                    <>
+                      <Text style={styles.muted}>
+                        An order reference identifies the order. Verify the
+                        customer to continue.
+                      </Text>
+                      <Pressable
+                        style={styles.secondaryBtn}
+                        disabled={busy}
+                        onPress={() => setOrderVerification("phone")}
+                      >
+                        <Text style={styles.secondaryBtnText}>
+                          Verify by Phone OTP
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.secondaryBtn}
+                        disabled={busy}
+                        onPress={() => setOrderVerification("assisted")}
+                      >
+                        <Text style={styles.secondaryBtnText}>
+                          Staff-Assisted Verification
+                        </Text>
+                      </Pressable>
+                    </>
                   ) : null}
-
-                  {pickupOrder.lifecycle?.payment === "NO_PAYMENT_REQUIRED" ||
-                  pickupOrder.lifecycle?.payment === "VERIFIED_ONLINE" ||
-                  pickupOrder.lifecycle?.payment === "VERIFIED_AT_COUNTER" ? (
-                    <Text style={styles.muted}>
-                      No further payment required. Complete handover in Orders.
-                    </Text>
+                  {orderVerification ? (
+                    <CounterOrderVerification
+                      context={counterContext()}
+                      order={pickupOrder}
+                      mode={orderVerification}
+                      onClose={() => setOrderVerification(undefined)}
+                      onVerified={() => {
+                        setOrderVerification(undefined);
+                        void refreshPickupOrder(pickupOrder.id).catch(() =>
+                          setPickupError(
+                            "Refresh failed. Check order verification.",
+                          ),
+                        );
+                      }}
+                    />
                   ) : null}
 
                   {pickupOrder.lifecycle?.canStartTerminal ? (
                     <Pressable
-                      disabled={busy}
+                      disabled={
+                        busy ||
+                        !counterFinancialReviewAvailable(pickupOrder) ||
+                        !pickupOrder.lifecycle?.verificationMethod
+                      }
                       onPress={() => void runPickupPayment("start-terminal")}
                       style={[styles.primaryBtn, busy && styles.btnDisabled]}
                     >
@@ -4772,10 +5061,54 @@ export default function StaffCounter() {
                       </Text>
                     </Pressable>
                   ) : null}
+                  {ENABLE_DEV_POYNT_SIMULATOR &&
+                  pickupOrder.lifecycle?.journey === "ADVANCE_PAY_AT_COUNTER" &&
+                  pickupOrder.lifecycle?.canStartTerminal &&
+                  counterFinancialReviewAvailable(pickupOrder) ? (
+                    <View style={styles.customerSavedBox}>
+                      <Text style={styles.identified}>
+                        DEV — Simulated Poynt Terminal
+                      </Text>
+                      <Text style={styles.muted}>
+                        No real terminal charge. The accepted pre-order total is
+                        used.
+                      </Text>
+                      {(
+                        [
+                          ["SUCCESS", "Redeem Success"],
+                          ["DECLINE", "Redeem Decline"],
+                          ["CANCEL", "Redeem Cancel"],
+                        ] as const
+                      ).map(([outcome, label]) => (
+                        <Pressable
+                          key={outcome}
+                          disabled={busy || simulatingPoyntOutcome !== null}
+                          onPress={() =>
+                            void simulateAdvancePickupPayment(outcome)
+                          }
+                          style={[
+                            styles.secondaryBtn,
+                            busy && styles.btnDisabled,
+                          ]}
+                        >
+                          <Text style={styles.secondaryBtnText}>{label}</Text>
+                        </Pressable>
+                      ))}
+                      {simulatingPoyntOutcome !== null ? (
+                        <Text style={styles.muted}>
+                          Processing simulated terminal outcome…
+                        </Text>
+                      ) : null}
+                    </View>
+                  ) : null}
 
                   {pickupOrder.lifecycle?.canStartCash ? (
                     <Pressable
-                      disabled={busy}
+                      disabled={
+                        busy ||
+                        !counterFinancialReviewAvailable(pickupOrder) ||
+                        !pickupOrder.lifecycle?.verificationMethod
+                      }
                       onPress={() => void runPickupPayment("start-cash")}
                       style={[styles.secondaryBtn, busy && styles.btnDisabled]}
                     >
@@ -4879,6 +5212,31 @@ export default function StaffCounter() {
                     Order preparation, final handover and benefit consumption
                     remain in Orders.
                   </Text>
+                </View>
+              ) : null}
+
+              {!pickupOrder ? (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={styles.label}>
+                    Find an existing order by reference
+                  </Text>
+                  <TextInput
+                    value={orderReference}
+                    onChangeText={setOrderReference}
+                    placeholder="Order reference"
+                    autoCapitalize="characters"
+                    style={styles.input}
+                  />
+                  <Pressable
+                    disabled={busy || !orderReference.trim()}
+                    style={styles.secondaryBtn}
+                    onPress={() => void findPickupOrder()}
+                  >
+                    <Text style={styles.secondaryBtnText}>Find Order</Text>
+                  </Pressable>
+                  {pickupError ? (
+                    <Text style={styles.errorText}>{pickupError}</Text>
+                  ) : null}
                 </View>
               ) : null}
 
@@ -6006,6 +6364,115 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: COLORS.text,
   },
+
+  orderReviewWrap: {
+    overflow: "hidden",
+    borderColor: COLORS.border,
+    borderWidth: 1,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surface,
+  },
+  orderReviewHeader: {
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    backgroundColor: "#F5F8FB",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
+  },
+  orderReviewHeaderText: { flex: 1 },
+  orderReviewEyebrow: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#64748B",
+    letterSpacing: 1,
+  },
+  orderReviewTitle: { fontSize: 19, fontWeight: "700", color: "#0F172A", marginTop: 5 },
+  orderReviewReference: { fontSize: 12, color: "#475569", marginTop: 5 },
+  orderReviewStatusChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "#E7EDF4",
+  },
+  orderReviewStatusText: { fontSize: 11, color: "#334155", fontWeight: "700" },
+  orderReviewMeta: {
+    padding: 16,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    rowGap: 14,
+    columnGap: 10,
+  },
+  orderReviewMetaCell: { width: "47%", minWidth: 135, flexGrow: 1 },
+  orderReviewMetaLabel: { fontSize: 10, color: "#64748B", fontWeight: "700", letterSpacing: 0.7 },
+  orderReviewMetaValue: { fontSize: 13, color: COLORS.text, fontWeight: "600", marginTop: 5 },
+  orderReviewItems: { marginHorizontal: 16, marginTop: 3 },
+  orderReviewSectionTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginBottom: 11,
+  },
+  orderReviewTableHeader: {
+    flexDirection: "row",
+    backgroundColor: "#F5F8FB",
+    paddingVertical: 9,
+    paddingHorizontal: 7,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
+  },
+  orderReviewTableCaption: { color: "#64748B", fontSize: 10, fontWeight: "700", textAlign: "right" },
+  orderReviewItemBlock: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border },
+  orderReviewItemRow: { flexDirection: "row", paddingVertical: 12, paddingHorizontal: 7, alignItems: "flex-start" },
+  orderReviewItemCol: { flex: 1.45, textAlign: "left" },
+  orderReviewQtyCol: { width: 35, textAlign: "center" },
+  orderReviewMoneyCol: { flex: 1, textAlign: "right" },
+  orderReviewItemName: { fontSize: 13, fontWeight: "600", color: COLORS.text },
+  orderReviewCell: { fontSize: 12, color: "#475569" },
+  orderReviewItemAmount: { fontSize: 12, fontWeight: "700", color: COLORS.text },
+  orderReviewLineDiscount: { fontSize: 11, color: "#15803D", marginLeft: 7, marginBottom: 9 },
+  orderReviewTotals: { paddingHorizontal: 16, paddingTop: 15, paddingBottom: 16, gap: 9 },
+  orderReviewTotalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  orderReviewTotalLabel: { fontSize: 13, color: "#64748B" },
+  orderReviewTotalValue: { fontSize: 13, fontWeight: "600", color: COLORS.text },
+  orderReviewDiscountValue: { fontSize: 13, fontWeight: "600", color: "#15803D" },
+  orderReviewGrandTotal: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 8,
+    paddingTop: 13,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  orderReviewGrandTotalLabel: { fontSize: 15, color: COLORS.text, fontWeight: "700" },
+  orderReviewGrandTotalAmount: { fontSize: 20, color: "#0F172A", fontWeight: "800" },
+  orderReviewOutstanding: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderRadius: 8,
+    backgroundColor: "#FFF7ED",
+    padding: 12,
+    marginTop: 8,
+  },
+  orderReviewOutstandingLabel: { color: "#9A3412", fontSize: 11, fontWeight: "700" },
+  orderReviewOutstandingAmount: { color: "#9A3412", fontSize: 19, fontWeight: "800" },
+  orderReviewSuccess: {
+    backgroundColor: "#ECFDF5",
+    borderTopWidth: 1,
+    borderTopColor: "#D1FAE5",
+    padding: 14,
+    gap: 5,
+  },
+  orderReviewSuccessTitle: { color: "#065F46", fontSize: 13, fontWeight: "700" },
+  orderReviewSuccessDetail: { color: "#047857", fontSize: 12, lineHeight: 18 },
+  orderReviewWarning: { padding: 12, backgroundColor: "#FFF7ED" },
+  orderReviewWarningText: { fontSize: 12, color: "#9A3412" },
 
   contextSelector: {
     maxWidth: 360,

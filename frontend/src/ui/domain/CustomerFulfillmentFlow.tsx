@@ -688,8 +688,16 @@ export function FulfillmentPickupCard({
   active: boolean;
 }) {
   const { session } = useAuth();
-  const scope = JSON.stringify([session?.userId, session?.expiresAt, organizationId, item.id]);
-  const visible = !!session?.userId && !!item.canShowPickup && ['PLACED', 'PREPARING', 'READY'].includes(item.status);
+  const scope = JSON.stringify([
+    session?.userId,
+    session?.expiresAt,
+    organizationId,
+    item.id,
+  ]);
+  const visible =
+    !!session?.userId &&
+    !!item.canShowPickup &&
+    ["PLACED", "PREPARING", "READY"].includes(item.status);
   const [credential, setCredential] = useState<{
     reference: string;
     expiresAt: string;
@@ -711,10 +719,15 @@ export function FulfillmentPickupCard({
   const allowed = visible;
   useEffect(() => {
     live.current = true;
-    return () => { live.current = false; };
+    return () => {
+      live.current = false;
+    };
   }, []);
   useEffect(() => {
-    if (previousSession.current && previousSession.current !== session?.userId) {
+    if (
+      previousSession.current &&
+      previousSession.current !== session?.userId
+    ) {
       fulfillmentPickupCache.invalidate(previousScope.current);
     }
     previousSession.current = session?.userId;
@@ -727,38 +740,84 @@ export function FulfillmentPickupCard({
       setPickupCode(undefined);
       return;
     }
-    setCredential(fulfillmentPickupCache.get<{ reference: string; expiresAt: string }>(scope, 'qr'));
-    setPickupCode(fulfillmentPickupCache.get<{ code: string; expiresAt: string }>(scope, 'code'));
+    setCredential(
+      fulfillmentPickupCache.get<{ reference: string; expiresAt: string }>(
+        scope,
+        "qr",
+      ),
+    );
+    setPickupCode(
+      fulfillmentPickupCache.get<{ code: string; expiresAt: string }>(
+        scope,
+        "code",
+      ),
+    );
     setFailure(undefined);
     setCodeError(undefined);
   }, [scope, allowed, active]);
-  useEffect(() => fulfillmentPickupCache.subscribe(scope, () => {
-    if (!allowed) return;
-    setCredential(fulfillmentPickupCache.get<{ reference: string; expiresAt: string }>(scope, 'qr'));
-    setPickupCode(fulfillmentPickupCache.get<{ code: string; expiresAt: string }>(scope, 'code'));
-  }), [scope, allowed]);
-  const generate = async (kind: 'qr' | 'code', refresh: boolean) => {
+  useEffect(
+    () =>
+      fulfillmentPickupCache.subscribe(scope, () => {
+        if (!allowed) return;
+        setCredential(
+          fulfillmentPickupCache.get<{ reference: string; expiresAt: string }>(
+            scope,
+            "qr",
+          ),
+        );
+        setPickupCode(
+          fulfillmentPickupCache.get<{ code: string; expiresAt: string }>(
+            scope,
+            "code",
+          ),
+        );
+      }),
+    [scope, allowed],
+  );
+  const generate = async (kind: "qr" | "code", refresh: boolean) => {
     if (!allowed || !active || inFlight.current) return;
     inFlight.current = true;
     const requestScope = scope;
-    if (kind === 'qr') { setBusy(true); setFailure(undefined); if (refresh) setCredential(undefined); }
-    else { setCodeBusy(true); setCodeError(undefined); if (refresh) setPickupCode(undefined); }
+    if (kind === "qr") {
+      setBusy(true);
+      setFailure(undefined);
+      if (refresh) setCredential(undefined);
+    } else {
+      setCodeBusy(true);
+      setCodeError(undefined);
+      if (refresh) setPickupCode(undefined);
+    }
     try {
-      if (kind === 'qr') {
-        const result = await fulfillmentPickupCache.issue(requestScope, 'qr', () => read(api.fulfillmentPickup(organizationId, item.id)), refresh);
-        if (live.current && currentScope.current === requestScope) setCredential(result);
+      if (kind === "qr") {
+        const result = await fulfillmentPickupCache.issue(
+          requestScope,
+          "qr",
+          () => read(api.fulfillmentPickup(organizationId, item.id)),
+          refresh,
+        );
+        if (live.current && currentScope.current === requestScope)
+          setCredential(result);
       } else {
-        const result = await fulfillmentPickupCache.issue(requestScope, 'code', () => read(api.fulfillmentPickupCode(organizationId, item.id)), refresh);
-        if (live.current && currentScope.current === requestScope) setPickupCode(result);
+        const result = await fulfillmentPickupCache.issue(
+          requestScope,
+          "code",
+          () => read(api.fulfillmentPickupCode(organizationId, item.id)),
+          refresh,
+        );
+        if (live.current && currentScope.current === requestScope)
+          setPickupCode(result);
       }
     } catch {
       if (live.current && currentScope.current === requestScope) {
-        if (kind === 'qr') setFailure('Could not generate the pickup QR.');
-        else setCodeError('Could not generate the Pickup Code.');
+        if (kind === "qr") setFailure("Could not generate the pickup QR.");
+        else setCodeError("Could not generate the Pickup Code.");
       }
     } finally {
       inFlight.current = false;
-      if (live.current && currentScope.current === requestScope) { setBusy(false); setCodeBusy(false); }
+      if (live.current && currentScope.current === requestScope) {
+        setBusy(false);
+        setCodeBusy(false);
+      }
     }
   };
   useEffect(() => {
@@ -805,7 +864,7 @@ export function FulfillmentPickupCard({
             size="sm"
             disabled={busy || codeBusy}
             label="Replace pickup QR"
-            onPress={() => void generate('qr', true)}
+            onPress={() => void generate("qr", true)}
           />
         </>
       ) : (
@@ -813,7 +872,7 @@ export function FulfillmentPickupCard({
           variant={item.status === "READY" ? "primary" : "outline"}
           disabled={busy || codeBusy || !active}
           label={busy ? "Generating pickup QR…" : "Get pickup QR"}
-          onPress={() => void generate('qr', false)}
+          onPress={() => void generate("qr", false)}
         />
       )}
       {allowed && active ? (
@@ -832,10 +891,18 @@ export function FulfillmentPickupCard({
               </Text>
             </>
           ) : null}
-          <Button variant="ghost" size="sm" disabled={busy || codeBusy}
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={busy || codeBusy}
             label={pickupCode ? "Replace Pickup Code" : "Get Pickup Code"}
-            onPress={() => void generate('code', !!pickupCode)} />
-          {(credential || pickupCode) ? <Text variant="caption" color="textMuted">Replacing a QR or code makes its previous value invalid.</Text> : null}
+            onPress={() => void generate("code", !!pickupCode)}
+          />
+          {credential || pickupCode ? (
+            <Text variant="caption" color="textMuted">
+              Replacing a QR or code makes its previous value invalid.
+            </Text>
+          ) : null}
           {codeError ? (
             <Text variant="caption" color="danger">
               {codeError}
@@ -1551,7 +1618,7 @@ export function CustomerFulfillmentDetails({
     if (!focused || !appActive) return;
     void refresh();
     if (terminal) return;
-    const interval = setInterval(() => void refresh(), 8000);
+    const interval = setInterval(() => void refresh(), 60000);
     return () => clearInterval(interval);
   }, [focused, appActive, terminal, refresh]);
 
@@ -1721,8 +1788,12 @@ export function CustomerFulfillmentDetails({
                 <Text key={entry.id} variant="caption" color="textMuted">
                   {timelineLabels[entry.type]} ·{" "}
                   {localTime(entry.at, item.timezone)}
-                  {entry.previousAt ? ` · Previous ${localTime(entry.previousAt, item.timezone)}` : ""}
-                  {entry.proposedAt ? ` · Proposed ${localTime(entry.proposedAt, item.timezone)}` : ""}
+                  {entry.previousAt
+                    ? ` · Previous ${localTime(entry.previousAt, item.timezone)}`
+                    : ""}
+                  {entry.proposedAt
+                    ? ` · Proposed ${localTime(entry.proposedAt, item.timezone)}`
+                    : ""}
                   {entry.reason ? ` · ${entry.reason}` : ""}
                 </Text>
               ))}

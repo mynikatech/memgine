@@ -128,6 +128,17 @@ fun Route.counterRoutes(service: CounterService, commercePaymentService: Counter
                         request.version, decision, request.reason, principal), call.callId))
                     return@post
                 }
+                
+                if (action == "dev-simulate") {
+                    val request = call.receivePickupLookup<CounterOrderDevSimulationRequest>()
+                    call.respond(ApiResponse.success(
+                        service.simulateAdvanceOrderTerminalPayment(
+                            org, store, staff, order,
+                            request.version, request.outcome, principal
+                        ), call.callId
+                    ))
+                    return@post
+                }
                 val command = when (action) {
                     "start-preparing" -> CounterOrderCommand.START_PREPARING
                     "mark-ready" -> CounterOrderCommand.MARK_READY

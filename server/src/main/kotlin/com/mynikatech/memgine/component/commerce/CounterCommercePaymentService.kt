@@ -980,7 +980,9 @@ suspend fun simulateRedemptionTerminalPayment(
     storeId: String,
     staffId: String,
     actorUserId: String,
-    requestedOutcome: String
+    requestedOutcome: String,
+    advanceOrderId: String? = null,
+    expectedOrderVersion: Int? = null
 ): CounterRedemptionCheckoutDto {
 
     val environment = System.getenv("MEMGINE_ENVIRONMENT")
@@ -1019,7 +1021,7 @@ suspend fun simulateRedemptionTerminalPayment(
             )
         }
 
-        if (checkout.commerceStatus == "ORDER_CREATED" &&
+        if (advanceOrderId == null && checkout.commerceStatus == "ORDER_CREATED" &&
             !sql().isRedemptionPricingAcknowledged(
                 checkout.commerceTransactionId,
                 actorUserId
@@ -1046,27 +1048,27 @@ suspend fun simulateRedemptionTerminalPayment(
         }
 
         val integrationId = checkout.integrationConfigurationId
-            ?: throw BadRequestException(
-                "Commerce integration is unavailable"
-            )
-
-        val posDeviceId = sql().resolvePosDevice(
-            organizationId,
-            storeId,
-            staffId,
-            actorUserId,
-            integrationId
-        )
+            ?: throw BadRequestException("Commerce integration is unavailable")
 
         val referenceId = "RDP-${UUID.randomUUID()}"
 
-        val row = sql().beginRedemptionRemoteTerminalPayment(
-            organizationId,
-            checkout.commerceTransactionId,
-            posDeviceId,
-            referenceId,
-            actorUserId
-        )
+        val row = if (advanceOrderId != null) {
+            sql().beginDevAdvanceTerminalPayment(
+                organizationId, storeId, staffId, actorUserId,
+                advanceOrderId, redemptionTransactionId,
+                expectedOrderVersion
+                    ?: throw BadRequestException("Expected order version is required"),
+                referenceId
+            )
+        } else {
+            val posDeviceId = sql().resolvePosDevice(
+                organizationId, storeId, staffId, actorUserId, integrationId
+            )
+            sql().beginRedemptionRemoteTerminalPayment(
+                organizationId, checkout.commerceTransactionId,
+                posDeviceId, referenceId, actorUserId
+            )
+        }
 
         if (row.alreadyDispatched) {
             throw ConflictException(
@@ -2957,6 +2959,21 @@ interface CounterCommercePaymentSql {
         @Bind("posDeviceId") posDeviceId: String,
         @Bind("referenceId") referenceId: String,
         @Bind("actorUserId") actorUserId: String
+    ): CounterCommerceRemotePaymentStartRow
+    
+    @SqlQuery("""SELECT * FROM commerce_begin_dev_advance_terminal_simulation(
+        :organizationId,:storeId,:staffId,:actorUserId,
+        :orderId,:redemptionTransactionId,:version,:referenceId)""")
+    @RegisterBeanMapper(CounterCommerceRemotePaymentStartRow::class)
+    fun beginDevAdvanceTerminalPayment(
+        @Bind("organizationId") organizationId: String,
+        @Bind("storeId") storeId: String,
+        @Bind("staffId") staffId: String,
+        @Bind("actorUserId") actorUserId: String,
+        @Bind("orderId") orderId: String,
+        @Bind("redemptionTransactionId") redemptionTransactionId: String,
+        @Bind("version") version: Int,
+        @Bind("referenceId") referenceId: String
     ): CounterCommerceRemotePaymentStartRow
 
     @SqlQuery("""SELECT commerce_complete_counter_redemption_zero_value(

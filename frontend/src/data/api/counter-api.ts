@@ -62,7 +62,23 @@ export type CounterOrder = {
   items: CounterOrderItem[];
   timeline: { id: ID; type: string; at: string }[];
   lifecycle?: CounterOrderLifecycle;
-  collectionExtension?: { requestId?: string | null; previousAt?: string | null; proposedAt?: string | null; type: string; reason?: string | null; timezone?: string | null; at: string; history?: { id: string; type: string; at: string; previousAt?: string | null; proposedAt?: string | null; reason?: string | null }[] } | null;
+  collectionExtension?: {
+    requestId?: string | null;
+    previousAt?: string | null;
+    proposedAt?: string | null;
+    type: string;
+    reason?: string | null;
+    timezone?: string | null;
+    at: string;
+    history?: {
+      id: string;
+      type: string;
+      at: string;
+      previousAt?: string | null;
+      proposedAt?: string | null;
+      reason?: string | null;
+    }[];
+  } | null;
 };
 export type CounterOrderLifecycle = {
   version: number;
@@ -649,8 +665,24 @@ export class CounterApi {
     );
   }
 
-  changeCollectionExtension(ctx: CounterContext, orderId: ID, request: { version: number; action: 'APPROVE' | 'REJECT' | 'EXTEND'; requestId?: string; localTime?: string; reason?: string }): Promise<ApiResult<{ code: string }>> {
-    return httpClient.post(this.query(ctx, `orders/${encodeURIComponent(orderId)}/actions/collection-extension`), request);
+  changeCollectionExtension(
+    ctx: CounterContext,
+    orderId: ID,
+    request: {
+      version: number;
+      action: "APPROVE" | "REJECT" | "EXTEND";
+      requestId?: string;
+      localTime?: string;
+      reason?: string;
+    },
+  ): Promise<ApiResult<{ code: string }>> {
+    return httpClient.post(
+      this.query(
+        ctx,
+        `orders/${encodeURIComponent(orderId)}/actions/collection-extension`,
+      ),
+      request,
+    );
   }
 
   transitionOrder(
@@ -808,6 +840,21 @@ export class CounterApi {
         `orders/${encodeURIComponent(orderId)}/actions/start-terminal`,
       ),
       { version },
+    );
+  }
+
+  simulateAdvanceOrderPayment(
+    ctx: CounterContext,
+    orderId: ID,
+    version: number,
+    outcome: "SUCCESS" | "DECLINE" | "CANCEL",
+  ): Promise<ApiResult<unknown>> {
+    return httpClient.post(
+      this.query(
+        ctx,
+        `orders/${encodeURIComponent(orderId)}/actions/dev-simulate`,
+      ),
+      { version, outcome },
     );
   }
 
