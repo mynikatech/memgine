@@ -305,8 +305,11 @@ export function CounterOrdersDashboard({
     chooseOrder(match.orderId);
     setPickupMatch(match);
     if (match.kind === "authorized") {
-      setActionNotice({ orderId: match.orderId,
-        message: "Pickup Code verified. Customer is authorized at Counter; complete handover from Orders." });
+      setActionNotice({
+        orderId: match.orderId,
+        message:
+          "Pickup Code verified. Customer is authorized at Counter; complete handover from Orders.",
+      });
     }
     setPickupMode(undefined);
     if (
@@ -565,8 +568,15 @@ export function CounterOrdersDashboard({
   const actions =
     selectedOrder && lifecycle ? (
       <View style={{ gap: 8 }}>
-        {!isCounterDesk && lifecycle.journey !== "IMMEDIATE_PAY_AT_COUNTER" && ["PLACED", "PREPARING", "READY"].includes(selectedOrder.status) ?
-          <CollectionExtension order={selectedOrder} context={context} onUpdated={refresh} /> : null}
+        {!isCounterDesk &&
+        lifecycle.journey !== "IMMEDIATE_PAY_AT_COUNTER" &&
+        ["PLACED", "PREPARING", "READY"].includes(selectedOrder.status) ? (
+          <CollectionExtension
+            order={selectedOrder}
+            context={context}
+            onUpdated={refresh}
+          />
+        ) : null}
         {!isCounterDesk && nextFulfillmentAction ? (
           <>
             <Button
@@ -1277,7 +1287,9 @@ function CounterOrderSupportForm({
 
   useEffect(() => {
     void findCases("");
-    return () => { requestId.current++; };
+    return () => {
+      requestId.current++;
+    };
   }, [order.id]);
 
   const submit = async () => {
@@ -1289,7 +1301,11 @@ function CounterOrderSupportForm({
     setError(undefined);
     try {
       const result = await api.updateOrderSupport(
-        context, order.id, action, order.lifecycle.version, candidate.ticketNumber,
+        context,
+        order.id,
+        action,
+        order.lifecycle.version,
+        candidate.ticketNumber,
       );
       if (result.success) onUpdated();
       else setError(result.error.message);
@@ -1306,7 +1322,7 @@ function CounterOrderSupportForm({
       <View style={{ gap: 10 }}>
         <Text variant="bodyStrong">{order.reference}</Text>
         <Text variant="caption" color="textMuted">
-          Showing eligible open cases for this customer's order.
+          Showing eligible open cases for this customer&apos;s order.
         </Text>
         <Input
           label="Search by ticket number or subject"
@@ -1332,11 +1348,15 @@ function CounterOrderSupportForm({
               padding: 12,
               borderWidth: 1,
               borderRadius: 8,
-              borderColor: selected === item.id ? theme.colors.primary : theme.colors.border,
+              borderColor:
+                selected === item.id
+                  ? theme.colors.primary
+                  : theme.colors.border,
             }}
           >
             <Text variant="bodyStrong">
-              {selected === item.id ? "✓ " : ""}{item.ticketNumber} · {item.subject}
+              {selected === item.id ? "✓ " : ""}
+              {item.ticketNumber} · {item.subject}
             </Text>
             <Text variant="caption" color="textMuted">
               {item.category} · {item.status}
@@ -1344,9 +1364,15 @@ function CounterOrderSupportForm({
           </Pressable>
         ))}
         {!loading && !cases.length && !error ? (
-          <Text variant="caption" color="textMuted">No eligible open Support cases found.</Text>
+          <Text variant="caption" color="textMuted">
+            No eligible open Support cases found.
+          </Text>
         ) : null}
-        {error ? <Text color="danger" accessibilityLiveRegion="polite">{error}</Text> : null}
+        {error ? (
+          <Text color="danger" accessibilityLiveRegion="polite">
+            {error}
+          </Text>
+        ) : null}
         <Button
           label="Link Selected Case"
           disabled={busy || loading || !selected}
@@ -1374,16 +1400,23 @@ function CounterOrderNoShowForm({
   const inFlight = useRef(false);
 
   const submit = async () => {
-    if (!order.lifecycle || inFlight.current || reason.trim().length < 5) return;
+    if (!order.lifecycle || inFlight.current || reason.trim().length < 5)
+      return;
     inFlight.current = true;
     setBusy(true);
     setError(undefined);
     try {
       const result = await api.reportOrderNoShow(
-        context, order.id, order.lifecycle.version, reason.trim(),
+        context,
+        order.id,
+        order.lifecycle.version,
+        reason.trim(),
       );
-      if (result.success &&
-          (result.data.code === "NO_SHOW_RECORDED" || result.data.code === "ALREADY_RECORDED")) {
+      if (
+        result.success &&
+        (result.data.code === "NO_SHOW_RECORDED" ||
+          result.data.code === "ALREADY_RECORDED")
+      ) {
         onReported(result.data.ticketNumber);
       } else if (!result.success) {
         setError(result.error.message);
@@ -1391,7 +1424,9 @@ function CounterOrderNoShowForm({
         setError("No-show outcome was not confirmed. Refresh the order.");
       }
     } catch {
-      setError("No-show outcome is unknown. Refresh the order before retrying.");
+      setError(
+        "No-show outcome is unknown. Refresh the order before retrying.",
+      );
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -1399,12 +1434,18 @@ function CounterOrderNoShowForm({
   };
 
   return (
-    <Modal visible title="Report No-Show" onClose={onClose}>
+    <Modal
+      visible
+      title="Report No-Show"
+      onClose={onClose}
+      scrollable
+      scrollFocusedInput
+    >
       <View style={{ gap: 10 }}>
         <Text variant="bodyStrong">{order.reference}</Text>
         <Text variant="caption" color="textMuted">
-          A new Support request will be created and linked automatically.
-          The order will not be cancelled or refunded.
+          A new Support request will be created and linked automatically. The
+          order will not be cancelled or refunded.
         </Text>
         <Input
           label="Reason"
@@ -1413,7 +1454,11 @@ function CounterOrderNoShowForm({
           maxLength={500}
           editable={!busy}
         />
-        {error ? <Text color="danger" accessibilityLiveRegion="polite">{error}</Text> : null}
+        {error ? (
+          <Text color="danger" accessibilityLiveRegion="polite">
+            {error}
+          </Text>
+        ) : null}
         <Button
           label="Confirm No-Show"
           disabled={busy || reason.trim().length < 5}
@@ -1859,7 +1904,15 @@ export function CollectionReview({
   );
 }
 
-function CollectionExtension({ order, context, onUpdated }: { order: CounterOrder; context: CounterContext; onUpdated: () => void }) {
+function CollectionExtension({
+  order,
+  context,
+  onUpdated,
+}: {
+  order: CounterOrder;
+  context: CounterContext;
+  onUpdated: () => void;
+}) {
   const [action, setAction] = useState<"APPROVE" | "REJECT" | "EXTEND">();
   const [date, setDate] = useState<string>();
   const [time, setTime] = useState("");
@@ -1870,41 +1923,158 @@ function CollectionExtension({ order, context, onUpdated }: { order: CounterOrde
   const pending = order.collectionExtension?.requestId;
   const submit = async () => {
     if (!action || !order.lifecycle || lock.current) return;
-    if (action !== "APPROVE" && (reason.trim().length < 5 || reason.trim().length > 500)) { setError("Enter a reason of 5 to 500 characters."); return; }
+    if (
+      action !== "APPROVE" &&
+      (reason.trim().length < 5 || reason.trim().length > 500)
+    ) {
+      setError("Enter a reason of 5 to 500 characters.");
+      return;
+    }
     const localTime = collectionExtensionLocalTime(date, time);
-    if (action === "EXTEND" && !localTime) { setError("Enter a valid date and time in HH:MM format."); return; }
-    lock.current = true; setBusy(true); setError(undefined);
+    if (action === "EXTEND" && !localTime) {
+      setError("Enter a valid date and time in HH:MM format.");
+      return;
+    }
+    lock.current = true;
+    setBusy(true);
+    setError(undefined);
     try {
-      const result = await api.changeCollectionExtension(context, order.id, { version: order.lifecycle.version, action,
-        requestId: pending ?? undefined, localTime: action === "EXTEND" ? localTime : undefined, reason: reason.trim() || undefined });
-      if (result.success) { setAction(undefined); onUpdated(); } else setError(result.error.message);
-    } catch { setError("Unable to confirm the update. Refresh the order."); }
-    finally { lock.current = false; setBusy(false); }
+      const result = await api.changeCollectionExtension(context, order.id, {
+        version: order.lifecycle.version,
+        action,
+        requestId: pending ?? undefined,
+        localTime: action === "EXTEND" ? localTime : undefined,
+        reason: reason.trim() || undefined,
+      });
+      if (result.success) {
+        setAction(undefined);
+        onUpdated();
+      } else setError(result.error.message);
+    } catch {
+      setError("Unable to confirm the update. Refresh the order.");
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
   };
-  return <View style={{ gap: 6 }}>
-    {order.collectionExtension?.history?.map((entry) => <Text key={entry.id} variant="bodySmall">
-      {({ COLLECTION_CHANGE_REQUESTED: "Extension requested", COLLECTION_CHANGE_APPROVED: "Extension approved", COLLECTION_CHANGE_REJECTED: "Extension rejected", STAFF_COLLECTION_EXTENDED: "Collection time extended by Store" } as Record<string, string>)[entry.type]} · {counterOrderDate(entry.at, order.timezone)}
-      {entry.previousAt ? ` · Previous ${counterOrderDate(entry.previousAt, order.timezone)}` : ""}
-      {entry.proposedAt ? ` · Proposed ${counterOrderDate(entry.proposedAt, order.timezone)}` : ""}
-      {entry.reason ? ` · ${entry.reason}` : ""}
-    </Text>)}
-    {pending ? <><Button label="Approve Extension" variant="outline" onPress={() => { setReason(""); setAction("APPROVE"); }} />
-      <Button label="Reject Extension" variant="outline" onPress={() => { setReason(""); setAction("REJECT"); }} /></> :
-      <Button label="Extend Collection Time" variant="outline" onPress={() => { setReason(""); setAction("EXTEND"); }} />}
-    {action ? <Modal visible title={action === "APPROVE" ? "Approve Extension" : action === "REJECT" ? "Reject Extension" : "Extend Collection Time"} onClose={() => { if (!busy) setAction(undefined); }}>
-      <View style={{ gap: 8 }}>
-        <Text>Current · {counterOrderDate(order.pickupAt, order.timezone)}</Text>
-        {action !== "EXTEND" ? <Text>Requested · {counterOrderDate(order.collectionExtension?.proposedAt, order.timezone)}</Text> : <>
-          <Text>Store timezone · {order.collectionExtension?.timezone ?? order.timezone}</Text>
-          <DateInput label="Collection date" value={date} onChange={setDate} />
-          <Input label="Collection time (HH:MM)" value={time} onChangeText={setTime} placeholder="14:30" maxLength={5} />
-        </>}
-        {action !== "APPROVE" ? <Input label="Reason" value={reason} onChangeText={setReason} maxLength={500} /> : null}
-        {error ? <Text color="danger">{error}</Text> : null}
-        <Button label={busy ? "Updating…" : "Confirm"} disabled={busy} onPress={() => void submit()} />
-      </View>
-    </Modal> : null}
-  </View>;
+  return (
+    <View style={{ gap: 6 }}>
+      {order.collectionExtension?.history?.map((entry) => (
+        <Text key={entry.id} variant="bodySmall">
+          {
+            (
+              {
+                COLLECTION_CHANGE_REQUESTED: "Extension requested",
+                COLLECTION_CHANGE_APPROVED: "Extension approved",
+                COLLECTION_CHANGE_REJECTED: "Extension rejected",
+                STAFF_COLLECTION_EXTENDED: "Collection time extended by Store",
+              } as Record<string, string>
+            )[entry.type]
+          }{" "}
+          · {counterOrderDate(entry.at, order.timezone)}
+          {entry.previousAt
+            ? ` · Previous ${counterOrderDate(entry.previousAt, order.timezone)}`
+            : ""}
+          {entry.proposedAt
+            ? ` · Proposed ${counterOrderDate(entry.proposedAt, order.timezone)}`
+            : ""}
+          {entry.reason ? ` · ${entry.reason}` : ""}
+        </Text>
+      ))}
+      {pending ? (
+        <>
+          <Button
+            label="Approve Extension"
+            variant="outline"
+            onPress={() => {
+              setReason("");
+              setAction("APPROVE");
+            }}
+          />
+          <Button
+            label="Reject Extension"
+            variant="outline"
+            onPress={() => {
+              setReason("");
+              setAction("REJECT");
+            }}
+          />
+        </>
+      ) : (
+        <Button
+          label="Extend Collection Time"
+          variant="outline"
+          onPress={() => {
+            setReason("");
+            setAction("EXTEND");
+          }}
+        />
+      )}
+      {action ? (
+        <Modal
+          visible
+          title={
+            action === "APPROVE"
+              ? "Approve Extension"
+              : action === "REJECT"
+                ? "Reject Extension"
+                : "Extend Collection Time"
+          }
+          onClose={() => {
+            if (!busy) setAction(undefined);
+          }}
+        >
+          <View style={{ gap: 8 }}>
+            <Text>
+              Current · {counterOrderDate(order.pickupAt, order.timezone)}
+            </Text>
+            {action !== "EXTEND" ? (
+              <Text>
+                Requested ·{" "}
+                {counterOrderDate(
+                  order.collectionExtension?.proposedAt,
+                  order.timezone,
+                )}
+              </Text>
+            ) : (
+              <>
+                <Text>
+                  Store timezone ·{" "}
+                  {order.collectionExtension?.timezone ?? order.timezone}
+                </Text>
+                <DateInput
+                  label="Collection date"
+                  value={date}
+                  onChange={setDate}
+                />
+                <Input
+                  label="Collection time (HH:MM)"
+                  value={time}
+                  onChangeText={setTime}
+                  placeholder="14:30"
+                  maxLength={5}
+                />
+              </>
+            )}
+            {action !== "APPROVE" ? (
+              <Input
+                label="Reason"
+                value={reason}
+                onChangeText={setReason}
+                maxLength={500}
+              />
+            ) : null}
+            {error ? <Text color="danger">{error}</Text> : null}
+            <Button
+              label={busy ? "Updating…" : "Confirm"}
+              disabled={busy}
+              onPress={() => void submit()}
+            />
+          </View>
+        </Modal>
+      ) : null}
+    </View>
+  );
 }
 
 export function CounterOrderDetails({

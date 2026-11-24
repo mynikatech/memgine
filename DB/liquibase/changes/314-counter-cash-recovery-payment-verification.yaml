@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 314-counter-cash-recovery-payment-verification
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/314-counter-cash-recovery-payment-verification.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

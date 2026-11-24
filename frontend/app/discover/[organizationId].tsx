@@ -66,9 +66,49 @@ type MembershipBundle = {
 const androidInstallUrl = process.env.EXPO_PUBLIC_ANDROID_INSTALL_URL?.trim();
 const iosInstallUrl = process.env.EXPO_PUBLIC_IOS_INSTALL_URL?.trim();
 
+type InstallPlatform = "ios" | "android" | "desktop";
+
+function detectInstallPlatform(): InstallPlatform {
+  if (typeof navigator === "undefined") {
+    return "desktop";
+  }
+
+  const ua = navigator.userAgent || "";
+
+  // iPhone, iPad and iPod.
+  if (/iPhone|iPad|iPod/i.test(ua)) {
+    return "ios";
+  }
+
+  // iPadOS may identify itself as Macintosh.
+  if (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1) {
+    return "ios";
+  }
+
+  if (/Android/i.test(ua)) {
+    return "android";
+  }
+
+  return "desktop";
+}
+
 function AppInstallSection() {
   const theme = useTheme();
   const [expanded, setExpanded] = useState(true);
+
+  const [installPlatform, setInstallPlatform] =
+    useState<InstallPlatform>("desktop");
+
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+
+    setInstallPlatform(detectInstallPlatform());
+  }, []);
+
+  const showAndroid =
+    installPlatform === "android" || installPlatform === "desktop";
+
+  const showIos = installPlatform === "ios" || installPlatform === "desktop";
 
   useEffect(() => {
     if (Platform.OS !== "web") return;
@@ -156,7 +196,7 @@ function AppInstallSection() {
               gap: 8,
             }}
           >
-            {androidInstallUrl ? (
+            {showAndroid && androidInstallUrl ? (
               <Button
                 label="Get it on Google Play"
                 size="sm"
@@ -165,7 +205,7 @@ function AppInstallSection() {
               />
             ) : null}
 
-            {iosInstallUrl ? (
+            {showIos && iosInstallUrl ? (
               <Button
                 label="Get it on the App Store"
                 size="sm"

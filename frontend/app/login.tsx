@@ -1,13 +1,7 @@
 import { Redirect, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { KeyboardAwareScrollView } from "@/src/layout/KeyboardAwareScrollView";
 
 import { services, type CountryReference } from "@/src/core";
 import { landingFor } from "@/src/core/auth/auth-navigation";
@@ -164,15 +158,10 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.keyboardAvoidingView}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <ScrollView
+    <View style={styles.keyboardAvoidingView}>
+      <KeyboardAwareScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
         showsVerticalScrollIndicator
       >
         <View style={styles.card}>
@@ -280,8 +269,8 @@ export default function LoginScreen() {
             </Pressable>
           </View>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+    </View>
   );
 }
 
@@ -294,14 +283,13 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
   },
-
   scrollContent: {
     flexGrow: 1,
     alignItems: "center",
     justifyContent: "flex-start",
     paddingHorizontal: 24,
     paddingTop: 40,
-    paddingBottom: 180,
+    paddingBottom: 96,
   },
 
   page: {

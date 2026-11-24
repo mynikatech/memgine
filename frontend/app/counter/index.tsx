@@ -692,6 +692,8 @@ export default function StaffCounter() {
   const [pickupRecoveryConfirm, setPickupRecoveryConfirm] = useState(false);
 
   const [pickupError, setPickupError] = useState("");
+  const [pickupStatusNotice, setPickupStatusNotice] = useState("");
+  const [checkingPickupStatus, setCheckingPickupStatus] = useState(false);
   const [alreadyVerifiedNotice, setAlreadyVerifiedNotice] = useState(false);
 
   const pickupPaymentInFlight = useRef(false);
@@ -878,6 +880,7 @@ export default function StaffCounter() {
     setOrderReference("");
     setOrderVerification(undefined);
     setPickupError("");
+    setPickupStatusNotice("");
     setAlreadyVerifiedNotice(false);
     setPickupCashConfirm(false);
     setPickupRecoveryConfirm(false);
@@ -1761,6 +1764,7 @@ export default function StaffCounter() {
   const resetDynamicRedemption = () => {
     setPickupOrder(null);
     setPickupError("");
+    setPickupStatusNotice("");
     setAlreadyVerifiedNotice(false);
     setPickupCashConfirm(false);
     setPickupRecoveryConfirm(false);
@@ -1797,6 +1801,52 @@ export default function StaffCounter() {
 
     setPickupOrder(response.data);
     return response.data;
+  };
+
+  // Status refresh is read-only. Always acknowledge a completed refresh, even
+  // when the server returns the same status as the previous request.
+  const checkPickupStatus = async (orderId: string) => {
+    if (checkingPickupStatus || busy) return;
+    setCheckingPickupStatus(true);
+    setPickupError("");
+    setPickupStatusNotice("");
+    try {
+      const order = await refreshPickupOrder(orderId);
+      const payment = order.lifecycle?.payment;
+      const orderStatus = order.status.replaceAll("_", " ");
+      if (order.status === "FULFILLED") {
+        setPickupStatusNotice(
+          "Status checked · Order fulfilled and collected.",
+        );
+      } else if (
+        payment === "VERIFIED_AT_COUNTER" ||
+        payment === "VERIFIED_ONLINE" ||
+        payment === "NO_PAYMENT_REQUIRED"
+      ) {
+        setPickupStatusNotice(
+          `Status checked · Payment verified · Order ${orderStatus}. Continue collection in Orders.`,
+        );
+      } else if (
+        payment === "PAYMENT_UNRESOLVED" ||
+        payment === "FINANCIAL_EXCEPTION"
+      ) {
+        setPickupStatusNotice(
+          "Status checked · Payment still requires review. No new payment was started.",
+        );
+      } else {
+        setPickupStatusNotice(
+          `Status checked · ${payment?.replaceAll("_", " ") ?? "Payment status unavailable"} · Order ${orderStatus}.`,
+        );
+      }
+    } catch (failure) {
+      setPickupError(
+        failure instanceof Error
+          ? `Status refresh failed: ${failure.message}`
+          : "Status refresh failed. Please try again.",
+      );
+    } finally {
+      setCheckingPickupStatus(false);
+    }
   };
 
   useEffect(() => {
@@ -1840,6 +1890,7 @@ export default function StaffCounter() {
     setOrderReference(reference);
     setBusy(true);
     setPickupError("");
+    setPickupStatusNotice("");
     setAlreadyVerifiedNotice(false);
 
     try {
@@ -5364,18 +5415,16 @@ export default function StaffCounter() {
 
                   <View style={styles.pickupUtilityRow}>
                     <Pressable
-                      disabled={busy}
-                      onPress={() =>
-                        void refreshPickupOrder(pickupOrder.id).catch(() =>
-                          setPickupError("Refresh failed. Check order status."),
-                        )
-                      }
+                      disabled={busy || checkingPickupStatus}
+                      onPress={() => void checkPickupStatus(pickupOrder.id)}
                       style={[
                         styles.pickupUtilityButton,
-                        busy && styles.btnDisabled,
+                        (busy || checkingPickupStatus) && styles.btnDisabled,
                       ]}
                     >
-                      <Text style={styles.secondaryBtnText}>Check Status</Text>
+                      <Text style={styles.secondaryBtnText}>
+                        {checkingPickupStatus ? "Checking…" : "Check Status"}
+                      </Text>
                     </Pressable>
 
                     <Pressable
@@ -5389,6 +5438,11 @@ export default function StaffCounter() {
                       <Text style={styles.secondaryBtnText}>Next Customer</Text>
                     </Pressable>
                   </View>
+                  {pickupStatusNotice ? (
+                    <Text accessibilityLiveRegion="polite" style={styles.muted}>
+                      {pickupStatusNotice}
+                    </Text>
+                  ) : null}
                   {ENABLE_DEV_POYNT_SIMULATOR &&
                   pickupOrder.lifecycle?.journey === "ADVANCE_PAY_AT_COUNTER" &&
                   pickupOrder.lifecycle?.canStartTerminal &&
