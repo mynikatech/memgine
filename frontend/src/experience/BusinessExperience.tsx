@@ -7,7 +7,7 @@ import {
   subscriptionSavingsDisplay,
   verifiedSavingsMoney,
 } from "@/src/core/domain/savings-display";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -194,7 +194,7 @@ type Props = {
   subscription?: Subscription;
   subscriptionStatus?: Status;
   product?: MembershipProduct;
-
+  scrollableMobileWebHeader?: boolean;
   benefits: Benefit[];
   historyBenefits?: Benefit[];
   offers: Offer[];
@@ -229,6 +229,7 @@ type Props = {
   planDetailsPlanId?: string;
   onExploreMembership?: (productId: string, planId: string) => void;
   showAvailableMembershipsFirst?: boolean;
+  publicDiscoveryNavigation?: boolean;
 
   onJoin: (productId: string, planId?: string) => void;
   onUseMembershipPurchaseOffer?: (
@@ -391,6 +392,8 @@ export function BusinessExperience({
   planDetailsPlanId,
   onExploreMembership,
   showAvailableMembershipsFirst = false,
+  scrollableMobileWebHeader = false,
+  publicDiscoveryNavigation = false,
   onJoin,
   onUseMembershipPurchaseOffer,
   onExit,
@@ -2257,7 +2260,25 @@ export function BusinessExperience({
                               {price} · {duration}
                             </Text>
                             {savings && (
-                              <Text variant="bodySmall">{savings}</Text>
+                              <View
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 8,
+                                }}
+                              >
+                                <MaterialCommunityIcons
+                                  name="piggy-bank"
+                                  size={22}
+                                  color="#E88BA7"
+                                />
+                                <Text
+                                  variant="bodySmall"
+                                  style={{ flexShrink: 1 }}
+                                >
+                                  {savings}
+                                </Text>
+                              </View>
                             )}
                             {offer && (
                               <Text variant="label" color="primary">
@@ -4656,27 +4677,27 @@ export function BusinessExperience({
       ? individualSectionContent
       : tabContent;
 
-  return (
-    <BusinessThemeScope theme={customerTheme}>
+  const scrollHeader =
+    Platform.OS === "web" && isMobileLayout && scrollableMobileWebHeader;
+
+  const businessHeader = (
+    <>
       <View
         style={{
-          flex: 1,
-          backgroundColor: customerBackground,
-          paddingTop: insets.top,
+          ...(!isPreviewMode && showStoreEligibility
+            ? redemptionContent
+            : undefined),
+          paddingHorizontal: scrollHeader ? 0 : theme.spacing.lg,
+          paddingTop: theme.spacing.sm,
+          minWidth: 0,
+          maxWidth: "100%",
         }}
       >
-        <View
-          style={{
-            ...(!isPreviewMode && showStoreEligibility
-              ? redemptionContent
-              : undefined),
-            paddingHorizontal: theme.spacing.lg,
-            paddingTop: theme.spacing.sm,
-          }}
-        >
+        {(!publicDiscoveryNavigation || isPlanExploration) && (
           <Pressable
             onPress={onExit}
             testID="experience-back"
+            accessibilityRole="button"
             style={({ pressed }) => ({
               flexDirection: "row",
               alignItems: "center",
@@ -4692,63 +4713,87 @@ export function BusinessExperience({
               color={theme.colors.primary}
             />
             <Text variant="label" color="primary">
-              {t("experience.back")}
+              {publicDiscoveryNavigation
+                ? "Back to memberships"
+                : t("experience.back")}
             </Text>
           </Pressable>
-        </View>
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            ...(!isPreviewMode && showStoreEligibility
-              ? redemptionContent
-              : undefined),
-            gap: theme.spacing.md,
-            paddingHorizontal: theme.spacing.lg,
-            paddingVertical: theme.spacing.sm,
-          }}
-        >
-          <BrandLogo
-            logoUrl={
-              membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl
-            }
-            monogram={exp.monogram}
-            size={46}
-            fit="cover"
-            testID="experience-brand-logo"
-          />
-          <View style={{ flex: 1 }}>
-            <Text variant="h2" color="text" style={{ color: pageTextColor }}>
-              {exp.displayName}
-            </Text>
-            <Text
-              variant="caption"
-              color="textMuted"
-              style={{ color: pageTextColor }}
-            >
-              {tagline?.trim() || exp.tagline}
-            </Text>
-          </View>
-          <ThemeHeaderDecoration
-            config={themeExperience}
-            accentColor={theme.colors.accent}
-          />
+        )}
+      </View>
+
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          ...(!isPreviewMode && showStoreEligibility
+            ? redemptionContent
+            : undefined),
+          gap: theme.spacing.md,
+          paddingHorizontal: scrollHeader ? 0 : theme.spacing.lg,
+          paddingVertical: theme.spacing.sm,
+          minWidth: 0,
+          maxWidth: "100%",
+        }}
+      >
+        <BrandLogo
+          logoUrl={membershipLogoUrl ?? resolvedConfiguration.branding.logoUrl}
+          monogram={exp.monogram}
+          size={46}
+          fit="cover"
+          testID="experience-brand-logo"
+        />
+
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text variant="h2" color="text" style={{ color: pageTextColor }}>
+            {exp.displayName}
+          </Text>
+          <Text
+            variant="caption"
+            color="textMuted"
+            style={{ color: pageTextColor }}
+          >
+            {tagline?.trim() || exp.tagline}
+          </Text>
         </View>
 
+        <ThemeHeaderDecoration
+          config={themeExperience}
+          compact={scrollHeader}
+          accentColor={theme.colors.accent}
+        />
+      </View>
+    </>
+  );
+
+  return (
+    <BusinessThemeScope theme={customerTheme}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: customerBackground,
+          paddingTop: insets.top,
+        }}
+      >
+        {!scrollHeader && businessHeader}
         <ScrollView
           ref={mainScroll}
-          style={{ flex: 1 }}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            width: "100%",
+          }}
           contentContainerStyle={{
             ...(!isPreviewMode && showStoreEligibility
               ? redemptionContent
               : undefined),
             padding: theme.spacing.lg,
-            paddingTop: theme.spacing.sm,
+            paddingTop: scrollHeader ? 0 : theme.spacing.sm,
             paddingBottom: insets.bottom + 90,
             gap: theme.spacing.lg,
           }}
           showsVerticalScrollIndicator={false}
         >
+          {scrollHeader && businessHeader}
           {!isPreviewMode &&
           !previewSection &&
           customerUserId &&

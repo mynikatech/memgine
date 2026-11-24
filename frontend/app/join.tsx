@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CustomerDataApi } from "@/src/data/api/customer-data-api";
 import { CounterApi } from "@/src/data/api/counter-api";
 
-import { Modal, Platform, Pressable, View } from "react-native";
+import { Keyboard, Modal, Platform, Pressable, View } from "react-native";
 
 import { getSubscriptionPeriodLabel } from "@/src/core/domain/membership-helpers";
 import { beginNativeCollectReturn } from "@/src/core/services/native-collect-return";
@@ -4626,6 +4626,7 @@ function JoinFlow() {
       <Screen
         testID="join-screen"
         edges={["top"]}
+        keyboardAware
         header={<BusinessHeader right={headerRight} />}
       >
         <StateView
@@ -5250,9 +5251,16 @@ function JoinFlow() {
                   onChangeText={(value) => {
                     corporateVerifyVersion.current += 1;
                     setCorporateVerifyBusy(false);
-                    setCorporateCode(value.replace(/\D/g, "").slice(0, 6));
+
+                    const normalizedCode = value.replace(/\D/g, "").slice(0, 6);
+
+                    setCorporateCode(normalizedCode);
                     setCorporateVerified(false);
                     setCorporateVerifyError("");
+
+                    if (normalizedCode.length === 6) {
+                      Keyboard.dismiss();
+                    }
                   }}
                   keyboardType="number-pad"
                   maxLength={6}

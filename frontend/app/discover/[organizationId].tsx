@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { Linking, Platform, View } from "react-native";
+import { Linking, Platform, Pressable, View } from "react-native";
 
 import type {
   Benefit,
@@ -67,46 +67,115 @@ const androidInstallUrl = process.env.EXPO_PUBLIC_ANDROID_INSTALL_URL?.trim();
 const iosInstallUrl = process.env.EXPO_PUBLIC_IOS_INSTALL_URL?.trim();
 
 function AppInstallSection() {
+  const theme = useTheme();
+  const [expanded, setExpanded] = useState(true);
+
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+
+    try {
+      const saved = window.sessionStorage.getItem(
+        "memgine-app-install-expanded",
+      );
+
+      if (saved === "false") {
+        setExpanded(false);
+      }
+    } catch {
+      // Storage may be unavailable in private browsing.
+    }
+  }, []);
+
   if (Platform.OS !== "web" || (!androidInstallUrl && !iosInstallUrl)) {
     return null;
   }
 
+  const toggleExpanded = () => {
+    const next = !expanded;
+    setExpanded(next);
+
+    try {
+      window.sessionStorage.setItem(
+        "memgine-app-install-expanded",
+        String(next),
+      );
+    } catch {
+      // The banner remains usable without session storage.
+    }
+  };
+
   return (
     <View
-      style={{
-        paddingHorizontal: 16,
-        paddingBottom: 16,
-        gap: 10,
-      }}
       testID="discover-app-install"
+      style={{
+        backgroundColor: theme.colors.surface,
+        borderTopWidth: 1,
+        borderTopColor: theme.colors.border,
+        paddingHorizontal: 16,
+        paddingTop: expanded ? 10 : 6,
+        paddingBottom: expanded ? 12 : 6,
+      }}
     >
-      <Text variant="bodyStrong" color="text">
-        Get the Memgine app
-      </Text>
+      <Pressable
+        onPress={toggleExpanded}
+        accessibilityRole="button"
+        accessibilityLabel={
+          expanded
+            ? "Collapse Get the Memgine app"
+            : "Expand Get the Memgine app"
+        }
+        accessibilityState={{ expanded }}
+        testID="discover-app-install-toggle"
+        style={{
+          minHeight: 36,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <Text variant="bodyStrong" color="text">
+          Get the Memgine app
+        </Text>
 
-      <Text variant="bodySmall" color="textSecondary">
-        You can continue on the web or install the app for future visits.
-      </Text>
+        <Text variant="bodyStrong" color="primary">
+          {expanded ? "Hide  ⌄" : "Show  ⌃"}
+        </Text>
+      </Pressable>
 
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-        {androidInstallUrl ? (
-          <Button
-            label="Get it on Google Play"
-            size="sm"
-            variant="outline"
-            onPress={() => void Linking.openURL(androidInstallUrl)}
-          />
-        ) : null}
+      {expanded ? (
+        <View style={{ gap: 10, paddingTop: 8 }}>
+          <Text variant="bodySmall" color="textSecondary">
+            You can continue on the web or install the app for future visits.
+          </Text>
 
-        {iosInstallUrl ? (
-          <Button
-            label="Get it on the App Store"
-            size="sm"
-            variant="outline"
-            onPress={() => void Linking.openURL(iosInstallUrl)}
-          />
-        ) : null}
-      </View>
+          <View
+            style={{
+              flexDirection: "row",
+              flexWrap: "wrap",
+              gap: 8,
+            }}
+          >
+            {androidInstallUrl ? (
+              <Button
+                label="Get it on Google Play"
+                size="sm"
+                variant="outline"
+                onPress={() => void Linking.openURL(androidInstallUrl)}
+              />
+            ) : null}
+
+            {iosInstallUrl ? (
+              <Button
+                label="Get it on the App Store"
+                size="sm"
+                variant="outline"
+                onPress={() => void Linking.openURL(iosInstallUrl)}
+              />
+            ) : null}
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -439,10 +508,15 @@ function DiscoverContent() {
     void load();
   }, [load]);
 
-  const exit = () =>
-    router.canGoBack()
-      ? router.back()
-      : router.replace(APP_ROUTES.customer.cards);
+  const exit = () => {
+    router.replace({
+      pathname: "/discover/[organizationId]",
+      params: {
+        organizationId,
+        section: "memberships",
+      },
+    });
+  };
 
   const joinMembership = (id: string, selectedPlanId?: string) => {
     router.push(
@@ -520,6 +594,8 @@ function DiscoverContent() {
   return (
     <View style={{ flex: 1 }}>
       <BusinessExperience
+        scrollableMobileWebHeader
+        publicDiscoveryNavigation
         content={detail.publishedExperience.definition.content}
         configurationOverride={detail.publishedExperience.configuration}
         templateOverride={
@@ -588,7 +664,9 @@ function DiscoverContent() {
         detailsCatalog={detail.membershipProducts}
         planDetailsProductId={productId}
         planDetailsPlanId={planId}
-        showAvailableMembershipsFirst={section === "memberships"}
+        showAvailableMembershipsFirst={
+          section === "memberships" || (!productId && available.length > 0)
+        }
         onJoin={joinMembership}
         onUseMembershipPurchaseOffer={joinWithMembershipOffer}
         onExit={exit}
