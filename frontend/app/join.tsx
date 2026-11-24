@@ -453,6 +453,41 @@ function JoinFlow() {
     isStaffSale || customerId ? "review" : "landing",
   );
 
+  const signInToMemgine = () => {
+    // This action is only available for customer self-service.
+    // Counter purchase authorization must remain unchanged.
+    if (isStaffSale || session?.userId || !product?.id) {
+      return;
+    }
+
+    const destination = APP_ROUTES.join.membership(
+      orgId,
+      product.id,
+      params.planId,
+    );
+
+    const extraParams = [
+      params.source ? `source=${encodeURIComponent(params.source)}` : null,
+      params.explicitOfferId
+        ? `explicitOfferId=${encodeURIComponent(params.explicitOfferId)}`
+        : null,
+      params.explicitOfferName
+        ? `explicitOfferName=${encodeURIComponent(params.explicitOfferName)}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join("&");
+
+    const returnTo = extraParams
+      ? `${destination}&${extraParams}`
+      : destination;
+
+    router.push({
+      pathname: APP_ROUTES.customerLogin,
+      params: { returnTo },
+    } as never);
+  };
+
   const [phoneVerified, setPhoneVerified] = useState(false);
 
   const [firstName, setFirstName] = useState("");
@@ -4725,40 +4760,11 @@ function JoinFlow() {
           {!isStaffSale && !session?.userId ? (
             <View style={{ gap: 12 }}>
               <Text variant="bodyStrong">Already have a Memgine account?</Text>
-
               <Button
                 label="Sign in to Memgine"
                 fullWidth
+                onPress={signInToMemgine}
                 testID="join-existing-customer-login"
-                onPress={() => {
-                  const destination = APP_ROUTES.join.membership(
-                    orgId,
-                    product.id,
-                    params.planId,
-                  );
-
-                  const extraParams = new URLSearchParams();
-
-                  if (params.explicitOfferId) {
-                    extraParams.set("explicitOfferId", params.explicitOfferId);
-                  }
-
-                  if (params.explicitOfferName) {
-                    extraParams.set(
-                      "explicitOfferName",
-                      params.explicitOfferName,
-                    );
-                  }
-
-                  const returnTo = extraParams.toString()
-                    ? `${destination}&${extraParams.toString()}`
-                    : destination;
-
-                  router.push({
-                    pathname: APP_ROUTES.customerLogin,
-                    params: { returnTo },
-                  } as never);
-                }}
               />
 
               <Text variant="bodySmall" color="textMuted">

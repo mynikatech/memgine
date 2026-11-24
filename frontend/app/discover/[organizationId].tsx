@@ -305,14 +305,105 @@ function redemptionFromProtectedRow(row: OrgAdminRedemption): Redemption {
  * business/workspace.
  */
 export default function DiscoverGateway() {
-  const { organizationId } = useLocalSearchParams<{
+  const router = useRouter();
+  const auth = useAuth();
+
+  const { organizationId, productId, planId, section } = useLocalSearchParams<{
     organizationId: string;
+    productId?: string;
+    planId?: string;
+    section?: string;
   }>();
+
+  const [exploreAsGuest, setExploreAsGuest] = useState(false);
 
   if (!organizationId) {
     return null;
   }
 
+  if (auth.loading) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          padding: 24,
+        }}
+      >
+        <Text variant="body">Opening Memgine…</Text>
+      </View>
+    );
+  }
+
+  // A logged-out visitor must be able to choose between
+  // signing into an existing Memgine account and exploring
+  // memberships as a new customer.
+  //
+  // Never determine account existence from the QR code.
+  if (!auth.session && !exploreAsGuest) {
+    return (
+      <View
+        testID="discover-customer-entry"
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          padding: 24,
+          gap: 20,
+        }}
+      >
+        <View style={{ gap: 8 }}>
+          <Text variant="title">Welcome to Memgine</Text>
+
+          <Text variant="body" color="textMuted">
+            Discover memberships and exclusive offers from this business.
+          </Text>
+        </View>
+
+        <View style={{ gap: 12 }}>
+          <Text variant="bodyStrong">Already a Memgine customer?</Text>
+
+          <Button
+            label="Sign in to Memgine"
+            testID="discover-existing-customer-login"
+            onPress={() => {
+              // Preserve the exact business and relevant
+              // membership navigation parameters.
+              const query = [
+                productId ? `productId=${encodeURIComponent(productId)}` : null,
+                planId ? `planId=${encodeURIComponent(planId)}` : null,
+                section ? `section=${encodeURIComponent(section)}` : null,
+              ]
+                .filter(Boolean)
+                .join("&");
+
+              const returnTo =
+                `/discover/${encodeURIComponent(organizationId)}` +
+                (query ? `?${query}` : "");
+
+              router.push({
+                pathname: APP_ROUTES.customerLogin,
+                params: { returnTo },
+              } as never);
+            }}
+          />
+
+          <Text variant="bodySmall" color="textMuted">
+            New to Memgine?
+          </Text>
+
+          <Button
+            label="Explore Memberships"
+            variant="outline"
+            testID="discover-new-customer-explore"
+            onPress={() => setExploreAsGuest(true)}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  // Existing logged-in customers and guests who explicitly
+  // selected Explore use the existing discovery experience.
   return (
     <BusinessProvider organizationId={organizationId}>
       <LocalizationProvider>
