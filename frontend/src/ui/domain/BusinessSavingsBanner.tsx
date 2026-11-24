@@ -5,6 +5,19 @@ import { formatBusinessSavingsMoney } from "@/src/core/domain/savings-display";
 import type { BusinessActualSavings } from "@/src/data/api/customer-data-api";
 import { Modal, Text } from "@/src/ui";
 
+function badgeMoney(minor: number, currency: string): string | undefined {
+  const formatted = formatBusinessSavingsMoney(minor, currency);
+  if (!formatted) return undefined;
+
+  if (currency === "CAD" || currency === "USD") {
+    return formatted
+      .replace(/\s+(CAD|USD)$/, "")
+      .replace(/^(?:CA\$|US\$)/, "$");
+  }
+
+  return formatted;
+}
+
 export function BusinessSavingsBanner({
   businessName,
   savings,
@@ -26,6 +39,7 @@ export function BusinessSavingsBanner({
 }) {
   const [open, setOpen] = useState(false);
   const totals = savings?.totals ?? [];
+
   const primary =
     totals.length === 1
       ? totals[0]
@@ -34,121 +48,77 @@ export function BusinessSavingsBanner({
             (total) => total.currencyCode === savings.activePlanCurrencyCode,
           )
         : undefined;
-  const amount = primary
-    ? formatBusinessSavingsMoney(
-        primary.verifiedNetSavingsMinor,
-        primary.currencyCode,
-      )
-    : undefined;
-  const label =
-    savings?.coverageState === "PARTIAL"
-      ? "Verified savings so far"
-      : savings?.coverageState === "NO_REDEMPTION_HISTORY" &&
-          !savings.activePlanCurrencyCode
-        ? "Your Savings"
-        : "You've Saved";
+
+  const noHistory = savings?.coverageState === "NO_REDEMPTION_HISTORY";
+
+  const amount =
+    primary &&
+    badgeMoney(primary.verifiedNetSavingsMinor, primary.currencyCode);
+
   const zero =
-    savings?.coverageState === "NO_REDEMPTION_HISTORY" &&
-    savings.activePlanCurrencyCode
-      ? formatBusinessSavingsMoney(0, savings.activePlanCurrencyCode)
+    noHistory && savings?.activePlanCurrencyCode
+      ? badgeMoney(0, savings.activePlanCurrencyCode)
       : undefined;
-  const value = loading
-    ? "Loading savings…"
+
+  const value =
+    loading || !savings || savings.coverageState === "UNAVAILABLE"
+      ? undefined
+      : (amount ?? zero);
+
+  const badgeLabel = loading
+    ? "Savings…"
     : !savings || savings.coverageState === "UNAVAILABLE"
-      ? "Savings unavailable"
-      : (amount ??
-        zero ??
-        (totals.length > 1
-          ? totals
-              .map(
-                (total) =>
-                  formatBusinessSavingsMoney(
-                    total.verifiedNetSavingsMinor,
-                    total.currencyCode,
-                  ) ?? "Unavailable",
-              )
-              .join(" · ")
-          : totals.length === 1
-            ? "Savings unavailable"
-            : savings.coverageState === "PARTIAL"
-              ? "Savings history incomplete"
-              : "Start saving with your memberships"));
-  const otherTotals = primary
-    ? totals.filter((total) => total.currencyCode !== primary.currencyCode)
-    : [];
+      ? "Savings —"
+      : value
+        ? savings.coverageState === "PARTIAL"
+          ? `Verified ${value}`
+          : `${value}`
+        : "Your Savings";
 
   return (
     <>
-      <View
-        style={{
-          backgroundColor,
-          borderWidth: 1,
-          borderColor,
-          borderRadius: 14,
-          paddingHorizontal: 16,
-          paddingVertical: 10,
+      <Pressable
+        testID="business-savings-banner"
+        accessibilityRole="button"
+        accessibilityLabel={`${badgeLabel}. View savings details`}
+        accessibilityHint="Opens your verified savings by membership"
+        onPress={() => setOpen(true)}
+        style={({ pressed }) => ({
           flexDirection: "row",
           alignItems: "center",
-          gap: 12,
-          minHeight: 80,
-        }}
-        testID="business-savings-banner"
+          alignSelf: "flex-end",
+          gap: 4,
+          paddingHorizontal: 8,
+          minHeight: 36,
+          minWidth: 105,
+          maxWidth: 150,
+          borderRadius: 24,
+          borderWidth: 1.5,
+          borderColor: accentColor || borderColor,
+          backgroundColor,
+          opacity: pressed ? 0.75 : 1,
+        })}
       >
-        <MaterialCommunityIcons name="piggy-bank" size={30} color="#E88BA7" />
-        <View style={{ flex: 1 }}>
-          <Text variant="caption" style={{ color: textColor }}>
-            {label}
-          </Text>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 10,
-              flexWrap: "wrap",
-            }}
-          >
-            <Text variant="title" style={{ color: accentColor }}>
-              {value}
-            </Text>
-            {amount && primary && primary.verifiedNetSavingsMinor > 0 ? (
-              <MaterialCommunityIcons
-                name="trending-up"
-                size={25}
-                color={accentColor}
-              />
-            ) : null}
-          </View>
-          {otherTotals.length > 0 ? (
-            <Pressable accessibilityRole="button" onPress={() => setOpen(true)}>
-              <Text variant="caption" style={{ color: textColor }}>
-                {otherTotals
-                  .map(
-                    (total) =>
-                      formatBusinessSavingsMoney(
-                        total.verifiedNetSavingsMinor,
-                        total.currencyCode,
-                      ) ?? "Unavailable",
-                  )
-                  .join(" · ")}
-                {" in other " +
-                  (otherTotals.length === 1 ? "currency" : "currencies")}
-              </Text>
-            </Pressable>
-          ) : null}
-          <Text variant="caption" style={{ color: textColor }}>
-            Across your memberships at this business
-          </Text>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="View savings details"
-          onPress={() => setOpen(true)}
+        <MaterialCommunityIcons name="piggy-bank" size={22} color="#E88BA7" />
+        <Text
+          variant="bodyStrong"
+          numberOfLines={1}
+          style={{
+            color: accentColor,
+            fontSize: 14,
+            fontWeight: "700",
+            flexShrink: 0,
+          }}
         >
-          <Text variant="label" style={{ color: accentColor }}>
-            View Details
-          </Text>
-        </Pressable>
-      </View>
+          {badgeLabel}
+        </Text>
+        <MaterialCommunityIcons
+          name="chevron-down"
+          size={14}
+          color={accentColor}
+        />
+      </Pressable>
+
       <Modal
         visible={open}
         onClose={() => setOpen(false)}
@@ -157,6 +127,7 @@ export function BusinessSavingsBanner({
         testID="business-savings-details"
       >
         <Text variant="title">{businessName}</Text>
+
         {totals.map((total) => (
           <Text key={total.currencyCode} variant="body">
             {total.coverageState === "PARTIAL"
@@ -168,12 +139,24 @@ export function BusinessSavingsBanner({
             ) ?? "Unavailable"}
           </Text>
         ))}
+
         {savings?.coverageState === "PARTIAL" ? (
           <Text variant="bodySmall">
             Some savings history is incomplete. Verified amounts are shown so
             far.
           </Text>
         ) : null}
+
+        {savings?.coverageState === "UNAVAILABLE" ? (
+          <Text variant="bodySmall">
+            Savings information is currently unavailable.
+          </Text>
+        ) : null}
+
+        {noHistory ? (
+          <Text variant="bodySmall">No completed redemptions yet.</Text>
+        ) : null}
+
         {(savings?.memberships ?? []).map((membership, index) => (
           <View
             key={`${membership.subscriptionId}:${membership.currencyCode ?? index}`}
@@ -182,17 +165,28 @@ export function BusinessSavingsBanner({
             <Text variant="label">
               {membership.membershipName} · {membership.planName}
             </Text>
+
             <Text variant="bodySmall">
               {membership.verifiedRedemptionCount &&
               membership.currencyCode &&
               membership.verifiedNetSavingsMinor != null
-                ? `${membership.coverageState === "PARTIAL" ? "Verified savings so far: " : ""}${formatBusinessSavingsMoney(membership.verifiedNetSavingsMinor, membership.currencyCode) ?? "Unavailable"}`
+                ? `${
+                    membership.coverageState === "PARTIAL"
+                      ? "Verified savings so far: "
+                      : ""
+                  }${
+                    formatBusinessSavingsMoney(
+                      membership.verifiedNetSavingsMinor,
+                      membership.currencyCode,
+                    ) ?? "Unavailable"
+                  }`
                 : membership.coverageState === "NO_REDEMPTION_HISTORY"
                   ? "No completed redemptions yet"
                   : "Savings history incomplete"}
             </Text>
           </View>
         ))}
+
         <Pressable
           accessibilityRole="button"
           onPress={() => {
@@ -201,7 +195,7 @@ export function BusinessSavingsBanner({
           }}
           style={{ marginTop: 16 }}
         >
-          <Text variant="label" color="primary">
+          <Text variant="label" style={{ color: accentColor }}>
             View savings and redemption history
           </Text>
         </Pressable>

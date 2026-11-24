@@ -2416,66 +2416,6 @@ export function BusinessExperience({
       {renderTabPreviewLink("card")}
       {showAvailableMembershipsFirst && availableMembershipsSection}
 
-      {enhancedVisualsEnabled && heroImageUrl ? (
-        <Card
-          padding="none"
-          style={{
-            overflow: "hidden",
-            borderRadius: 22,
-          }}
-        >
-          <HeroImage
-            uri={heroImageUrl}
-            height={isMobileLayout ? 190 : 250}
-            borderRadius={theme.radius.lg}
-            backgroundColor={theme.colors.surfaceAlt}
-          />
-          <View
-            style={{
-              paddingHorizontal: theme.spacing.xl,
-              paddingTop: theme.spacing.lg,
-              paddingBottom: theme.spacing.xl,
-              gap: theme.spacing.sm,
-            }}
-          >
-            <Badge label="MEMBER PERKS" tone="brand" />
-
-            <Text variant="h1" color="text">
-              Something special is waiting
-            </Text>
-
-            <Text variant="body" color="textSecondary">
-              {tagline?.trim() ||
-                (isPlanExploration
-                  ? "Explore the benefits included with this membership."
-                  : "Enjoy your member benefits and discover what is new for you.")}
-            </Text>
-
-            {!isPlanExploration && exp.membership ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: theme.spacing.sm,
-                  marginTop: theme.spacing.xs,
-                }}
-              >
-                <Ionicons
-                  name="sparkles-outline"
-                  size={16}
-                  color={theme.colors.primary}
-                />
-                <Text variant="caption" color="primary">
-                  {exp.membership.tier} member benefits
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        </Card>
-      ) : exp.heroPromotion ? (
-        renderPromotionCard(exp.heroPromotion)
-      ) : null}
-
       {/* W277: published season scene is independent of the disabled legacy
           decorative hero mode. It ends before the membership cards begin. */}
       {themeExperience.enabled && themeExperience.featureEnabled ? (
@@ -4679,9 +4619,38 @@ export function BusinessExperience({
 
   const scrollHeader =
     Platform.OS === "web" && isMobileLayout && scrollableMobileWebHeader;
+  const headerHeroUri = resolveAssetUrl(
+    heroImageUrl?.trim() || exp.heroPromotion?.imageUrl,
+  );
+  const showHeaderSavings =
+    !isPreviewMode &&
+    !previewSection &&
+    !!customerUserId &&
+    effectiveTab === "card";
 
   const businessHeader = (
-    <>
+    <View
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        backgroundColor: customerBackground,
+        width: "100%",
+      }}
+    >
+      {headerHeroUri ? (
+        <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+          <Image
+            source={{ uri: headerHeroUri }}
+            resizeMode="cover"
+            style={{
+              width: "100%",
+              height: "100%",
+              opacity: 0.12,
+            }}
+          />
+        </View>
+      ) : null}
+
       <View
         style={{
           ...(!isPreviewMode && showStoreEligibility
@@ -4743,7 +4712,13 @@ export function BusinessExperience({
           testID="experience-brand-logo"
         />
 
-        <View style={{ flex: 1, minWidth: 0 }}>
+        <View
+          style={{
+            flex: 1,
+            minWidth: 0,
+            paddingRight: showHeaderSavings ? 112 : 0,
+          }}
+        >
           <Text variant="h2" color="text" style={{ color: pageTextColor }}>
             {exp.displayName}
           </Text>
@@ -4756,13 +4731,40 @@ export function BusinessExperience({
           </Text>
         </View>
 
-        <ThemeHeaderDecoration
-          config={themeExperience}
-          compact={scrollHeader}
-          accentColor={theme.colors.accent}
-        />
+        {!showHeaderSavings ? (
+          <ThemeHeaderDecoration
+            config={themeExperience}
+            compact={scrollHeader}
+            accentColor={theme.colors.accent}
+          />
+        ) : null}
+
+        {showHeaderSavings ? (
+          <View
+            style={{
+              position: "absolute",
+              right: scrollHeader ? 0 : theme.spacing.lg,
+              top: theme.spacing.sm + 5,
+              zIndex: 2,
+            }}
+          >
+            <BusinessSavingsBanner
+              businessName={exp.displayName}
+              savings={currentBusinessSavings?.data}
+              loading={
+                !currentBusinessSavings ||
+                (!currentBusinessSavings.data && !currentBusinessSavings.error)
+              }
+              backgroundColor={theme.colors.surface}
+              borderColor={theme.colors.border}
+              textColor={theme.colors.text}
+              accentColor={theme.colors.primary}
+              onHistory={() => handleTabChange("history")}
+            />
+          </View>
+        ) : null}
       </View>
-    </>
+    </View>
   );
 
   return (
@@ -4794,28 +4796,6 @@ export function BusinessExperience({
           showsVerticalScrollIndicator={false}
         >
           {scrollHeader && businessHeader}
-          {!isPreviewMode &&
-          !previewSection &&
-          customerUserId &&
-          effectiveTab === "card" ? (
-            <BusinessSavingsBanner
-              businessName={exp.displayName}
-              savings={
-                businessSavingsResult?.key === businessSavingsScope
-                  ? businessSavingsResult.data
-                  : undefined
-              }
-              loading={
-                businessSavingsResult?.key !== businessSavingsScope ||
-                (!businessSavingsResult.data && !businessSavingsResult.error)
-              }
-              backgroundColor={theme.colors.surface}
-              borderColor={theme.colors.border}
-              textColor={theme.colors.text}
-              accentColor={theme.colors.primary}
-              onHistory={() => handleTabChange("history")}
-            />
-          ) : null}
           {!previewSection ? (
             <AnnouncementDisplay
               configuration={announcementConfiguration}
