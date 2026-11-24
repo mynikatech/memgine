@@ -4722,15 +4722,68 @@ function JoinFlow() {
             </Card>
           </Section>
 
-          <Button
-            label={t("join.joinCta", {
-              business:
-                activeOrganization.displayName ?? activeOrganization.name,
-            })}
-            fullWidth
-            onPress={() => setStep("register")}
-            testID="join-cta"
-          />
+          {!isStaffSale && !session?.userId ? (
+            <View style={{ gap: 12 }}>
+              <Text variant="bodyStrong">Already have a Memgine account?</Text>
+
+              <Button
+                label="Sign in to Memgine"
+                fullWidth
+                testID="join-existing-customer-login"
+                onPress={() => {
+                  const destination = APP_ROUTES.join.membership(
+                    orgId,
+                    product.id,
+                    params.planId,
+                  );
+
+                  const extraParams = new URLSearchParams();
+
+                  if (params.explicitOfferId) {
+                    extraParams.set("explicitOfferId", params.explicitOfferId);
+                  }
+
+                  if (params.explicitOfferName) {
+                    extraParams.set(
+                      "explicitOfferName",
+                      params.explicitOfferName,
+                    );
+                  }
+
+                  const returnTo = extraParams.toString()
+                    ? `${destination}&${extraParams.toString()}`
+                    : destination;
+
+                  router.push({
+                    pathname: APP_ROUTES.customerLogin,
+                    params: { returnTo },
+                  } as never);
+                }}
+              />
+
+              <Text variant="bodySmall" color="textMuted">
+                New to Memgine?
+              </Text>
+
+              <Button
+                label="Join Memgine"
+                fullWidth
+                variant="outline"
+                onPress={() => setStep("register")}
+                testID="join-cta"
+              />
+            </View>
+          ) : (
+            <Button
+              label={t("join.joinCta", {
+                business:
+                  activeOrganization.displayName ?? activeOrganization.name,
+              })}
+              fullWidth
+              onPress={() => setStep("register")}
+              testID="join-cta"
+            />
+          )}
         </View>
       ) : null}
 

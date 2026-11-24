@@ -40,6 +40,7 @@ import { BusinessExperience } from "@/src/experience";
 import {
   BusinessProvider,
   LocalizationProvider,
+  useAuth,
   useCustomerContext,
   useTheme,
   useTranslation,
@@ -323,6 +324,7 @@ export default function DiscoverGateway() {
 
 function DiscoverContent() {
   const router = useRouter();
+  const auth = useAuth();
 
   const { organizationId, productId, planId, section } = useLocalSearchParams<{
     organizationId: string;
@@ -713,6 +715,24 @@ function DiscoverContent() {
         onRefreshRedemptionState={load}
         customerUserId={customerId}
       />
+      {!auth.loading && !auth.session ? (
+        <View style={{ paddingHorizontal: 16, paddingVertical: 12, gap: 8 }}>
+          <Text variant="bodyStrong">Already a Memgine customer?</Text>
+
+          <Button
+            label="Sign in to Memgine"
+            testID="discover-existing-customer-login"
+            onPress={() => {
+              const returnTo = `/discover/${encodeURIComponent(organizationId)}`;
+
+              router.push({
+                pathname: APP_ROUTES.customerLogin,
+                params: { returnTo },
+              } as never);
+            }}
+          />
+        </View>
+      ) : null}
 
       <AppInstallSection />
     </View>
