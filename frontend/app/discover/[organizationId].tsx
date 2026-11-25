@@ -642,13 +642,23 @@ function DiscoverContent() {
   }, [load]);
 
   const exit = () => {
-    router.replace({
-      pathname: "/discover/[organizationId]",
-      params: {
-        organizationId,
-        section: "memberships",
-      },
-    });
+    if (productId) {
+      router.replace({
+        pathname: "/discover/[organizationId]",
+        params: {
+          organizationId,
+          section: "memberships",
+        },
+      });
+      return;
+    }
+
+    if (auth.session) {
+      router.replace(APP_ROUTES.customer.home as never);
+      return;
+    }
+
+    router.back();
   };
 
   const joinMembership = (id: string, selectedPlanId?: string) => {

@@ -220,11 +220,23 @@ interface CustomerSql {
                        @Bind("primaryPhone") primaryPhone: String,
                        @Bind("actorUserId") actorUserId: String): String
                        
-                       @SqlQuery("SELECT customer_can_start_membership_purchase(:organizationId, :userId)")
+    @SqlQuery("SELECT customer_can_start_membership_purchase(:organizationId, :userId)")
     fun customerCanStartMembershipPurchase(
         @Bind("organizationId") organizationId: String,
         @Bind("userId") userId: String,
     ): Boolean
+    
+    @SqlQuery("""
+        SELECT row_to_json(e)::text
+        FROM customer_membership_purchase_eligibility(
+            :organizationId,
+            :userId
+        ) e
+    """)
+    fun customerMembershipPurchaseEligibility(
+        @Bind("organizationId") organizationId: String,
+        @Bind("userId") userId: String,
+    ): String
 
     @SqlQuery("SELECT record_membership_agreement_acceptance(:acceptanceId, :organizationId, :userId, :membershipProductId, :purchaseReference, :acceptanceChannel, :agreementText, :agreementSha256, CAST(:snapshotJson AS jsonb))::text")
     fun recordMembershipAgreementAcceptance(

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { AppState, Pressable, View } from "react-native";
+import { AppState, Platform, Pressable, View } from "react-native";
 import { useTheme } from "@/src/providers";
 import { Badge, Button, Card, Text } from "@/src/ui";
 import { formatTransactionMoney } from "@/src/core/domain/savings-display";
@@ -190,8 +190,8 @@ export function CustomerActiveOrders({
     <View
       style={{
         width: "100%",
-        maxWidth: redemptionContentWidth,
-        alignSelf: "center",
+        maxWidth: Platform.OS === "web" ? undefined : redemptionContentWidth,
+        alignSelf: Platform.OS === "web" ? "stretch" : "center",
         borderRadius: theme.radius.lg,
         borderWidth: 1,
         borderColor: theme.colors.border,

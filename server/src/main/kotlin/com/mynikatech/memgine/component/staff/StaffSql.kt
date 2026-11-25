@@ -6,6 +6,13 @@ import org.jdbi.v3.sqlobject.customizer.Bind
 import org.jdbi.v3.sqlobject.statement.SqlQuery
 
 interface StaffSql {
+    
+    
+    @SqlQuery("SELECT generate_runtime_id(:prefix)")
+    fun generateRuntimeId(
+        @Bind("prefix") prefix: String
+    ): String
+    
     @SqlQuery("SELECT * FROM get_organization_staff(:organizationId)")
     fun list(
         @Bind("organizationId") organizationId: String

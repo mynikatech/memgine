@@ -5238,9 +5238,26 @@ function JoinFlow() {
                   Loading Membership Agreement...
                 </Text>
               ) : agreementError ? (
-                <Text variant="bodySmall" color="textMuted">
-                  {agreementError}
-                </Text>
+                <View
+                  style={{
+                    backgroundColor: "#FFF1F2",
+                    borderColor: "#FDA4AF",
+                    borderWidth: 1,
+                    borderLeftWidth: 4,
+                    borderLeftColor: "#BE123C",
+                    borderRadius: 10,
+                    padding: 14,
+                    gap: 6,
+                  }}
+                >
+                  <Text variant="bodyStrong" color="danger">
+                    Membership purchase unavailable
+                  </Text>
+
+                  <Text variant="bodyStrong" color="danger">
+                    {agreementError}
+                  </Text>
+                </View>
               ) : (
                 <MembershipAgreementCheck
                   agreementText={agreementPreview?.agreementText ?? ""}

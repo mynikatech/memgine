@@ -96,14 +96,6 @@ export class StaffApi {
      * We will revisit identifier generation separately
      * after the Staff flow is stable.
      */
-    const nonce = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-    const userId = `user-${nonce}`;
-
-    const organizationUserId = `organization-user-${nonce}`;
-
-    const userCode = `USR-${Date.now()}`;
-
     const primaryPhone = `${person.primaryPhone.callingCode ?? ""}${
       person.primaryPhone.number ?? ""
     }`.replace(/\s/g, "");
@@ -111,13 +103,13 @@ export class StaffApi {
     const request: CreateStaffTransactionApiRequest = {
       staff: StaffApiMapper.toCreateRequest({
         ...staff,
-        organizationUserId,
+        organizationUserId: "",
         staffStatusId,
       }),
 
       organizationUser: {
-        userId,
-        userCode,
+        userId: "",
+        userCode: "",
 
         firstName: person.firstName.trim(),
 
@@ -135,7 +127,7 @@ export class StaffApi {
 
         preferredLanguageId: person.preferredLanguageId,
 
-        organizationUserId,
+        organizationUserId: "",
 
         organizationUserTypeId: "organization-user-type-employee",
 

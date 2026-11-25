@@ -33,9 +33,31 @@ class MembershipAgreementOperations(
     private val json = Json { ignoreUnknownKeys = true }
 
     private fun validateCustomer(org: String, userId: String) {
-        if (org.isBlank() || userId.isBlank() || (!sql.hasActiveRelationship(org, userId) && !sql.customerCanStartMembershipPurchase(org, userId))) {
-            throw ForbiddenException("Customer relationship is required")
+        if (org.isBlank() || userId.isBlank()) {
+            throw ForbiddenException(
+                "Customer identity or business is unavailable",
+                "MEMBERSHIP_INVALID_CONTEXT"
+            )
         }
+
+        val decision = json.parseToJsonElement(
+            sql.customerMembershipPurchaseEligibility(org, userId)
+        ).jsonObject
+
+        val eligible =
+            decision["eligible"]?.jsonPrimitive?.content == "true"
+
+        if (eligible) return
+
+        val reasonCode =
+            decision["reasonCode"]?.jsonPrimitive?.contentOrNull
+                ?: "MEMBERSHIP_PURCHASE_UNAVAILABLE"
+
+        val message =
+            decision["message"]?.jsonPrimitive?.contentOrNull
+                ?: "Membership purchase is unavailable for this business with your current account."
+
+        throw ForbiddenException(message, reasonCode)
     }
 
     /** Preserve restrictions exactly; only translate known rule codes to readable words. */

@@ -1,5 +1,9 @@
 import { potentialSavingsLabel } from "@/src/core/domain/savings-display";
-import { activeMembershipPlanIds, discoverableMembershipPlans, discoveryMembershipAction } from "@/src/core/domain/membership-helpers";
+import {
+  activeMembershipPlanIds,
+  discoverableMembershipPlans,
+  discoveryMembershipAction,
+} from "@/src/core/domain/membership-helpers";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -358,10 +362,17 @@ export function CustomerLanding({
       name?.toLowerCase().includes(search.trim().toLowerCase()),
     ),
   );
-  const displayedBusinesses = mode === "memberships" ? [] : mode === "home" ? businesses.slice(0, 4) : businesses;
-  const displayedIds = JSON.stringify(displayedBusinesses.map((business) => business.organizationId));
-  const [publishedPlans, setPublishedPlans] = useState<Record<string, { id: string }[]>>({});
-  const planCache = useRef({ landing, plans: {} as Record<string, { id: string }[]> });
+  const displayedBusinesses = mode === "memberships" ? [] : businesses;
+  const displayedIds = JSON.stringify(
+    displayedBusinesses.map((business) => business.organizationId),
+  );
+  const [publishedPlans, setPublishedPlans] = useState<
+    Record<string, { id: string }[]>
+  >({});
+  const planCache = useRef({
+    landing,
+    plans: {} as Record<string, { id: string }[]>,
+  });
   useEffect(() => {
     let cancelled = false;
     if (planCache.current.landing !== landing) {
@@ -372,24 +383,40 @@ export function CustomerLanding({
     const ids = visible.filter((id) => !planCache.current.plans[id]);
     const loadPlans = async () => {
       for (let start = 0; start < ids.length && !cancelled; start += 4) {
-        const results = await Promise.allSettled(ids.slice(start, start + 4).map(async (id) => {
-          const detail = await services.customerData.discoverOrganizationDetail(id);
-          return [id, detail.membershipProducts.flatMap((product) => product.plans.map(({ id }) => ({ id })))] as const;
-        }));
+        const results = await Promise.allSettled(
+          ids.slice(start, start + 4).map(async (id) => {
+            const detail =
+              await services.customerData.discoverOrganizationDetail(id);
+            return [
+              id,
+              detail.membershipProducts.flatMap((product) =>
+                product.plans.map(({ id }) => ({ id })),
+              ),
+            ] as const;
+          }),
+        );
         if (cancelled) return;
         planCache.current.plans = {
           ...planCache.current.plans,
-          ...Object.fromEntries(results.flatMap((result) => result.status === "fulfilled" ? [result.value] : [])),
+          ...Object.fromEntries(
+            results.flatMap((result) =>
+              result.status === "fulfilled" ? [result.value] : [],
+            ),
+          ),
         };
         setPublishedPlans(planCache.current.plans);
       }
     };
     void loadPlans();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [displayedIds, landing]);
   const estimateFor = (card: CardVM) =>
     code(card) === "ACTIVE"
-      ? card.product.plans.find((plan) => plan.id === card.subscription.subscriptionPlanId)?.potentialSavings
+      ? card.product.plans.find(
+          (plan) => plan.id === card.subscription.subscriptionPlanId,
+        )?.potentialSavings
       : undefined;
   const nameFor = (card: CardVM) =>
     [
@@ -534,7 +561,11 @@ export function CustomerLanding({
                 const status = code(card);
                 const isActive = status === "ACTIVE";
                 const estimate = estimateFor(card);
-                const showEstimate = isActive && card.product.plans.some((plan) => plan.id === card.subscription.subscriptionPlanId);
+                const showEstimate =
+                  isActive &&
+                  card.product.plans.some(
+                    (plan) => plan.id === card.subscription.subscriptionPlanId,
+                  );
 
                 return (
                   <Pressable
@@ -667,7 +698,8 @@ export function CustomerLanding({
                           </View>
                           {showEstimate && (
                             <Text variant="bodySmall" color="textSecondary">
-                              {(estimate && potentialSavingsLabel(estimate)) || "Potential Savings · Estimate unavailable"}
+                              {(estimate && potentialSavingsLabel(estimate)) ||
+                                "Potential Savings · Estimate unavailable"}
                             </Text>
                           )}
                         </View>
@@ -726,7 +758,11 @@ export function CustomerLanding({
                   {activeCount} active{" "}
                   {activeCount === 1 ? "membership" : "memberships"}
                 </Text>
-                {estimate && potentialSavingsLabel(estimate) ? <Text variant="caption" color="textSecondary">{potentialSavingsLabel(estimate)}</Text> : null}
+                {estimate && potentialSavingsLabel(estimate) ? (
+                  <Text variant="caption" color="textSecondary">
+                    {potentialSavingsLabel(estimate)}
+                  </Text>
+                ) : null}
 
                 <View
                   style={{
@@ -777,15 +813,18 @@ export function CustomerLanding({
       >
         {items.map((business) => {
           const activePlanIds = activeMembershipPlanIds(
-            owned.find((group) => group.organizationId === business.organizationId)?.cards.map((card) => ({
-              planId: card.subscription.subscriptionPlanId,
-              status: code(card),
-            })) ?? [],
+            owned
+              .find((group) => group.organizationId === business.organizationId)
+              ?.cards.map((card) => ({
+                planId: card.subscription.subscriptionPlanId,
+                status: code(card),
+              })) ?? [],
           );
           const catalog = publishedPlans[business.organizationId];
           const action = discoveryMembershipAction(
             activePlanIds.size > 0,
-            catalog && discoverableMembershipPlans(catalog, activePlanIds).length > 0,
+            catalog &&
+              discoverableMembershipPlans(catalog, activePlanIds).length > 0,
           );
           return (
             <View
@@ -797,9 +836,15 @@ export function CustomerLanding({
                 accessibilityLabel={
                   action + " at " + (business.displayName || business.name)
                 }
-                onPress={() => action === "View Business"
-                  ? openDiscovery(business.organizationId)
-                  : router.push(APP_ROUTES.discover.memberships(business.organizationId) as never)}
+                onPress={() =>
+                  action === "View Business"
+                    ? openDiscovery(business.organizationId)
+                    : router.push(
+                        APP_ROUTES.discover.memberships(
+                          business.organizationId,
+                        ) as never,
+                      )
+                }
               >
                 <Card
                   padding="md"
@@ -974,7 +1019,7 @@ export function CustomerLanding({
                 groupsView(false)
               ) : (
                 <Text color="textSecondary">
-                  You don't have any memberships yet.
+                  You don&apos;t have any memberships yet.
                 </Text>
               )}
             </View>

@@ -334,7 +334,7 @@ export default function OrgAdminStaff() {
       )?.id ?? "staff-status-active";
 
     return {
-      id: `staff-${Date.now()}`,
+      id: "",
 
       organizationId: organization.id,
 
@@ -417,9 +417,7 @@ export default function OrgAdminStaff() {
       const now = new Date().toISOString();
 
       const assignment: StaffStoreAssignment = {
-        id: `staff-store-${Date.now()}-${Math.random()
-          .toString(36)
-          .slice(2, 8)}`,
+        id: "",
 
         organizationId: organization.id,
 
@@ -521,8 +519,8 @@ export default function OrgAdminStaff() {
         );
 
         const assignments: StaffStoreAssignment[] = uniqueStoreIds.map(
-          (storeId, index) => ({
-            id: `staff-store-${updatedStaff.id}-${index + 1}`,
+          (storeId) => ({
+            id: "",
 
             organizationId: organization.id,
 

@@ -1457,6 +1457,13 @@ export function BusinessExperience({
     maxWidth: redemptionContentWidth,
     alignSelf: "center" as const,
   };
+  const customerSectionContent =
+    Platform.OS === "web" && !isPreviewMode
+      ? {
+          width: "100%" as const,
+          alignSelf: "stretch" as const,
+        }
+      : redemptionContent;
   const renderReservations = (
     kind: "BENEFIT" | "OFFER",
     id: string,
@@ -2722,7 +2729,7 @@ export function BusinessExperience({
       !isHistoricalSubscription &&
       exp.membership?.active &&
       (redeemSectionBenefits.length || redeemSectionOffers.length) ? (
-        <View style={redemptionContent}>
+        <View style={customerSectionContent}>
           <Section
             titleColor={pageTextColor}
             title={t("experience.redeemBenefits")}
@@ -3038,7 +3045,10 @@ export function BusinessExperience({
      */
     return (
       <View
-        style={[{ gap: theme.spacing.lg }, !isPreviewMode && redemptionContent]}
+        style={[
+          { gap: theme.spacing.lg },
+          !isPreviewMode && customerSectionContent,
+        ]}
         testID="experience-tab-offers"
       >
         {renderTabPreviewLink("offers")}
@@ -4662,7 +4672,7 @@ export function BusinessExperience({
           maxWidth: "100%",
         }}
       >
-        {(!publicDiscoveryNavigation || isPlanExploration) && (
+        {true && (
           <Pressable
             onPress={onExit}
             testID="experience-back"
@@ -4683,7 +4693,9 @@ export function BusinessExperience({
             />
             <Text variant="label" color="primary">
               {publicDiscoveryNavigation
-                ? "Back to memberships"
+                ? isPlanExploration
+                  ? "Back to memberships"
+                  : "Back to Memgine"
                 : t("experience.back")}
             </Text>
           </Pressable>
@@ -4786,8 +4798,15 @@ export function BusinessExperience({
           }}
           contentContainerStyle={{
             ...(!isPreviewMode && showStoreEligibility
-              ? redemptionContent
+              ? Platform.OS === "web"
+                ? {
+                    width: "100%",
+                    maxWidth: undefined,
+                    alignSelf: "stretch" as const,
+                  }
+                : redemptionContent
               : undefined),
+
             padding: theme.spacing.lg,
             paddingTop: scrollHeader ? 0 : theme.spacing.sm,
             paddingBottom: insets.bottom + 90,
