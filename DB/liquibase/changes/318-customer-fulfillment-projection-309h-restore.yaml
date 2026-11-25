@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 318-customer-fulfillment-projection-309h-restore
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/318-customer-fulfillment-projection-309h-restore.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

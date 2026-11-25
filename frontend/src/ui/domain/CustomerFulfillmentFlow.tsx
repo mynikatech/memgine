@@ -9,16 +9,19 @@ import {
 import {
   AppState,
   Image,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
   useWindowDimensions,
   View,
+  RefreshControl,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
+import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
 import { formatTransactionMoney } from "@/src/core/domain/savings-display";
 import {
@@ -292,6 +295,8 @@ export function FulfillmentPage({
   footer,
   onExit,
   exitDisabled,
+  onRefresh,
+  refreshing = false,
 }: {
   title: string;
   onBack: () => void;
@@ -299,6 +304,8 @@ export function FulfillmentPage({
   footer?: ReactNode;
   onExit?: () => void;
   exitDisabled?: boolean;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -357,6 +364,11 @@ export function FulfillmentPage({
       <ScrollView
         style={{ flex: 1 }}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          ) : undefined
+        }
         contentContainerStyle={{
           ...panel,
           paddingTop: 20,
@@ -564,9 +576,11 @@ export function CustomerFulfillmentSummary({
 export function FulfillmentProgress({
   item,
   confirmation = false,
+  compact = false,
 }: {
   item: CustomerFulfillment;
   confirmation?: boolean;
+  compact?: boolean;
 }) {
   const theme = useTheme();
   const ready = item.status === "READY";
@@ -600,6 +614,176 @@ export function FulfillmentProgress({
       : item.status === "PLACED"
         ? `${item.storeName} has received your ${item.customerLabel.toLowerCase()}.`
         : undefined;
+  if (compact) {
+    const currentIndex = stages.indexOf(item.status);
+    const lastStageIndex =
+      item.status === "FULFILLED" ? stages.length - 1 : currentIndex;
+    return (
+      <Card
+        padding="md"
+        style={{ gap: 10, backgroundColor: theme.colors.surfaceAlt }}
+      >
+        {stages.length ? (
+          <View
+            accessibilityLabel={`Order progress: ${statusLabels[item.status]}`}
+            style={{ flexDirection: "row", alignItems: "flex-start" }}
+          >
+            {stages.map((stage, index) => {
+              const completed =
+                item.status === "FULFILLED" ||
+                (lastStageIndex >= 0 && index < lastStageIndex);
+              const current = item.status === stage;
+              const activated = completed || current;
+              const icon: FulfillmentIcon =
+                stage === "PLACED"
+                  ? "checkmark"
+                  : stage === "PREPARING"
+                    ? "bag-handle-outline"
+                    : stage === "READY"
+                      ? "bag-check-outline"
+                      : "checkmark-done-outline";
+              const stageLabel =
+                stage === "PLACED"
+                  ? "Order Placed"
+                  : stage === "PREPARING"
+                    ? "Preparing"
+                    : stage === "READY"
+                      ? "Ready for Collection"
+                      : "Collected";
+              return (
+                <View
+                  key={stage}
+                  style={{ flex: 1, minWidth: 0, alignItems: "center", gap: 5 }}
+                >
+                  <View
+                    style={{
+                      alignSelf: "stretch",
+                      flexDirection: "row",
+                      alignItems: "center",
+                    }}
+                  >
+                    <View
+                      style={{
+                        flex: 1,
+                        height: 2,
+                        backgroundColor:
+                          index === 0
+                            ? "transparent"
+                            : activated
+                              ? theme.colors.primary
+                              : theme.colors.border,
+                      }}
+                    />
+                    <View
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 17,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderWidth: current ? 2 : 1,
+                        borderColor: activated
+                          ? theme.colors.primary
+                          : theme.colors.textMuted,
+                        backgroundColor: completed
+                          ? theme.colors.primary
+                          : current
+                            ? theme.colors.primarySoft
+                            : theme.colors.surface,
+                      }}
+                    >
+                      <Ionicons
+                        name={icon}
+                        size={18}
+                        color={
+                          completed
+                            ? theme.colors.surface
+                            : activated
+                              ? theme.colors.primary
+                              : theme.colors.textMuted
+                        }
+                      />
+                    </View>
+                    <View
+                      style={{
+                        flex: 1,
+                        height: 2,
+                        backgroundColor:
+                          index === stages.length - 1
+                            ? "transparent"
+                            : completed
+                              ? theme.colors.primary
+                              : theme.colors.border,
+                      }}
+                    />
+                  </View>
+                  <View
+                    style={{
+                      minHeight: 43,
+                      width: "100%",
+                      alignItems: "center",
+                      justifyContent: "flex-start",
+                      backgroundColor: current
+                        ? theme.colors.primarySoft
+                        : "transparent",
+                      borderRadius: theme.radius.md,
+                      paddingVertical: 3,
+                      paddingHorizontal: 2,
+                    }}
+                  >
+                    <Text
+                      variant="caption"
+                      color={activated ? "primary" : "textMuted"}
+                      style={{
+                        textAlign: "center",
+                        fontWeight: current ? "700" : "500",
+                      }}
+                    >
+                      {stageLabel}
+                    </Text>
+                    {stage === "PLACED" ? (
+                      <Text
+                        variant="caption"
+                        color="textMuted"
+                        style={{ textAlign: "center" }}
+                      >
+                        {localTime(item.acceptedAt, item.timezone)
+                          ?.split(", ")
+                          .slice(-1)[0] ?? ""}
+                      </Text>
+                    ) : null}
+                    {current && stage === "PREPARING" ? (
+                      <Text
+                        variant="caption"
+                        color="primary"
+                        style={{ textAlign: "center" }}
+                      >
+                        In Progress
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={21}
+              color={theme.colors.primary}
+            />
+            <Text variant="bodyStrong">{statusLabels[item.status]}</Text>
+          </View>
+        )}
+        {item.status === "CANCEL_REQUESTED" || item.status === "CANCELLED" ? (
+          <Text variant="caption" color="textMuted">
+            {statusLabels[item.status]}
+          </Text>
+        ) : null}
+      </Card>
+    );
+  }
   return (
     <Card padding="md" style={{ gap: 12 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -687,6 +871,17 @@ export function FulfillmentPickupCard({
   item: CustomerFulfillment;
   active: boolean;
 }) {
+  const theme = useTheme();
+  const { width: viewportWidth } = useWindowDimensions();
+  // Fit two pickup credentials in one row on narrow phones.
+  const pickupQrSize =
+    viewportWidth < 380
+      ? 106
+      : viewportWidth < 480
+        ? 118
+        : viewportWidth < 600
+          ? 142
+          : 158;
   const { session } = useAuth();
   const scope = JSON.stringify([
     session?.userId,
@@ -694,7 +889,7 @@ export function FulfillmentPickupCard({
     organizationId,
     item.id,
   ]);
-  const visible =
+  const allowed =
     !!session?.userId &&
     !!item.canShowPickup &&
     ["PLACED", "PREPARING", "READY"].includes(item.status);
@@ -706,17 +901,16 @@ export function FulfillmentPickupCard({
     code: string;
     expiresAt: string;
   }>();
-  const [codeBusy, setCodeBusy] = useState(false);
-  const [codeError, setCodeError] = useState<string>();
-  const [failure, setFailure] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string>();
+  const [codeError, setCodeError] = useState<string>();
   const live = useRef(false);
   const currentScope = useRef(scope);
   const previousSession = useRef(session?.userId);
   const previousScope = useRef(scope);
   const inFlight = useRef(false);
   currentScope.current = scope;
-  const allowed = visible;
+
   useEffect(() => {
     live.current = true;
     return () => {
@@ -774,26 +968,22 @@ export function FulfillmentPickupCard({
       }),
     [scope, allowed],
   );
-  const generate = async (kind: "qr" | "code", refresh: boolean) => {
-    if (!allowed || !active || inFlight.current) return;
-    inFlight.current = true;
-    const requestScope = scope;
-    if (kind === "qr") {
-      setBusy(true);
-      setFailure(undefined);
-      if (refresh) setCredential(undefined);
-    } else {
-      setCodeBusy(true);
-      setCodeError(undefined);
-      if (refresh) setPickupCode(undefined);
-    }
+
+  const qrValid = !!credential && Date.parse(credential.expiresAt) > Date.now();
+  const codeValid =
+    !!pickupCode && Date.parse(pickupCode.expiresAt) > Date.now();
+  const issue = async (
+    kind: "qr" | "code",
+    replace: boolean,
+    requestScope: string,
+  ) => {
     try {
       if (kind === "qr") {
         const result = await fulfillmentPickupCache.issue(
           requestScope,
           "qr",
           () => read(api.fulfillmentPickup(organizationId, item.id)),
-          refresh,
+          replace,
         );
         if (live.current && currentScope.current === requestScope)
           setCredential(result);
@@ -802,24 +992,42 @@ export function FulfillmentPickupCard({
           requestScope,
           "code",
           () => read(api.fulfillmentPickupCode(organizationId, item.id)),
-          refresh,
+          replace,
         );
         if (live.current && currentScope.current === requestScope)
           setPickupCode(result);
       }
     } catch {
       if (live.current && currentScope.current === requestScope) {
-        if (kind === "qr") setFailure("Could not generate the pickup QR.");
-        else setCodeError("Could not generate the Pickup Code.");
-      }
-    } finally {
-      inFlight.current = false;
-      if (live.current && currentScope.current === requestScope) {
-        setBusy(false);
-        setCodeBusy(false);
+        if (kind === "qr") setFailure("Could not generate the Pickup QR.");
+        else setCodeError("Could not generate the six-digit Pickup Code.");
       }
     }
   };
+
+  const generate = async (replace: boolean, combined: boolean) => {
+    if (!allowed || !active || inFlight.current) return;
+    inFlight.current = true;
+    const requestScope = scope;
+    setBusy(true);
+    setFailure(undefined);
+    setCodeError(undefined);
+    try {
+      // Both credentials are supported in PLACED/PREPARING/READY (migration 309g).
+      if (replace || !qrValid) {
+        if (replace) setCredential(undefined);
+        await issue("qr", replace, requestScope);
+      }
+      if (combined && (replace || !codeValid)) {
+        if (replace) setPickupCode(undefined);
+        await issue("code", replace, requestScope);
+      }
+    } finally {
+      inFlight.current = false;
+      if (live.current && currentScope.current === requestScope) setBusy(false);
+    }
+  };
+
   useEffect(() => {
     if (!credential) return;
     const timer = setTimeout(
@@ -830,98 +1038,179 @@ export function FulfillmentPickupCard({
   }, [credential]);
   useEffect(() => {
     if (!pickupCode) return;
-    const ms = Math.max(0, Date.parse(pickupCode.expiresAt) - Date.now());
-    const timer = setTimeout(() => setPickupCode(undefined), ms);
+    const timer = setTimeout(
+      () => setPickupCode(undefined),
+      Math.max(0, Date.parse(pickupCode.expiresAt) - Date.now()),
+    );
     return () => clearTimeout(timer);
   }, [pickupCode]);
+
   if (!allowed) return null;
+  const bothValid = qrValid && codeValid;
   return (
-    <Card padding="md" style={{ gap: 10, alignItems: "center" }}>
-      <Text variant="bodyStrong">
-        {item.status === "READY" ? "Show this QR at the counter" : "Pickup QR"}
-      </Text>
-      {item.status !== "READY" ? (
+    <Card
+      padding="md"
+      style={{ gap: 10, backgroundColor: theme.colors.primarySoft }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
+        <Ionicons
+          name="qr-code-outline"
+          size={21}
+          color={theme.colors.primary}
+        />
+        <View style={{ flex: 1, minWidth: 140, gap: 2 }}>
+          <Text variant="bodyStrong">Pickup at Counter</Text>
+          <Text variant="caption" color="textMuted">
+            Show your QR or six-digit code to counter staff.
+          </Text>
+        </View>
+        {active && bothValid ? (
+          <Button
+            size="sm"
+            variant="outline"
+            label={busy ? "Refreshing…" : "Refresh QR & Code"}
+            disabled={busy}
+            onPress={() => void generate(true, true)}
+          />
+        ) : null}
+      </View>
+      {active && (qrValid || codeValid) ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {qrValid && credential ? (
+            <View
+              style={{ flex: 1, minWidth: 0, alignItems: "center", gap: 4 }}
+            >
+              <QrPlaceholder value={credential.reference} size={pickupQrSize} />
+              <Text variant="caption" color="textMuted">
+                Pickup QR
+              </Text>
+              <Text variant="caption" color="textMuted">
+                Expires {localTime(credential.expiresAt, item.timezone)}
+              </Text>
+            </View>
+          ) : (
+            <View
+              style={{ flex: 1, minWidth: 0, alignItems: "center", gap: 4 }}
+            >
+              <Ionicons
+                name="qr-code-outline"
+                size={54}
+                color={theme.colors.primary}
+              />
+              <Text variant="caption" color="textMuted">
+                QR not generated
+              </Text>
+            </View>
+          )}
+          <View
+            style={{
+              width: 1,
+              alignSelf: "stretch",
+              backgroundColor: theme.colors.border,
+            }}
+          />
+          <View style={{ flex: 1, minWidth: 0, alignItems: "center", gap: 6 }}>
+            <Text variant="bodyStrong">Pickup Code</Text>
+            {codeValid && pickupCode ? (
+              <>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 5,
+                    backgroundColor: theme.colors.surface,
+                    borderRadius: theme.radius.md,
+                    paddingVertical: 6,
+                    paddingHorizontal: 6,
+                  }}
+                >
+                  <Text
+                    variant="h2"
+                    accessibilityLabel={`Pickup Code ${pickupCode.code}`}
+                    style={{ textAlign: "center", flexShrink: 1 }}
+                  >
+                    {pickupCode.code.slice(0, 3)} {pickupCode.code.slice(3)}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Copy pickup code"
+                    onPress={() =>
+                      void Clipboard.setStringAsync(pickupCode.code)
+                    }
+                    style={{
+                      padding: 5,
+                      minWidth: 32,
+                      minHeight: 34,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons
+                      name="copy-outline"
+                      size={19}
+                      color={theme.colors.primary}
+                    />
+                  </Pressable>
+                </View>
+                <Text
+                  variant="caption"
+                  color="textMuted"
+                  style={{ textAlign: "center" }}
+                >
+                  Expires {localTime(pickupCode.expiresAt, item.timezone)}
+                </Text>
+              </>
+            ) : (
+              <Text variant="bodySmall" color="textMuted">
+                Not generated
+              </Text>
+            )}
+          </View>
+        </View>
+      ) : null}
+      {active && !bothValid ? (
+        <Button
+          size="sm"
+          variant="primary"
+          disabled={busy}
+          label={
+            busy
+              ? "Generating pickup credentials…"
+              : "Generate Pickup QR & Code"
+          }
+          onPress={() => void generate(false, true)}
+        />
+      ) : null}
+      {qrValid || codeValid ? (
         <Text
-          variant="bodySmall"
+          variant="caption"
           color="textMuted"
           style={{ textAlign: "center" }}
         >
-          Keep this QR for collection. Check the order status before heading to
-          the Store.
+          Each credential expires independently. Refresh replaces both values
+          and invalidates their old values.
         </Text>
       ) : null}
-      {active &&
-      !busy &&
-      credential &&
-      Date.parse(credential.expiresAt) > Date.now() ? (
-        <>
-          <QrPlaceholder value={credential.reference} />
-          <Text variant="caption" color="textMuted">
-            Expires {localTime(credential.expiresAt, item.timezone)}
-          </Text>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={busy || codeBusy}
-            label="Replace pickup QR"
-            onPress={() => void generate("qr", true)}
-          />
-        </>
-      ) : (
-        <Button
-          variant={item.status === "READY" ? "primary" : "outline"}
-          disabled={busy || codeBusy || !active}
-          label={busy ? "Generating pickup QR…" : "Get pickup QR"}
-          onPress={() => void generate("qr", false)}
-        />
-      )}
-      {allowed && active ? (
-        <View style={{ width: "100%", gap: 8, alignItems: "center" }}>
-          <Text variant="bodyStrong">Or use a six-digit Pickup Code</Text>
-          {pickupCode && Date.parse(pickupCode.expiresAt) > Date.now() ? (
-            <>
-              <Text
-                variant="h2"
-                accessibilityLabel={`Pickup Code ${pickupCode.code}`}
-              >
-                {pickupCode.code.slice(0, 3)} {pickupCode.code.slice(3)}
-              </Text>
-              <Text variant="caption" color="textMuted">
-                Expires {localTime(pickupCode.expiresAt, item.timezone)}
-              </Text>
-            </>
-          ) : null}
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={busy || codeBusy}
-            label={pickupCode ? "Replace Pickup Code" : "Get Pickup Code"}
-            onPress={() => void generate("code", !!pickupCode)}
-          />
-          {credential || pickupCode ? (
-            <Text variant="caption" color="textMuted">
-              Replacing a QR or code makes its previous value invalid.
-            </Text>
-          ) : null}
-          {codeError ? (
-            <Text variant="caption" color="danger">
-              {codeError}
-            </Text>
-          ) : null}
-          {codeBusy ? (
-            <Text variant="caption" color="textMuted">
-              Generating Pickup Code…
-            </Text>
-          ) : null}
-          <Text variant="caption" color="textMuted">
-            Present the QR or code at Counter. Handover is completed separately
-            in Orders.
-          </Text>
-        </View>
+      {!active ? (
+        <Text variant="caption" color="textMuted">
+          Open this order to generate pickup credentials.
+        </Text>
       ) : null}
       {failure ? (
-        <Text variant="caption" color="textMuted">
+        <Text variant="caption" color="danger">
           {failure}
+        </Text>
+      ) : null}
+      {codeError ? (
+        <Text variant="caption" color="danger">
+          {codeError}
         </Text>
       ) : null}
     </Card>
@@ -934,13 +1223,26 @@ function AmountBreakdown({
   discount,
   tax,
   total,
+  paymentState,
+  compactTotal = false,
 }: {
   currency?: string | null;
   subtotal?: number | null;
   discount?: number | null;
   tax?: number | null;
   total?: number | null;
+  paymentState?: string;
+  compactTotal?: boolean;
 }) {
+  const theme = useTheme();
+  const totalLabel =
+    paymentState === "UNPAID"
+      ? "Total Due"
+      : paymentState === "PAID" || paymentState === "PAYMENT_RECEIVED"
+        ? "Total Paid"
+        : paymentState === "NO_PAYMENT_REQUIRED"
+          ? "Total"
+          : "Order Total";
   return (
     <View style={{ gap: 8 }}>
       {(
@@ -948,7 +1250,6 @@ function AmountBreakdown({
           ["Subtotal", subtotal],
           ["Applied discounts", discount],
           ["Tax", tax],
-          ["Total", total],
         ] as const
       ).map(([label, value]) => {
         const amount = formatTransactionMoney(value, currency);
@@ -958,15 +1259,31 @@ function AmountBreakdown({
             key={label}
             style={{
               flexDirection: "row",
-              flexWrap: "wrap",
               justifyContent: "space-between",
+              alignItems: "center",
               gap: 8,
             }}
           >
-            <Text variant={label === "Total" ? "bodyStrong" : "bodySmall"}>
-              {label}
+            <Text
+              variant="bodySmall"
+              color={
+                label === "Applied discounts" && value && value > 0
+                  ? "success"
+                  : undefined
+              }
+            >
+              {label === "Applied discounts"
+                ? "Discount (Applied Benefits)"
+                : label}
             </Text>
-            <Text variant={label === "Total" ? "bodyStrong" : "bodySmall"}>
+            <Text
+              variant="bodySmall"
+              color={
+                label === "Applied discounts" && value && value > 0
+                  ? "success"
+                  : undefined
+              }
+            >
               {label === "Applied discounts" && value && value > 0
                 ? `−${amount}`
                 : amount}
@@ -974,6 +1291,30 @@ function AmountBreakdown({
           </View>
         );
       })}
+      {formatTransactionMoney(total, currency) ? (
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 8,
+            backgroundColor: compactTotal
+              ? theme.colors.primarySoft
+              : "transparent",
+            borderRadius: theme.radius.md,
+            paddingHorizontal: compactTotal ? 10 : 0,
+            paddingVertical: compactTotal ? 7 : 0,
+          }}
+        >
+          <Text variant="bodyStrong">{totalLabel}</Text>
+          <Text
+            variant="bodyStrong"
+            color={compactTotal ? "primary" : undefined}
+          >
+            {formatTransactionMoney(total, currency)}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -1522,6 +1863,20 @@ export function CustomerFulfillmentPaymentPage({
   );
 }
 
+// Additional detail fields returned by the existing fulfillment GET after migration 317.
+// Kept local so the customer-data API module does not need a separate edit.
+type CustomerFulfillmentWithStore = CustomerFulfillment & {
+  storeId?: string | null;
+  storeAddress?: {
+    line1: string;
+    line2?: string | null;
+    city: string;
+    region?: string | null;
+    postalCode?: string | null;
+    countryCode: string;
+  } | null;
+};
+
 export function CustomerFulfillmentDetails({
   organizationId,
   initial,
@@ -1540,7 +1895,8 @@ export function CustomerFulfillmentDetails({
   onChanged: () => void;
 }) {
   const router = useRouter();
-  const [item, setItem] = useState(initial);
+  const theme = useTheme();
+  const [item, setItem] = useState<CustomerFulfillmentWithStore>(initial);
   const [receiptAmounts, setReceiptAmounts] = useState<TransactionReceipt>();
   const [appActive, setAppActive] = useState(
     AppState.currentState === "active",
@@ -1550,6 +1906,11 @@ export function CustomerFulfillmentDetails({
   const [requestingChange, setRequestingChange] = useState(false);
   const [requestingCancellation, setRequestingCancellation] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+  const [showAllItems, setShowAllItems] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
+  const [showOrderSavings, setShowOrderSavings] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date>(() => new Date());
   const running = useRef(false);
   const mutation = useRef(false);
   const mounted = useRef(false);
@@ -1595,15 +1956,16 @@ export function CustomerFulfillmentDetails({
     };
   }, []);
 
-  const update = (next: CustomerFulfillment) =>
-    setItem((current) => (next.version >= current.version ? next : current));
   const refresh = useCallback(async () => {
     if (running.current || mutation.current) return;
     running.current = true;
     try {
       const next = await read(api.fulfillment(organizationId, orderId));
       if (mounted.current) {
-        update(next);
+        setItem((current) =>
+          next.version >= current.version ? next : current,
+        );
+        setLastUpdatedAt(new Date());
         setFailure(undefined);
       }
     } catch {
@@ -1613,6 +1975,16 @@ export function CustomerFulfillmentDetails({
       running.current = false;
     }
   }, [organizationId, orderId]);
+
+  const handlePullRefresh = async () => {
+    if (running.current || mutation.current) return;
+    setPullRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      if (mounted.current) setPullRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     if (!focused || !appActive) return;
@@ -1641,7 +2013,6 @@ export function CustomerFulfillmentDetails({
       if (mounted.current) setBusy(false);
     }
   };
-
   const requestChange = (time?: string) =>
     mutate(async () => {
       const next = await read(
@@ -1651,249 +2022,679 @@ export function CustomerFulfillmentDetails({
         }),
       );
       if (!mounted.current) return;
-      update(next);
+      setItem((current) => (next.version >= current.version ? next : current));
       setRequestingChange(false);
       setRequestingCancellation(false);
       onChanged();
     });
+
+  const address = item.storeAddress;
+  const storeAddress = address
+    ? [
+        address.line1,
+        address.line2,
+        address.city,
+        address.region,
+        address.postalCode,
+        address.countryCode,
+      ]
+        .filter(Boolean)
+        .join(", ")
+    : "";
+  const lines = item.lines ?? [];
+  // Applied line discounts come from authoritative Commerce adjustments; never
+  // fabricate membership savings from a suggested or undiscounted price.
+  const allLineDiscountsKnown =
+    lines.length > 0 && lines.every((line) => line.discountMinor != null);
+  const appliedLineDiscount = allLineDiscountsKnown
+    ? lines.reduce((sum, line) => sum + (line.discountMinor ?? 0), 0)
+    : undefined;
+  const orderSavingsMinor =
+    item.verifiedSavingsMinor ?? item.discountMinor ?? appliedLineDiscount;
+  // A known zero is meaningful: show $0.00, not an unavailable-value dash.
+  const savings =
+    orderSavingsMinor != null && orderSavingsMinor >= 0
+      ? formatTransactionMoney(orderSavingsMinor, item.currencyCode)
+      : undefined;
+  const visibleLines = showAllItems ? lines : lines.slice(0, 2);
+  const timeline =
+    item.timeline?.filter(
+      (entry) =>
+        timelineLabels[entry.type] &&
+        (entry.type !== "PREPARATION_STARTED" ||
+          item.workflow === "DETAILED") &&
+        (entry.type !== "MARKED_READY" || item.workflow !== "NONE"),
+    ) ?? [];
+
+  const contentWide = useWindowDimensions().width >= 900;
+  const openMap = () => {
+    if (!storeAddress) return;
+    void Linking.openURL(
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(storeAddress)}`,
+    );
+  };
+  const amountCurrency = orderReceipt?.currencyCode ?? item.currencyCode;
+  const total = orderReceipt?.totalMinor ?? item.totalMinor;
+  const allUnitPricesKnown =
+    lines.length > 0 &&
+    lines.every(
+      (line) =>
+        line.unitPriceMinor != null &&
+        Number.isFinite(line.quantity) &&
+        line.quantity > 0,
+    );
+  const pricedItemsSubtotal = allUnitPricesKnown
+    ? lines.reduce(
+        (sum, line) => sum + (line.unitPriceMinor ?? 0) * line.quantity,
+        0,
+      )
+    : undefined;
+  const subtotal =
+    orderReceipt?.subtotalMinor ?? item.subtotalMinor ?? pricedItemsSubtotal;
+  const discount =
+    orderReceipt?.discountMinor ?? item.discountMinor ?? appliedLineDiscount;
+  // A tax remainder is displayed only when all three amounts are known and
+  // reconcile exactly, never from a guessed tax rate.
+  const taxRemainder =
+    subtotal != null && discount != null && total != null
+      ? total - subtotal + discount
+      : undefined;
+  const tax =
+    orderReceipt?.taxMinor ??
+    item.taxMinor ??
+    (taxRemainder != null && taxRemainder >= 0 ? taxRemainder : undefined);
+
+  const orderItems = (
+    <Card padding="md" style={{ gap: 10, flex: 1 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Ionicons
+          name="bag-handle-outline"
+          size={19}
+          color={theme.colors.primary}
+        />
+        <Text variant="bodyStrong" style={{ flex: 1 }}>
+          Order Items ({lines.length})
+        </Text>
+        <Ionicons
+          name={showAllItems ? "chevron-up" : "chevron-down"}
+          size={17}
+          color={theme.colors.primary}
+        />
+      </View>
+      <View style={{ height: 1, backgroundColor: theme.colors.border }} />
+      {visibleLines.map((line, index) => {
+        const lineTotal = receiptLines.get(
+          receiptLineKey(
+            line.name,
+            line.quantity,
+            line.unitPriceMinor,
+            item.currencyCode,
+          ),
+        );
+        // Do not calculate an assumed line price; use authoritative receipt data.
+        const lineAmount = formatTransactionMoney(
+          lineTotal ??
+            line.subtotalMinor ??
+            (line.unitPriceMinor != null
+              ? line.unitPriceMinor * line.quantity
+              : undefined),
+          item.currencyCode,
+        );
+        return (
+          <View
+            key={line.id}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              paddingTop: index ? 8 : 0,
+              borderTopWidth: index ? 1 : 0,
+              borderColor: theme.colors.border,
+            }}
+          >
+            <FulfillmentThumbnail icon="cube-outline" size={38} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text variant="bodyStrong">{line.name}</Text>
+              <Text variant="caption" color="textMuted">
+                Qty {line.quantity}
+                {line.unitPriceMinor != null
+                  ? ` · ${formatTransactionMoney(line.unitPriceMinor, item.currencyCode)} each`
+                  : ""}
+              </Text>
+              {line.discountMinor != null && line.discountMinor > 0 ? (
+                <Text variant="caption" color="success">
+                  Discount{" "}
+                  {formatTransactionMoney(
+                    line.discountMinor,
+                    item.currencyCode,
+                  )}
+                </Text>
+              ) : null}
+              {line.fulfilledQuantity != null &&
+              line.fulfilledQuantity > 0 &&
+              line.fulfilledQuantity < line.quantity ? (
+                <Text variant="caption" color="textMuted">
+                  {line.fulfilledQuantity} of {line.quantity} handed over
+                </Text>
+              ) : null}
+            </View>
+            {lineAmount ? <Text variant="bodyStrong">{lineAmount}</Text> : null}
+          </View>
+        );
+      })}
+      {lines.length > 2 ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          label={
+            showAllItems ? "Show fewer items" : `Show all ${lines.length} items`
+          }
+          onPress={() => setShowAllItems((value) => !value)}
+        />
+      ) : null}
+    </Card>
+  );
+
+  const orderTotals = (
+    <Card padding="md" style={{ gap: 10, flex: 1 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Ionicons
+          name="receipt-outline"
+          size={19}
+          color={theme.colors.primary}
+        />
+        <Text variant="bodyStrong">Order Summary</Text>
+      </View>
+      <View style={{ height: 1, backgroundColor: theme.colors.border }} />
+      <AmountBreakdown
+        currency={amountCurrency}
+        subtotal={subtotal}
+        discount={discount}
+        tax={tax}
+        total={total}
+        paymentState={item.paymentState}
+        compactTotal
+      />
+      {!["UNPAID", "PAID", "PAYMENT_RECEIVED"].includes(item.paymentState) ? (
+        <Text variant="caption" color="textMuted">
+          {paymentLabels[item.paymentState] ?? "Payment unconfirmed"}
+        </Text>
+      ) : null}
+    </Card>
+  );
+
   return (
     <FulfillmentPage
       onBack={() => {
         if (!mutation.current) onClose();
       }}
       title={`${item.customerLabel} Details`}
+      onRefresh={() => void handlePullRefresh()}
+      refreshing={pullRefreshing}
     >
-      <FulfillmentColumns
-        main={
-          <>
-            <FulfillmentProgress item={item} confirmation={confirmation} />
-            <FulfillmentPickupCard
-              organizationId={organizationId}
-              item={item}
-              active={focused && appActive}
+      <View style={{ gap: 10 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <View
+            style={{
+              flex: 1,
+              minWidth: 0,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 5,
+            }}
+          >
+            <Text variant="bodyStrong" style={{ flexShrink: 1 }}>
+              {item.customerLabel} {item.referenceNumber}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Copy order reference"
+              onPress={() =>
+                void Clipboard.setStringAsync(item.referenceNumber)
+              }
+              style={{
+                minWidth: 36,
+                minHeight: 36,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons
+                name="copy-outline"
+                size={21}
+                color={theme.colors.primary}
+              />
+            </Pressable>
+          </View>
+          {/* Reuse the business landing page piggy-bank treatment, scoped to this order. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Order savings ${savings ?? "unavailable"}. View savings details`}
+            onPress={() => setShowOrderSavings(true)}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              alignSelf: "flex-end",
+              gap: 4,
+              paddingHorizontal: 9,
+              minHeight: 38,
+              borderRadius: 24,
+              borderWidth: 1.5,
+              borderColor: theme.colors.primary,
+              backgroundColor: theme.colors.primarySoft,
+              opacity: pressed ? 0.75 : 1,
+            })}
+          >
+            <MaterialCommunityIcons
+              name="piggy-bank"
+              size={23}
+              color="#E88BA7"
             />
-          </>
-        }
-        side={
-          <>
-            <Card padding="md" style={{ gap: 8 }}>
-              <CustomerFulfillmentSummary item={item} showReference={false} />
+            <Text
+              variant="bodyStrong"
+              numberOfLines={1}
+              style={{
+                color: theme.colors.primary,
+                fontSize: 14,
+                fontWeight: "700",
+              }}
+            >
+              {savings ?? "—"}
+            </Text>
+            <MaterialCommunityIcons
+              name="chevron-down"
+              size={14}
+              color={theme.colors.primary}
+            />
+          </Pressable>
+        </View>
+        {/* Both actions follow the organization's primary theme, including icons. */}
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Refresh order status"
+            accessibilityState={{ disabled: busy || pullRefreshing }}
+            disabled={busy || pullRefreshing}
+            onPress={() => void refresh()}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              minHeight: 44,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              paddingHorizontal: 7,
+              borderWidth: 1,
+              borderColor: theme.colors.primary,
+              borderRadius: theme.radius.md,
+              backgroundColor: theme.colors.primarySoft,
+              opacity: busy || pullRefreshing ? 0.6 : 1,
+            }}
+          >
+            <Ionicons
+              name="refresh-outline"
+              size={19}
+              color={theme.colors.primary}
+            />
+            <Text
+              variant="bodySmall"
+              color="primary"
+              style={{ fontWeight: "600", textAlign: "center" }}
+            >
+              Refresh Status
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Contact support"
+            onPress={() => router.push("/customer/support")}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              minHeight: 44,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              paddingHorizontal: 7,
+              borderWidth: 1,
+              borderColor: theme.colors.primary,
+              borderRadius: theme.radius.md,
+              backgroundColor: theme.colors.primarySoft,
+            }}
+          >
+            <Ionicons
+              name="headset-outline"
+              size={19}
+              color={theme.colors.primary}
+            />
+            <Text
+              variant="bodySmall"
+              color="primary"
+              style={{ fontWeight: "600", textAlign: "center" }}
+            >
+              Contact Support
+            </Text>
+          </Pressable>
+        </View>
+        <Modal
+          visible={showOrderSavings}
+          onClose={() => setShowOrderSavings(false)}
+          title="Savings on this order"
+          maxWidth={420}
+        >
+          <View style={{ gap: 10 }}>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+            >
+              <MaterialCommunityIcons
+                name="piggy-bank"
+                size={32}
+                color="#E88BA7"
+              />
+              <Text variant="h2" color="success">
+                {savings ?? "Not available"}
+              </Text>
+            </View>
+            <Text variant="bodySmall" color="textMuted">
+              {item.verifiedSavingsMinor != null
+                ? "Verified net savings for this order."
+                : orderSavingsMinor != null
+                  ? "Applied discounts on this order, based on its Commerce pricing."
+                  : "Savings have not yet been reported for this order."}
+            </Text>
+            {discount != null ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  gap: 8,
+                }}
+              >
+                <Text variant="bodySmall">Applied discounts</Text>
+                <Text variant="bodyStrong">
+                  {formatTransactionMoney(discount, amountCurrency) ??
+                    "Unavailable"}
+                </Text>
+              </View>
+            ) : null}
+            <Text variant="caption" color="textMuted">
+              This amount relates only to {item.referenceNumber}; it is not your
+              total savings across memberships.
+            </Text>
+          </View>
+        </Modal>
+        {/* Two-column store/status panel on mobile as well as web. The divider is
+            intentionally visible at all widths, matching the approved design. */}
+        <Card padding="md" style={{ gap: 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "stretch" }}>
+            <View style={{ flex: 1, minWidth: 0, paddingRight: 10, gap: 5 }}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
+              >
+                <Ionicons
+                  name="location-outline"
+                  size={20}
+                  color={theme.colors.primary}
+                />
+                <Text variant="caption" color="textMuted">
+                  Collection Store
+                </Text>
+              </View>
+              <Text variant="bodyStrong">{item.storeName}</Text>
+              {storeAddress ? (
+                <Text variant="caption" style={{ flexShrink: 1 }}>
+                  {storeAddress}
+                </Text>
+              ) : null}
+              {storeAddress ? (
+                <Pressable
+                  accessibilityRole="link"
+                  accessibilityLabel="View collection store on map"
+                  onPress={openMap}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                    minHeight: 34,
+                  }}
+                >
+                  <Ionicons
+                    name="location-outline"
+                    size={16}
+                    color={theme.colors.primary}
+                  />
+                  <Text variant="caption" color="primary">
+                    View on Map
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+
+            <View style={{ width: 1, backgroundColor: theme.colors.border }} />
+
+            <View style={{ flex: 1, minWidth: 0, paddingLeft: 10, gap: 5 }}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
+              >
+                <Ionicons
+                  name="bag-handle-outline"
+                  size={20}
+                  color={theme.colors.primary}
+                />
+                <Text variant="caption" color="textMuted">
+                  Order Status
+                </Text>
+              </View>
+              <View
+                style={{
+                  alignSelf: "flex-start",
+                  backgroundColor:
+                    item.status === "READY"
+                      ? theme.colors.successSoft
+                      : theme.colors.primarySoft,
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 16,
+                }}
+              >
+                <Text
+                  variant="caption"
+                  color={item.status === "READY" ? "success" : "primary"}
+                  style={{ fontWeight: "700" }}
+                >
+                  {statusLabels[item.status]}
+                </Text>
+              </View>
+              {item.status === "PREPARING" ? (
+                <Text variant="caption">We&apos;re preparing your order.</Text>
+              ) : item.status === "PLACED" ? (
+                <Text variant="caption">Your order has been placed.</Text>
+              ) : item.status === "READY" ? (
+                <Text variant="caption">Ready for collection.</Text>
+              ) : null}
+              {item.expectedCollectionAt && !terminal ? (
+                <View style={{ gap: 2 }}>
+                  <Text variant="caption" color="textMuted">
+                    Estimated collection
+                  </Text>
+                  <Text variant="caption">
+                    {localTime(item.expectedCollectionAt, item.timezone)}
+                    {item.collectionWindowEndsAt
+                      ? ` – ${localTime(item.collectionWindowEndsAt, item.timezone)}`
+                      : ""}
+                  </Text>
+                </View>
+              ) : null}
               {item.expectedCompletionAt && !terminal ? (
-                <Text variant="bodySmall">
+                <Text variant="caption" color="textMuted">
                   Estimated completion{" "}
                   {localTime(item.expectedCompletionAt, item.timezone)}
                 </Text>
               ) : null}
               {item.fulfilledAt ? (
-                <Text variant="bodySmall">
+                <Text variant="caption" color="textMuted">
                   Fulfilled {localTime(item.fulfilledAt, item.timezone)}
                 </Text>
               ) : null}
-            </Card>
-            {item.lines?.map((line) => {
-              const subtotal = formatTransactionMoney(
-                receiptLines.get(
-                  receiptLineKey(
-                    line.name,
-                    line.quantity,
-                    line.unitPriceMinor,
-                    item.currencyCode,
-                  ),
-                ) ?? line.subtotalMinor,
-                item.currencyCode,
-              );
-              return (
-                <Card
-                  key={line.id}
-                  padding="md"
-                  style={{
-                    flexDirection: "row",
-                    gap: 10,
-                    alignItems: "center",
-                  }}
-                >
-                  <FulfillmentThumbnail icon="cube-outline" size={36} />
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text variant="bodyStrong">
-                      {line.quantity} × {line.name}
-                    </Text>
-                    {line.unitPriceMinor != null ? (
-                      <Text variant="bodySmall">
-                        {formatTransactionMoney(
-                          line.unitPriceMinor,
-                          item.currencyCode,
-                        )}{" "}
-                        each
-                      </Text>
-                    ) : null}
-                    {subtotal ? (
-                      <Text variant="bodySmall">Subtotal {subtotal}</Text>
-                    ) : null}
-                    {line.discountMinor != null && line.discountMinor > 0 ? (
-                      <Text variant="bodySmall" color="success">
-                        Applied discount{" "}
-                        {formatTransactionMoney(
-                          line.discountMinor,
-                          item.currencyCode,
-                        )}
-                      </Text>
-                    ) : null}
-                    {line.fulfilledQuantity != null &&
-                    line.fulfilledQuantity > 0 &&
-                    line.fulfilledQuantity < line.quantity ? (
-                      <Text variant="bodySmall">
-                        {line.fulfilledQuantity} of {line.quantity} handed over
-                      </Text>
-                    ) : null}
-                  </View>
-                </Card>
-              );
-            })}
-            {orderReceipt ||
-            item.subtotalMinor != null ||
-            item.discountMinor != null ||
-            item.taxMinor != null ? (
-              <Card padding="md">
-                <AmountBreakdown
-                  currency={orderReceipt?.currencyCode ?? item.currencyCode}
-                  subtotal={orderReceipt?.subtotalMinor ?? item.subtotalMinor}
-                  discount={orderReceipt?.discountMinor ?? item.discountMinor}
-                  tax={orderReceipt?.taxMinor ?? item.taxMinor}
-                  total={orderReceipt?.totalMinor ?? item.totalMinor}
+            </View>
+          </View>
+        </Card>
+        <FulfillmentPickupCard
+          organizationId={organizationId}
+          item={item}
+          active={focused && appActive}
+        />
+        <View
+          style={{
+            flexDirection: contentWide ? "row" : "column",
+            gap: 10,
+            alignItems: "stretch",
+          }}
+        >
+          {orderItems}
+          {orderTotals}
+        </View>
+        <FulfillmentProgress item={item} compact confirmation={confirmation} />
+        {failure ? (
+          <Text variant="bodySmall" color="danger">
+            {failure}
+          </Text>
+        ) : null}
+        {timeline.length ? (
+          <Card padding="sm" style={{ gap: 8 }}>
+            <Button
+              size="sm"
+              variant="ghost"
+              label={
+                showTimeline ? "Hide Order Timeline" : "View Order Timeline"
+              }
+              onPress={() => setShowTimeline((value) => !value)}
+            />
+            {showTimeline
+              ? timeline.map((entry) => (
+                  <Text key={entry.id} variant="caption" color="textMuted">
+                    {timelineLabels[entry.type]} ·{" "}
+                    {localTime(entry.at, item.timezone)}
+                    {entry.previousAt
+                      ? ` · Previous ${localTime(entry.previousAt, item.timezone)}`
+                      : ""}
+                    {entry.proposedAt
+                      ? ` · Proposed ${localTime(entry.proposedAt, item.timezone)}`
+                      : ""}
+                    {entry.reason ? ` · ${entry.reason}` : ""}
+                  </Text>
+                ))
+              : null}
+          </Card>
+        ) : null}
+        {item.refundStates.map((state) =>
+          refundLabels[state] ? (
+            <Text key={state} variant="bodySmall">
+              {refundLabels[state]}
+            </Text>
+          ) : null,
+        )}
+        {item.receiptId && item.status === "FULFILLED" ? (
+          <Button
+            label="View receipt"
+            disabled={busy}
+            onPress={() => {
+              const receiptId = item.receiptId;
+              if (receiptId) void mutate(() => onReceipt(receiptId));
+            }}
+          />
+        ) : null}
+        {item.canRequestCollectionChange || item.canRequestCancellation ? (
+          <Card padding="sm" style={{ gap: 8 }}>
+            {item.canRequestCollectionChange ? (
+              requestingChange ? (
+                <>
+                  <Input
+                    label={`Requested pickup time (${item.timezone ?? "Store time"})`}
+                    placeholder="YYYY-MM-DD HH:MM"
+                    value={proposed}
+                    onChangeText={setProposed}
+                  />
+                  <Button
+                    label="Send pickup change request"
+                    disabled={busy || !proposed.trim()}
+                    onPress={() => void requestChange(proposed.trim())}
+                  />
+                </>
+              ) : (
+                <Button
+                  label="Request a different pickup time"
+                  variant="outline"
+                  onPress={() => setRequestingChange(true)}
                 />
-              </Card>
+              )
             ) : null}
-            {item.verifiedSavingsMinor != null &&
-            formatTransactionMoney(
-              item.verifiedSavingsMinor,
-              item.currencyCode,
-            ) ? (
-              <Text variant="bodyStrong" color="success">
-                Saved{" "}
-                {formatTransactionMoney(
-                  item.verifiedSavingsMinor,
-                  item.currencyCode,
-                )}
+            {item.canRequestCancellation ? (
+              <Button
+                label="Request cancellation"
+                variant="outline"
+                disabled={busy}
+                onPress={() => setRequestingCancellation(true)}
+              />
+            ) : null}
+          </Card>
+        ) : null}
+        <View
+          style={{
+            flexDirection: "row",
+            gap: 7,
+            alignItems: "center",
+            paddingVertical: 4,
+          }}
+        >
+          <Ionicons
+            name="refresh-outline"
+            size={15}
+            color={theme.colors.textMuted}
+          />
+          <Text variant="caption" color="textMuted">
+            Last updated: {lastUpdatedAt.toLocaleString()}
+          </Text>
+        </View>
+        <Modal
+          visible={requestingCancellation && item.canRequestCancellation}
+          title="Request cancellation"
+          maxWidth={420}
+          onClose={() => {
+            if (!busy) setRequestingCancellation(false);
+          }}
+        >
+          <View style={{ gap: 12 }}>
+            <Text>Are you sure you want to request cancellation?</Text>
+            <Button
+              label={`Keep ${item.customerLabel}`}
+              variant="outline"
+              disabled={busy}
+              onPress={() => setRequestingCancellation(false)}
+            />
+            <Button
+              label="Yes, Request Cancellation"
+              disabled={busy}
+              onPress={() => void requestChange()}
+            />
+            {failure ? (
+              <Text variant="bodySmall" color="danger">
+                {failure}
               </Text>
             ) : null}
-            {item.timeline
-              ?.filter(
-                (entry) =>
-                  timelineLabels[entry.type] &&
-                  (entry.type !== "PREPARATION_STARTED" ||
-                    item.workflow === "DETAILED") &&
-                  (entry.type !== "MARKED_READY" || item.workflow !== "NONE"),
-              )
-              .map((entry) => (
-                <Text key={entry.id} variant="caption" color="textMuted">
-                  {timelineLabels[entry.type]} ·{" "}
-                  {localTime(entry.at, item.timezone)}
-                  {entry.previousAt
-                    ? ` · Previous ${localTime(entry.previousAt, item.timezone)}`
-                    : ""}
-                  {entry.proposedAt
-                    ? ` · Proposed ${localTime(entry.proposedAt, item.timezone)}`
-                    : ""}
-                  {entry.reason ? ` · ${entry.reason}` : ""}
-                </Text>
-              ))}
-            {item.refundStates.map((state) =>
-              refundLabels[state] ? (
-                <Text key={state} variant="bodySmall">
-                  {refundLabels[state]}
-                </Text>
-              ) : null,
-            )}
-            {item.receiptId && item.status === "FULFILLED" ? (
-              <Button
-                label="View receipt"
-                disabled={busy}
-                onPress={() => {
-                  const receiptId = item.receiptId;
-                  if (receiptId) void mutate(() => onReceipt(receiptId));
-                }}
-              />
-            ) : null}
-            <View style={{ gap: 8, alignItems: "flex-start" }}>
-              {item.canRequestCollectionChange ? (
-                requestingChange ? (
-                  <>
-                    <Input
-                      label={`Requested pickup time (${item.timezone ?? "Store time"})`}
-                      placeholder="YYYY-MM-DD HH:MM"
-                      value={proposed}
-                      onChangeText={setProposed}
-                    />
-                    <Button
-                      label="Send pickup change request"
-                      disabled={busy || !proposed.trim()}
-                      onPress={() => void requestChange(proposed.trim())}
-                    />
-                  </>
-                ) : (
-                  <Button
-                    label="Request a different pickup time"
-                    variant="outline"
-                    onPress={() => setRequestingChange(true)}
-                  />
-                )
-              ) : null}
-              {item.canRequestCancellation ? (
-                <Button
-                  label="Request cancellation"
-                  variant="outline"
-                  disabled={busy}
-                  onPress={() => setRequestingCancellation(true)}
-                />
-              ) : null}
-              {failure ? (
-                <Text variant="bodySmall" color="danger">
-                  {failure}
-                </Text>
-              ) : null}
-              <Button
-                label="Refresh status"
-                variant="ghost"
-                disabled={busy}
-                onPress={() => void refresh()}
-              />
-              <Button
-                label="Contact support"
-                variant="ghost"
-                onPress={() => router.push("/customer/support")}
-              />
-            </View>
-            <Modal
-              visible={requestingCancellation && item.canRequestCancellation}
-              title="Request cancellation"
-              maxWidth={420}
-              onClose={() => {
-                if (!busy) setRequestingCancellation(false);
-              }}
-            >
-              <View style={{ gap: 12 }}>
-                <Text>Are you sure you want to request cancellation?</Text>
-                <Button
-                  label={`Keep ${item.customerLabel}`}
-                  variant="outline"
-                  disabled={busy}
-                  onPress={() => setRequestingCancellation(false)}
-                />
-                <Button
-                  label="Yes, Request Cancellation"
-                  disabled={busy}
-                  onPress={() => void requestChange()}
-                />
-                {failure ? (
-                  <Text variant="bodySmall" color="danger">
-                    {failure}
-                  </Text>
-                ) : null}
-              </View>
-            </Modal>
-          </>
-        }
-      />
+          </View>
+        </Modal>
+      </View>
     </FulfillmentPage>
   );
 }

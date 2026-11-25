@@ -300,10 +300,21 @@ export type SubscriptionActualSavings = {
 };
 
 export type BusinessActualSavings = {
-  coverageState: "COMPLETE" | "PARTIAL" | "NO_REDEMPTION_HISTORY" | "UNAVAILABLE";
+  coverageState:
+    | "COMPLETE"
+    | "PARTIAL"
+    | "NO_REDEMPTION_HISTORY"
+    | "UNAVAILABLE";
   activePlanCurrencyCode?: string | null;
-  totals: { currencyCode: string; verifiedNetSavingsMinor: number; coverageState: "COMPLETE" | "PARTIAL" }[];
-  memberships: (SubscriptionActualSavings & { membershipName: string; planName: string })[];
+  totals: {
+    currencyCode: string;
+    verifiedNetSavingsMinor: number;
+    coverageState: "COMPLETE" | "PARTIAL";
+  }[];
+  memberships: (SubscriptionActualSavings & {
+    membershipName: string;
+    planName: string;
+  })[];
 };
 
 /** Immutable server-issued receipt. Amounts are minor units from the receipt snapshot. */
@@ -422,6 +433,15 @@ export type CustomerFulfillment = {
   customerLabel: string;
   referenceNumber: string;
   storeName: string;
+  storeId?: string | null;
+  storeAddress?: {
+    line1: string;
+    line2?: string | null;
+    city: string;
+    region?: string | null;
+    postalCode?: string | null;
+    countryCode: string;
+  } | null;
   status: CustomerFulfillmentStatus;
   workflow: "NONE" | "SIMPLE" | "DETAILED";
   paymentState: string;
@@ -443,7 +463,16 @@ export type CustomerFulfillment = {
   acceptedAt: string;
   fulfilledAt?: string | null;
   refundStates: string[];
-  timeline?: { id: ID; type: string; at: string; previousAt?: string | null; proposedAt?: string | null; reason?: string | null }[] | null;
+  timeline?:
+    | {
+        id: ID;
+        type: string;
+        at: string;
+        previousAt?: string | null;
+        proposedAt?: string | null;
+        reason?: string | null;
+      }[]
+    | null;
   lines?:
     | {
         id: ID;
@@ -713,7 +742,9 @@ export class CustomerDataApi {
       `${base(organizationId)}/subscriptions/${encodeURIComponent(subscriptionId)}/actual-savings`,
     );
   }
-  businessActualSavings(organizationId: ID): Promise<ApiResult<BusinessActualSavings>> {
+  businessActualSavings(
+    organizationId: ID,
+  ): Promise<ApiResult<BusinessActualSavings>> {
     return httpClient.get(`${base(organizationId)}/actual-savings`);
   }
   receipt(
