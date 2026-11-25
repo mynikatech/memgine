@@ -1333,6 +1333,7 @@ export function CustomerFulfillmentReviewPage({
   requestKeyFor,
   onAccepted,
   onQuotedTime,
+  renderRedemptionMethods,
 }: {
   organizationId: string;
   request: CustomerFulfillmentRequest;
@@ -1347,6 +1348,11 @@ export function CustomerFulfillmentReviewPage({
   requestKeyFor: (signature: string) => string;
   onAccepted: (item: CustomerFulfillment) => void;
   onQuotedTime?: (time?: string) => void;
+  renderRedemptionMethods?: (
+    review: CustomerFulfillmentReview | undefined,
+    locked: boolean,
+    runMethodChange: (change: () => void) => void,
+  ) => ReactNode;
 }) {
   const [review, setReview] = useState<CustomerFulfillmentReview>();
   const [collection, setCollection] = useState(
@@ -1661,6 +1667,27 @@ export function CustomerFulfillmentReviewPage({
             onPress={() => void getQuote(applyTime)}
           />
         )}
+        {renderRedemptionMethods?.(
+          currentQuote ? review : undefined,
+          busy || confirmed.current,
+          (change) => {
+            // Prevent changing the request while a quote or submission is in flight.
+            if (inFlight.current || confirmed.current) return;
+            inFlight.current = true;
+            setBusy(true);
+            try {
+              change(); // The new journey/request key remounts the review.
+            } catch (error) {
+              inFlight.current = false;
+              setBusy(false);
+              setFailure(
+                error instanceof Error
+                  ? error.message
+                  : "Could not change redemption method.",
+              );
+            }
+          },
+        )}
         {counterConflict ? (
           <CounterQrConflict
             organizationId={organizationId}
@@ -1882,6 +1909,7 @@ export function CustomerFulfillmentDetails({
   initial,
   focused,
   confirmation,
+  justPlaced = false,
   onClose,
   onReceipt,
   onChanged,
@@ -1890,6 +1918,7 @@ export function CustomerFulfillmentDetails({
   initial: CustomerFulfillment;
   focused: boolean;
   confirmation?: boolean;
+  justPlaced?: boolean;
   onClose: () => void;
   onReceipt: (id: string) => Promise<void>;
   onChanged: () => void;
@@ -1990,9 +2019,12 @@ export function CustomerFulfillmentDetails({
     if (!focused || !appActive) return;
     void refresh();
     if (terminal) return;
-    const interval = setInterval(() => void refresh(), 60000);
+    const interval = setInterval(
+      () => void refresh(),
+      justPlaced ? 8000 : 60000,
+    );
     return () => clearInterval(interval);
-  }, [focused, appActive, terminal, refresh]);
+  }, [focused, appActive, terminal, refresh, justPlaced]);
 
   const mutate = async (action: () => Promise<void>) => {
     if (mutation.current) return;
@@ -2105,7 +2137,15 @@ export function CustomerFulfillmentDetails({
     (taxRemainder != null && taxRemainder >= 0 ? taxRemainder : undefined);
 
   const orderItems = (
-    <Card padding="md" style={{ gap: 10, flex: 1 }}>
+    <Card
+      padding="md"
+      style={{
+        gap: 10,
+        ...(contentWide
+          ? { flex: 1, minWidth: 0 }
+          : { flexGrow: 0, flexShrink: 0 }),
+      }}
+    >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <Ionicons
           name="bag-handle-outline"
@@ -2196,7 +2236,15 @@ export function CustomerFulfillmentDetails({
   );
 
   const orderTotals = (
-    <Card padding="md" style={{ gap: 10, flex: 1 }}>
+    <Card
+      padding="md"
+      style={{
+        gap: 10,
+        ...(contentWide
+          ? { flex: 1, minWidth: 0 }
+          : { flexGrow: 0, flexShrink: 0 }),
+      }}
+    >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <Ionicons
           name="receipt-outline"
@@ -2228,9 +2276,25 @@ export function CustomerFulfillmentDetails({
       onBack={() => {
         if (!mutation.current) onClose();
       }}
-      title={`${item.customerLabel} Details`}
+      title={
+        justPlaced && item.status === "PLACED"
+          ? `${item.customerLabel} Placed`
+          : `${item.customerLabel} Details`
+      }
       onRefresh={() => void handlePullRefresh()}
       refreshing={pullRefreshing}
+      footer={
+        justPlaced ? (
+          <Button
+            fullWidth
+            label="Done"
+            disabled={busy}
+            onPress={() => {
+              if (!mutation.current) onClose();
+            }}
+          />
+        ) : undefined
+      }
     >
       <View style={{ gap: 10 }}>
         <View
@@ -2316,6 +2380,34 @@ export function CustomerFulfillmentDetails({
             />
           </Pressable>
         </View>
+        {justPlaced && item.status === "PLACED" ? (
+          <View
+            accessibilityRole="alert"
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              padding: 10,
+              borderRadius: theme.radius.md,
+              backgroundColor: theme.colors.successSoft,
+            }}
+          >
+            <Ionicons
+              name="checkmark-circle"
+              size={22}
+              color={theme.colors.primary}
+            />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text variant="bodyStrong" color="success">
+                {item.customerLabel} placed successfully
+              </Text>
+              <Text variant="caption">
+                {item.storeName} has received your{" "}
+                {item.customerLabel.toLowerCase()}.
+              </Text>
+            </View>
+          </View>
+        ) : null}
         {/* Both actions follow the organization's primary theme, including icons. */}
         <View style={{ flexDirection: "row", gap: 8 }}>
           <Pressable

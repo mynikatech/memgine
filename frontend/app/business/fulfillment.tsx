@@ -1,6 +1,6 @@
 import { useIsFocused } from "@react-navigation/native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, View } from "react-native";
 import { useAuth } from "@/src/providers";
 import { BusinessPreviewScope } from "@/src/providers";
@@ -21,13 +21,10 @@ import {
   CustomerFulfillmentDetails,
   CustomerFulfillmentPaymentPage,
   CustomerFulfillmentReviewPage,
-  CustomerFulfillmentSummary,
   CounterQrConflict,
   FulfillmentChoice,
   FulfillmentColumns,
   FulfillmentPage,
-  FulfillmentPickupCard,
-  FulfillmentProgress,
   FulfillmentThumbnail,
   isCounterQrConflict,
   localTime,
@@ -102,15 +99,29 @@ function ids(value?: string): string[] {
   return value?.split(",").filter(Boolean) ?? [];
 }
 
-function journeyLabel(
-  journey: CustomerFulfillmentJourney,
-  customerLabel: string,
-) {
-  if (journey === "IMMEDIATE_PAY_AT_COUNTER") return "Redeem at Store Counter";
+function isEligibleForJourney(
+  store: CustomerFulfillmentStore | undefined,
+  method: CustomerFulfillmentJourney,
+  selection: CustomerFulfillmentRequest["selection"],
+  productSelections: CustomerFulfillmentRequest["productSelections"],
+): boolean {
+  if (!store?.journeys.includes(method)) return false;
+  const products =
+    method === "ADVANCE_PAY_NOW" ? store.payNowProducts : store.products;
+  const keys = [
+    ...selection.benefitIds.map((id) => `BENEFIT:${id}`),
+    ...selection.offerIds.map((id) => `OFFER:${id}`),
+  ];
   return (
-    customerLabel +
-    " ahead — " +
-    (journey === "ADVANCE_PAY_NOW" ? "Pay online" : "Pay at counter")
+    keys.length > 0 &&
+    Object.keys(productSelections).length === keys.length &&
+    keys.every(
+      (key) =>
+        !!productSelections[key] &&
+        (products?.[key] ?? []).some(
+          (entry) => entry.productId === productSelections[key],
+        ),
+    )
   );
 }
 
@@ -138,9 +149,15 @@ function SelectFulfillment({
     useState<CustomerFulfillmentPayment>();
   const [stores, setStores] = useState<CustomerFulfillmentStore[]>();
   const [failure, setFailure] = useState<string>();
-  const [counterConflict, setCounterConflict] = useState(false);
   const [existingQr, setExistingQr] = useState<CounterQrSummary>();
+  const navigationPending = useRef(false);
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (focused) {
+      navigationPending.current = false;
+      setBusy(false);
+    }
+  }, [focused]);
   const [reload, setReload] = useState(0);
   const [choice, setChoice] = useState<
     RedemptionProductSelectionState & { scope: string }
@@ -243,92 +260,70 @@ function SelectFulfillment({
   }, [org, reload, selection]);
 
   const store = selectedFulfillmentStore(stores, params.store);
-  const journey =
-    store?.journeys.length === 1
-      ? store.journeys[0]
-      : store?.journeys.find((entry) => entry === params.journey);
+  // Use the store-wide product set. A chosen redemption method is independently
+  // checked against its allowed product scope on the Review screen.
   const { options: productOptions, key: productScope } =
-    fulfillmentProductScope(store, journey);
+    fulfillmentProductScope(
+      store,
+      store?.journeys.every((method) => method === "ADVANCE_PAY_NOW")
+        ? "ADVANCE_PAY_NOW"
+        : undefined,
+    );
   const activeChoice = choice?.scope === productScope ? choice : undefined;
-  const continueSelection = async () => {
-    if (!store || !journey || !activeChoice?.ready || busy) return;
+  const journey = activeChoice?.ready
+    ? (
+        [
+          "ADVANCE_PAY_AT_COUNTER",
+          "ADVANCE_PAY_NOW",
+          "IMMEDIATE_PAY_AT_COUNTER",
+        ] as const
+      ).find((method) =>
+        isEligibleForJourney(store, method, selection, activeChoice.selections),
+      )
+    : undefined;
+  const continueSelection = () => {
+    if (!store || !journey || !activeChoice?.ready || navigationPending.current)
+      return;
+    navigationPending.current = true;
     setBusy(true);
-    setFailure(undefined);
-    setCounterConflict(false);
+    const requestKey =
+      globalThis.crypto?.randomUUID?.() ??
+      "ful_" +
+        Date.now().toString(36) +
+        "_" +
+        Math.random().toString(36).slice(2);
     try {
-      if (
-        existingQr?.expiresAt &&
-        Date.parse(existingQr.expiresAt) > Date.now()
-      ) {
-        router.push(
-          routeFor(org, subscription, "qr", existingQr.transactionId),
-        );
-        return;
-      }
-      if (params.preparedQrId) {
-        const current = await read(
-          api.redemptionTransactionStatus(org, params.preparedQrId),
-        );
-        if (current.status === "PENDING") {
-          router.push(routeFor(org, subscription, "qr", current.transactionId));
-          return;
-        }
-        setExistingQr(undefined);
-        router.setParams({ preparedQrId: "" });
-      }
-      if (journey === "IMMEDIATE_PAY_AT_COUNTER") {
-        const result = await read(
-          api.createStoreRedemption(org, {
-            selection,
-            storeId: store.id,
-            journey,
-            productSelections: activeChoice.selections,
-          }),
-        );
-        router.setParams({ preparedQrId: result.transactionId });
-        router.push(routeFor(org, subscription, "qr", result.transactionId));
-      } else {
-        const requestKey =
-          globalThis.crypto?.randomUUID?.() ??
-          "ful_" +
-            Date.now().toString(36) +
-            "_" +
-            Math.random().toString(36).slice(2);
-        router.push({
-          pathname: "/business/fulfillment",
-          params: {
-            org,
-            subscription,
-            view: "review",
-            benefits: params.benefits ?? "",
-            offers: params.offers ?? "",
-            labels: params.labels ?? "",
-            store: store.id,
-            journey,
-            products: JSON.stringify(activeChoice.selections),
-            requestKey,
-            storeAddresses: params.storeAddresses ?? "",
-            storeImage: params.storeImage ?? "",
-            artwork: params.artwork ?? "",
-          },
-        });
-      }
+      router.push({
+        pathname: "/business/fulfillment",
+        params: {
+          org,
+          subscription,
+          view: "review",
+          benefits: params.benefits ?? "",
+          offers: params.offers ?? "",
+          labels: params.labels ?? "",
+          store: store.id,
+          journey,
+          products: JSON.stringify(activeChoice.selections),
+          requestKey,
+          storeAddresses: params.storeAddresses ?? "",
+          storeImage: params.storeImage ?? "",
+          artwork: params.artwork ?? "",
+          preparedQrId: params.preparedQrId ?? "",
+        },
+      });
     } catch (error) {
-      if (isCounterQrConflict(error)) setCounterConflict(true);
-      else
-        setFailure(
-          error instanceof Error
-            ? error.message
-            : "The selection is no longer available.",
-        );
-    } finally {
+      navigationPending.current = false;
       setBusy(false);
+      setFailure(
+        error instanceof Error ? error.message : "Could not open order review.",
+      );
     }
   };
 
   return (
     <FulfillmentPage
-      title="Redeem selected"
+      title="Select Store & Products"
       onBack={() => {
         if (!busy) onBack();
       }}
@@ -339,16 +334,8 @@ function SelectFulfillment({
           <Button
             fullWidth
             disabled={busy || !journey || !activeChoice?.ready}
-            label={
-              busy
-                ? "Please wait…"
-                : existingQr
-                  ? "View Existing QR"
-                  : journey === "IMMEDIATE_PAY_AT_COUNTER"
-                    ? "Redeem at Store Counter"
-                    : `Review ${store?.customerLabel ?? "Order"}`
-            }
-            onPress={() => void continueSelection()}
+            label={busy ? "Please wait…" : "Review Order"}
+            onPress={continueSelection}
           />
         ) : undefined
       }
@@ -413,17 +400,6 @@ function SelectFulfillment({
                 />
               </Card>
             ) : null}
-            {counterConflict ? (
-              <CounterQrConflict
-                organizationId={org}
-                selection={selection}
-                onOpen={(qr) =>
-                  router.push(
-                    routeFor(org, subscription, "qr", qr.transactionId),
-                  )
-                }
-              />
-            ) : null}
             {failure ? (
               <Text variant="bodySmall" color="danger">
                 {failure}
@@ -485,46 +461,10 @@ function SelectFulfillment({
                   />
                 ),
               )}
-            {store && store.journeys.length > 1 ? (
-              <>
-                <Text variant="bodyStrong">How to redeem</Text>
-                {store.journeys.map((entry) => (
-                  <FulfillmentChoice
-                    key={entry}
-                    label={journeyLabel(entry, store.customerLabel ?? "Order")}
-                    selected={journey === entry}
-                    icon={
-                      entry === "IMMEDIATE_PAY_AT_COUNTER"
-                        ? "qr-code-outline"
-                        : entry === "ADVANCE_PAY_NOW"
-                          ? "card-outline"
-                          : "bag-handle-outline"
-                    }
-                    reason={
-                      entry === "IMMEDIATE_PAY_AT_COUNTER"
-                        ? "Show a QR at the counter"
-                        : entry === "ADVANCE_PAY_NOW"
-                          ? "Pay online and collect at the Store"
-                          : "Pay when you collect"
-                    }
-                    disabled={busy}
-                    onPress={() => {
-                      if (entry === journey) return;
-                      setChoice(undefined);
-                      router.setParams({
-                        store: store.id,
-                        journey: entry,
-                        products: "",
-                      });
-                    }}
-                  />
-                ))}
-              </>
-            ) : null}
           </>
         }
         side={
-          store && journey ? (
+          store ? (
             <Card padding="md">
               <RedemptionProductPicker
                 key={productScope}
@@ -540,7 +480,7 @@ function SelectFulfillment({
                   if (next.ready) {
                     const products = JSON.stringify(next.selections);
                     if (products !== params.products)
-                      router.setParams({ products, store: store.id, journey });
+                      router.setParams({ products, store: store.id });
                   }
                 }}
                 renderChoice={(label, selected, onPress, item) => (
@@ -554,6 +494,12 @@ function SelectFulfillment({
                   />
                 )}
               />
+              {activeChoice?.ready && !journey ? (
+                <Text variant="bodySmall" color="danger">
+                  No redemption method supports these products together. Please
+                  change your selection.
+                </Text>
+              ) : null}
             </Card>
           ) : null
         }
@@ -832,7 +778,6 @@ function FulfillmentRecord({
   useEffect(() => {
     if (!focused || !foreground || !session?.userId) return;
     let live = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
     setFailure(undefined);
     if (view === "payment") {
       void read(api.reconcileFulfillmentPayment(org, id))
@@ -861,13 +806,6 @@ function FulfillmentRecord({
           const value = await read(api.fulfillment(org, id));
           if (!live) return;
           setRecord(value);
-          if (
-            view === "confirmation" &&
-            value.status !== "FULFILLED" &&
-            value.status !== "CANCELLED"
-          ) {
-            timer = setTimeout(() => void readRecord(), 8000);
-          }
         } catch (error) {
           if (live)
             setFailure(
@@ -881,7 +819,6 @@ function FulfillmentRecord({
     }
     return () => {
       live = false;
-      if (timer) clearTimeout(timer);
     };
   }, [confirm, focused, foreground, id, org, retry, session?.userId, view]);
 
@@ -906,65 +843,15 @@ function FulfillmentRecord({
       />
     );
   }
-  if (record && view === "confirmation") {
-    return (
-      <FulfillmentPage
-        title={record.customerLabel + " Placed"}
-        onBack={onBack}
-        footer={
-          <Button
-            fullWidth
-            label={`View ${record.customerLabel} Status`}
-            onPress={() => open(record, true)}
-          />
-        }
-      >
-        <FulfillmentColumns
-          main={
-            <>
-              <FulfillmentProgress item={record} confirmation />
-              <FulfillmentPickupCard
-                organizationId={org}
-                item={record}
-                active={focused && foreground}
-              />
-            </>
-          }
-          side={
-            <>
-              <Card padding="md">
-                <CustomerFulfillmentSummary
-                  item={record}
-                  showItems
-                  showReference={false}
-                />
-              </Card>
-              {failure ? (
-                <Card padding="md" style={{ gap: 8 }}>
-                  <Text variant="bodySmall" color="textMuted">
-                    Could not refresh. The last available status is shown.
-                  </Text>
-                  <Button
-                    variant="outline"
-                    label="Refresh status"
-                    onPress={() => setRetry((value) => value + 1)}
-                  />
-                </Card>
-              ) : null}
-            </>
-          }
-        />
-      </FulfillmentPage>
-    );
-  }
-  if (record && view === "details") {
+  if (record && (view === "confirmation" || view === "details")) {
     return (
       <>
         <CustomerFulfillmentDetails
           initial={record}
           organizationId={org}
           focused={focused && !receipt}
-          confirmation={confirmed}
+          confirmation={confirmed || view === "confirmation"}
+          justPlaced={view === "confirmation" || confirmed}
           onClose={onBack}
           onReceipt={async (receiptId) =>
             setReceipt(await read(api.receipt(org, receiptId)))
@@ -1012,8 +899,12 @@ function ReviewFulfillment({
     if (
       !params.store ||
       !params.requestKey ||
-      (params.journey !== "ADVANCE_PAY_NOW" &&
-        params.journey !== "ADVANCE_PAY_AT_COUNTER")
+      !params.journey ||
+      ![
+        "ADVANCE_PAY_NOW",
+        "ADVANCE_PAY_AT_COUNTER",
+        "IMMEDIATE_PAY_AT_COUNTER",
+      ].includes(params.journey)
     )
       return;
     return {
@@ -1038,12 +929,313 @@ function ReviewFulfillment({
     params.store,
     subscription,
   ]);
+  const [reviewStore, setReviewStore] = useState<CustomerFulfillmentStore>();
+  const [storesReady, setStoresReady] = useState(false);
+  const [storeError, setStoreError] = useState<string>();
+  const [counterBusy, setCounterBusy] = useState(false);
+  const counterMutation = useRef(false);
+  const [counterFailure, setCounterFailure] = useState<string>();
+  const [counterConflict, setCounterConflict] = useState(false);
+  useEffect(() => {
+    if (!request) return;
+    let live = true;
+    setStoresReady(false);
+    setReviewStore(undefined);
+    setStoreError(undefined);
+    void read(api.fulfillmentStores(org, request.selection))
+      .then((stores) => {
+        if (!live) return;
+        setReviewStore(stores.find((s) => s.id === request.storeId));
+        setStoresReady(true);
+      })
+      .catch((error: unknown) => {
+        if (!live) return;
+        setStoreError(
+          error instanceof Error
+            ? error.message
+            : "Store availability unavailable",
+        );
+        setStoresReady(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, [
+    org,
+    request?.selection.subscriptionId,
+    params.benefits,
+    params.offers,
+    request?.storeId,
+  ]);
+  const eligibleForMethod = (method: CustomerFulfillmentJourney): boolean =>
+    !!request &&
+    isEligibleForJourney(
+      reviewStore,
+      method,
+      request.selection,
+      request.productSelections,
+    );
+  const switchMethod = (method: CustomerFulfillmentJourney) => {
+    if (
+      !eligibleForMethod(method) ||
+      counterMutation.current ||
+      method === request?.journey
+    )
+      return;
+    setCounterFailure(undefined);
+    const requestKey =
+      globalThis.crypto?.randomUUID?.() ??
+      "ful_" +
+        Date.now().toString(36) +
+        "_" +
+        Math.random().toString(36).slice(2);
+    router.setParams({ journey: method, collection: "", requestKey });
+  };
+  const methodPicker = (
+    advancedReview?: { quote: { totalMinor: number } },
+    locked = false,
+    runMethodChange?: (change: () => void) => void,
+  ) => {
+    if (!request || !reviewStore) return null;
+    const total = advancedReview?.quote.totalMinor;
+    const advance =
+      request.journey !== "IMMEDIATE_PAY_AT_COUNTER" &&
+      eligibleForMethod(request.journey)
+        ? request.journey
+        : (
+            [
+              "ADVANCE_PAY_AT_COUNTER",
+              "ADVANCE_PAY_NOW",
+            ] as CustomerFulfillmentJourney[]
+          ).find(eligibleForMethod);
+    const show =
+      total === 0
+        ? (["IMMEDIATE_PAY_AT_COUNTER", advance].filter(
+            Boolean,
+          ) as CustomerFulfillmentJourney[])
+        : total !== undefined
+          ? ([
+              "IMMEDIATE_PAY_AT_COUNTER",
+              "ADVANCE_PAY_AT_COUNTER",
+              "ADVANCE_PAY_NOW",
+            ] as CustomerFulfillmentJourney[])
+          : (["IMMEDIATE_PAY_AT_COUNTER", advance].filter(
+              Boolean,
+            ) as CustomerFulfillmentJourney[]);
+    const unique = [...new Set(show)].filter(eligibleForMethod);
+    return (
+      <Card padding="md" style={{ gap: 8 }}>
+        <Text variant="bodyStrong">How would you like to redeem?</Text>
+        {unique.map((method) => (
+          <FulfillmentChoice
+            key={method}
+            label={
+              method === "IMMEDIATE_PAY_AT_COUNTER"
+                ? "Redeem at Store Counter"
+                : total === 0
+                  ? "Order Ahead"
+                  : total === undefined
+                    ? "Order Ahead — review payment options"
+                    : method === "ADVANCE_PAY_NOW"
+                      ? "Order Ahead — Pay Online"
+                      : "Order Ahead — Pay at Counter"
+            }
+            reason={
+              method === "IMMEDIATE_PAY_AT_COUNTER"
+                ? "Show your QR to staff at the counter"
+                : total === 0
+                  ? "Place your order with no payment required"
+                  : method === "ADVANCE_PAY_NOW"
+                    ? "Pay online and collect later"
+                    : "Pay when collecting"
+            }
+            selected={method === request.journey}
+            icon={
+              method === "IMMEDIATE_PAY_AT_COUNTER"
+                ? "qr-code-outline"
+                : method === "ADVANCE_PAY_NOW"
+                  ? "card-outline"
+                  : "bag-handle-outline"
+            }
+            disabled={locked || counterBusy}
+            onPress={() => {
+              if (
+                method === request.journey ||
+                locked ||
+                counterMutation.current ||
+                !eligibleForMethod(method)
+              )
+                return;
+              if (runMethodChange) runMethodChange(() => switchMethod(method));
+              else switchMethod(method);
+            }}
+          />
+        ))}
+      </Card>
+    );
+  };
+  const createCounterQr = async () => {
+    if (
+      !request ||
+      request.journey !== "IMMEDIATE_PAY_AT_COUNTER" ||
+      !eligibleForMethod("IMMEDIATE_PAY_AT_COUNTER") ||
+      counterMutation.current
+    )
+      return;
+    counterMutation.current = true;
+    setCounterBusy(true);
+    setCounterFailure(undefined);
+    setCounterConflict(false);
+    try {
+      if (params.preparedQrId) {
+        const previous = await read(
+          api.redemptionTransactionStatus(org, params.preparedQrId),
+        );
+        if (previous.status === "PENDING") {
+          router.push(
+            routeFor(org, subscription, "qr", previous.transactionId),
+          );
+          return;
+        }
+      }
+      const latest = await read(api.fulfillmentStores(org, request.selection));
+      const latestStore = latest.find((entry) => entry.id === request.storeId);
+      if (
+        !isEligibleForJourney(
+          latestStore,
+          request.journey,
+          request.selection,
+          request.productSelections,
+        )
+      ) {
+        throw new Error(
+          "This store or product is no longer eligible. Please select again.",
+        );
+      }
+      const created = await read(api.createStoreRedemption(org, request));
+      router.setParams({ preparedQrId: created.transactionId });
+      router.push(routeFor(org, subscription, "qr", created.transactionId));
+    } catch (error) {
+      if (isCounterQrConflict(error)) setCounterConflict(true);
+      else
+        setCounterFailure(
+          error instanceof Error
+            ? error.message
+            : "Could not create Counter redemption.",
+        );
+    } finally {
+      counterMutation.current = false;
+      setCounterBusy(false);
+    }
+  };
   if (!request)
     return (
       <FulfillmentPage title="Review" onBack={onBack}>
         <Text>Return to Redeem and select your items again.</Text>
       </FulfillmentPage>
     );
+  if (!storesReady)
+    return (
+      <FulfillmentPage title="Order Review" onBack={onBack}>
+        <Text>Checking Store availability…</Text>
+      </FulfillmentPage>
+    );
+  if (!reviewStore || storeError || !eligibleForMethod(request.journey))
+    return (
+      <FulfillmentPage title="Order Review" onBack={onBack}>
+        <Text color="danger">
+          {storeError ??
+            "This redemption method is no longer available for the selected products."}
+        </Text>
+        {!storeError && reviewStore ? methodPicker() : null}
+        <Button label="Change selections" onPress={onBack} />
+      </FulfillmentPage>
+    );
+  if (request.journey === "IMMEDIATE_PAY_AT_COUNTER") {
+    const address = parseRecord(params.storeAddresses)[request.storeId];
+    const products = Object.entries(request.productSelections).map(
+      ([itemKey, productId]) => {
+        const product = reviewStore.products[itemKey]?.find(
+          (p) => p.productId === productId,
+        );
+        return {
+          key: itemKey,
+          name: product?.productName ?? "Selected product",
+          benefit: parseRecord(params.labels)[itemKey],
+        };
+      },
+    );
+    return (
+      <FulfillmentPage
+        title="Order Review"
+        onBack={() => {
+          if (!counterMutation.current) onBack();
+        }}
+        onExit={() => {
+          if (!counterMutation.current) onExit();
+        }}
+        exitDisabled={counterBusy}
+        footer={
+          <Button
+            fullWidth
+            disabled={
+              counterBusy || !eligibleForMethod("IMMEDIATE_PAY_AT_COUNTER")
+            }
+            label={counterBusy ? "Please wait…" : "Generate Counter QR"}
+            onPress={() => void createCounterQr()}
+          />
+        }
+      >
+        <FulfillmentColumns
+          main={
+            <>
+              <Card padding="md" style={{ gap: 8 }}>
+                <Text variant="bodyStrong">{reviewStore.name}</Text>
+                {address ? <Text variant="bodySmall">{address}</Text> : null}
+              </Card>
+              <Card padding="md" style={{ gap: 8 }}>
+                <Text variant="bodyStrong">Selected items</Text>
+                {products.map((p) => (
+                  <View key={p.key} style={{ gap: 3 }}>
+                    <Text variant="bodyStrong">{p.name}</Text>
+                    {p.benefit ? (
+                      <Text variant="caption" color="textMuted">
+                        {p.benefit}
+                      </Text>
+                    ) : null}
+                  </View>
+                ))}
+                <Text variant="bodySmall" color="textMuted">
+                  Your total will be confirmed at the store counter.
+                </Text>
+              </Card>
+            </>
+          }
+          side={
+            <>
+              {methodPicker()}
+              {counterConflict ? (
+                <CounterQrConflict
+                  organizationId={org}
+                  selection={request.selection}
+                  onOpen={(qr) =>
+                    router.push(
+                      routeFor(org, subscription, "qr", qr.transactionId),
+                    )
+                  }
+                />
+              ) : null}
+              {counterFailure ? (
+                <Text variant="bodySmall" color="danger">
+                  {counterFailure}
+                </Text>
+              ) : null}
+            </>
+          }
+        />
+      </FulfillmentPage>
+    );
+  }
   return (
     <CustomerFulfillmentReviewPage
       key={fulfillmentReviewScope(org, request)}
@@ -1053,6 +1245,7 @@ function ReviewFulfillment({
       artwork={parseRecord(params.artwork)}
       storeAddress={parseRecord(params.storeAddresses)[request.storeId]}
       storeImage={params.storeImage}
+      renderRedemptionMethods={methodPicker}
       onOpenCounterQr={(qr) =>
         router.push(routeFor(org, subscription, "qr", qr.transactionId))
       }
