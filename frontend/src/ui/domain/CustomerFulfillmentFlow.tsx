@@ -556,9 +556,26 @@ export function CustomerFulfillmentSummary({
       ) : null}
       {showItems
         ? item.lines?.map((line) => (
-            <Text key={line.id} variant="bodySmall">
-              {line.quantity} × {line.name}
-            </Text>
+            <View
+              key={line.id}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              <FulfillmentThumbnail
+                image={line.imageUrl ?? undefined}
+                icon="cube-outline"
+                size={40}
+              />
+
+              <View style={{ flex: 1 }}>
+                <Text variant="bodySmall">
+                  {line.quantity} × {line.name}
+                </Text>
+              </View>
+            </View>
           ))
         : null}
       {onOpen ? (
@@ -1324,6 +1341,7 @@ export function CustomerFulfillmentReviewPage({
   request,
   itemLabels,
   artwork,
+  productImages,
   storeAddress,
   storeImage,
   onOpenCounterQr,
@@ -1339,6 +1357,7 @@ export function CustomerFulfillmentReviewPage({
   request: CustomerFulfillmentRequest;
   itemLabels: Record<string, string>;
   artwork: Record<string, string>;
+  productImages?: Record<string, string>;
   storeAddress?: string;
   storeImage?: string;
   onOpenCounterQr: (qr: CounterQrSummary) => void;
@@ -1564,7 +1583,11 @@ export function CustomerFulfillmentReviewPage({
                         }}
                       >
                         <FulfillmentThumbnail
-                          image={artwork[key]}
+                          image={
+                            line.imageUrl ??
+                            productImages?.[request.productSelections[key]] ??
+                            undefined
+                          }
                           icon="cube-outline"
                         />
                         <View style={{ flex: 1 }}>
@@ -2192,7 +2215,11 @@ export function CustomerFulfillmentDetails({
               borderColor: theme.colors.border,
             }}
           >
-            <FulfillmentThumbnail icon="cube-outline" size={38} />
+            <FulfillmentThumbnail
+              image={line.imageUrl ?? undefined}
+              icon="cube-outline"
+              size={38}
+            />
             <View style={{ flex: 1, gap: 2 }}>
               <Text variant="bodyStrong">{line.name}</Text>
               <Text variant="caption" color="textMuted">

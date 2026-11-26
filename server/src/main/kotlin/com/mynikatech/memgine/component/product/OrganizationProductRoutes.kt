@@ -3,6 +3,7 @@ package com.mynikatech.memgine.component.product
 import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.model.common.ApiResponse
 import com.mynikatech.memgine.net.dto.OrganizationProductCatalogWriteDto
+import com.mynikatech.memgine.net.dto.OrganizationProductImageWriteDto
 import com.mynikatech.memgine.net.dto.OrganizationProductWriteDto
 import com.mynikatech.memgine.security.authenticatedPrincipal
 import io.ktor.http.HttpStatusCode
@@ -47,6 +48,94 @@ fun Route.organizationProductRoutes(
     post {
         val organizationId = call.organizationId()
         call.respond(HttpStatusCode.Created,ApiResponse.success(service.saveProduct(organizationId,call.receive(),call.authenticatedPrincipal().userId),call.callId))
+    }
+    
+    get("/images") {
+
+        val organizationId = call.organizationId()
+
+        val productIdsParam =
+            call.request.queryParameters["productIds"]
+
+        val productIds = when {
+            productIdsParam == null -> null
+
+            productIdsParam.isBlank() ->
+                emptyList()
+
+            else ->
+                productIdsParam
+                    .split(",")
+                    .map { it.trim() }
+                    .distinct()
+        }
+
+        call.respond(
+            ApiResponse.success(
+                service.productImages(
+                    organizationId,
+                    productIds,
+                    call.authenticatedPrincipal().userId
+                ),
+                call.callId
+            )
+        )
+    }
+
+
+    // ------------------------------------------------------------
+    // Retrieve a single product image
+    // ------------------------------------------------------------
+
+    get("/{productId}/image") {
+
+        val organizationId = call.organizationId()
+
+        val productId = call.parameters["productId"]
+            ?: throw BadRequestException(
+                "Product id is required"
+            )
+
+        call.respond(
+            ApiResponse.success(
+                service.productImage(
+                    organizationId,
+                    productId,
+                    call.authenticatedPrincipal().userId
+                ),
+                call.callId
+            )
+        )
+    }
+
+
+    // ------------------------------------------------------------
+    // Save, replace or remove a product image
+    // ------------------------------------------------------------
+
+    put("/{productId}/image") {
+
+        val organizationId = call.organizationId()
+
+        val productId = call.parameters["productId"]
+            ?: throw BadRequestException(
+                "Product id is required"
+            )
+
+        val request =
+            call.receive<OrganizationProductImageWriteDto>()
+
+        call.respond(
+            ApiResponse.success(
+                service.saveProductImage(
+                    organizationId,
+                    productId,
+                    request,
+                    call.authenticatedPrincipal().userId
+                ),
+                call.callId
+            )
+        )
     }
     put("/{productId}") {
         val organizationId = call.organizationId()

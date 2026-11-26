@@ -43,6 +43,117 @@ class OrganizationProductService(private val jdbi:Jdbi) {
    if(!sql.canAdminister(org,actor)) throw ForbiddenException("Organization access denied")
    return try { block(sql) } catch(e:Exception){ translate(e) }
  }
+ 
+fun productImages(
+    org: String,
+    productIds: List<String>?,
+    actor: String
+): List<OrganizationProductImageDto> {
+
+    validateOrg(org)
+
+    val normalizedProductIds = productIds
+        ?.map { it.trim() }
+        ?.distinct()
+
+    normalizedProductIds?.forEach {
+        validateImageProductId(it)
+    }
+
+    val productIdsCsv =
+        normalizedProductIds?.joinToString(",")
+
+    return withSql(org, actor) {
+        it.productImages(
+            org,
+            productIdsCsv,
+            actor
+        )
+    }
+}
+
+
+fun productImage(
+    org: String,
+    productId: String,
+    actor: String
+): OrganizationProductImageDto {
+
+    validateOrg(org)
+    validateImageProductId(productId)
+
+    return withSql(org, actor) { sql ->
+
+        sql.productImage(
+            org,
+            productId,
+            actor
+        ).firstOrNull()
+            ?: throw NotFoundException(
+                "Product not found"
+            )
+    }
+}
+
+
+fun saveProductImage(
+    org: String,
+    productId: String,
+    request: OrganizationProductImageWriteDto,
+    actor: String
+): OrganizationProductImageDto {
+
+    validateOrg(org)
+    validateImageProductId(productId)
+
+    val imageUrl = request.imageUrl
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+
+    if (
+        request.imageUrl != null &&
+        imageUrl == null
+    ) {
+        throw BadRequestException(
+            "Invalid product image"
+        )
+    }
+
+    if (
+        imageUrl != null &&
+        imageUrl.length > 2048
+    ) {
+        throw BadRequestException(
+            "Invalid product image path"
+        )
+    }
+
+    return withSql(org, actor) {
+        it.saveProductImage(
+            org,
+            productId,
+            imageUrl,
+            request.versionNo,
+            actor
+        )
+    }
+}
+
+
+private fun validateImageProductId(
+    productId: String
+) {
+    if (
+        productId.isBlank() ||
+        productId.length > 64 ||
+        productId.contains(',')
+    ) {
+        throw BadRequestException(
+            "Invalid product id"
+        )
+    }
+}
+
  private fun validateOrg(value:String){if(value.isBlank()||value.length>64) throw BadRequestException("Invalid organization")}
  private fun translate(error:Exception):Nothing { var c:Throwable?=error; while(c!=null){if(c is PSQLException) when(c.sqlState){"42501"->throw ForbiddenException("Organization access denied");"23505","40001"->throw ConflictException("Product catalog data changed; refresh and retry");"22023","22001","23502","23503","23514"->throw BadRequestException(c.message?.substringAfter("ERROR: ")?:"Invalid product catalog data")};c=c.cause};throw error }
 }

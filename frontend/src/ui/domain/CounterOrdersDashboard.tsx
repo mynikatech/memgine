@@ -17,6 +17,7 @@ import {
 
 import { formatTransactionMoney } from "@/src/core/domain/savings-display";
 import { collectionExtensionLocalTime } from "./collection-extension";
+import { ProductThumbnail } from "./BenefitItem";
 import {
   CounterApi,
   type CounterContext,
@@ -1761,13 +1762,37 @@ export function CounterOrderQueue({
                     tone={order.status === "READY" ? "success" : "neutral"}
                   />
                 </View>
-                <Text variant="bodySmall" numberOfLines={2}>
-                  {order.items.length
-                    ? order.items
-                        .map(({ quantity, name }) => `${quantity} × ${name}`)
-                        .join(", ")
-                    : "Items unavailable"}
-                </Text>
+                <View style={{ gap: 6 }}>
+                  {order.items.length ? (
+                    order.items.map((item) => (
+                      <View
+                        key={item.id}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        <ProductThumbnail
+                          urls={[item.imageUrl]}
+                          label={item.name}
+                          icon="cube-outline"
+                          size={32}
+                        />
+
+                        <Text
+                          variant="bodySmall"
+                          style={{ flex: 1 }}
+                          numberOfLines={2}
+                        >
+                          {item.quantity} × {item.name}
+                        </Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text variant="bodySmall">Items unavailable</Text>
+                  )}
+                </View>
                 <Text variant="caption" color="textMuted">
                   {order.storeName} ·{" "}
                   {counterOrderDate(order.pickupAt, order.timezone)}
@@ -1872,9 +1897,25 @@ export function CollectionReview({
         {counterOrderDate(order.pickupAt, order.timezone)}
       </Text>
       {order.items.map((item) => (
-        <Text key={item.id}>
-          {item.quantity} × {item.name}
-        </Text>
+        <View
+          key={item.id}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <ProductThumbnail
+            urls={[item.imageUrl]}
+            label={item.name}
+            icon="cube-outline"
+            size={40}
+          />
+
+          <Text style={{ flex: 1 }}>
+            {item.quantity} × {item.name}
+          </Text>
+        </View>
       ))}
       <Text>
         {lifecycle
@@ -2244,10 +2285,16 @@ export function CounterOrderDetails({
                       style={{
                         flexDirection: "row",
                         justifyContent: "space-between",
-                        alignItems: "flex-start",
+                        alignItems: "center",
                         gap: 6,
                       }}
                     >
+                      <ProductThumbnail
+                        urls={[item.imageUrl]}
+                        label={item.name}
+                        icon="cube-outline"
+                        size={44}
+                      />
                       <Text variant="bodySmall" style={{ flex: 1 }}>
                         {item.quantity} × {item.name}
                       </Text>

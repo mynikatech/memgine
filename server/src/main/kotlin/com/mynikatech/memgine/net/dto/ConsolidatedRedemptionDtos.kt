@@ -18,7 +18,8 @@ data class RedemptionProductChoiceDto(
     var productId: String = "",
     var productName: String = "",
     var productCode: String? = null,
-    var availableStoreIds: List<String>? = null
+    var availableStoreIds: List<String>? = null,
+    var imageUrl: String? = null
 )
 
 @Serializable

@@ -1,161 +1,104 @@
 import type { AdvertisedSavings } from "@/src/core/domain/entities";
 import { advertisedSavingsLabel } from "@/src/core/domain/savings-display";
-import { Image, Pressable, View } from "react-native";
-
-import { resolveAssetUrl } from "@/src/data/api/asset-url";
-
+import { Ionicons } from "@expo/vector-icons";
+import { Modal } from "../Modal";
+import { Pressable, View } from "react-native";
+import { ProductThumbnail, type DisplayProduct } from "./BenefitItem";
 import { useEffect, useState } from "react";
-
 import { OfferFrequencyType, type OfferUsageRule } from "@/src/core";
-
 import { services } from "@/src/core";
-
 import { useTheme } from "@/src/providers";
-
 import { Button } from "../Button";
-
 import { Card } from "../Card";
-
 import { Text } from "../Text";
-
 type OfferCardProps = {
+  compact?: boolean;
+  compactAvailabilityText?: string;
   offerId?: string;
   /** Optional: allow a shared decorative image behind the parent frame. */
   decorative?: boolean;
-
   title: string;
-
   description?: string;
   advertisedSavings?: AdvertisedSavings | null;
-
   imageUrl?: string;
-
   badge?: string;
-
   availabilityText?: string;
   ctaDisabled?: boolean;
-
   disclaimerText?: string;
-
   applicableProducts?: string[];
-
+  products?: DisplayProduct[];
   discountPercentage?: number;
-
   ctaLabel?: string;
-
   onPress?: () => void;
-
   usageRules?: OfferUsageRule[];
-
   testID?: string;
 };
-
 const DAY_LABELS: Record<string, string> = {
   MON: "Mon",
-
   TUE: "Tue",
-
   WED: "Wed",
-
   THU: "Thu",
-
   FRI: "Fri",
-
   SAT: "Sat",
-
   SUN: "Sun",
 };
-
 function formatDays(days?: string[]): string | undefined {
   if (!days?.length) return undefined;
-
   const normalized = days
-
     .map((day) => day.trim().toUpperCase().slice(0, 3))
-
     .filter((day) => DAY_LABELS[day]);
-
   if (!normalized.length) return undefined;
-
   const unique = Array.from(new Set(normalized));
-
   if (unique.length === 7) return "Every day";
-
   const ordered = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
-
   const selectedIndexes = ordered
-
     .map((day, index) => (unique.includes(day) ? index : -1))
-
     .filter((index) => index >= 0);
-
   const isContiguous = selectedIndexes.every(
     (index, position) =>
       position === 0 || index === selectedIndexes[position - 1] + 1,
   );
-
   return isContiguous
     ? selectedIndexes.map((index) => DAY_LABELS[ordered[index]]).join("–")
     : selectedIndexes.map((index) => DAY_LABELS[ordered[index]]).join(", ");
 }
-
 function formatTime(value?: string): string | undefined {
   if (!value) return undefined;
-
   const match = value.match(/^(\d{1,2}):(\d{2})$/);
-
   if (!match) return value;
-
   const hour = Number(match[1]);
-
   const minute = match[2];
-
   if (hour < 0 || hour > 23) return value;
-
   const suffix = hour >= 12 ? "PM" : "AM";
-
   const displayHour = hour % 12 || 12;
-
   return minute === "00"
     ? `${displayHour} ${suffix}`
     : `${displayHour}:${minute} ${suffix}`;
 }
-
 function formatFrequency(
   frequencyType: OfferFrequencyType,
-
   interval: number,
 ): string | undefined {
   const safeInterval = Math.max(1, interval || 1);
-
   switch (frequencyType) {
     case OfferFrequencyType.DAILY:
       return safeInterval === 1 ? "day" : `${safeInterval} days`;
-
     case OfferFrequencyType.WEEKLY:
       return safeInterval === 1 ? "week" : `${safeInterval} weeks`;
-
     case OfferFrequencyType.MONTHLY:
       return safeInterval === 1 ? "month" : `${safeInterval} months`;
-
     case OfferFrequencyType.YEARLY:
       return safeInterval === 1 ? "year" : `${safeInterval} years`;
-
     case OfferFrequencyType.ONE_TIME:
       return undefined;
-
     default:
       return undefined;
   }
 }
-
 function formatUsageRule(rule: OfferUsageRule): string[] {
   const limit = Math.max(1, rule.usageLimit || 1);
-
   const frequency = formatFrequency(rule.frequencyType, rule.frequencyInterval);
-
   const lines: string[] = [];
-
   if (frequency) {
     lines.push(
       limit === 1
@@ -165,11 +108,8 @@ function formatUsageRule(rule: OfferUsageRule): string[] {
   } else {
     lines.push(limit === 1 ? "One redemption" : `Up to ${limit} redemptions`);
   }
-
   const days = formatDays(rule.applicableDays);
-
   const hasTimeWindow = Boolean(rule.windowStartTime && rule.windowEndTime);
-
   if (days && hasTimeWindow) {
     lines.push(
       `${days} · ${formatTime(rule.windowStartTime)}–${formatTime(rule.windowEndTime)}`,
@@ -181,69 +121,52 @@ function formatUsageRule(rule: OfferUsageRule): string[] {
       `${formatTime(rule.windowStartTime)}–${formatTime(rule.windowEndTime)}`,
     );
   }
-
   return lines;
 }
-
 export function OfferCard({
+  compact = false,
+  compactAvailabilityText,
   offerId,
-
   decorative = false,
-
   title,
-
   description,
   advertisedSavings,
-
   imageUrl,
-
   badge,
-
   availabilityText,
   ctaDisabled,
-
   disclaimerText,
-
   applicableProducts,
-
+  products,
   discountPercentage,
-
   ctaLabel,
-
   onPress,
-
   usageRules: usageRulesOverride,
-
   testID,
 }: OfferCardProps) {
-  const resolvedImageUrl = resolveAssetUrl(imageUrl);
-
+  const imageCandidates = [
+    imageUrl,
+    products?.length === 1 ? products[0].imageUrl : undefined,
+  ];
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const theme = useTheme();
   const savingsLabel = advertisedSavingsLabel(advertisedSavings, "redemption");
-
   const [usageRules, setUsageRules] = useState<OfferUsageRule[]>([]);
-
   useEffect(() => {
     let cancelled = false;
-
     if (usageRulesOverride !== undefined) {
       setUsageRules(usageRulesOverride.filter((rule) => !rule.isDeleted));
-
       return () => {
         cancelled = true;
       };
     }
-
     const loadUsageRules = async () => {
       if (!offerId) {
         setUsageRules([]);
-
         return;
       }
-
       try {
         const rules = await services.offerUsageRule.listByOffer(offerId);
-
         if (!cancelled) {
           setUsageRules(rules.filter((rule) => !rule.isDeleted));
         }
@@ -253,27 +176,19 @@ export function OfferCard({
         }
       }
     };
-
     void loadUsageRules();
-
     return () => {
       cancelled = true;
     };
   }, [offerId, usageRulesOverride]);
-
   const usageLines = usageRules.flatMap(formatUsageRule);
-
   const OfferHighlight = ({ label }: { label: string }) => (
     <View
       style={{
         alignSelf: "flex-start",
-
         backgroundColor: theme.colors.accentSoft,
-
         paddingHorizontal: theme.spacing.md,
-
         paddingVertical: 4,
-
         borderRadius: theme.radius.pill,
       }}
     >
@@ -282,7 +197,6 @@ export function OfferCard({
       </Text>
     </View>
   );
-
   const content = (
     <Card
       testID={testID}
@@ -291,116 +205,78 @@ export function OfferCard({
         overflow: "hidden",
         // When no theme is selected, Card keeps its original opaque surface.
         ...(decorative ? { backgroundColor: "rgba(255,255,255,0.12)" } : {}),
-
         width: "100%",
-
         alignSelf: "stretch",
       }}
     >
       <View
         style={{
           flexDirection: "row",
-
           alignItems: "flex-start",
-
           gap: theme.spacing.md,
         }}
       >
-        {resolvedImageUrl ? (
-          <View
-            style={{
-              width: 88,
-
-              height: 72,
-
-              borderRadius: theme.radius.md,
-
-              overflow: "hidden",
-
-              alignItems: "center",
-
-              justifyContent: "center",
-
-              backgroundColor: theme.colors.surfaceAlt,
-
-              flexShrink: 0,
-            }}
-          >
-            <Image
-              source={{ uri: resolvedImageUrl }}
-              resizeMode="cover"
-              style={{
-                width: "100%",
-
-                height: "100%",
-              }}
-              accessibilityLabel={`${title} offer`}
-            />
-          </View>
+        {imageCandidates.some(Boolean) ? (
+          <ProductThumbnail
+            urls={imageCandidates}
+            label={title}
+            icon="pricetag-outline"
+            size={88}
+            height={72}
+          />
         ) : null}
-
         <View style={{ flex: 1, gap: theme.spacing.xs }}>
           <View
             style={{
               flexDirection: "row",
-
               alignItems: "flex-start",
-
               justifyContent: "space-between",
-
               gap: theme.spacing.sm,
             }}
           >
             <View style={{ flex: 1, gap: theme.spacing.xs }}>
               {badge ? <OfferHighlight label={badge} /> : null}
-
               <Text variant="bodyStrong" color="text">
                 {title}
               </Text>
             </View>
-
             {discountPercentage !== undefined ? (
               <OfferHighlight label={`${discountPercentage}% OFF`} />
             ) : null}
           </View>
-
           {description ? (
             <Text variant="bodySmall" color="textSecondary">
               {description}
             </Text>
           ) : null}
-
-          {savingsLabel && <Text variant="label" color="primary">{savingsLabel}</Text>}
+          {savingsLabel && (
+            <Text variant="label" color="primary">
+              {savingsLabel}
+            </Text>
+          )}
           {availabilityText ? (
             <Text variant="caption" color="textMuted">
               {availabilityText}
             </Text>
           ) : null}
-
           {applicableProducts?.length ? (
             <Text variant="bodySmall" color="textSecondary">
               Applies to: {applicableProducts.join(", ")}
             </Text>
           ) : null}
-
           {disclaimerText?.trim() ? (
             <Text variant="caption" color="textMuted">
               Terms: {disclaimerText.trim()}
             </Text>
           ) : null}
-
           {usageLines.length ? (
             <View
               testID={testID ? `${testID}-usage-rules` : undefined}
               style={{
                 marginTop: theme.spacing.xs,
-
                 paddingTop: theme.spacing.sm,
-
                 borderTopWidth: 1,
-
                 borderTopColor: theme.colors.border,
-
                 gap: 2,
               }}
             >
@@ -415,7 +291,6 @@ export function OfferCard({
               ))}
             </View>
           ) : null}
-
           {ctaLabel ? (
             onPress ? (
               <Button
@@ -428,17 +303,18 @@ export function OfferCard({
               <View
                 style={{
                   alignSelf: "flex-start",
-
                   paddingHorizontal: theme.spacing.md,
-
                   paddingVertical: theme.spacing.sm,
-
                   borderRadius: theme.radius.pill,
-
-                  backgroundColor: ctaDisabled ? theme.colors.surfaceAlt : theme.colors.primarySoft,
+                  backgroundColor: ctaDisabled
+                    ? theme.colors.surfaceAlt
+                    : theme.colors.primarySoft,
                 }}
               >
-                <Text variant="label" color={ctaDisabled ? "textMuted" : "primary"}>
+                <Text
+                  variant="label"
+                  color={ctaDisabled ? "textMuted" : "primary"}
+                >
                   {ctaLabel}
                 </Text>
               </View>
@@ -448,11 +324,99 @@ export function OfferCard({
       </View>
     </Card>
   );
-
+  if (compact) {
+    return (
+      <>
+        <Pressable
+          testID={testID}
+          accessibilityRole="button"
+          accessibilityLabel={`Details for ${title}`}
+          onPress={() => setDetailsOpen(true)}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            flexDirection: "row",
+            alignItems: "flex-start",
+            gap: theme.spacing.sm,
+          }}
+        >
+          <ProductThumbnail
+            urls={imageCandidates}
+            label={title}
+            icon="pricetag-outline"
+          />
+          <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+            <Text variant="bodyStrong">{title}</Text>
+            {discountPercentage !== undefined ? (
+              <Text variant="caption" color="primary">
+                {discountPercentage}% OFF
+              </Text>
+            ) : null}
+            {savingsLabel ? (
+              <Text variant="caption" color="primary">
+                {savingsLabel}
+              </Text>
+            ) : null}
+            {usageLines.slice(0, 2).map((line, index) => (
+              <Text key={index} variant="caption" color="textSecondary">
+                {line}
+              </Text>
+            ))}
+            {compactAvailabilityText ? (
+              <Text variant="caption" color="textMuted">
+                {compactAvailabilityText}
+              </Text>
+            ) : null}
+          </View>
+          <Ionicons
+            name="chevron-forward"
+            size={16}
+            color={theme.colors.textMuted}
+          />
+        </Pressable>
+        <Modal
+          visible={detailsOpen}
+          onClose={() => setDetailsOpen(false)}
+          title={title}
+          scrollable
+        >
+          {content}
+          {products?.length ? (
+            <View
+              style={{ gap: theme.spacing.sm, marginTop: theme.spacing.md }}
+            >
+              <Text variant="bodyStrong">Applicable Products</Text>
+              {products.map((product) => (
+                <View
+                  key={product.productId}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: theme.spacing.sm,
+                  }}
+                >
+                  <ProductThumbnail
+                    urls={[product.imageUrl]}
+                    label={product.productName || product.productCode}
+                    icon="pricetag-outline"
+                    size={48}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text variant="bodySmall">
+                      {product.productName || product.productCode}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </Modal>
+      </>
+    );
+  }
   if (!onPress) {
     return content;
   }
-
   return (
     <Pressable
       onPress={onPress}

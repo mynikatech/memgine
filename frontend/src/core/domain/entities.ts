@@ -718,10 +718,16 @@ export interface Benefit {
   disclaimerText?: string;
 
   benefitStatusId: ID;
+  imageUrl?: string | null;
 
   productId?: ID;
   productIds?: ID[];
-  products?: { productId: ID; productName: string; productCode: string }[];
+  products?: {
+    productId: ID;
+    productName: string;
+    productCode: string;
+    imageUrl?: string | null;
+  }[];
   storeAvailability?: {
     mode: "ALL_STORES" | "SELECTED_STORES";
     storeIds: ID[];
@@ -811,7 +817,12 @@ export interface Offer {
 
   membershipProductId?: ID;
   productIds?: ID[];
-  products?: { productId: ID; productName: string; productCode: string }[];
+  products?: {
+    productId: ID;
+    productName: string;
+    productCode: string;
+    imageUrl?: string | null;
+  }[];
   storeAvailability?: {
     mode: "ALL_STORES" | "SELECTED_STORES";
     storeIds: ID[];

@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 320-product-image-projection
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/320-product-image-projection.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

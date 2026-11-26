@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - changeSet:
+      id: 323-customer-order-product-images
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/323-customer-order-product-images.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

@@ -35,3 +35,16 @@ import kotlinx.serialization.Serializable
 @Serializable data class ProductImportPreviewDto(val rowNumber: Int, val classification: String, val productId: String? = null, val reason: String? = null)
 @Serializable data class ProductImportRequestDto(val productCatalogId: String, val fileName: String, val rows: List<ProductImportRowDto>)
 @Serializable data class ProductImportCommitDto(val batchId: String, val newCount: Int, val updateCount: Int, val unchangedCount: Int)
+
+@Serializable
+data class OrganizationProductImageDto(
+    val productId: String,
+    val imageUrl: String? = null,
+    val versionNo: Int
+)
+
+@Serializable
+data class OrganizationProductImageWriteDto(
+    val imageUrl: String?,
+    val versionNo: Int
+)

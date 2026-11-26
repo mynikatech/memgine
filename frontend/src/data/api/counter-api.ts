@@ -37,6 +37,7 @@ export type CounterOrderStore = { id: ID; name: string; staffId: ID };
 export type CounterOrderItem = {
   id: ID;
   name: string;
+  imageUrl?: string | null;
   quantity: number;
   unitPriceMinor?: number | null;
   subtotalMinor?: number | null;

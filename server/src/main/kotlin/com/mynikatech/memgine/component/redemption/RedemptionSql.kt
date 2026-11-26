@@ -50,9 +50,24 @@ interface RedemptionSql {
     ): RedemptionTransactionDto?
         
         @SqlQuery(
-        "SELECT * FROM redemption_product_choices(" +
-            ":organizationId, :subscriptionId, :itemType, :itemId, " +
-            ":actorUserId, :storeId, :staffId)"
+            """
+            SELECT
+                choices.*,
+                p.image_url AS "imageUrl"
+            FROM redemption_product_choices(
+                :organizationId,
+                :subscriptionId,
+                :itemType,
+                :itemId,
+                :actorUserId,
+                :storeId,
+                :staffId
+            ) choices
+            LEFT JOIN product p
+                ON p.product_id = choices."productId"
+                AND p.organization_id = :organizationId
+                AND NOT p.is_deleted
+            """
         )
         @RegisterBeanMapper(RedemptionProductChoiceDto::class)
         fun productChoices(

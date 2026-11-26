@@ -38,6 +38,7 @@ export type RedemptionProductChoice = {
   productName: string;
   productCode?: string | null;
   availableStoreIds?: string[] | null;
+  imageUrl?: string | null;
 };
 export type PoyntCollectBootstrap = {
   sdkUrl: string;
@@ -257,6 +258,7 @@ export type CounterQrSummary = PendingRedemptionTransaction & {
     type: "BENEFIT" | "OFFER";
     name?: string | null;
     productName?: string | null;
+    imageUrl?: string | null;
     quantity: number;
   }[];
 };
@@ -412,6 +414,7 @@ export type CustomerFulfillmentReview = {
       itemType: "BENEFIT" | "OFFER";
       itemId: ID;
       productName: string;
+      imageUrl?: string | null;
       quantity: number;
       unitPriceMinor: number;
       subtotalMinor: number;
@@ -477,6 +480,7 @@ export type CustomerFulfillment = {
     | {
         id: ID;
         name: string;
+        imageUrl?: string | null;
         quantity: number;
         fulfilledQuantity?: number | null;
         unitPriceMinor?: number | null;

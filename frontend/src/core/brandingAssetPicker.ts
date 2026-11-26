@@ -8,6 +8,8 @@ export type BrandingAssetType =
   | "heroImage"
   | "themeBackground"
   | "offerPromotion"
+  | "productImage"
+  | "benefitImage"
   | "platformThemeBackground";
 
 export type PickBrandingAssetOptions = {

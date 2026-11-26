@@ -160,6 +160,16 @@ export type CommerceCatalogCategoryCorrespondenceWrite = {
   productCatalogCategoryId: string;
   versionNo?: number | null;
 };
+export type OrganizationProductImage = {
+  productId: string;
+  imageUrl?: string | null;
+  versionNo: number;
+};
+
+export type OrganizationProductImageWrite = {
+  imageUrl: string | null;
+  versionNo: number;
+};
 export const organizationProductApi = {
   catalogs: (
     organizationId: string,
@@ -314,5 +324,42 @@ export const organizationProductApi = {
   ): Promise<ApiResult<boolean>> =>
     httpClient.delete(
       `/api/v1/organizations/${organizationId}/commerce/category-correspondences/${encodeURIComponent(correspondenceId)}?versionNo=${encodeURIComponent(String(versionNo))}`,
+    ),
+  productImages: (
+    organizationId: string,
+    productIds?: string[],
+  ): Promise<ApiResult<OrganizationProductImage[]>> => {
+    const query =
+      productIds === undefined
+        ? ""
+        : `?productIds=${encodeURIComponent(productIds.join(","))}`;
+
+    return httpClient.get(
+      `/api/v1/organizations/${encodeURIComponent(
+        organizationId,
+      )}/products/images${query}`,
+    );
+  },
+
+  productImage: (
+    organizationId: string,
+    productId: string,
+  ): Promise<ApiResult<OrganizationProductImage>> =>
+    httpClient.get(
+      `/api/v1/organizations/${encodeURIComponent(
+        organizationId,
+      )}/products/${encodeURIComponent(productId)}/image`,
+    ),
+
+  saveProductImage: (
+    organizationId: string,
+    productId: string,
+    body: OrganizationProductImageWrite,
+  ): Promise<ApiResult<OrganizationProductImage>> =>
+    httpClient.put(
+      `/api/v1/organizations/${encodeURIComponent(
+        organizationId,
+      )}/products/${encodeURIComponent(productId)}/image`,
+      body,
     ),
 };

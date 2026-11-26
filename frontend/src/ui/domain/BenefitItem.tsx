@@ -2,13 +2,86 @@ import type { AdvertisedSavings } from "@/src/core/domain/entities";
 import { advertisedSavingsLabel } from "@/src/core/domain/savings-display";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Image, Pressable, View } from "react-native";
 import type { BenefitUsageRule } from "@/src/core";
 import { services } from "@/src/core";
 import { useTheme } from "@/src/providers";
 import { Modal } from "../Modal";
 import { Text } from "../Text";
+import { resolveAssetUrl } from "@/src/data/api/asset-url";
+
+export type DisplayProduct = {
+  productId: string;
+  productName: string;
+  productCode: string;
+  imageUrl?: string | null;
+};
+
 type IoniconName = keyof typeof Ionicons.glyphMap;
+/** Shared thumbnail with ordered image fallbacks; no additional API calls. */
+export function ProductThumbnail({
+  urls,
+  label,
+  icon = "gift-outline",
+  size = 56,
+  height = size,
+}: {
+  urls: (string | null | undefined)[];
+  label: string;
+  icon?: IoniconName;
+  size?: number;
+  height?: number;
+}) {
+  const theme = useTheme();
+  const candidates = Array.from(
+    new Set(
+      urls
+        .map((url) => resolveAssetUrl(url ?? undefined))
+        .filter((url): url is string => Boolean(url)),
+    ),
+  );
+  const key = JSON.stringify(candidates);
+  const [failure, setFailure] = useState<{ key: string; urls: string[] }>({
+    key: "",
+    urls: [],
+  });
+  const uri = candidates.find(
+    (url) => failure.key !== key || !failure.urls.includes(url),
+  );
+  return (
+    <View
+      style={{
+        width: size,
+        height,
+        flexShrink: 0,
+        borderRadius: theme.radius.md,
+        overflow: "hidden",
+        backgroundColor: theme.colors.primarySoft,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {uri ? (
+        <Image
+          key={uri}
+          source={{ uri }}
+          accessibilityLabel={label}
+          resizeMode="cover"
+          style={{ width: "100%", height: "100%" }}
+          onError={() =>
+            setFailure((previous) => ({
+              key,
+              urls: [...(previous.key === key ? previous.urls : []), uri],
+            }))
+          }
+        />
+      ) : (
+        <Ionicons name={icon} size={22} color={theme.colors.primary} />
+      )}
+    </View>
+  );
+}
+
 /** Map a benefit type to a representative icon. */
 export function benefitIconForType(benefitTypeId: string): IoniconName {
   switch (benefitTypeId) {
@@ -34,11 +107,16 @@ export function benefitIconForType(benefitTypeId: string): IoniconName {
  * renderer's contract.
  */
 type BenefitItemProps = {
+  compact?: boolean;
+  storeSummary?: string;
+  storeDetails?: string;
   title: string;
   subtitle?: string;
   advertisedSavings?: AdvertisedSavings | null;
   disclaimerText?: string;
   eligibleProducts?: string[];
+  products?: DisplayProduct[];
+  imageUrl?: string | null;
   productStoreAvailability?: Array<{
     productId: string;
     productName: string;
@@ -213,13 +291,17 @@ export function formatAvailability(rule: BenefitUsageRule): string {
   }
   return parts.join(" · ");
 }
-
 export function BenefitItem({
+  compact = false,
+  storeSummary,
+  storeDetails,
   title,
   subtitle,
   advertisedSavings,
   disclaimerText,
   eligibleProducts,
+  products,
+  imageUrl,
   productStoreAvailability,
   participatingStores,
   icon = "gift-outline",
@@ -273,7 +355,15 @@ export function BenefitItem({
   const ruleSummary = primaryRule ? formatUsage(primaryRule) : "";
   const availability = primaryRule ? formatAvailability(primaryRule) : "";
   const hasDetails = Boolean(
-    primaryRule || savingsLabel || participatingStores?.length,
+    compact ||
+    primaryRule ||
+    savingsLabel ||
+    participatingStores?.length ||
+    subtitle ||
+    disclaimerText ||
+    eligibleProducts?.length ||
+    productStoreAvailability?.length ||
+    products?.length,
   );
   const handlePress = () => {
     if (hasDetails) {
@@ -289,42 +379,49 @@ export function BenefitItem({
         accessibilityRole={hasDetails ? "button" : undefined}
         style={({ pressed }) => ({
           flexDirection: "row",
-          alignItems: "center",
-          gap: theme.spacing.md,
+          alignItems: compact ? "flex-start" : "center",
+          gap: compact ? theme.spacing.sm : theme.spacing.md,
+          ...(compact ? { flex: 1, minWidth: 0 } : {}),
           opacity: pressed ? theme.states.pressedOpacity : 1,
         })}
       >
+        <ProductThumbnail
+          urls={[
+            imageUrl,
+            ...(products?.length === 1 ? [products[0].imageUrl] : []),
+          ]}
+          label={title}
+          icon={icon}
+          size={compact ? 56 : 40}
+        />
         <View
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: theme.radius.md,
-            backgroundColor: theme.colors.primarySoft,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
+          style={{ flex: 1, minWidth: 0, gap: compact ? 1 : theme.spacing.xs }}
         >
-          <Ionicons name={icon} size={20} color={theme.colors.primary} />
-        </View>
-        <View style={{ flex: 1, gap: theme.spacing.xs }}>
           <Text variant="bodyStrong" color="text">
             {title}
           </Text>
+          {compact && savingsLabel ? (
+            <Text variant="caption" color="primary">
+              {savingsLabel}
+            </Text>
+          ) : null}
           {ruleSummary ? (
             <Text variant="bodySmall" color="textSecondary">
-              {subtitle ? `${subtitle} — ${ruleSummary}` : ruleSummary}
+              {!compact && subtitle
+                ? `${subtitle} — ${ruleSummary}`
+                : ruleSummary}
             </Text>
-          ) : subtitle ? (
+          ) : !compact && subtitle ? (
             <Text variant="bodySmall" color="textMuted">
               {subtitle}
             </Text>
           ) : null}
-          {disclaimerText?.trim() ? (
+          {!compact && disclaimerText?.trim() ? (
             <Text variant="caption" color="textMuted">
               Terms: {disclaimerText.trim()}
             </Text>
           ) : null}
-          {eligibleProducts?.length ? (
+          {!compact && eligibleProducts?.length ? (
             <Text variant="caption" color="textSecondary">
               Choose from: {eligibleProducts.join(", ")}
             </Text>
@@ -334,7 +431,12 @@ export function BenefitItem({
               {availability}
             </Text>
           ) : null}
-          {ruleError ? (
+          {compact && storeSummary ? (
+            <Text variant="caption" color="textMuted">
+              {storeSummary}
+            </Text>
+          ) : null}
+          {!compact && ruleError ? (
             <Text variant="caption" color="textMuted">
               {ruleError}
             </Text>
@@ -360,6 +462,33 @@ export function BenefitItem({
             <Text variant="bodyStrong" color="text">
               How this benefit works
             </Text>
+            {subtitle ? (
+              <Text variant="bodySmall" color="text">
+                {subtitle}
+              </Text>
+            ) : null}
+            {disclaimerText?.trim() ? (
+              <Text variant="caption" color="textMuted">
+                Terms: {disclaimerText.trim()}
+              </Text>
+            ) : null}
+            {storeDetails ? (
+              <Text variant="bodySmall" color="text">
+                {storeDetails}
+              </Text>
+            ) : null}
+            {eligibleProducts?.length &&
+            !productStoreAvailability?.length &&
+            !products?.length ? (
+              <Text variant="bodySmall" color="text">
+                Choose from: {eligibleProducts.join(", ")}
+              </Text>
+            ) : null}
+            {ruleError ? (
+              <Text variant="caption" color="textMuted">
+                {ruleError}
+              </Text>
+            ) : null}
             {savingsLabel && (
               <Text variant="label" color="primary">
                 {savingsLabel}
@@ -416,24 +545,50 @@ export function BenefitItem({
                 </Text>
               </View>
             ) : null}
-            {productStoreAvailability?.length ? (
+            {products?.length || productStoreAvailability?.length ? (
               <View style={{ gap: theme.spacing.sm }}>
                 <Text variant="bodyStrong" color="text">
-                  Eligible Products &amp; Stores
+                  Eligible Products
+                  {productStoreAvailability?.length ? " & Stores" : ""}
                 </Text>
-                {productStoreAvailability.map((product) => (
-                  <View
-                    key={product.productId}
-                    style={{ gap: theme.spacing.xs }}
-                  >
-                    <Text variant="bodySmall" color="text">
-                      {product.productName}
-                    </Text>
-                    <Text variant="caption" color="textMuted">
-                      {product.availability}
-                    </Text>
-                  </View>
-                ))}
+                {(products?.length
+                  ? products
+                  : (productStoreAvailability ?? [])
+                ).map((product) => {
+                  const detail = productStoreAvailability?.find(
+                    (item) => item.productId === product.productId,
+                  );
+                  const imageUrl = products?.find(
+                    (item) => item.productId === product.productId,
+                  )?.imageUrl;
+                  return (
+                    <View
+                      key={product.productId}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: theme.spacing.sm,
+                      }}
+                    >
+                      <ProductThumbnail
+                        urls={[imageUrl]}
+                        label={product.productName}
+                        icon={icon}
+                        size={48}
+                      />
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text variant="bodySmall" color="text">
+                          {product.productName}
+                        </Text>
+                        {detail?.availability ? (
+                          <Text variant="caption" color="textMuted">
+                            {detail.availability}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
             ) : null}
           </View>

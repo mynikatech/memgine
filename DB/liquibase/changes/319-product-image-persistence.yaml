@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 319-product-image-persistence
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/319-product-image-persistence.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

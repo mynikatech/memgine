@@ -83,16 +83,27 @@ export class BenefitApi {
     );
   }
 
-  async rulesForCustomer(organizationId: ID, userId: ID, benefitId: ID): Promise<BenefitUsageRule[]> {
+  async rulesForCustomer(
+    organizationId: ID,
+    userId: ID,
+    benefitId: ID,
+  ): Promise<BenefitUsageRule[]> {
     const result = await httpClient.get<ServerRule[]>(
       `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/benefits/${encodeURIComponent(benefitId)}/usage-rules`,
     );
     if (!result.success) throw new Error(result.error.message);
-    return Promise.all(result.data.map(async (rule) => ({
-      ...rule, frequencyType: rule.frequencyType as BenefitFrequencyType,
-      applicableDays: rule.applicableDays ? rule.applicableDays.split(",") : undefined,
-      benefitUsageRuleStatusId: await entityStatusApi.resolveStatusId(rule.benefitUsageRuleStatusId),
-    })));
+    return Promise.all(
+      result.data.map(async (rule) => ({
+        ...rule,
+        frequencyType: rule.frequencyType as BenefitFrequencyType,
+        applicableDays: rule.applicableDays
+          ? rule.applicableDays.split(",")
+          : undefined,
+        benefitUsageRuleStatusId: await entityStatusApi.resolveStatusId(
+          rule.benefitUsageRuleStatusId,
+        ),
+      })),
+    );
   }
 
   async products(organizationId: ID): Promise<Product[]> {
@@ -133,16 +144,23 @@ export class BenefitApi {
     }
   }
 
-  async listForCustomer(organizationId: ID, userId?: ID): Promise<ApiResult<Benefit[]>> {
+  async listForCustomer(
+    organizationId: ID,
+    userId?: ID,
+  ): Promise<ApiResult<Benefit[]>> {
     try {
       const result = await httpClient.get<ServerBenefit[]>(
         `/api/v1/customer/organizations/${encodeURIComponent(organizationId)}/benefits`,
       );
       if (!result.success) return result;
-      return apiSuccess(await Promise.all(result.data.map((dto) => this.fromServer(dto))));
+      return apiSuccess(
+        await Promise.all(result.data.map((dto) => this.fromServer(dto))),
+      );
     } catch (error) {
-      return apiFailure("CUSTOMER_BENEFIT_LIST_FAILED",
-        error instanceof Error ? error.message : "Unable to load benefits.");
+      return apiFailure(
+        "CUSTOMER_BENEFIT_LIST_FAILED",
+        error instanceof Error ? error.message : "Unable to load benefits.",
+      );
     }
   }
 
@@ -203,13 +221,16 @@ export class BenefitApi {
         benefitTypeId: benefit.benefitTypeId,
         description: benefit.description,
         disclaimerText: benefit.disclaimerText,
+        imageUrl: benefit.imageUrl ?? null,
+        updateImage: benefit.imageUrl !== undefined,
         advertisedSavingsOverride: benefit.advertisedSavings?.override ?? null,
         benefitStatusId: await entityStatusApi.resolveEntityStatusId(
           "BENEFIT",
           benefit.benefitStatusId,
         ),
         productId: benefit.productId,
-        productIds: benefit.productIds ?? (benefit.productId ? [benefit.productId] : []),
+        productIds:
+          benefit.productIds ?? (benefit.productId ? [benefit.productId] : []),
         storeAvailability: benefit.storeAvailability,
         retailPrice: benefit.retailPrice
           ? benefit.retailPrice.amountMinor / 100

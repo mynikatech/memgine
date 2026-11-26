@@ -16,7 +16,8 @@ data class BenefitSqlParams(
     val productId: String?, val retailPrice: Double?, val cost: Double?,
     val effectiveDate: String, val expiryDate: String?, val actorUserId: String,
     val create: Boolean,
-    val savingsMinor: Long?, val savingsCurrency: String?
+    val savingsMinor: Long?, val savingsCurrency: String?, val imageUrl: String? = null,
+    val updateImage: Boolean = false
 )
 
 data class RuleSqlParams(
@@ -32,6 +33,11 @@ data class BenefitStoreAvailabilityRow(
     val benefitId: String,
     val availabilityMode: String,
     val storeId: String?
+)
+
+data class BenefitImageRow(
+    val benefitId: String,
+    val imageUrl: String? = null,
 )
 
 interface BenefitSql {
@@ -96,12 +102,31 @@ interface BenefitSql {
     @SqlQuery("SELECT get_advertised_savings(:organizationId, 'BENEFIT')::text")
     fun advertisedSavings(@Bind("organizationId") organizationId: String): String
 
-    @SqlQuery("""SELECT save_organization_benefit(
-        :organizationId, :id, :benefitCode, :benefitName, :displayName,
-        :benefitCategoryId, :benefitTypeId, :description, :disclaimerText, :benefitStatusId,
-        :productId, CAST(:retailPrice AS numeric), CAST(:cost AS numeric),
-        CAST(:effectiveDate AS date), CAST(:expiryDate AS date),
-        :actorUserId, :create, :savingsMinor, :savingsCurrency)""")
+    @SqlQuery("""
+        SELECT save_organization_benefit(
+            :organizationId,
+            :id,
+            :benefitCode,
+            :benefitName,
+            :displayName,
+            :benefitCategoryId,
+            :benefitTypeId,
+            :description,
+            :disclaimerText,
+            :benefitStatusId,
+            :productId,
+            CAST(:retailPrice AS numeric),
+            CAST(:cost AS numeric),
+            CAST(:effectiveDate AS date),
+            CAST(:expiryDate AS date),
+            :actorUserId,
+            :create,
+            :savingsMinor,
+            :savingsCurrency,
+            CAST(:imageUrl AS text),
+            :updateImage
+        )
+    """)
     fun save(@BindBean params: BenefitSqlParams): Boolean
 
     @SqlQuery("""SELECT save_organization_benefit_rule(
@@ -122,4 +147,7 @@ interface BenefitSql {
     fun delete(@Bind("organizationId") organizationId: String,
                @Bind("benefitId") benefitId: String,
                @Bind("actorUserId") actorUserId: String): Boolean
+               
+
+
 }

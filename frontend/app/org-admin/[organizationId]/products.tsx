@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -21,6 +22,18 @@ import { useBusiness, useTheme } from "@/src/providers";
 import type { IntegrationConfiguration, Store } from "@/src/core";
 import { apis } from "@/src/data/data-registry";
 import { APP_ROUTES } from "@/src/constants/navigation";
+import { Ionicons } from "@expo/vector-icons";
+
+import {
+  pickBrandingAsset,
+  type PickedBrandingAsset,
+} from "@/src/core/brandingAssetPicker";
+
+import { brandingAssetApi } from "@/src/data/api/branding-asset-api";
+
+import { resolveAssetUrl } from "@/src/data/api/asset-url";
+
+import type { OrganizationProductImage } from "@/src/data/api/organization-product-api";
 import {
   organizationProductApi,
   type OrganizationProduct,
@@ -156,6 +169,29 @@ export default function OrgAdminProducts() {
   const [previewCandidatesError, setPreviewCandidatesError] =
     useState<string>();
   const [productsRefreshToken, setProductsRefreshToken] = useState(0);
+  const [productImages, setProductImages] = useState<
+    Record<string, OrganizationProductImage>
+  >({});
+
+  const [productImagesLoading, setProductImagesLoading] = useState(true);
+
+  const [productImagesError, setProductImagesError] = useState<string>();
+
+  const [imageProduct, setImageProduct] = useState<OrganizationProduct | null>(
+    null,
+  );
+
+  const [editingProductImage, setEditingProductImage] =
+    useState<OrganizationProductImage | null>(null);
+
+  const [pendingProductImage, setPendingProductImage] =
+    useState<PickedBrandingAsset>();
+
+  const [removeProductImage, setRemoveProductImage] = useState(false);
+
+  const [productImageBusy, setProductImageBusy] = useState(false);
+
+  const [productImageError, setProductImageError] = useState<string>();
   const [scopedProducts, setScopedProducts] = useState<OrganizationProduct[]>(
     [],
   );
@@ -761,6 +797,194 @@ export default function OrgAdminProducts() {
   const catalogProducts = hasConfiguredCatalogContext
     ? storeProducts
     : scopedProducts;
+  // Retrieve image metadata only for the selected Store/catalog's canonical IDs.
+  const productImageIdsKey = useMemo(
+    () =>
+      [...new Set(catalogProducts.map((p) => p.productId))].sort().join(","),
+    [catalogProducts],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    setProductImagesError(undefined);
+    if (!org || !productImageIdsKey) {
+      setProductImages({});
+      setProductImagesLoading(false);
+      return;
+    }
+    setProductImagesLoading(true);
+    const ids = productImageIdsKey.split(",");
+    // Bound query-string length for large Store catalogs.
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += 40) {
+      chunks.push(ids.slice(i, i + 40));
+    }
+    void (async () => {
+      const next: Record<string, OrganizationProductImage> = {};
+      for (const chunk of chunks) {
+        if (cancelled) return;
+        const response = await organizationProductApi.productImages(org, chunk);
+        if (cancelled) return;
+        if (!response.success) {
+          throw new Error(
+            response.error?.message || "Unable to load product images.",
+          );
+        }
+        for (const item of response.data) next[item.productId] = item;
+      }
+      if (!cancelled) setProductImages(next);
+    })()
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setProductImages({});
+          setProductImagesError(
+            err instanceof Error
+              ? err.message
+              : "Unable to load product images.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setProductImagesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [org, productImageIdsKey, productsRefreshToken]);
+
+  const openProductImage = async (p: OrganizationProduct) => {
+    if (!org || productImageBusy) return;
+    setImageProduct(p);
+    setEditingProductImage(null);
+    setPendingProductImage(undefined);
+    setRemoveProductImage(false);
+    setProductImageError(undefined);
+    setProductImageBusy(true);
+    try {
+      const response = await organizationProductApi.productImage(
+        org,
+        p.productId,
+      );
+      if (!response.success)
+        throw new Error(
+          response.error?.message || "Unable to load product image.",
+        );
+      setEditingProductImage(response.data);
+      setProductImages((current) => ({
+        ...current,
+        [p.productId]: response.data,
+      }));
+    } catch (err) {
+      setProductImageError(
+        err instanceof Error ? err.message : "Unable to load product image.",
+      );
+    } finally {
+      setProductImageBusy(false);
+    }
+  };
+
+  const closeProductImage = () => {
+    if (productImageBusy) return;
+    setImageProduct(null);
+    setEditingProductImage(null);
+    setPendingProductImage(undefined);
+    setRemoveProductImage(false);
+    setProductImageError(undefined);
+  };
+
+  const selectProductImage = async () => {
+    if (productImageBusy || !editingProductImage) return;
+    setProductImageBusy(true);
+    setProductImageError(undefined);
+    try {
+      const selected = await pickBrandingAsset({ assetType: "productImage" });
+      if (selected) {
+        setPendingProductImage(selected);
+        setRemoveProductImage(false);
+      }
+    } catch (err) {
+      setProductImageError(
+        err instanceof Error ? err.message : "Unable to select product image.",
+      );
+    } finally {
+      setProductImageBusy(false);
+    }
+  };
+
+  const saveProductImage = async () => {
+    if (
+      !org ||
+      !imageProduct ||
+      !editingProductImage ||
+      productImageBusy ||
+      (!pendingProductImage && !removeProductImage)
+    )
+      return;
+    setProductImageBusy(true);
+    setProductImageError(undefined);
+    try {
+      const imageUrl = removeProductImage
+        ? null
+        : pendingProductImage
+          ? (
+              await brandingAssetApi.upload(
+                org,
+                "productImage",
+                pendingProductImage,
+              )
+            ).path
+          : (editingProductImage.imageUrl ?? null);
+      const response = await organizationProductApi.saveProductImage(
+        org,
+        imageProduct.productId,
+        {
+          imageUrl,
+          versionNo: editingProductImage.versionNo,
+        },
+      );
+      if (!response.success)
+        throw new Error(
+          response.error?.message || "Unable to save product image.",
+        );
+      const saved = response.data;
+      setProductImages((current) => ({ ...current, [saved.productId]: saved }));
+      // Refresh the version used by ordinary manual-product editing as well.
+      setProducts((current) =>
+        current.map((p) =>
+          p.productId === saved.productId
+            ? { ...p, versionNo: saved.versionNo }
+            : p,
+        ),
+      );
+      setScopedProducts((current) =>
+        current.map((p) =>
+          p.productId === saved.productId
+            ? { ...p, versionNo: saved.versionNo }
+            : p,
+        ),
+      );
+      setImageProduct(null);
+      setEditingProductImage(null);
+      setPendingProductImage(undefined);
+      setRemoveProductImage(false);
+      setSuccessMessage(
+        imageUrl
+          ? "Product image saved successfully."
+          : "Product image removed successfully.",
+      );
+    } catch (err) {
+      setProductImageError(
+        err instanceof Error ? err.message : "Unable to save product image.",
+      );
+    } finally {
+      setProductImageBusy(false);
+    }
+  };
+
+  const productImagePreviewUri = removeProductImage
+    ? undefined
+    : (pendingProductImage?.uri ??
+      resolveAssetUrl(editingProductImage?.imageUrl));
+
   const productNameById = useMemo(
     () =>
       new Map(
@@ -2416,6 +2640,19 @@ export default function OrgAdminProducts() {
                   : `Showing ${catalogProducts.length} Products in the manual catalog.`}
               Expand a Product to view its details and available actions.
             </Text>
+            {productImagesError ? (
+              <View style={{ gap: theme.spacing.xs }}>
+                <Text color="danger">{productImagesError}</Text>
+                <Button
+                  label="Retry Loading Images"
+                  size="sm"
+                  variant="outline"
+                  onPress={() =>
+                    setProductsRefreshToken((current) => current + 1)
+                  }
+                />
+              </View>
+            ) : null}
             <View
               style={{
                 flexDirection: "row",
@@ -2426,6 +2663,7 @@ export default function OrgAdminProducts() {
                 gap: theme.spacing.sm,
               }}
             >
+              <View style={{ width: 48 }} />
               <Text variant="bodyStrong" style={{ flex: 3 }}>
                 Product
               </Text>
@@ -2447,6 +2685,9 @@ export default function OrgAdminProducts() {
                 const health = mappingHealth(p);
                 const canFix = canFixOrganizationScopeMapping(p);
                 const expanded = expandedProductDetailsId === p.productId;
+                const productImageUri = resolveAssetUrl(
+                  productImages[p.productId]?.imageUrl,
+                );
                 return (
                   <View
                     key={p.productId}
@@ -2457,69 +2698,115 @@ export default function OrgAdminProducts() {
                       overflow: "hidden",
                     }}
                   >
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`${expanded ? "Collapse" : "Expand"} details for ${p.productName}`}
-                      accessibilityState={{ expanded }}
-                      onPress={() =>
-                        setExpandedProductDetailsId(
-                          expanded ? null : p.productId,
-                        )
-                      }
+                    <View
                       style={{
                         flexDirection: "row",
                         alignItems: "center",
-                        gap: theme.spacing.sm,
-                        padding: theme.spacing.sm,
+                        paddingLeft: theme.spacing.sm,
                       }}
                     >
-                      <View style={{ flex: 3, minWidth: 0 }}>
-                        <Text variant="bodyStrong">
-                          {selectedSnapshotForProduct(p)?.productName ??
-                            p.productName}
-                        </Text>
-                        <Text color="textMuted">
-                          {selectedSnapshotForProduct(p)?.externalSku ??
-                            p.sku ??
-                            p.productCode ??
-                            "No SKU"}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 2, minWidth: 0 }}>
-                        <Text>{productCategoryLabel(p)}</Text>
-                      </View>
-                      <View style={{ flex: 2, minWidth: 0 }}>
-                        <Text>
-                          {selectedSnapshotForProduct(p)
-                            ? `${selectedSnapshotForProduct(p)!.currencyCode} ${(selectedSnapshotForProduct(p)!.unitPriceMinorSnapshot / 100).toFixed(2)}`
-                            : p.basePriceMinor != null
-                              ? `${p.currencyCode ?? ""} ${(p.basePriceMinor / 100).toFixed(2)}`
-                              : "—"}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 2, minWidth: 0 }}>
-                        <Text
-                          variant={
-                            health.label === "Needs attention"
-                              ? "bodyStrong"
-                              : "body"
-                          }
-                          color={
-                            health.label === "Needs attention"
-                              ? "danger"
-                              : "text"
-                          }
-                        >
-                          {health.label}
-                        </Text>
-                      </View>
-                      <Text
-                        color="textMuted"
-                        style={{ width: 24, textAlign: "center" }}
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Manage image for ${p.productName}`}
+                        disabled={productImageBusy}
+                        onPress={() => void openProductImage(p)}
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: theme.radius.sm,
+                          borderWidth: 1,
+                          borderColor: theme.colors.border,
+                          backgroundColor: theme.colors.surfaceAlt,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          overflow: "hidden",
+                        }}
                       >
-                        {expanded ? "−" : "+"}
-                      </Text>
-                    </Pressable>
+                        {productImageUri ? (
+                          <Image
+                            key={productImageUri}
+                            source={{ uri: productImageUri }}
+                            resizeMode="cover"
+                            style={{ width: "100%", height: "100%" }}
+                          />
+                        ) : (
+                          <>
+                            <Ionicons
+                              name="image-outline"
+                              size={22}
+                              color={theme.colors.primary}
+                            />
+                            <Text color="textMuted" style={{ fontSize: 10 }}>
+                              {productImagesLoading ? "…" : "Upload"}
+                            </Text>
+                          </>
+                        )}
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`${expanded ? "Collapse" : "Expand"} details for ${p.productName}`}
+                        accessibilityState={{ expanded }}
+                        onPress={() =>
+                          setExpandedProductDetailsId(
+                            expanded ? null : p.productId,
+                          )
+                        }
+                        style={{
+                          flex: 1,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: theme.spacing.sm,
+                          padding: theme.spacing.sm,
+                        }}
+                      >
+                        <View style={{ flex: 3, minWidth: 0 }}>
+                          <Text variant="bodyStrong">
+                            {selectedSnapshotForProduct(p)?.productName ??
+                              p.productName}
+                          </Text>
+                          <Text color="textMuted">
+                            {selectedSnapshotForProduct(p)?.externalSku ??
+                              p.sku ??
+                              p.productCode ??
+                              "No SKU"}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 2, minWidth: 0 }}>
+                          <Text>{productCategoryLabel(p)}</Text>
+                        </View>
+                        <View style={{ flex: 2, minWidth: 0 }}>
+                          <Text>
+                            {selectedSnapshotForProduct(p)
+                              ? `${selectedSnapshotForProduct(p)!.currencyCode} ${(selectedSnapshotForProduct(p)!.unitPriceMinorSnapshot / 100).toFixed(2)}`
+                              : p.basePriceMinor != null
+                                ? `${p.currencyCode ?? ""} ${(p.basePriceMinor / 100).toFixed(2)}`
+                                : "—"}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 2, minWidth: 0 }}>
+                          <Text
+                            variant={
+                              health.label === "Needs attention"
+                                ? "bodyStrong"
+                                : "body"
+                            }
+                            color={
+                              health.label === "Needs attention"
+                                ? "danger"
+                                : "text"
+                            }
+                          >
+                            {health.label}
+                          </Text>
+                        </View>
+                        <Text
+                          color="textMuted"
+                          style={{ width: 24, textAlign: "center" }}
+                        >
+                          {expanded ? "−" : "+"}
+                        </Text>
+                      </Pressable>
+                    </View>
                     {expanded ? (
                       <View
                         style={{
@@ -5034,6 +5321,111 @@ export default function OrgAdminProducts() {
             />
           ) : null}
           <Button label="Save Product" onPress={() => void save()} />
+        </View>
+      </Modal>
+      <Modal
+        visible={Boolean(imageProduct)}
+        onClose={closeProductImage}
+        title="Product Image"
+        scrollable
+      >
+        <View style={{ gap: theme.spacing.md }}>
+          <Text variant="bodyStrong">{imageProduct?.productName}</Text>
+          {imageProduct?.sku || imageProduct?.productCode ? (
+            <Text color="textMuted">
+              {imageProduct.sku || imageProduct.productCode}
+            </Text>
+          ) : null}
+          <View style={{ alignItems: "center" }}>
+            <View
+              style={{
+                width: 180,
+                height: 180,
+                borderRadius: theme.radius.md,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                backgroundColor: theme.colors.surfaceAlt,
+                alignItems: "center",
+                justifyContent: "center",
+                overflow: "hidden",
+              }}
+            >
+              {productImagePreviewUri ? (
+                <Image
+                  key={productImagePreviewUri}
+                  source={{ uri: productImagePreviewUri }}
+                  resizeMode="contain"
+                  style={{ width: "100%", height: "100%" }}
+                />
+              ) : (
+                <View style={{ alignItems: "center", gap: theme.spacing.xs }}>
+                  <Ionicons
+                    name="image-outline"
+                    size={48}
+                    color={theme.colors.textMuted}
+                  />
+                  <Text color="textMuted">
+                    {productImageBusy && !editingProductImage
+                      ? "Loading…"
+                      : "No product image"}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+          <View
+            style={{
+              flexDirection: "row",
+              flexWrap: "wrap",
+              gap: theme.spacing.sm,
+            }}
+          >
+            <Button
+              label={productImagePreviewUri ? "Replace Image" : "Upload Image"}
+              variant="outline"
+              disabled={productImageBusy || !editingProductImage}
+              onPress={() => void selectProductImage()}
+            />
+            {productImagePreviewUri ? (
+              <Button
+                label="Remove Image"
+                variant="outline"
+                disabled={productImageBusy}
+                onPress={() => {
+                  setPendingProductImage(undefined);
+                  setRemoveProductImage(Boolean(editingProductImage?.imageUrl));
+                  setProductImageError(undefined);
+                }}
+              />
+            ) : null}
+          </View>
+          <Text color="textMuted">
+            This image is shared across all Stores linked to this product.
+          </Text>
+          {productImageError ? (
+            <Text color="danger">{productImageError}</Text>
+          ) : null}
+          <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+            <View style={{ flex: 1 }}>
+              <Button
+                label="Cancel"
+                variant="outline"
+                disabled={productImageBusy}
+                onPress={closeProductImage}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button
+                label={productImageBusy ? "Processing…" : "Save Image"}
+                disabled={
+                  productImageBusy ||
+                  !editingProductImage ||
+                  (!pendingProductImage && !removeProductImage)
+                }
+                onPress={() => void saveProductImage()}
+              />
+            </View>
+          </View>
         </View>
       </Modal>
       <Modal

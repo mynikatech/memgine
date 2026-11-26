@@ -68,6 +68,34 @@ class BenefitService(private val jdbi: Jdbi) {
             throw BadRequestException("Benefit exceeds a field limit or has a negative price")
         }
         validateDates(request.effectiveDate, request.expiryDate)
+        if (request.updateImage && request.imageUrl != null) {
+            val imageUrl = request.imageUrl.trim()
+
+            val prefix =
+                "/api/v1/assets/organizations/" +
+                "$organizationId/branding/benefitImage/"
+
+            val filename = imageUrl.removePrefix(prefix)
+
+            if (
+                imageUrl.length > 2048 ||
+                !imageUrl.startsWith(prefix) ||
+                !filename.matches(
+                    Regex(
+                        "^[0-9a-fA-F]{8}-" +
+                        "[0-9a-fA-F]{4}-" +
+                        "[0-9a-fA-F]{4}-" +
+                        "[0-9a-fA-F]{4}-" +
+                        "[0-9a-fA-F]{12}" +
+                        "(\\.[a-zA-Z0-9]{1,10})?$"
+                    )
+                )
+            ) {
+                throw BadRequestException(
+                    "Invalid Benefit image"
+                )
+            }
+        }
         val lookup = jdbi.onDemand(BenefitSql::class.java)
         if (!lookup.categoryExists(request.benefitCategoryId) ||
             !lookup.typeExists(request.benefitTypeId)) {
@@ -115,7 +143,8 @@ class BenefitService(private val jdbi: Jdbi) {
                 request.description, request.disclaimerText, request.benefitStatusId, selectedProductIds.minOrNull(),
                 request.retailPrice, request.cost, request.effectiveDate,
                 request.expiryDate, actorUserId, create,
-                request.advertisedSavingsOverride?.amountMinor, request.advertisedSavingsOverride?.currency
+                request.advertisedSavingsOverride?.amountMinor, request.advertisedSavingsOverride?.currency,
+                request.imageUrl?.trim(), request.updateImage
             ))
             val existingIds = existing.map { it.id }.toSet()
             request.rules.forEach { rule ->
@@ -159,16 +188,38 @@ class BenefitService(private val jdbi: Jdbi) {
         if (id.isBlank() || id.length > 64) throw BadRequestException("Invalid id")
     }
 
-    private fun withDetails(rows: List<BenefitDto>, sql: BenefitSql, includeSavings: Boolean = true): List<BenefitDto> {
+   private fun withDetails(
+        rows: List<BenefitDto>,
+        sql: BenefitSql,
+        includeSavings: Boolean = true
+    ): List<BenefitDto> {
+
         if (rows.isEmpty()) return rows
+
         val organizationId = rows.first().organizationId
-        val savings = if (includeSavings) Json.decodeFromString<Map<String, AdvertisedSavingsDto>>(sql.advertisedSavings(organizationId)) else emptyMap()
+
+        val savings = if (includeSavings) {
+            Json.decodeFromString<
+                Map<String, AdvertisedSavingsDto>
+            >(
+                sql.advertisedSavings(organizationId)
+            )
+        } else {
+            emptyMap()
+        }
+
         return withStoreAvailability(
-            withProducts(rows.map { it.copy(advertisedSavings = savings[it.id]) }, sql.canonicalProducts(organizationId)),
+            withProducts(
+                rows.map {
+                    it.copy(
+                        advertisedSavings = savings[it.id]
+                    )
+                },
+                sql.canonicalProducts(organizationId)
+            ),
             sql.storeAvailability(organizationId)
         )
     }
-
     private fun withProducts(rows: List<BenefitDto>, products: List<CanonicalProductRow>): List<BenefitDto> {
         val byBenefit = products.groupBy { it.parentId }
         return rows.map { benefit ->

@@ -29,6 +29,7 @@ data class BenefitDto(
     val isDeleted: Boolean,
     val versionNo: Int,
     val advertisedSavings: AdvertisedSavingsDto? = null,
+    val imageUrl: String? = null
 )
 
 @Serializable
@@ -107,7 +108,9 @@ data class BenefitWriteDto(
     val cost: Double? = null,
     val effectiveDate: String,
     val expiryDate: String? = null,
-    val rules: List<BenefitUsageRuleWriteDto> = emptyList()
+    val rules: List<BenefitUsageRuleWriteDto> = emptyList(),
+    val imageUrl: String? = null,
+    val updateImage: Boolean = false
 )
 
 @Serializable
@@ -140,4 +143,5 @@ data class CanonicalProductDto(
     val productId: String,
     val productName: String,
     val productCode: String,
+    val imageUrl: String? = null,
 )

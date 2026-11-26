@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
-
+import { ProductThumbnail } from "./BenefitItem";
 export type RedemptionProductStore = {
   storeId: string;
   storeName: string;
@@ -13,6 +13,7 @@ export type RedemptionProductChoice = {
   /** Verified active external mappings, resolved by the backend for the customer. */
   availableStores?: RedemptionProductStore[] | null;
   availableStoreIds?: string[] | null;
+  imageUrl?: string | null;
 };
 
 export type RedemptionItemChoice = {
@@ -78,7 +79,13 @@ export function RedemptionProductPicker({
   storeNamesById?: Record<string, string>;
   showStoreAvailability?: boolean;
   initialSelections?: Record<string, string>;
-  renderChoice?: (label: string, selected: boolean, onPress: () => void, item: RedemptionItemChoice) => ReactNode;
+  renderChoice?: (
+    label: string,
+    selected: boolean,
+    onPress: () => void,
+    item: RedemptionItemChoice,
+    choice: RedemptionProductChoice,
+  ) => ReactNode;
 }) {
   const [options, setOptions] = useState<
     Record<string, RedemptionProductChoice[]>
@@ -112,8 +119,13 @@ export function RedemptionProductPicker({
           const choices = lists[index];
           nextOptions[key] = choices;
           const requested = initial.current?.[key];
-          if (requested && choices.some((choice) => choice.productId === requested)) nextSelections[key] = requested;
-          else if (choices.length === 1) nextSelections[key] = choices[0].productId;
+          if (
+            requested &&
+            choices.some((choice) => choice.productId === requested)
+          )
+            nextSelections[key] = requested;
+          else if (choices.length === 1)
+            nextSelections[key] = choices[0].productId;
         });
         setOptions(nextOptions);
         setSelections(nextSelections);
@@ -177,7 +189,17 @@ export function RedemptionProductPicker({
                     ? storeAvailabilityLabel(choice, storeNamesById)
                     : null;
                   if (renderChoice) {
-                    return <View key={choice.productId}>{renderChoice(choice.productName, selected, () => choose(key, choice.productId), item)}</View>;
+                    return (
+                      <View key={choice.productId}>
+                        {renderChoice(
+                          choice.productName,
+                          selected,
+                          () => choose(key, choice.productId),
+                          item,
+                          choice,
+                        )}
+                      </View>
+                    );
                   }
                   return (
                     <Pressable
@@ -193,9 +215,24 @@ export function RedemptionProductPicker({
                         gap: 4,
                       }}
                     >
-                      <Text>
-                        {selected ? "◉" : "○"} {choice.productName}
-                      </Text>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 10,
+                        }}
+                      >
+                        <Text>{selected ? "◉" : "○"}</Text>
+
+                        <ProductThumbnail
+                          urls={[choice.imageUrl]}
+                          label={choice.productName}
+                          icon="cube-outline"
+                          size={48}
+                        />
+
+                        <Text style={{ flex: 1 }}>{choice.productName}</Text>
+                      </View>
                       {availability ? (
                         <Text
                           style={{

@@ -1697,20 +1697,30 @@ export function BusinessExperience({
     ({ offer, itemStatus }) =>
       itemStatus.status === "AVAILABLE" && !counterQrFor("OFFER", offer.id),
   );
-  const redeemSectionBenefits = benefitItems.filter(
-    ({ benefit, itemStatus }) =>
-      itemStatus.status === "AVAILABLE" ||
-      itemStatus.status === "LIMIT_REACHED" ||
-      reservationsFor("BENEFIT", benefit.id).length > 0 ||
-      !!counterQrFor("BENEFIT", benefit.id),
-  );
+  const redeemSectionBenefits = benefitItems;
   const redeemSectionOffers = offerItems.filter(
     ({ offer, itemStatus }) =>
-      itemStatus.status === "AVAILABLE" ||
-      itemStatus.status === "LIMIT_REACHED" ||
+      (itemStatus.status !== "NOT_APPLICABLE" &&
+        itemStatus.status !== "INACTIVE") ||
       reservationsFor("OFFER", offer.id).length > 0 ||
       !!counterQrFor("OFFER", offer.id),
   );
+  const redeemSectionTitle =
+    redeemSectionBenefits.length && redeemSectionOffers.length
+      ? "Redeem Benefits & Offers"
+      : redeemSectionOffers.length
+        ? "Redeem Offers"
+        : "Redeem Benefits";
+  const redeemSectionSummary = [
+    redeemSectionBenefits.length
+      ? `${redeemSectionBenefits.length} Benefit${redeemSectionBenefits.length === 1 ? "" : "s"}`
+      : null,
+    redeemSectionOffers.length
+      ? `${redeemSectionOffers.length} Offer${redeemSectionOffers.length === 1 ? "" : "s"}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const offersTabItems = offerItems.filter(
     ({ offer, itemStatus }) =>
       (itemStatus.status !== "NOT_APPLICABLE" &&
@@ -2357,6 +2367,7 @@ export function BusinessExperience({
       decoration={resolvedBranding.decoration}
     >
       <OfferCard
+        products={offer.products}
         decorative={Boolean(
           resolvedBranding.decoration?.cardBackgroundImageUrl &&
           resolvedBranding.decoration?.cardTreatment === "IMAGE_OVERLAY",
@@ -2628,7 +2639,8 @@ export function BusinessExperience({
       {(isPlanExploration
         ? detailsPlan
         : !isHistoricalSubscription &&
-          (previewSection === "benefits" || exp.membership)) &&
+          (previewSection === "benefits" ||
+            (!exp.membership?.active && exp.membership))) &&
       overviewBenefits.length ? (
         <Section
           titleColor={pageTextColor}
@@ -2643,6 +2655,8 @@ export function BusinessExperience({
               {overviewBenefits.map((b) => (
                 <View key={b.id} style={{ gap: 4 }}>
                   <BenefitItem
+                    products={b.products}
+                    imageUrl={b.imageUrl}
                     testID={`experience-benefit-${b.id}`}
                     title={b.displayName ?? b.benefitName}
                     subtitle={b.description}
@@ -2728,174 +2742,174 @@ export function BusinessExperience({
       {!isPlanExploration &&
       !isHistoricalSubscription &&
       exp.membership?.active &&
+      previewSection !== "benefits" &&
       (redeemSectionBenefits.length || redeemSectionOffers.length) ? (
         <View style={customerSectionContent}>
-          <Section
-            titleColor={pageTextColor}
-            title={t("experience.redeemBenefits")}
-          >
-            <Card padding="lg" testID="experience-redeem-benefits">
-              <View style={{ gap: 14 }}>
-                {redeemSectionBenefits.length ? (
-                  <>
-                    <Text variant="bodyStrong" color="text">
-                      Benefits
-                    </Text>
-                    {redeemSectionBenefits.map(({ benefit: b, itemStatus }) => {
-                      const counterQr = counterQrFor("BENEFIT", b.id);
-                      const selectable =
-                        itemStatus.status === "AVAILABLE" && !counterQr;
-                      const reservation = reservationsFor("BENEFIT", b.id)[0];
-                      const selected =
-                        selectable && selectedBenefitIds.has(b.id);
-                      const unavailableLabel = counterQr
-                        ? undefined
-                        : entitlementUnavailableLabel(
-                            itemStatus.status,
-                            itemStatus.displayReason,
-                            !!reservation,
-                          );
-                      const savings = advertisedSavingsLabel(
-                        b.advertisedSavings,
-                        "use",
+          <Section titleColor={pageTextColor} title={redeemSectionTitle}>
+            <Card padding="sm" testID="experience-redeem-benefits">
+              <View style={{ gap: theme.spacing.sm }}>
+                <Text
+                  variant="caption"
+                  color="textMuted"
+                  style={{ textAlign: "right" }}
+                >
+                  {redeemSectionSummary}
+                </Text>
+                {redeemSectionBenefits.map(({ benefit: b, itemStatus }) => {
+                  const counterQr = counterQrFor("BENEFIT", b.id);
+                  const reserved = reservationsFor("BENEFIT", b.id).length > 0;
+                  const selectable =
+                    itemStatus.status === "AVAILABLE" && !counterQr;
+                  const selected = selectable && selectedBenefitIds.has(b.id);
+                  const unavailableLabel = counterQr
+                    ? undefined
+                    : entitlementUnavailableLabel(
+                        itemStatus.status,
+                        itemStatus.displayReason,
+                        reserved,
                       );
-
-                      return (
-                        <View key={b.id} style={{ gap: 4 }}>
+                  const storeDetails = itemStoreLabel(`BENEFIT:${b.id}`);
+                  const names = currentItemStores[`BENEFIT:${b.id}`]?.map(
+                    ({ name }) => name,
+                  );
+                  const storeSummary = names?.length
+                    ? names.slice(0, 2).join(", ") +
+                      (names.length > 2 ? ` +${names.length - 2} more` : "")
+                    : storeDetails;
+                  return (
+                    <View
+                      key={b.id}
+                      style={{
+                        gap: 4,
+                        padding: theme.spacing.sm,
+                        borderWidth: 1,
+                        borderRadius: theme.radius.md,
+                        borderColor: selected
+                          ? theme.colors.primary
+                          : theme.colors.border,
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "flex-start",
+                          gap: theme.spacing.sm,
+                        }}
+                      >
+                        <BenefitItem
+                          compact
+                          products={b.products}
+                          imageUrl={b.imageUrl}
+                          testID={`experience-benefit-${b.id}`}
+                          title={b.displayName ?? b.benefitName}
+                          subtitle={b.description}
+                          advertisedSavings={b.advertisedSavings}
+                          disclaimerText={b.disclaimerText}
+                          eligibleProducts={b.products?.map(
+                            (p) => p.productName || p.productCode,
+                          )}
+                          productStoreAvailability={b.products?.map((p) => ({
+                            productId: p.productId,
+                            productName: p.productName || p.productCode,
+                            availability: benefitProductAvailability(
+                              b.id,
+                              p.productId,
+                            ),
+                          }))}
+                          icon={benefitIconForType(b.benefitTypeId)}
+                          storeSummary={storeSummary || undefined}
+                          storeDetails={storeDetails || undefined}
+                          usageRules={benefitUsageRules?.filter(
+                            (rule) => rule.benefitId === b.id,
+                          )}
+                        />
+                        <View style={{ alignItems: "center", gap: 2 }}>
                           <Pressable
                             testID={`experience-redeem-benefit-${b.id}`}
-                            accessibilityRole="button"
+                            accessibilityRole="checkbox"
+                            accessibilityLabel={`Select ${b.displayName ?? b.benefitName}`}
                             accessibilityState={{
-                              selected,
+                              checked: selected,
                               disabled: !selectable || isPreviewMode,
                             }}
                             disabled={!selectable || isPreviewMode}
                             onPress={() => toggleBenefit(b.id)}
-                            style={({ pressed }) => ({
-                              flexDirection: "row",
-                              alignItems: "center",
-                              gap: theme.spacing.md,
-                              padding: theme.spacing.sm,
-                              borderRadius: theme.radius.md,
-                              borderWidth: 1,
-                              borderColor: selected
-                                ? theme.colors.primary
-                                : theme.colors.border,
-                              backgroundColor: selected
-                                ? theme.colors.primarySoft
-                                : theme.colors.surface,
-                              opacity:
-                                !selectable && !reservation
-                                  ? 0.5
-                                  : pressed
-                                    ? theme.states.pressedOpacity
-                                    : 1,
-                            })}
+                            hitSlop={8}
                           >
                             <Ionicons
                               name={
-                                !selectable
-                                  ? "ban-outline"
+                                !selectable && (reserved || counterQr)
+                                  ? "lock-closed-outline"
                                   : selected
                                     ? "checkbox"
                                     : "square-outline"
                               }
-                              size={22}
+                              size={24}
                               color={
-                                !selectable || !selected
-                                  ? theme.colors.textMuted
-                                  : theme.colors.primary
+                                selected
+                                  ? theme.colors.primary
+                                  : theme.colors.textMuted
                               }
                             />
-
-                            <View style={{ flex: 1 }}>
-                              <Text
-                                variant="bodyStrong"
-                                color={selectable ? "text" : "textMuted"}
-                              >
-                                {b.displayName ?? b.benefitName}
-                              </Text>
-
-                              {b.description ? (
-                                <Text variant="bodySmall" color="textMuted">
-                                  {b.description}
-                                </Text>
-                              ) : null}
-                              {itemStoreLabel(`BENEFIT:${b.id}`) ? (
-                                <Text variant="caption" color="textMuted">
-                                  {itemStoreLabel(`BENEFIT:${b.id}`)}
-                                </Text>
-                              ) : null}
-                              {savings ? (
-                                <Text
-                                  variant="caption"
-                                  color={selectable ? "primary" : "textMuted"}
-                                >
-                                  {savings}
-                                </Text>
-                              ) : null}
-                              {b.products?.length ? (
-                                <View style={{ gap: 3, marginTop: 4 }}>
-                                  <Text
-                                    variant="bodySmall"
-                                    color="textSecondary"
-                                  >
-                                    Choose from:
-                                  </Text>
-                                  {b.products.map((eligible) => (
-                                    <Text
-                                      key={eligible.productId}
-                                      variant="caption"
-                                      color="textMuted"
-                                    >
-                                      {eligible.productName ||
-                                        eligible.productCode}{" "}
-                                      —{" "}
-                                      {benefitProductAvailability(
-                                        b.id,
-                                        eligible.productId,
-                                      )}
-                                    </Text>
-                                  ))}
-                                </View>
-                              ) : null}
-                            </View>
-
-                            {unavailableLabel ? (
-                              <Badge label={unavailableLabel} tone="neutral" />
-                            ) : null}
                           </Pressable>
-                          {renderReservations("BENEFIT", b.id, !selectable)}
+                          <Text variant="caption" color="primary">
+                            Benefit
+                          </Text>
                         </View>
+                      </View>
+                      {unavailableLabel && !reserved ? (
+                        <Text variant="caption" color="textMuted">
+                          {unavailableLabel}
+                        </Text>
+                      ) : null}
+                      {renderReservations("BENEFIT", b.id, !selectable)}
+                    </View>
+                  );
+                })}
+                {redeemSectionOffers.map(({ offer, itemStatus }) => {
+                  const counterQr = counterQrFor("OFFER", offer.id);
+                  const reserved =
+                    reservationsFor("OFFER", offer.id).length > 0;
+                  const selectable =
+                    itemStatus.status === "AVAILABLE" && !counterQr;
+                  const selected = selectable && selectedOfferIds.has(offer.id);
+                  const unavailableLabel = counterQr
+                    ? undefined
+                    : entitlementUnavailableLabel(
+                        itemStatus.status,
+                        itemStatus.displayReason,
+                        reserved,
                       );
-                    })}
-                  </>
-                ) : null}
-
-                {redeemSectionOffers.length ? (
-                  <View style={{ gap: theme.spacing.sm }}>
-                    <Text variant="bodyStrong" color="text">
-                      Special Offers
-                    </Text>
-                    {redeemSectionOffers.map(({ offer, itemStatus }) => (
-                      <DecorativeThemeFrame
-                        key={offer.id}
-                        imageUrl={
-                          resolvedBranding.decoration?.cardBackgroundImageUrl ??
-                          null
-                        }
-                        primaryColor={theme.colors.primary}
-                        accentColor={theme.colors.accent}
-                        variant="content"
-                        decoration={resolvedBranding.decoration}
+                  const names = currentItemStores[`OFFER:${offer.id}`]?.map(
+                    ({ name }) => name,
+                  );
+                  const storeSummary = names?.length
+                    ? names.slice(0, 2).join(", ") +
+                      (names.length > 2 ? ` +${names.length - 2} more` : "")
+                    : itemStoreLabel(`OFFER:${offer.id}`);
+                  return (
+                    <View
+                      key={offer.id}
+                      style={{
+                        gap: 4,
+                        padding: theme.spacing.sm,
+                        borderWidth: 1,
+                        borderRadius: theme.radius.md,
+                        borderColor: selected
+                          ? theme.colors.primary
+                          : theme.colors.border,
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "flex-start",
+                          gap: theme.spacing.sm,
+                        }}
                       >
                         <OfferCard
-                          decorative={Boolean(
-                            resolvedBranding.decoration
-                              ?.cardBackgroundImageUrl &&
-                            resolvedBranding.decoration?.cardTreatment ===
-                              "IMAGE_OVERLAY",
-                          )}
+                          compact
+                          products={offer.products}
                           offerId={offer.id}
                           testID={`experience-redeem-offer-${offer.id}`}
                           title={offer.offerName}
@@ -2904,54 +2918,64 @@ export function BusinessExperience({
                           imageUrl={offer.promotionImageUrl}
                           badge={offer.badgeText}
                           availabilityText={redeemOfferAvailability(offer)}
+                          compactAvailabilityText={[
+                            offer.availabilityText,
+                            storeSummary,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
                           disclaimerText={offer.disclaimerText}
                           applicableProducts={offer.products?.map(
-                            (product) =>
-                              product.productName || product.productCode,
+                            (p) => p.productName || p.productCode,
                           )}
                           discountPercentage={offer.discountPercentage}
-                          ctaLabel={
-                            counterQrFor("OFFER", offer.id)
-                              ? undefined
-                              : isPreviewMode
-                                ? offer.ctaLabel
-                                : itemStatus.status === "AVAILABLE"
-                                  ? selectedOfferIds.has(offer.id)
-                                    ? "Remove from redemption"
-                                    : "Add to redemption"
-                                  : entitlementUnavailableLabel(
-                                      itemStatus.status,
-                                      itemStatus.displayReason,
-                                      reservationsFor("OFFER", offer.id)
-                                        .length > 0,
-                                    )
-                          }
-                          ctaDisabled={
-                            !isPreviewMode &&
-                            (isHistoricalSubscription ||
-                              itemStatus.status !== "AVAILABLE")
-                          }
                           usageRules={offerUsageRules?.filter(
                             (rule) => rule.offerId === offer.id,
                           )}
-                          onPress={
-                            isPreviewMode ||
-                            isHistoricalSubscription ||
-                            itemStatus.status !== "AVAILABLE" ||
-                            counterQrFor("OFFER", offer.id)
-                              ? undefined
-                              : () => toggleOffer(offer.id)
-                          }
                         />
-                        {renderReservations(
-                          "OFFER",
-                          offer.id,
-                          itemStatus.status !== "AVAILABLE",
-                        )}
-                      </DecorativeThemeFrame>
-                    ))}
-                  </View>
-                ) : null}
+                        <View style={{ alignItems: "center", gap: 2 }}>
+                          <Pressable
+                            testID={`experience-redeem-offer-${offer.id}-cta`}
+                            accessibilityRole="checkbox"
+                            accessibilityLabel={`Select ${offer.offerName}`}
+                            accessibilityState={{
+                              checked: selected,
+                              disabled: !selectable || isPreviewMode,
+                            }}
+                            disabled={!selectable || isPreviewMode}
+                            onPress={() => toggleOffer(offer.id)}
+                            hitSlop={8}
+                          >
+                            <Ionicons
+                              name={
+                                !selectable && (reserved || counterQr)
+                                  ? "lock-closed-outline"
+                                  : selected
+                                    ? "checkbox"
+                                    : "square-outline"
+                              }
+                              size={24}
+                              color={
+                                selected
+                                  ? theme.colors.primary
+                                  : theme.colors.textMuted
+                              }
+                            />
+                          </Pressable>
+                          <Text variant="caption" color="primary">
+                            Offer
+                          </Text>
+                        </View>
+                      </View>
+                      {unavailableLabel && !reserved ? (
+                        <Text variant="caption" color="textMuted">
+                          {unavailableLabel}
+                        </Text>
+                      ) : null}
+                      {renderReservations("OFFER", offer.id, !selectable)}
+                    </View>
+                  );
+                })}
 
                 {!hasRedeemable ? (
                   <Text variant="bodySmall" color="textMuted">
@@ -4416,6 +4440,8 @@ export function BusinessExperience({
                       <View style={{ gap: 18 }}>
                         {exp.benefits.map((b) => (
                           <BenefitItem
+                            products={b.products}
+                            imageUrl={b.imageUrl}
                             key={b.id}
                             testID={`experience-preview-benefit-${b.id}`}
                             title={b.displayName ?? b.benefitName}

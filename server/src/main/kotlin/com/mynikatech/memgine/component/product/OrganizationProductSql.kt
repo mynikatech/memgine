@@ -18,4 +18,62 @@ interface OrganizationProductSql {
  @SqlQuery("SELECT save_organization_product(:organizationId,:productId,:productCatalogId,:productCatalogCategoryId,:productCode,:productName,:description,:shortCode,:sku,:upc,:basePriceMinor,:currencyCode,:active,:externalProductId,:versionNo,:actorUserId)") fun saveProduct(@BindBean p:OrganizationProductParams):String
  @SqlQuery("SELECT * FROM preview_organization_product_import(:organizationId,:catalogId,CAST(:rows AS jsonb),:actorUserId)") fun preview(@Bind("organizationId") organizationId:String,@Bind("catalogId") catalogId:String,@Bind("rows") rows:String,@Bind("actorUserId") actorUserId:String):List<ProductImportPreviewDto>
  @SqlQuery("SELECT * FROM commit_organization_product_import(:organizationId,:catalogId,:fileName,CAST(:rows AS jsonb),:actorUserId)") fun commit(@Bind("organizationId") organizationId:String,@Bind("catalogId") catalogId:String,@Bind("fileName") fileName:String,@Bind("rows") rows:String,@Bind("actorUserId") actorUserId:String):ProductImportCommitDto
+ @SqlQuery(
+    """
+    SELECT *
+    FROM get_organization_product_images(
+        :organizationId,
+        CAST(
+            string_to_array(
+                CAST(:productIds AS text),
+                ','
+            ) AS varchar[]
+        ),
+        :actorUserId
+    )
+    """
+)
+fun productImages(
+    @Bind("organizationId") organizationId: String,
+    @Bind("productIds") productIds: String?,
+    @Bind("actorUserId") actorUserId: String
+): List<OrganizationProductImageDto>
+
+
+@SqlQuery(
+    """
+    SELECT *
+    FROM get_organization_product_image(
+        :organizationId,
+        :productId,
+        :actorUserId
+    )
+    """
+)
+fun productImage(
+    @Bind("organizationId") organizationId: String,
+    @Bind("productId") productId: String,
+    @Bind("actorUserId") actorUserId: String
+): List<OrganizationProductImageDto>
+
+
+@SqlQuery(
+    """
+    SELECT *
+    FROM save_organization_product_image(
+        :organizationId,
+        :productId,
+        :imageUrl,
+        :versionNo,
+        :actorUserId
+    )
+    """
+)
+fun saveProductImage(
+    @Bind("organizationId") organizationId: String,
+    @Bind("productId") productId: String,
+    @Bind("imageUrl") imageUrl: String?,
+    @Bind("versionNo") versionNo: Int,
+    @Bind("actorUserId") actorUserId: String
+): OrganizationProductImageDto
 }

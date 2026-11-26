@@ -1,8 +1,21 @@
-import { AdvertisedSavingsFields, useAdvertisedSavingsOverride } from "./AdvertisedSavingsFields";
+import {
+  AdvertisedSavingsFields,
+  useAdvertisedSavingsOverride,
+} from "./AdvertisedSavingsFields";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { DateInput } from "../DateInput";
 import { BenefitFrequencyType } from "@/src/core";
+import { Image } from "react-native";
+
+import {
+  pickBrandingAsset,
+  type PickedBrandingAsset,
+} from "@/src/core/brandingAssetPicker";
+
+import { brandingAssetApi } from "@/src/data/api/branding-asset-api";
+
+import { resolveAssetUrl } from "@/src/data/api/asset-url";
 import type {
   Benefit,
   BenefitUsageRule,
@@ -383,6 +396,18 @@ export function BenefitForm({
   }));
 
   const [saving, setSaving] = useState(false);
+
+  // Dedicated Benefit image configuration
+  const [pendingBenefitImage, setPendingBenefitImage] =
+    useState<PickedBrandingAsset>();
+
+  const [benefitImageError, setBenefitImageError] = useState<string>();
+
+  const [benefitImagePicking, setBenefitImagePicking] = useState(false);
+
+  const benefitImagePreview =
+    pendingBenefitImage?.uri ?? resolveAssetUrl(form.imageUrl ?? undefined);
+
   const [rules, setRules] = useState<BenefitUsageRule[]>(() =>
     cloneRules(usageRules),
   );
@@ -694,6 +719,37 @@ export function BenefitForm({
       ...current,
       [field]: value,
     }));
+  };
+
+  // NEW: Select or replace Benefit image
+  const selectBenefitImage = async () => {
+    setBenefitImagePicking(true);
+    setBenefitImageError(undefined);
+
+    try {
+      const selected = await pickBrandingAsset({
+        assetType: "benefitImage",
+      });
+
+      if (selected) {
+        setPendingBenefitImage(selected);
+      }
+    } catch (error) {
+      setBenefitImageError(
+        error instanceof Error
+          ? error.message
+          : "Unable to select Benefit image.",
+      );
+    } finally {
+      setBenefitImagePicking(false);
+    }
+  };
+
+  // NEW: Remove Benefit image
+  const removeBenefitImage = () => {
+    setPendingBenefitImage(undefined);
+    setBenefitImageError(undefined);
+    update("imageUrl", null);
   };
 
   const markTouched = (field: string) => {
@@ -1036,9 +1092,16 @@ export function BenefitForm({
     }
   };
 
-  const savingsDraft = useAdvertisedSavingsOverride(benefit.advertisedSavings, defaultCurrency);
+  const savingsDraft = useAdvertisedSavingsOverride(
+    benefit.advertisedSavings,
+    defaultCurrency,
+  );
 
   const handleSave = async () => {
+    if (saving || benefitImagePicking) return;
+
+    setBenefitImageError(undefined);
+
     const override = savingsDraft.validateOverride();
     if (override === undefined) return;
     if (!validate()) {
@@ -1068,9 +1131,34 @@ export function BenefitForm({
         );
         return;
       }
+      let imageUrl = form.imageUrl;
+
+      if (pendingBenefitImage) {
+        try {
+          const uploaded = await brandingAssetApi.upload(
+            form.organizationId,
+            "benefitImage",
+            pendingBenefitImage,
+          );
+
+          imageUrl = uploaded.path;
+
+          update("imageUrl", imageUrl);
+          setPendingBenefitImage(undefined);
+        } catch (error) {
+          setBenefitImageError(
+            error instanceof Error
+              ? error.message
+              : "Unable to upload Benefit image.",
+          );
+
+          return;
+        }
+      }
       await onSave(
         {
           ...form,
+          imageUrl,
           advertisedSavings: { ...benefit.advertisedSavings, override },
           productIds: commerceProductIds,
           productId: [...commerceProductIds].sort()[0],
@@ -1450,6 +1538,92 @@ export function BenefitForm({
           placeholder="Describe the benefit..."
           onChangeText={(value) => update("description", value || undefined)}
         />
+
+        <View style={{ gap: theme.spacing.sm }}>
+          <Text variant="bodyStrong">Benefit Image</Text>
+
+          <Text variant="caption" color="textMuted">
+            Optional image representing this Benefit. Individual product images
+            are configured separately in Products.
+          </Text>
+
+          {benefitImagePreview ? (
+            <Image
+              source={{ uri: benefitImagePreview }}
+              resizeMode="cover"
+              accessibilityLabel="Benefit image preview"
+              style={{
+                width: 144,
+                height: 144,
+                borderRadius: theme.radius.md,
+                backgroundColor: theme.colors.surfaceAlt,
+              }}
+            />
+          ) : (
+            <View
+              style={{
+                width: 144,
+                height: 100,
+                borderRadius: theme.radius.md,
+                backgroundColor: theme.colors.surfaceAlt,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text color="textMuted" variant="caption">
+                No image configured
+              </Text>
+            </View>
+          )}
+
+          <View
+            style={{
+              flexDirection: "row",
+              flexWrap: "wrap",
+              gap: theme.spacing.sm,
+            }}
+          >
+            <Pressable
+              disabled={saving || benefitImagePicking}
+              onPress={() => void selectBenefitImage()}
+              style={{
+                padding: 10,
+                borderWidth: 1,
+                borderColor: theme.colors.primary,
+                borderRadius: theme.radius.md,
+              }}
+            >
+              <Text color="primary">
+                {benefitImagePicking
+                  ? "Selecting..."
+                  : benefitImagePreview
+                    ? "Replace Image"
+                    : "Upload Image"}
+              </Text>
+            </Pressable>
+
+            {benefitImagePreview ? (
+              <Pressable
+                disabled={saving || benefitImagePicking}
+                onPress={removeBenefitImage}
+                style={{
+                  padding: 10,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  borderRadius: theme.radius.md,
+                }}
+              >
+                <Text color="danger">Remove Image</Text>
+              </Pressable>
+            ) : null}
+          </View>
+
+          {benefitImageError ? (
+            <Text variant="caption" color="danger">
+              {benefitImageError}
+            </Text>
+          ) : null}
+        </View>
 
         <TextArea
           label="Disclaimer / Terms"
@@ -1840,12 +2014,15 @@ export function BenefitForm({
 
         <Pressable
           onPress={handleSave}
-          disabled={saving}
+          disabled={saving || benefitImagePicking}
           style={[
             styles.button,
             {
               backgroundColor: theme.colors.primary,
-              opacity: saving ? theme.states.disabledOpacity : 1,
+              opacity:
+                saving || benefitImagePicking
+                  ? theme.states.disabledOpacity
+                  : 1,
             },
           ]}
         >

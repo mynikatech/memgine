@@ -172,7 +172,6 @@ function SelectFulfillment({
   );
   const labels = parseRecord(params.labels);
   const addresses = parseRecord(params.storeAddresses);
-  const artwork = parseRecord(params.artwork);
   const items = [
     ...selection.benefitIds.map((itemId) => ({
       itemType: "BENEFIT" as const,
@@ -483,10 +482,10 @@ function SelectFulfillment({
                       router.setParams({ products, store: store.id });
                   }
                 }}
-                renderChoice={(label, selected, onPress, item) => (
+                renderChoice={(label, selected, onPress, _item, choice) => (
                   <FulfillmentChoice
                     label={label}
-                    image={artwork[`${item.itemType}:${item.itemId}`]}
+                    image={choice.imageUrl ?? undefined}
                     icon="cube-outline"
                     selected={selected}
                     disabled={busy}
@@ -709,7 +708,11 @@ function CounterQr({
                     gap: 10,
                   }}
                 >
-                  <FulfillmentThumbnail icon="cube-outline" size={36} />
+                  <FulfillmentThumbnail
+                    image={entry.imageUrl ?? undefined}
+                    icon="cube-outline"
+                    size={36}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text variant="bodyStrong">
                       {entry.productName
@@ -1162,6 +1165,7 @@ function ReviewFulfillment({
           key: itemKey,
           name: product?.productName ?? "Selected product",
           benefit: parseRecord(params.labels)[itemKey],
+          imageUrl: product?.imageUrl ?? undefined,
         };
       },
     );
@@ -1196,13 +1200,29 @@ function ReviewFulfillment({
               <Card padding="md" style={{ gap: 8 }}>
                 <Text variant="bodyStrong">Selected items</Text>
                 {products.map((p) => (
-                  <View key={p.key} style={{ gap: 3 }}>
-                    <Text variant="bodyStrong">{p.name}</Text>
-                    {p.benefit ? (
-                      <Text variant="caption" color="textMuted">
-                        {p.benefit}
-                      </Text>
-                    ) : null}
+                  <View
+                    key={p.key}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
+                    <FulfillmentThumbnail
+                      image={p.imageUrl}
+                      icon="cube-outline"
+                      size={48}
+                    />
+
+                    <View style={{ flex: 1, gap: 3 }}>
+                      <Text variant="bodyStrong">{p.name}</Text>
+
+                      {p.benefit ? (
+                        <Text variant="caption" color="textMuted">
+                          {p.benefit}
+                        </Text>
+                      ) : null}
+                    </View>
                   </View>
                 ))}
                 <Text variant="bodySmall" color="textMuted">
@@ -1242,6 +1262,22 @@ function ReviewFulfillment({
       organizationId={org}
       request={request}
       itemLabels={parseRecord(params.labels)}
+      productImages={Object.fromEntries(
+        Object.entries(request.productSelections).flatMap(
+          ([itemKey, productId]) => {
+            const options =
+              request.journey === "ADVANCE_PAY_NOW"
+                ? reviewStore.payNowProducts?.[itemKey]
+                : reviewStore.products[itemKey];
+
+            const product = options?.find(
+              (entry) => entry.productId === productId,
+            );
+
+            return product?.imageUrl ? [[productId, product.imageUrl]] : [];
+          },
+        ),
+      )}
       artwork={parseRecord(params.artwork)}
       storeAddress={parseRecord(params.storeAddresses)[request.storeId]}
       storeImage={params.storeImage}

@@ -161,7 +161,9 @@ class BrandingAssetService(
                 "splashScreen",
                 "heroImage",
                 "themeBackground",
-                "offerPromotion"
+                "offerPromotion",
+                "productImage",
+                "benefitImage"
             )
 
         val ALLOWED_CONTENT_TYPES =

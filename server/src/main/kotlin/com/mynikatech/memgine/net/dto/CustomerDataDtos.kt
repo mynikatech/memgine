@@ -81,6 +81,8 @@ data class CustomerDiscoveryBenefitDto(
     val description: String? = null,
     val disclaimerText: String? = null,
     val benefitTypeId: String,
+    val imageUrl: String? = null,
+    val products: List<CanonicalProductDto> = emptyList(),
 )
 
 @Serializable
@@ -96,6 +98,7 @@ data class CustomerDiscoveryOfferDto(
     val membershipProductId: String? = null,
     val discountPercentage: Double? = null,
     val ctaLabel: String? = null,
+    val products: List<CanonicalProductDto> = emptyList(),
 )
 
 @Serializable
