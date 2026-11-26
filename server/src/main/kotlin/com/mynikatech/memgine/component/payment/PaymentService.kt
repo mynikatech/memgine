@@ -27,6 +27,7 @@ import com.mynikatech.memgine.net.dto.PoyntCollectBootstrapDto
 import com.mynikatech.memgine.net.dto.PoyntCollectBrandingDto
 import com.mynikatech.memgine.net.dto.PoyntCollectWalletDto
 import com.mynikatech.memgine.net.dto.PoyntCollectConfirmationDto
+import com.mynikatech.memgine.component.customer.CustomerSql
 import com.stripe.model.Event
 import org.jdbi.v3.core.Jdbi
 import java.util.UUID
@@ -55,6 +56,29 @@ class PaymentService(
     private val collectExceptionSqlOverride: PoyntCollectFinancialExceptionSql? = null
 ) {
     private val logger = LoggerFactory.getLogger(PaymentService::class.java)
+    private val enforceDemoSegregation =
+        environment.equals("prod", ignoreCase = true)
+
+    private val demoAccessSql by lazy {
+        jdbi.onDemand(CustomerSql::class.java)
+    }
+
+    private fun requireCustomerPaymentAccess(
+        organizationId: String,
+        customerUserId: String?
+    ) {
+        if (
+            enforceDemoSegregation &&
+            !demoAccessSql.customerBusinessAccessAllowed(
+                organizationId,
+                customerUserId
+            )
+        ) {
+            throw ForbiddenException(
+                "Payment is unavailable for this account"
+            )
+        }
+    }
     private val testProvider = TestPaymentProvider(environment in setOf("local", "dev", "development"))
     private val stripeProvider = StripePaymentProvider(paymentConfig)
     private val monerisProvider = MonerisPaymentProvider(paymentConfig)
@@ -334,6 +358,10 @@ class PaymentService(
         returnContext: PaymentReturnContextDto? = null,
         explicitOfferId: String? = null
     ): PaymentIntentDto {
+        requireCustomerPaymentAccess(
+            org,
+            customerUserId
+        )
         validateId(org, "organization id")
         validateId(planId, "membership plan id")
         validateId(customerUserId, "customer user id")
@@ -906,6 +934,10 @@ class PaymentService(
         if (current.providerCode != provider.code) throw BadRequestException("Payment is not a Collect payment")
         if (current.status == "SUCCEEDED") return getConfirmation(org, intentId, actorUserId)
         if (current.status != "PENDING") throw ConflictException("Payment is already in progress or closed")
+        requireCustomerPaymentAccess(
+            org,
+            current.customerUserId
+        )
         val fulfillmentPayment = current.membershipPlanId == null
         if (fulfillmentPayment && !fulfillmentCollectAvailable()) throw ConflictException("Fulfillment payment is unavailable")
         if (nonce.isBlank() || nonce.length > 4096) throw BadRequestException("Payment nonce is invalid")

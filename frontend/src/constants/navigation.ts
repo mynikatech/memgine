@@ -212,6 +212,8 @@ export const APP_ROUTES = {
 
     home: "/customer/home",
 
+    start: "/customer/start",
+
     cards: "/customer/cards",
 
     support: "/customer/support",

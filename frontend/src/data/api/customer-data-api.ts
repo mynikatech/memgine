@@ -62,6 +62,7 @@ export type CustomerHomeBootstrap = {
   discoverableOrganizations: CustomerDiscoverableOrganization[];
   relationships: CustomerProfile[];
   unreadNotificationCount?: number | null;
+  isDemoCustomer?: boolean;
 };
 export type CustomerSelfProfile = {
   userId: ID;
@@ -171,6 +172,7 @@ export type CustomerDiscoverableOrganization = {
   logoUrl?: string | null;
   tagline?: string | null;
   heroImageUrl?: string | null;
+  isDemo?: boolean;
 };
 export type CustomerCombinedOffer = {
   offerId: ID;

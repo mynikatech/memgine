@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - changeSet:
+      id: 327-customer-demo-segregation
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/327-customer-demo-segregation.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

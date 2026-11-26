@@ -356,26 +356,88 @@ class CustomerService(
         agreementOperations.history(org, userId)
 
 
-    fun discoverableOrganizations(): List<CustomerDiscoverableOrganizationDto> =
-        sql.discoverableOrganizations()
+    fun discoverableOrganizations(
+        userId: String? = null
+    ): List<CustomerDiscoverableOrganizationDto> =
+        sql.visibleOrganizations(
+            userId,
+            !devIdentityEnabled
+        )
 
-    fun discoverableOrganization(organizationId: String): CustomerDiscoveryDetailDto {
-        if (organizationId.isBlank() || organizationId.length > 40) {
-            throw NotFoundException("Discoverable organization was not found")
+    fun requireCustomerBusinessAccess(
+        organizationId: String,
+        userId: String?
+    ) {
+        if (
+            !devIdentityEnabled &&
+            !sql.customerBusinessAccessAllowed(
+                organizationId,
+                userId
+            )
+        ) {
+            throw NotFoundException(
+                "Business is unavailable"
+            )
         }
-        val row = sql.discoverableOrganization(organizationId)
-            ?: throw NotFoundException("Discoverable organization was not found")
+    }
+
+    fun discoverableOrganization(
+        organizationId: String,
+        userId: String? = null
+    ): CustomerDiscoveryDetailDto {
+        if (
+            organizationId.isBlank() ||
+            organizationId.length > 40
+        ) {
+            throw NotFoundException(
+                "Discoverable organization was not found"
+            )
+        }
+
+        requireCustomerBusinessAccess(
+            organizationId,
+            userId
+        )
+
+        val row = sql.discoverableOrganization(
+            organizationId
+        ) ?: throw NotFoundException(
+            "Discoverable organization was not found"
+        )
+
         return json.decodeFromString(row.detailJson)
     }
 
-    fun relationships(userId: String): List<CustomerRelationshipDto> {
+    fun relationships(
+        userId: String
+    ): List<CustomerRelationshipDto> {
         validateUserId(userId)
-        return sql.relationships(userId)
+
+        val relationships = sql.relationships(userId)
+
+        return if (devIdentityEnabled) {
+            relationships
+        } else {
+            relationships.filter {
+                sql.customerBusinessAccessAllowed(
+                    it.organizationId,
+                    userId
+                )
+            }
+        }
     }
 
-    fun homeBootstrap(userId: String): CustomerHomeBootstrapDto {
+    fun homeBootstrap(
+        userId: String
+    ): CustomerHomeBootstrapDto {
         validateUserId(userId)
-        return CustomerHomeBootstrapDto(discoverableOrganizations(), sql.relationships(userId))
+
+        return CustomerHomeBootstrapDto(
+            discoverableOrganizations =
+                discoverableOrganizations(userId),
+            relationships = relationships(userId),
+            isDemoCustomer = sql.isDemoCustomer(userId),
+        )
     }
 
     fun membershipSummary(organizationId: String, userId: String): CustomerMembershipSummaryDto {
@@ -864,6 +926,10 @@ class CustomerService(
     }
 
     private fun authorizeCustomer(organizationId: String, userId: String) {
+        requireCustomerBusinessAccess(
+            organizationId,
+            userId
+        )
         if (organizationId.isBlank() || organizationId.length > 40 ||
             userId.isBlank() || userId.length > 40 ||
             !sql.hasActiveRelationship(organizationId, userId)) {

@@ -59,7 +59,7 @@ export default function RegisterScreen() {
   );
 
   if (!auth.loading && auth.session) {
-    return <Redirect href={APP_ROUTES.customer.cards as never} />;
+    return <Redirect href={APP_ROUTES.customer.start as never} />;
   }
 
   const regionCode = selectedCountry?.countryCode ?? "CA";
@@ -105,7 +105,7 @@ export default function RegisterScreen() {
         await auth.setMobileSessionMode("customer");
       }
 
-      router.replace(APP_ROUTES.customer.cards as never);
+      router.replace(APP_ROUTES.customer.start as never);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -138,8 +138,8 @@ export default function RegisterScreen() {
           <Text variant="title">Join Memgine</Text>
 
           <Text color="textMuted">
-            Create your Memgine account to discover businesses, join
-            memberships and keep your membership cards in one place.
+            Create your Memgine account to discover businesses, join memberships
+            and keep your membership cards in one place.
           </Text>
 
           {!challengeId ? (
@@ -230,7 +230,9 @@ export default function RegisterScreen() {
 
           <View style={styles.signInRow}>
             <Text color="textMuted">Already have a Memgine account?</Text>
-            <Pressable onPress={() => router.replace(APP_ROUTES.login as never)}>
+            <Pressable
+              onPress={() => router.replace(APP_ROUTES.login as never)}
+            >
               <Text color="primary">Sign in</Text>
             </Pressable>
           </View>

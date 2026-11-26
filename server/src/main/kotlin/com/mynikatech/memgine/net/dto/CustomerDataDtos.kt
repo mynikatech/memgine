@@ -13,7 +13,8 @@ data class CustomerDiscoverableOrganizationDto(
     val displayName: String? = null,
     val logoUrl: String? = null,
     val tagline: String? = null,
-    val heroImageUrl: String? = null
+    val heroImageUrl: String? = null,
+    val isDemo: Boolean = false,
 )
 
 /** Sanitized published experience for an unaffiliated customer. */
@@ -141,6 +142,7 @@ data class CustomerHomeBootstrapDto(
     val discoverableOrganizations: List<CustomerDiscoverableOrganizationDto>,
     val relationships: List<CustomerRelationshipDto>,
     val unreadNotificationCount: Int? = null,
+    val isDemoCustomer: Boolean = false,
 )
 
 /** Per-organization card data, available only to an active customer relationship. */

@@ -66,13 +66,36 @@ fun Route.customerSelfServiceRoutes(service: CustomerService, redemptionService:
         }
         route("/discover") {
             get("/organizations") {
-                call.respond(ApiResponse.success(service.discoverableOrganizations(), call.callId))
+                val principal =
+                    call.attributes.getOrNull(
+                        AuthenticatedPrincipalKey
+                    )
+
+                call.respond(
+                    ApiResponse.success(
+                        service.discoverableOrganizations(
+                            principal?.userId
+                        ),
+                        call.callId
+                    )
+                )
             }
+
             get("/organizations/{organizationId}") {
-                call.respond(ApiResponse.success(
-                    service.discoverableOrganization(call.organizationId()),
-                    call.callId
-                ))
+                val principal =
+                    call.attributes.getOrNull(
+                        AuthenticatedPrincipalKey
+                    )
+
+                call.respond(
+                    ApiResponse.success(
+                        service.discoverableOrganization(
+                            call.organizationId(),
+                            principal?.userId
+                        ),
+                        call.callId
+                    )
+                )
             }
         }
         get("/relationships") {

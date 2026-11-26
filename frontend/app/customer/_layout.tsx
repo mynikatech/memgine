@@ -43,6 +43,12 @@ export default function CustomerLayout() {
           href: null,
         }}
       />
+      <Tabs.Screen
+        name="start"
+        options={{
+          href: null,
+        }}
+      />
 
       <Tabs.Screen
         name="cards"

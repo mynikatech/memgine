@@ -24,7 +24,7 @@ export default function MobileEntryScreen() {
         href={
           (auth.mobileSessionMode === "business"
             ? landingFor(auth.session)
-            : APP_ROUTES.customer.cards) as never
+            : APP_ROUTES.customer.start) as never
         }
       />
     );

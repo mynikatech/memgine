@@ -179,7 +179,17 @@ fun Application.configureRouting(
     val poyntTerminalService = PoyntTerminalService(
         database.jdbi.onDemand(PoyntTerminalSql::class.java), posAuthenticationService
     )
-    installAuthenticationGate(authenticationService, config.authentication)
+    installAuthenticationGate(
+        authenticationService,
+        config.authentication,
+        database.jdbi.onDemand(
+            CustomerSql::class.java
+        ),
+        config.server.environment.equals(
+            "prod",
+            ignoreCase = true
+        )
+    )
 
     val organizationService =
         OrganizationService(

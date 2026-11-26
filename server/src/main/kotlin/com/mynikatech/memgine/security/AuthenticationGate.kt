@@ -12,10 +12,14 @@ import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
 import io.ktor.server.request.path
 import io.ktor.server.request.httpMethod
+import com.mynikatech.memgine.component.customer.CustomerSql
+import com.mynikatech.memgine.exception.NotFoundException
 
 fun Application.installAuthenticationGate(
     service: AuthenticationService,
-    config: AuthenticationConfig
+    config: AuthenticationConfig,
+    customerSql: CustomerSql? = null,
+    enforceDemoSegregation: Boolean = false,
 ) {
     intercept(ApplicationCallPipeline.Plugins) {
         val path = call.request.path()
@@ -26,6 +30,36 @@ fun Application.installAuthenticationGate(
 
         val principal = service.resolve(call.authenticationToken(config))
         if (principal != null) call.attributes.put(AuthenticatedPrincipalKey, principal)
+        if (enforceDemoSegregation) {
+            val parts = path.split('/')
+                .filter(String::isNotEmpty)
+
+            val customerOrganizationId =
+                when {
+                    parts.getOrNull(2) == "customer" &&
+                    parts.getOrNull(3) == "organizations" ->
+                        parts.getOrNull(4)
+
+                    parts.getOrNull(2) == "customer" &&
+                    parts.getOrNull(3) == "discover" &&
+                    parts.getOrNull(4) == "organizations" ->
+                        parts.getOrNull(5)
+
+                    else -> null
+                }
+
+            if (
+                customerOrganizationId != null &&
+                customerSql?.customerBusinessAccessAllowed(
+                    customerOrganizationId,
+                    principal?.userId
+                ) != true
+            ) {
+                throw NotFoundException(
+                    "Business is unavailable"
+                )
+            }
+        }
 
         if (path.startsWith("/api/v1/auth/")) {
             if (

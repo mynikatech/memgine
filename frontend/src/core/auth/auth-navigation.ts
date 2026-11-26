@@ -11,8 +11,17 @@ export type AuthWorkspace = {
 
 export function authWorkspaces(session: AuthSession): AuthWorkspace[] {
   const workspaces: AuthWorkspace[] = [];
-  if (session.access.some((item) => item.capabilities.includes("PLATFORM_ADMIN_ACCESS"))) {
-    workspaces.push({ key: "platform", title: "Platform Admin", subtitle: "Memgine Console", href: APP_ROUTES.platformAdmin.root });
+  if (
+    session.access.some((item) =>
+      item.capabilities.includes("PLATFORM_ADMIN_ACCESS"),
+    )
+  ) {
+    workspaces.push({
+      key: "platform",
+      title: "Platform Admin",
+      subtitle: "Memgine Console",
+      href: APP_ROUTES.platformAdmin.root,
+    });
   }
   session.access.forEach((context) => {
     if (!context.organizationId) return;
@@ -38,7 +47,7 @@ export function authWorkspaces(session: AuthSession): AuthWorkspace[] {
 }
 
 export function landingFor(session: AuthSession): string {
-  if (isCustomerOnlySession(session)) return APP_ROUTES.customer.cards;
+  if (isCustomerOnlySession(session)) return APP_ROUTES.customer.start;
   const choices = authWorkspaces(session);
   return choices.length === 1 ? choices[0].href : APP_ROUTES.workspaces;
 }

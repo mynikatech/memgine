@@ -69,6 +69,34 @@ interface CustomerSql {
 
     @SqlQuery("SELECT * FROM get_customer_discoverable_organizations()")
     fun discoverableOrganizations(): List<CustomerDiscoverableOrganizationDto>
+    
+    @SqlQuery("""
+    SELECT *
+    FROM get_customer_visible_organizations(
+        :userId,
+        :enforceSegregation
+    )
+    """)
+    fun visibleOrganizations(
+        @Bind("userId") userId: String?,
+        @Bind("enforceSegregation") enforceSegregation: Boolean,
+    ): List<CustomerDiscoverableOrganizationDto>
+
+    @SqlQuery("SELECT customer_get_demo_flag(:userId)")
+    fun isDemoCustomer(
+        @Bind("userId") userId: String?,
+    ): Boolean
+
+    @SqlQuery("""
+        SELECT customer_business_access_allowed(
+            :organizationId,
+            :userId
+        )
+    """)
+    fun customerBusinessAccessAllowed(
+        @Bind("organizationId") organizationId: String,
+        @Bind("userId") userId: String?,
+    ): Boolean
 
     @SqlQuery("SELECT * FROM get_customer_discoverable_organization(:organizationId)")
     @RegisterBeanMapper(CustomerDiscoveryDetailRow::class)

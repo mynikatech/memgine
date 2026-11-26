@@ -96,11 +96,12 @@ export default function CustomerLoginScreen() {
   const requestedReturnTo = Array.isArray(params.returnTo)
     ? params.returnTo[0]
     : params.returnTo;
-  const returnTo = customerFulfillmentReturnPath(requestedReturnTo) ?? (
-    requestedReturnTo?.startsWith("/join") ||
+  const returnTo =
+    customerFulfillmentReturnPath(requestedReturnTo) ??
+    (requestedReturnTo?.startsWith("/join") ||
     requestedReturnTo?.startsWith("/discover/")
       ? requestedReturnTo
-      : APP_ROUTES.customer.cards);
+      : APP_ROUTES.customer.start);
   if (!auth.loading && auth.session) {
     if (Platform.OS !== "web" && auth.mobileSessionMode === "business") {
       return (
@@ -205,7 +206,11 @@ export default function CustomerLoginScreen() {
             />
           </View>
           {challengeId ? (
-            <View ref={otpSectionRef} collapsable={false} style={styles.otpSection}>
+            <View
+              ref={otpSectionRef}
+              collapsable={false}
+              style={styles.otpSection}
+            >
               <Input
                 label="One-time code"
                 required
@@ -256,7 +261,9 @@ export default function CustomerLoginScreen() {
           <View style={styles.joinRow}>
             <Text color="textMuted">New to Memgine?</Text>
 
-            <Pressable onPress={() => router.push(APP_ROUTES.register as never)}>
+            <Pressable
+              onPress={() => router.push(APP_ROUTES.register as never)}
+            >
               <Text color="primary">Join Memgine</Text>
             </Pressable>
           </View>
