@@ -1,0 +1,18 @@
+databaseChangeLog:
+  - changeSet:
+      id: 325a-advance-dev-payment-simulator-fix
+      author: mynikatech
+      runInTransaction: true
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: "SELECT CASE WHEN '${schemaName}' = 'memginedev' AND '${appRole}' = 'memgine_app_dev' THEN 1 ELSE 0 END"
+      changes:
+        - sqlFile:
+            path: ../sql/325a-advance-dev-payment-simulator-fix.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

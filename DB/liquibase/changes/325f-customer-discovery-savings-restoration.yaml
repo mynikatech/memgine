@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - changeSet:
+      id: 325f-customer-discovery-savings-restoration
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/325f-customer-discovery-savings-restoration.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

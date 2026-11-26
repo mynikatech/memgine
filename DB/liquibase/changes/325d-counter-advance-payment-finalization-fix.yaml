@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - changeSet:
+      id: 325d-counter-advance-payment-finalization-fix
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/325d-counter-advance-payment-finalization-fix.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8
