@@ -20,6 +20,7 @@ import {
   Platform,
   useWindowDimensions,
 } from "react-native";
+import { useTheme } from "@/src/providers";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { resolveThemeExperience } from "@/src/core/theme-experience.types";
 
@@ -365,6 +366,64 @@ function HeroImage({
     />
   ) : null;
 }
+function MembershipExploreHighlighter({
+  count,
+  onPress,
+}: {
+  count: number;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+
+  if (count <= 0) return null;
+
+  return (
+    <Pressable
+      testID="experience-explore-memberships"
+      accessibilityRole="button"
+      accessibilityLabel={`Explore ${count} available memberships`}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        gap: theme.spacing.xs,
+        paddingHorizontal: theme.spacing.sm,
+        paddingVertical: theme.spacing.sm,
+        borderRadius: theme.radius.pill,
+        borderWidth: 1,
+        borderColor: theme.colors.primary,
+        backgroundColor: theme.colors.primarySoft,
+        opacity: pressed ? theme.states.pressedOpacity : 1,
+      })}
+    >
+      <Ionicons name="sparkles" size={17} color={theme.colors.primary} />
+
+      <Text variant="label" color="primary">
+        Explore
+      </Text>
+
+      <View
+        style={{
+          minWidth: 22,
+          height: 22,
+          paddingHorizontal: 5,
+          borderRadius: theme.radius.pill,
+          borderWidth: 1,
+          borderColor: theme.colors.primary,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: theme.colors.background,
+        }}
+      >
+        <Text variant="caption" color="primary">
+          {count}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
 
 export function BusinessExperience({
   content,
@@ -426,6 +485,14 @@ export function BusinessExperience({
     !isPreviewMode &&
     Boolean(subscription) &&
     subscriptionStatus?.statusCode?.toUpperCase() !== "ACTIVE";
+  const exploreMembershipCount = new Set(
+    availableMemberships.map((membership) => membership.id),
+  ).size;
+  const hasActiveCustomerMembership =
+    !isPreviewMode && Boolean(subscription) && !isHistoricalSubscription;
+
+  const displayAvailableMembershipsFirst =
+    showAvailableMembershipsFirst && !hasActiveCustomerMembership;
 
   const {
     organization: contextOrganization,
@@ -737,6 +804,7 @@ export function BusinessExperience({
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const receiptRequest = useRef(0);
   const mainScroll = useRef<ScrollView>(null);
+  const availableMembershipsRef = useRef<View>(null);
   const orderScope = JSON.stringify([
     organization.id,
     customerUserId,
@@ -2432,7 +2500,7 @@ export function BusinessExperience({
   const CardTab = (
     <View style={{ gap: theme.spacing.lg }} testID="experience-tab-card">
       {renderTabPreviewLink("card")}
-      {showAvailableMembershipsFirst && availableMembershipsSection}
+      {displayAvailableMembershipsFirst && availableMembershipsSection}
 
       {/* W277: published season scene is independent of the disabled legacy
           decorative hero mode. It ends before the membership cards begin. */}
@@ -3049,7 +3117,11 @@ export function BusinessExperience({
         </View>
       ) : null}
 
-      {!showAvailableMembershipsFirst && availableMembershipsSection}
+      {!displayAvailableMembershipsFirst && availableMembershipsSection ? (
+        <View ref={availableMembershipsRef} collapsable={false}>
+          {availableMembershipsSection}
+        </View>
+      ) : null}
     </View>
   );
 
@@ -4804,7 +4876,36 @@ export function BusinessExperience({
       </View>
     </View>
   );
+  const showMembershipExplore =
+    hasActiveCustomerMembership &&
+    !isPlanExploration &&
+    !previewSection &&
+    !historySelector &&
+    effectiveTab === "card" &&
+    exploreMembershipCount > 0;
+  const handleExploreMemberships = () => {
+    const target = availableMembershipsRef.current;
+    const scroll = mainScroll.current;
 
+    if (!target || !scroll) return;
+
+    const contentNode = scroll.getInnerViewNode();
+
+    if (!contentNode) return;
+
+    target.measureLayout(
+      contentNode,
+      (_x, y) => {
+        scroll.scrollTo({
+          y: Math.max(0, y - theme.spacing.sm),
+          animated: true,
+        });
+      },
+      () => {
+        scroll.scrollToEnd({ animated: true });
+      },
+    );
+  };
   return (
     <BusinessThemeScope theme={customerTheme}>
       <View
@@ -4860,126 +4961,158 @@ export function BusinessExperience({
           {!isPlanExploration &&
           (historySelector
             ? selectorMemberships.length > 0
-            : selectorMemberships.length > 1) &&
+            : selectorMemberships.length > 1 || showMembershipExplore) &&
           effectiveTab !== "profile" &&
           previewSection !== "profile" ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
                 gap: theme.spacing.sm,
+                minWidth: 0,
+                width: "100%",
               }}
-              testID="experience-membership-selector"
             >
-              {historySelector && (
-                <Pressable
-                  testID="experience-history-all-orders"
-                  accessibilityRole="button"
-                  accessibilityState={{
-                    selected: historySubscriptionId === null,
-                  }}
-                  onPress={() => {
-                    setHistorySubscriptionId(null);
-                    setShowAllHistory(false);
-                  }}
-                  style={{
-                    paddingHorizontal: theme.spacing.md,
-                    paddingVertical: 8,
-                    borderRadius: theme.radius.pill,
-                    borderWidth: 1,
-                    borderColor: historySubscriptionId
-                      ? theme.colors.border
-                      : theme.colors.primary,
-                    backgroundColor: historySubscriptionId
-                      ? theme.colors.background
-                      : theme.colors.primarySoft,
-                  }}
-                >
-                  <Text
-                    variant="label"
-                    color={historySubscriptionId ? "textMuted" : "primary"}
-                  >
-                    All Orders
-                  </Text>
-                </Pressable>
-              )}
-              {selectorMemberships.map((m) => {
-                const selected =
-                  m.subscription.id ===
-                  (historySelector
-                    ? historySubscriptionId
-                    : selectedSubscriptionId);
-
-                const plan = m.product.plans.find(
-                  (item) => item.id === m.subscription.subscriptionPlanId,
-                );
-
-                const productLabel =
-                  m.product.displayName ?? m.product.membershipProductName;
-
-                const label = plan?.subscriptionPlanName
-                  ? `${productLabel} · ${plan.subscriptionPlanName}`
-                  : productLabel;
-                const repeatedPlan =
-                  historySelector &&
-                  selectorMemberships.some(
-                    (other) =>
-                      other.subscription.id !== m.subscription.id &&
-                      other.subscription.subscriptionPlanId ===
-                        m.subscription.subscriptionPlanId,
-                  );
-
-                return (
+              <ScrollView
+                horizontal
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                }}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{
+                  gap: theme.spacing.sm,
+                  alignItems: "center",
+                }}
+                testID="experience-membership-selector"
+              >
+                {historySelector && (
                   <Pressable
-                    key={m.subscription.id}
-                    testID={`experience-membership-option-${m.subscription.id}`}
+                    testID="experience-history-all-orders"
                     accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    onPress={() => {
-                      if (historySelector) {
-                        setHistorySubscriptionId(m.subscription.id);
-                        setShowAllHistory(false);
-                      }
-                      onSelectSubscription(m.subscription.id);
+                    accessibilityState={{
+                      selected: historySubscriptionId === null,
                     }}
-                    style={({ pressed }) => ({
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 6,
+                    onPress={() => {
+                      setHistorySubscriptionId(null);
+                      setShowAllHistory(false);
+                    }}
+                    style={{
                       paddingHorizontal: theme.spacing.md,
                       paddingVertical: 8,
                       borderRadius: theme.radius.pill,
                       borderWidth: 1,
-                      borderColor: selected
-                        ? theme.colors.primary
-                        : theme.colors.border,
-                      backgroundColor: selected
-                        ? theme.colors.primarySoft
-                        : theme.colors.background,
-                      opacity: pressed ? theme.states.pressedOpacity : 1,
-                    })}
+                      borderColor: historySubscriptionId
+                        ? theme.colors.border
+                        : theme.colors.primary,
+                      backgroundColor: historySubscriptionId
+                        ? theme.colors.background
+                        : theme.colors.primarySoft,
+                    }}
                   >
-                    <Ionicons
-                      name={selected ? "card" : "card-outline"}
-                      size={14}
-                      color={
-                        selected ? theme.colors.primary : theme.colors.textMuted
-                      }
-                    />
-
                     <Text
                       variant="label"
-                      color={selected ? "primary" : "textMuted"}
+                      color={historySubscriptionId ? "textMuted" : "primary"}
                     >
-                      {repeatedPlan
-                        ? `${label} · ${m.subscription.subscriptionNumber}`
-                        : label}
+                      All Orders
                     </Text>
                   </Pressable>
-                );
-              })}
-            </ScrollView>
+                )}
+                {selectorMemberships.map((m) => {
+                  const selected =
+                    m.subscription.id ===
+                    (historySelector
+                      ? historySubscriptionId
+                      : selectedSubscriptionId);
+
+                  const plan = m.product.plans.find(
+                    (item) => item.id === m.subscription.subscriptionPlanId,
+                  );
+
+                  const productLabel =
+                    m.product.displayName ?? m.product.membershipProductName;
+
+                  const label = plan?.subscriptionPlanName
+                    ? `${productLabel} · ${plan.subscriptionPlanName}`
+                    : productLabel;
+                  const repeatedPlan =
+                    historySelector &&
+                    selectorMemberships.some(
+                      (other) =>
+                        other.subscription.id !== m.subscription.id &&
+                        other.subscription.subscriptionPlanId ===
+                          m.subscription.subscriptionPlanId,
+                    );
+
+                  return (
+                    <Pressable
+                      key={m.subscription.id}
+                      testID={`experience-membership-option-${m.subscription.id}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      onPress={() => {
+                        if (historySelector) {
+                          setHistorySubscriptionId(m.subscription.id);
+                          setShowAllHistory(false);
+                        }
+                        onSelectSubscription(m.subscription.id);
+                      }}
+                      style={({ pressed }) => ({
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 6,
+                        paddingHorizontal: theme.spacing.md,
+                        paddingVertical: 8,
+                        borderRadius: theme.radius.pill,
+                        borderWidth: 1,
+                        maxWidth: isMobileLayout ? 220 : 320,
+                        flexShrink: 0,
+                        borderColor: selected
+                          ? theme.colors.primary
+                          : theme.colors.border,
+                        backgroundColor: selected
+                          ? theme.colors.primarySoft
+                          : theme.colors.background,
+                        opacity: pressed ? theme.states.pressedOpacity : 1,
+                      })}
+                    >
+                      <Ionicons
+                        name={selected ? "card" : "card-outline"}
+                        size={14}
+                        color={
+                          selected
+                            ? theme.colors.primary
+                            : theme.colors.textMuted
+                        }
+                      />
+
+                      <Text
+                        variant="label"
+                        color={selected ? "primary" : "textMuted"}
+                        numberOfLines={1}
+                        style={{
+                          flexShrink: 1,
+                          minWidth: 0,
+                        }}
+                      >
+                        {repeatedPlan
+                          ? `${label} · ${m.subscription.subscriptionNumber}`
+                          : label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+
+              {showMembershipExplore ? (
+                <MembershipExploreHighlighter
+                  count={exploreMembershipCount}
+                  onPress={handleExploreMemberships}
+                />
+              ) : null}
+            </View>
           ) : null}
+
           {renderedContent}
         </ScrollView>
 
