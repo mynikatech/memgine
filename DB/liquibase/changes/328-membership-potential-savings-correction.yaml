@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - changeSet:
+      id: 328-membership-potential-savings-correction
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/328-membership-potential-savings-correction.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+            encoding: UTF-8

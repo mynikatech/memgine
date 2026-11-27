@@ -38,4 +38,8 @@ module "application_host" {
   tags = {
     ManagedBy = "terraform"
   }
+  grafana_logging_managed = var.grafana_logging_managed
+  grafana_logging_enabled = var.grafana_logging_enabled
+  grafana_loki_url        = var.grafana_loki_url
+  grafana_loki_username   = var.grafana_loki_username
 }

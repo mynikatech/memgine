@@ -12,3 +12,5 @@ db_skip_final_snapshot       = true
 allow_live_sms               = true
 whatsapp_delivery_ack_url    = "https://memgine-dev.mynikatech.in/api/v1/webhooks/whatsapp/delivery-ack"
 whatsapp_delivery_ack_secret = "ZSjM9jebyTglu8zGyVnEiTf2kc5UEr2e0gKIQU3Fa9M="
+grafana_logging_managed      = true
+grafana_logging_enabled      = true

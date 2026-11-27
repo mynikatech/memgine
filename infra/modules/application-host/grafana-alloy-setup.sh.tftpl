@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+# Never enable xtrace: credentials must not appear in SSM output.
+marker=/etc/alloy/.memgine-managed
+if [[ '${enabled}' != true ]]; then
+  if [[ -f "$marker" ]]; then
+    systemctl stop alloy
+    systemctl disable alloy
+    rm -f /etc/alloy/memgine-loki-token
+  fi
+  echo 'Memgine Grafana forwarding disabled.'
+  exit 0
+fi
+
+if rpm -q alloy >/dev/null 2>&1 && [[ ! -f "$marker" ]]; then
+  echo 'Existing unmanaged Alloy installation detected; refusing to overwrite.' >&2
+  exit 1
+fi
+
+# Fetch credential before installation; retry for IAM propagation.
+secret=''
+for attempt in 1 2 3 4 5 6; do
+  if secret=$(aws secretsmanager get-secret-value --region '${aws_region}' \
+    --secret-id '${secret_arn}' --query SecretString --output text 2>/dev/null); then
+    break
+  fi
+  sleep 10
+done
+if [[ -z "$secret" ]]; then
+  echo 'Loki credential unavailable; populate secret and check IAM.' >&2
+  exit 1
+fi
+if ! token=$(printf '%s' "$secret" | jq -er --arg username '${loki_user}' \
+  'select(.username == $username) | .token | select(type == "string" and length > 0 and (test("[\\r\\n]") | not))' 2>/dev/null); then
+  echo 'Loki secret must contain the configured username and a nonempty token.' >&2
+  exit 1
+fi
+unset secret
+
+if ! rpm -q alloy >/dev/null 2>&1; then
+  cat > /etc/yum.repos.d/memgine-grafana.repo <<'REPO'
+[grafana-memgine]
+name=Grafana packages for Memgine
+baseurl=https://rpm.grafana.com
+repo_gpgcheck=1
+enabled=0
+gpgcheck=1
+gpgkey=https://rpm.grafana.com/gpg.key
+sslverify=1
+REPO
+  rpm --import https://rpm.grafana.com/gpg.key
+  dnf -y --enablerepo=grafana-memgine install alloy
+  install -d -m 0750 -o root -g alloy /etc/alloy
+  touch "$marker"
+  systemctl stop alloy
+fi
+
+# Fail closed during reconfiguration. Only Alloy is stopped, not Memgine.
+systemctl stop alloy
+systemctl disable alloy
+trap 'unset token; systemctl stop alloy >/dev/null 2>&1 || true; systemctl disable alloy >/dev/null 2>&1 || true' ERR
+usermod -aG systemd-journal alloy
+if getent group adm >/dev/null; then
+  usermod -aG adm alloy
+fi
+install -d -m 0750 -o root -g alloy /etc/alloy
+printf '%s' "$token" > /etc/alloy/memgine-loki-token
+unset token
+chown root:alloy /etc/alloy/memgine-loki-token
+chmod 0640 /etc/alloy/memgine-loki-token
+
+cat > /etc/alloy/config.alloy <<'ALLOY'
+loki.source.journal "memgine" {
+  matches = "_SYSTEMD_UNIT=${app_name}-${environment}.service"
+  max_age = "1h"
+  labels = {
+    application = "${app_name}",
+    environment = "${environment}",
+    service     = "backend",
+  }
+  forward_to = [loki.process.memgine.receiver]
+}
+
+loki.process "memgine" {
+  // Drop clearly marked verbose lines, not unmarked stack frames.
+  stage.drop {
+    expression = `^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\s+(DEBUG|TRACE)\s`
+    drop_counter_reason = "memgine_verbose"
+  }
+  // Defense in depth only. This is not comprehensive data redaction.
+  stage.drop {
+    expression = `(?i)(authorization\s*[:=]|bearer\s+[a-z0-9._-]+|(?:password|access_token|refresh_token|client_secret|api_key|otp_code|card_number|cvv)\s*["']?\s*[:=])`
+    drop_counter_reason = "memgine_sensitive_pattern"
+  }
+  forward_to = [loki.write.grafanacloud.receiver]
+}
+
+loki.write "grafanacloud" {
+  endpoint {
+    url = "${loki_url}"
+    basic_auth {
+      username = "${loki_user}"
+      password_file = "/etc/alloy/memgine-loki-token"
+    }
+  }
+}
+ALLOY
+chown root:alloy /etc/alloy/config.alloy
+chmod 0640 /etc/alloy/config.alloy
+# The collector UI is not exposed by the existing EC2 security group.
+runuser -u alloy -- alloy validate /etc/alloy/config.alloy
+systemctl enable --now alloy
+systemctl is-active --quiet alloy
+trap - ERR
+echo 'Memgine Grafana forwarding configured. Verify delivery in Grafana Explore.'
