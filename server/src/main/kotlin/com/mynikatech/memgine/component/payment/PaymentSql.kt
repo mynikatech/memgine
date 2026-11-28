@@ -18,6 +18,16 @@ interface PaymentSql {
     @SqlQuery("SELECT finalize_customer_fulfillment_collect(:org,:intent,:actor)")
     fun finalizeFulfillmentCollect(@Bind("org") org: String, @Bind("intent") intent: String, @Bind("actor") actor: String): String?
 
+    @SqlQuery(
+        "SELECT finalize_fulfillment_collect_with_notifications(" +
+            ":org,:intent,:actor)::text"
+    )
+    fun finalizeFulfillmentCollectWithNotifications(
+        @Bind("org") org: String,
+        @Bind("intent") intent: String,
+        @Bind("actor") actor: String
+    ): String
+
     @SqlQuery("SELECT get_customer_fulfillment_payment(:org,:actor,:intent,NULL,NULL)")
     fun fulfillmentCheckoutContext(@Bind("org") org: String, @Bind("intent") intent: String, @Bind("actor") actor: String): String?
 
@@ -229,8 +239,8 @@ interface PaymentSql {
         @Bind("intentId") intentId: String,
         @Bind("actorUserId") actorUserId: String
     ): CounterPaymentFinalizationRow?
-        
-        
+
+
     @SqlQuery("""
         SELECT payment_record_checkout_method(
             :intentId,

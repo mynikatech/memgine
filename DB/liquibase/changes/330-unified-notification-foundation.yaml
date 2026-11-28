@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 330-unified-notification-foundation
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/330-unified-notification-foundation.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

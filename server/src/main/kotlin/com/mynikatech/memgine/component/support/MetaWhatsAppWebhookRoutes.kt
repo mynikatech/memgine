@@ -3,6 +3,7 @@ package com.mynikatech.memgine.component.support
 import com.mynikatech.memgine.config.SupportWebhookConfig
 import com.mynikatech.memgine.exception.ForbiddenException
 import com.mynikatech.memgine.exception.BadRequestException
+import com.mynikatech.memgine.component.notification.NotificationDispatchSql
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
@@ -65,7 +66,27 @@ class MetaWhatsAppWebhookService(private val jdbi: Jdbi, private val config: Sup
         if (config.acknowledgementSecret.isBlank() || !validAcknowledgementSignature(raw, signature)) throw ForbiddenException("Delivery acknowledgement is invalid")
         val item = try { json.decodeFromString<DeliveryAcknowledgement>(raw) } catch (_: Exception) { throw BadRequestException("Delivery acknowledgement is invalid") }
         if (item.deliveryId.isBlank() || item.providerMessageId.isBlank()) throw BadRequestException("Delivery acknowledgement is invalid")
-        jdbi.onDemand(SupportNotificationOutboxSql::class.java).acknowledge(item.deliveryId, item.providerMessageId, item.providerCorrelationId)
+        if (item.deliveryId.startsWith("NFD-")) {
+        if (
+            !jdbi.onDemand(NotificationDispatchSql::class.java)
+                .acknowledge(
+                    item.deliveryId,
+                    item.providerMessageId,
+                    item.providerCorrelationId
+                )
+        ) {
+            throw BadRequestException(
+                "Delivery acknowledgement is invalid"
+            )
+        }
+        } else {
+            jdbi.onDemand(SupportNotificationOutboxSql::class.java)
+                .acknowledge(
+                    item.deliveryId,
+                    item.providerMessageId,
+                    item.providerCorrelationId
+                )
+        }
     }
 
     private fun validSignature(raw: String, header: String?): Boolean {

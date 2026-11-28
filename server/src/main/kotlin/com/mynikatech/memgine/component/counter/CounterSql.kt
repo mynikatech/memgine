@@ -92,7 +92,7 @@ interface CounterSql {
         @Bind("planId") planId: String,
         @Bind("actorUserId") actorUserId: String
     ): String
-    
+
     @SqlQuery("""
         SELECT counter_prepare_staff_assisted_purchase(
             :organizationId, :storeId, :staffId,
@@ -280,8 +280,8 @@ interface CounterSql {
 
     // Reuse canonical entitlement statuses. Only replace a non-available status
     // when exactly one active, same-customer, same-store reservation is found.
-    
-    
+
+
     @SqlQuery("""
         SELECT
             item."itemId" AS "itemId",
@@ -406,6 +406,54 @@ interface CounterSql {
         @Bind("staffId") staffId: String,
         @Bind("actorUserId") actorUserId: String
     ): List<CounterRedemptionItemStatusRow>
+
+    @SqlQuery(
+        "SELECT counter_order_lifecycle_with_notifications(" +
+            ":org,:store,:staff,:actor,:order,:version,:command,:hash)::text"
+    )
+    fun updateOrderLifecycleWithNotifications(
+        @Bind("org") org: String,
+        @Bind("store") store: String,
+        @Bind("staff") staff: String,
+        @Bind("actor") actor: String,
+        @Bind("order") order: String,
+        @Bind("version") version: Int,
+        @Bind("command") command: String,
+        @Bind("hash") hash: String?
+    ): String
+
+    @SqlQuery(
+        "SELECT counter_collection_extension_with_notifications(" +
+            ":org,:store,:staff,:actor,:order,:version,:action,:request," +
+            "CAST(:local AS timestamp),:reason)::text"
+    )
+    fun changeCollectionExtensionWithNotifications(
+        @Bind("org") org: String,
+        @Bind("store") store: String,
+        @Bind("staff") staff: String,
+        @Bind("actor") actor: String,
+        @Bind("order") order: String,
+        @Bind("version") version: Int,
+        @Bind("action") action: String,
+        @Bind("request") request: String?,
+        @Bind("local") local: String?,
+        @Bind("reason") reason: String?
+    ): String
+
+    @SqlQuery(
+        "SELECT counter_cancellation_with_notifications(" +
+            ":org,:store,:staff,:actor,:order,:version,:decision,:reason)::text"
+    )
+    fun decideOrderCancellationWithNotifications(
+        @Bind("org") org: String,
+        @Bind("store") store: String,
+        @Bind("staff") staff: String,
+        @Bind("actor") actor: String,
+        @Bind("order") order: String,
+        @Bind("version") version: Int,
+        @Bind("decision") decision: String,
+        @Bind("reason") reason: String
+    ): String
 
 
 

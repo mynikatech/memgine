@@ -8,6 +8,7 @@ import com.mynikatech.memgine.exception.ApiException
 import com.mynikatech.memgine.component.organization.OrganizationSql
 import com.mynikatech.memgine.component.commerce.DurableFinancialExceptionRecovery
 import com.mynikatech.memgine.component.support.PaymentExceptionSupportLinkService
+import com.mynikatech.memgine.component.notification.NotificationDispatchService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -53,7 +54,8 @@ class PaymentService(
     private val collectProvider: PoyntCollectPaymentProvider? = null,
     private val collectSdkUrl: String,
     private val collectCaptureSqlOverride: PoyntCollectCaptureSql? = null,
-    private val collectExceptionSqlOverride: PoyntCollectFinancialExceptionSql? = null
+    private val collectExceptionSqlOverride: PoyntCollectFinancialExceptionSql? = null,
+    private val notificationDispatch: NotificationDispatchService? = null
 ) {
     private val logger = LoggerFactory.getLogger(PaymentService::class.java)
     private val enforceDemoSegregation =
@@ -128,7 +130,29 @@ class PaymentService(
     /** Capture evidence has already committed; a failed acceptance opens a separate durable case. */
     private fun finalizeVerifiedFulfillmentCollect(org: String, intentId: String, actor: String): Boolean {
         try {
-            if (translate { sql().finalizeFulfillmentCollect(org, intentId, actor) } != null) return true
+            val finalized = translate {
+            if (
+                notificationDispatch == null ||
+                paymentSqlOverride != null
+            ) {
+                sql().finalizeFulfillmentCollect(
+                    org,
+                    intentId,
+                    actor
+                )
+            } else {
+                val envelope =
+                    sql().finalizeFulfillmentCollectWithNotifications(
+                        org,
+                        intentId,
+                        actor
+                    )
+
+                notificationDispatch.afterConfiguredCommit(envelope)
+            }
+        }
+
+        if (finalized != null) return true
         } catch (error: Exception) {
             logger.warn("Verified fulfillment capture requires reconciliation; paymentIntentId={}", intentId, error)
         }
@@ -403,7 +427,7 @@ class PaymentService(
             )
         )
     }
-    
+
     /**
     * Stage B: read the financial exception for an authenticated payment owner.
     * No reconciliation, payment mutation or refund occurs here.
@@ -1179,7 +1203,7 @@ class PaymentService(
             val postgres = generateSequence<Throwable>(error) { it.cause }
                 .filterIsInstance<PSQLException>()
                 .firstOrNull()
-                
+
                 if (postgres != null) {
                     System.err.println(
                         "[PAYMENT SQL ERROR] " +
@@ -1211,7 +1235,7 @@ class PaymentService(
                     throw BadRequestException(
                         safeMessage ?: "Payment or membership details are unavailable"
                     )
-                
+
                 }
                 else -> throw error
             }

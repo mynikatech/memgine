@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 330a-notification-choice-validation-fix
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/330a-notification-choice-validation-fix.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

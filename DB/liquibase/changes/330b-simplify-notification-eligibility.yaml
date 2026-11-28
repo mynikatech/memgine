@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 330b-simplify-notification-eligibility
+      author: mynikatech
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: ../sql/330b-simplify-notification-eligibility.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            encoding: UTF-8

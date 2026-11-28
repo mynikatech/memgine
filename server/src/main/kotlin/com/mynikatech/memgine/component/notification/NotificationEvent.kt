@@ -5,6 +5,20 @@ enum class NotificationChannel { IN_APP, EMAIL, WHATSAPP, SMS, PUSH }
 data class NotificationDestination(val address: String, val displayName: String? = null)
 data class NotificationTemplate(val name: String, val languageCode: String = "en", val parameters: List<String> = emptyList(), val buttonParameter: String? = null)
 
+/** Configuration-driven content; parameter names are supplied by trusted event definitions. */
+data class NotificationContentTemplate(
+    val title: String,
+    val message: String,
+    val allowedParameters: Set<String>,
+    val providerParameterOrder: List<String> = emptyList()
+)
+
+data class RenderedNotificationContent(
+    val title: String,
+    val message: String,
+    val providerParameters: List<String>
+)
+
 data class NotificationEvent(
     val eventType: String,
     val organizationId: String? = null,

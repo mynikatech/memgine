@@ -136,12 +136,47 @@ class AuthenticationTimezoneTest {
                 override fun recipient(destination: String) = null
                 override fun userDeliveryMode(userId: String) = "MOCK"
                 override fun activeDemoUser(userId: String): Boolean = false
+                override fun phoneChangeContext(
+                    challengeId: String,
+                    userId: String
+                ): Nothing =
+                    error("Unexpected phone change context lookup")
             },
             phoneNormalizer = PhoneNormalizer(),
             providerRouter = OtpProviderRouter(config, DevOtpProvider("dev"), null),
             config = config,
             notificationDispatch = NotificationDispatchService(
-                sql = object : NotificationDispatchSql { override fun settings(organizationId: String) = null },
+                sql = object : NotificationDispatchSql { override fun settings(organizationId: String) = null
+                override fun inAppContent(id: String): String? =
+                    error("Unexpected configured notification content lookup")
+
+                override fun materialize(
+                    id: String,
+                    title: String,
+                    message: String,
+                    context: String?
+                ): Boolean = error("Unexpected configured notification materialization")
+
+                override fun finishUnclaimed(
+                    id: String,
+                    outcome: String
+                ): Boolean = error("Unexpected configured notification completion")
+
+                override fun claim(id: String): String? =
+                    error("Unexpected configured notification claim")
+
+                override fun recordPublication(
+                    id: String,
+                    token: String,
+                    outcome: String,
+                    submission: String?
+                ): Boolean = error("Unexpected configured notification publication")
+
+                override fun acknowledge(
+                    id: String,
+                    message: String,
+                    correlation: String?
+                ): Boolean = error("Unexpected configured notification acknowledgement") },
                 notifications = NotificationService(object : NotificationSql {
                     override fun create(id: String, organizationId: String?, recipientId: String, eventType: String, title: String, message: String, context: String?) = true
                     override fun list(recipientId: String, limit: Int, offset: Int) = emptyList<com.mynikatech.memgine.net.dto.NotificationDto>()
@@ -172,6 +207,11 @@ class AuthenticationTimezoneTest {
             createdExpiry = expiresAt
             return true
         }
+        override fun markSessionOtpAuthenticated(
+            sessionId: String,
+            userId: String
+        ): Boolean =
+            error("Unexpected session OTP authentication")
         override fun resolveSession(tokenHash: String) = null
         override fun revokeSession(tokenHash: String, userId: String) = true
         override fun deleteCustomerAccount(userId: String) = false

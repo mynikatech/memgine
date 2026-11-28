@@ -158,11 +158,15 @@ fun Application.configureRouting(
         ?.let { AwsEndUserMessagingSmsProvider(config.otp) }
     val notificationService = NotificationService(database.jdbi.onDemand(NotificationSql::class.java))
     val notificationDispatchService = NotificationDispatchService(
-        database.jdbi.onDemand(NotificationDispatchSql::class.java), notificationService,
-        config.otp.notificationEventsTopicArn.takeIf { it.isNotBlank() }?.let(::SnsExternalNotificationPublisher)
+        database.jdbi.onDemand(NotificationDispatchSql::class.java),
+        notificationService,
+        config.otp.notificationEventsTopicArn
+            .takeIf { it.isNotBlank() }
+            ?.let(::SnsExternalNotificationPublisher)
             ?: UnavailableExternalNotificationPublisher()
+
     )
-    val otpService = OtpService(database.jdbi.onDemand(OtpSql::class.java), phoneNormalizer,
+        val otpService = OtpService(database.jdbi.onDemand(OtpSql::class.java), phoneNormalizer,
         OtpProviderRouter(config.otp, mockOtpProvider, liveOtpProvider), config.otp, notificationDispatchService,
         organizationSql = database.jdbi.onDemand(OtpOrganizationSql::class.java))
     val businessOtpService = BusinessOtpService(otpService, database.jdbi.onDemand(BusinessOtpSql::class.java))
@@ -260,8 +264,14 @@ fun Application.configureRouting(
         ),
         poyntTokens::token
     )
-    val paymentService = PaymentService(database.jdbi, config.server.environment, config.payment,
-        collectProvider = collectProvider, collectSdkUrl = config.poynt.collectSdkUrl)
+    val paymentService = PaymentService(
+        database.jdbi,
+        config.server.environment,
+        config.payment,
+        collectProvider = collectProvider,
+        collectSdkUrl = config.poynt.collectSdkUrl,
+        notificationDispatch = notificationDispatchService
+    )
     val paymentRefundService = PaymentRefundService(
         database.jdbi,
         poyntCollectRefundAdapter = PoyntCollectRefundAdapter(
@@ -318,7 +328,8 @@ fun Application.configureRouting(
         counterCommercePaymentService,
         redemptionService,
         phoneNormalizer,
-        customerService
+        customerService,
+        notificationDispatch = notificationDispatchService
     )
     val commerceService = CommerceService(
         database.jdbi.onDemand(CommerceSql::class.java),
@@ -416,11 +427,14 @@ fun Application.configureRouting(
             redemptionResolutionRoutes(redemptionResolutionService)
             customerRoutes(customerService)
             customerSelfServiceRoutes(customerService, redemptionService)
-            customerFulfillmentRoutes(CustomerFulfillmentService(
-                database.jdbi,
-                counterCommercePaymentService,
-                paymentService
-            ))
+            customerFulfillmentRoutes(
+                CustomerFulfillmentService(
+                    database.jdbi,
+                    counterCommercePaymentService,
+                    paymentService,
+                    notificationDispatch = notificationDispatchService
+                )
+            )
             transactionReceiptRoutes(transactionReceiptSql)
             counterRoutes(counterService, counterCommercePaymentService)
             counterRedemptionCheckoutRoutes(counterCommercePaymentService)

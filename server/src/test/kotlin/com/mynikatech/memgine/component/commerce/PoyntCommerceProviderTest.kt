@@ -33,6 +33,16 @@ class PoyntCommerceProviderTest {
             staffId: String,
             actorUserId: String
         ): PoyntCatalogConfigurationRow? = null
+        
+        override fun customerFulfillmentQuoteCatalogConfiguration(
+            org: String,
+            store: String,
+            subscription: String,
+            actor: String,
+            integration: String
+        ): PoyntCatalogConfigurationRow? =
+            error("Unexpected customer fulfillment catalog lookup")
+            
         override fun counterRedemptionQuoteCatalogConfiguration(
             organizationId: String,
             storeId: String,
@@ -199,6 +209,14 @@ class PoyntCommerceProviderTest {
             override fun catalogConfiguration(organizationId: String, integrationId: String, actorUserId: String) =
                 PoyntCatalogConfigurationRow(integrationId, organizationId, "urn:aid:memgine", "business", providerStoreId, "secret", configuredCurrency, null, null, "2026-01-01T00:00:00Z")
             override fun counterCatalogConfiguration(transactionId: String, actorUserId: String) = null
+            override fun customerFulfillmentQuoteCatalogConfiguration(
+            org: String,
+            store: String,
+            subscription: String,
+            actor: String,
+            integration: String
+        ): PoyntCatalogConfigurationRow? =
+            error("Unexpected customer fulfillment catalog lookup")
             override fun counterRedemptionReviewCatalogConfiguration(organizationId: String, redemptionTransactionId: String, storeId: String, staffId: String, actorUserId: String) = null
             override fun counterRedemptionQuoteCatalogConfiguration(organizationId: String, storeId: String, staffId: String, actorUserId: String, integrationId: String) = null
         },
@@ -525,6 +543,14 @@ class PoyntCommerceProviderTest {
                 staffId: String,
                 actorUserId: String
             ): PoyntCatalogConfigurationRow? = null
+            override fun customerFulfillmentQuoteCatalogConfiguration(
+                org: String,
+                store: String,
+                subscription: String,
+                actor: String,
+                integration: String
+            ): PoyntCatalogConfigurationRow? =
+                error("Unexpected customer fulfillment catalog lookup")
 
             override fun counterRedemptionQuoteCatalogConfiguration(
                 organizationId: String,

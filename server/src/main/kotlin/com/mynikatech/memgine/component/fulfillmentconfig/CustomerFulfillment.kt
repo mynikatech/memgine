@@ -3,6 +3,7 @@ package com.mynikatech.memgine.component.fulfillmentconfig
 import com.mynikatech.memgine.component.commerce.CounterCommercePaymentService
 import com.mynikatech.memgine.component.counter.PickupCodeSecurity
 import com.mynikatech.memgine.component.commerce.CounterRedemptionQuoteRow
+import com.mynikatech.memgine.component.notification.NotificationDispatchService
 import com.mynikatech.memgine.component.payment.PaymentService
 import com.mynikatech.memgine.exception.BadRequestException
 import com.mynikatech.memgine.exception.ConflictException
@@ -111,7 +112,8 @@ data class CustomerFulfillmentSubmission(val fulfillment: JsonObject? = null, va
 class CustomerFulfillmentService(
     jdbi: Jdbi,
     private val pricing: CounterCommercePaymentService,
-    private val payments: PaymentService
+    private val payments: PaymentService,
+    private val notificationDispatch: NotificationDispatchService? = null
 ) {
     private val sql = jdbi.onDemand(CustomerFulfillmentSql::class.java)
     private val pickupRandom = SecureRandom()
@@ -204,10 +206,42 @@ class CustomerFulfillmentService(
                 }
             }
         }
-        val id = sql.accept(org, request.storeId, selection.subscriptionId, actor, scopedKey, requestHash,
-            selection.benefitIds.toTypedArray(), selection.offerIds.toTypedArray(), Json.encodeToString(request.productSelections),
-            evidence.toString(), prepared.expectedCompletion.toString(), prepared.review.expectedCollectionAt)
-        if (id.startsWith("PAY_")) {
+        val id = if (notificationDispatch == null) {
+            sql.accept(
+                org,
+                request.storeId,
+                selection.subscriptionId,
+                actor,
+                scopedKey,
+                requestHash,
+                selection.benefitIds.toTypedArray(),
+                selection.offerIds.toTypedArray(),
+                Json.encodeToString(request.productSelections),
+                evidence.toString(),
+                prepared.expectedCompletion.toString(),
+                prepared.review.expectedCollectionAt
+            )
+        } else {
+            val envelope = sql.acceptWithNotifications(
+                org,
+                request.storeId,
+                selection.subscriptionId,
+                actor,
+                scopedKey,
+                requestHash,
+                selection.benefitIds.toTypedArray(),
+                selection.offerIds.toTypedArray(),
+                Json.encodeToString(request.productSelections),
+                evidence.toString(),
+                prepared.expectedCompletion.toString(),
+                prepared.review.expectedCollectionAt
+            )
+
+            requireNotNull(
+                notificationDispatch.afterConfiguredCommit(envelope)
+            )
+        }
+                if (id.startsWith("PAY_")) {
             val payment = paymentRow(org, actor, id = id) ?: throw NotFoundException("Fulfillment payment is unavailable")
             paymentSubmission(org, actor, payment)
         } else CustomerFulfillmentSubmission(fulfillment = detail(org, actor, id))
@@ -463,7 +497,7 @@ fun Route.customerFulfillmentRoutes(service: CustomerFulfillmentService) {
         post("/requests/{fulfillmentId}/pickup") {
             call.respond(ApiResponse.success(service.pickup(call.fulfillmentOrg(), call.authenticatedPrincipal().userId, call.fulfillmentId()), call.callId))
         }
-        
+
         post("/requests/{fulfillmentId}/pickup-code") {
             call.respond(
                 ApiResponse.success(
@@ -552,5 +586,27 @@ interface CustomerFulfillmentSql {
         @Bind("actor") actor: String,
         @Bind("order") order: String,
         @Bind("hash") hash: String
+    ): String
+
+    @SqlQuery(
+        "SELECT accept_customer_fulfillment_with_notifications(" +
+            ":org,:store,:subscription,:actor,:key,:hash,:benefits,:offers," +
+            "CAST(:products AS jsonb),CAST(:quote AS jsonb)," +
+            "CAST(:completion AS timestamptz)," +
+            "CAST(:collection AS timestamptz))::text"
+    )
+    fun acceptWithNotifications(
+        @Bind("org") org: String,
+        @Bind("store") store: String,
+        @Bind("subscription") subscription: String,
+        @Bind("actor") actor: String,
+        @Bind("key") key: String,
+        @Bind("hash") hash: String,
+        @Bind("benefits") benefits: Array<String>,
+        @Bind("offers") offers: Array<String>,
+        @Bind("products") products: String,
+        @Bind("quote") quote: String,
+        @Bind("completion") completion: String,
+        @Bind("collection") collection: String
     ): String
 }

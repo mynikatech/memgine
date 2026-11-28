@@ -132,7 +132,37 @@ class OtpTimezoneTest {
     }
 
     private fun noNotifications() = NotificationDispatchService(
-        sql = object : NotificationDispatchSql { override fun settings(organizationId: String) = null },
+        sql = object : NotificationDispatchSql { override fun settings(organizationId: String) = null 
+        override fun inAppContent(id: String): String? =
+    error("Unexpected configured notification content lookup")
+
+        override fun materialize(
+            id: String,
+            title: String,
+            message: String,
+            context: String?
+        ): Boolean = error("Unexpected configured notification materialization")
+
+        override fun finishUnclaimed(
+            id: String,
+            outcome: String
+        ): Boolean = error("Unexpected configured notification completion")
+
+        override fun claim(id: String): String? =
+            error("Unexpected configured notification claim")
+
+        override fun recordPublication(
+            id: String,
+            token: String,
+            outcome: String,
+            submission: String?
+        ): Boolean = error("Unexpected configured notification publication")
+
+        override fun acknowledge(
+            id: String,
+            message: String,
+            correlation: String?
+        ): Boolean = error("Unexpected configured notification acknowledgement")},
         notifications = NotificationService(object : NotificationSql {
             override fun create(id: String, organizationId: String?, recipientId: String, eventType: String, title: String, message: String, context: String?) = true
             override fun list(recipientId: String, limit: Int, offset: Int) = emptyList<com.mynikatech.memgine.net.dto.NotificationDto>()
@@ -150,6 +180,11 @@ class OtpTimezoneTest {
         var cooldownActive = false
         var consumeResult = true
         var failedAttempts = 1
+        override fun phoneChangeContext(
+            challengeId: String,
+            userId: String
+        ): OtpPhoneChangeContextRow? =
+            error("Unexpected phone change context lookup")
 
         override fun create(challengeId: String, destination: String, destinationRegion: String?, purpose: String, channel: String, provider: String, otpHash: String, otpSalt: String, contextJson: String?, expiresAt: String, maxAttempts: Int, cooldownSeconds: Int): String {
             if (cooldownActive) {

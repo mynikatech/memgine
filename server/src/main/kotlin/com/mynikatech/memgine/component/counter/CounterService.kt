@@ -10,6 +10,7 @@ import com.mynikatech.memgine.component.otp.BusinessOtpService
 import com.mynikatech.memgine.component.otp.OtpPurpose
 import com.mynikatech.memgine.component.otp.OtpRequestResult
 import com.mynikatech.memgine.component.commerce.CounterCommercePaymentService
+import com.mynikatech.memgine.component.notification.NotificationDispatchService
 import com.mynikatech.memgine.component.payment.PaymentService
 import com.mynikatech.memgine.component.redemption.RedemptionService
 import com.mynikatech.memgine.net.dto.*
@@ -38,7 +39,8 @@ class CounterService(
     private val counterCommercePayments: CounterCommercePaymentService,
     private val redemptions: RedemptionService,
     private val phoneNormalizer: PhoneNormalizer = PhoneNormalizer(),
-    private val customerService: CustomerService
+    private val customerService: CustomerService,
+private val notificationDispatch: NotificationDispatchService? = null
 ) {
     private fun sql(): CounterSql = jdbi.onDemand(CounterSql::class.java)
 
@@ -101,7 +103,7 @@ class CounterService(
         return pickupLookupResult(sql().pickupOrderReference(org, store, staff, principal.userId, validReference), "LOCATED")
     }
 
-    
+
     private fun pickupLookupResult(raw: String, successCode: String): CounterPickupLookupResult {
         val result = Json.parseToJsonElement(raw).jsonObject
         val code = result.getValue("code").jsonPrimitive.content
@@ -161,7 +163,37 @@ class CounterService(
         if (request.action != "APPROVE" && request.reason?.trim()?.length !in 5..500) throw BadRequestException("Enter a reason of 5 to 500 characters")
         if (request.action != "EXTEND" && request.requestId.isNullOrBlank()) throw BadRequestException("Extension request is required")
         if (request.action == "EXTEND") try { java.time.LocalDateTime.parse(request.localTime) } catch (_: Exception) { throw BadRequestException("Enter a valid local collection date and time") }
-        val code = sql().changeCollectionExtension(org, store, staff, principal.userId, order, request.version, request.action, request.requestId, request.localTime, request.reason?.trim())
+        val code = if (notificationDispatch == null) {
+            sql().changeCollectionExtension(
+                org,
+                store,
+                staff,
+                principal.userId,
+                order,
+                request.version,
+                request.action,
+                request.requestId,
+                request.localTime,
+                request.reason?.trim()
+            )
+        } else {
+            val envelope = sql().changeCollectionExtensionWithNotifications(
+                org,
+                store,
+                staff,
+                principal.userId,
+                order,
+                request.version,
+                request.action,
+                request.requestId,
+                request.localTime,
+                request.reason?.trim()
+            )
+
+            requireNotNull(
+                notificationDispatch.afterConfiguredCommit(envelope)
+            )
+        }
         if (code == "FORBIDDEN") throw ForbiddenException("Order access is unavailable for this Store")
         if (code != "UPDATED") throw ConflictException("Extension could not be applied. Check the Store hours, time and latest order status.", code)
         return CounterOrderActionResult(code)
@@ -210,7 +242,34 @@ class CounterService(
             else -> null
         }
         val result = try {
-            sql().updateOrderLifecycle(org, store, staff, principal.userId, order, version, command.name, evidence)
+
+            if (notificationDispatch == null) {
+            sql().updateOrderLifecycle(
+                org,
+                store,
+                staff,
+                principal.userId,
+                order,
+                version,
+                command.name,
+                evidence
+            )
+        } else {
+            val envelope = sql().updateOrderLifecycleWithNotifications(
+                org,
+                store,
+                staff,
+                principal.userId,
+                order,
+                version,
+                command.name,
+                evidence
+            )
+
+            requireNotNull(
+                notificationDispatch.afterConfiguredCommit(envelope)
+            )
+        }
         } catch (_: Exception) {
             // Avoid forwarding a driver error that can contain a credential digest.
             throw ApiException(HttpStatusCode.ServiceUnavailable, "ORDER_UPDATE_UNAVAILABLE",
@@ -255,7 +314,33 @@ class CounterService(
         if (decision !in setOf("APPROVE", "REJECT", "CANCEL") || reason.trim().length !in 5..500 ||
             reason.any { it.isISOControl() }) throw BadRequestException("Enter a reason between 5 and 500 characters")
         val code = try {
-            sql().decideOrderCancellation(org, store, staff, principal.userId, order, version, decision, reason.trim())
+            if (notificationDispatch == null) {
+            sql().decideOrderCancellation(
+                org,
+                store,
+                staff,
+                principal.userId,
+                order,
+                version,
+                decision,
+                reason.trim()
+            )
+        } else {
+            val envelope = sql().decideOrderCancellationWithNotifications(
+                org,
+                store,
+                staff,
+                principal.userId,
+                order,
+                version,
+                decision,
+                reason.trim()
+            )
+
+            requireNotNull(
+                notificationDispatch.afterConfiguredCommit(envelope)
+            )
+        }
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -313,7 +398,7 @@ class CounterService(
         return counterCommercePayments.startRedemptionRemoteTerminalPayment(org, redemption, store, staff, principal.userId,
             advanceOrder = true)
     }
-    
+
       suspend fun simulateAdvanceOrderTerminalPayment(
         org: String,
         store: String,
@@ -439,7 +524,7 @@ class CounterService(
         authorize(org, store, staff, principal)
         return sql().subscriptions(org, principal.userId)
     }
-    
+
     fun verifyCorporateCode(
         org: String,
         request: CounterCorporateCodeVerifyDto,
@@ -779,7 +864,7 @@ class CounterService(
                             principal: AuthenticatedPrincipal): CounterPurchaseResult {
         throw BadRequestException("Membership purchase requires verified payment confirmation")
     }
-    
+
     /** Resolve the verified customer's identity from the Counter purchase OTP. */
         private fun verifiedAgreementPurchase(
             org: String,
@@ -954,7 +1039,7 @@ class CounterService(
         // A customer may have a phone number and still choose this mode.
         // Staff/store and customer-organization eligibility are checked above.
     }
-    
+
     fun prepareStaffAssistedPurchase(
         org: String,
         request: CounterPurchaseRequest,
@@ -999,7 +1084,7 @@ class CounterService(
             )
         }
     }
-    
+
     private fun resolveCounterPurchase(
     org: String,
     challengeId: String?,
@@ -1052,7 +1137,7 @@ class CounterService(
         "Provide exactly one purchase verification reference"
     )
 }
-    
+
     fun startTerminalPayment(
         org: String,
         request: CounterCommercePaymentRequest,
